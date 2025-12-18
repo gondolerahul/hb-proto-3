@@ -1,0 +1,182 @@
+.workflow-builder {
+    padding: var(--spacing-6);
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.builder-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-8);
+}
+
+.builder-header h1 {
+    margin: 0;
+}
+
+.workflow-info {
+    margin-bottom: var(--spacing-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-5);
+}
+
+.workflow-info h2 {
+    margin: 0 0 var(--spacing-4) 0;
+}
+
+.workflow-steps {
+    margin-bottom: var(--spacing-6);
+}
+
+.steps-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-4);
+}
+
+.steps-header h2 {
+    margin: 0;
+}
+
+.steps-header button {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.empty-steps {
+    text-align: center;
+    padding: var(--spacing-12) var(--spacing-6);
+}
+
+.empty-steps p {
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-6);
+}
+
+.empty-steps button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: var(--spacing-6);
+}
+
+.step-card {
+    display: flex;
+    gap: var(--spacing-4);
+    padding: var(--spacing-5);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--color-glass-border);
+    border-radius: var(--radius-lg);
+    transition: all var(--transition-base);
+}
+
+.step-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--color-accent-primary);
+}
+
+.step-number {
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+    border-radius: var(--radius-xl);
+    background: var(--gradient-rose-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: var(--font-weight-bold);
+    color: #ffffff;
+    font-size: var(--font-size-lg);
+}
+
+.step-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+.input-mapping {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+    font-style: italic;
+}
+
+.step-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.step-action-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-glass-border);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.step-action-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--color-accent-primary);
+}
+
+.step-action-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.step-action-btn.delete {
+    color: var(--color-error);
+}
+
+.step-action-btn.delete:hover {
+    background: rgba(248, 113, 113, 0.1);
+    border-color: var(--color-error);
+}
+
+.step-connector {
+    display: flex;
+    justify-content: center;
+    padding: var(--spacing-3) 0;
+}
+
+.builder-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-4);
+    padding-top: var(--spacing-6);
+}
+
+.builder-actions button {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+@media (max-width: 768px) {
+    .step-card {
+        flex-direction: column;
+    }
+
+    .step-actions {
+        flex-direction: row;
+        justify-content: flex-end;
+    }
+}

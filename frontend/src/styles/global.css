@@ -1,0 +1,283 @@
+/* Import Tokens */
+@import './tokens.css';
+@import './utils.css';
+
+
+/* ====================================
+   Global Styles & Reset
+   ==================================== */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: var(--font-family-primary);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-primary);
+    overflow-x: hidden;
+}
+
+/* ====================================
+   Animated Background
+   ==================================== */
+
+#root {
+    min-height: 100vh;
+    position: relative;
+}
+
+.liquid-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -1;
+    background: radial-gradient(ellipse at top, #1a1a1a 0%, #0a0a0a 100%);
+    overflow: hidden;
+}
+
+.liquid-background::before {
+    content: '';
+    position: absolute;
+    width: 200%;
+    height: 200%;
+    top: -50%;
+    left: -50%;
+    background:
+        radial-gradient(circle at 20% 50%, rgba(212, 147, 139, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(246, 220, 212, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(151, 83, 76, 0.05) 0%, transparent 50%);
+    animation: liquidMove 30s ease-in-out infinite;
+}
+
+@keyframes liquidMove {
+
+    0%,
+    100% {
+        transform: translate(0, 0) rotate(0deg);
+    }
+
+    33% {
+        transform: translate(30px, -50px) rotate(120deg);
+    }
+
+    66% {
+        transform: translate(-20px, 20px) rotate(240deg);
+    }
+}
+
+/* ====================================
+   Glass Morphism Utilities
+   ==================================== */
+
+.glass {
+    background: var(--color-glass-bg);
+    backdrop-filter: blur(var(--blur-lg));
+    -webkit-backdrop-filter: blur(var(--blur-lg));
+    border: 1px solid var(--color-glass-border);
+    box-shadow: var(--shadow-lg);
+}
+
+.glass-light {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(var(--blur-md));
+    -webkit-backdrop-filter: blur(var(--blur-md));
+    border: 1px solid var(--color-glass-border);
+}
+
+.glass-heavy {
+    background: rgba(25, 25, 25, 0.8);
+    backdrop-filter: blur(var(--blur-xl));
+    -webkit-backdrop-filter: blur(var(--blur-xl));
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* ====================================
+   Rose Gold Text Gradient
+   ==================================== */
+
+.text-rose-gold {
+    background-image: var(--gradient-rose-gold-text);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-size: 200% auto;
+    animation: shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+    to {
+        background-position: 200% center;
+    }
+}
+
+/* ====================================
+   Typography Utilities
+   ==================================== */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+    margin-bottom: var(--spacing-4);
+}
+
+h1 {
+    font-size: var(--font-size-4xl);
+}
+
+h2 {
+    font-size: var(--font-size-3xl);
+}
+
+h3 {
+    font-size: var(--font-size-2xl);
+}
+
+h4 {
+    font-size: var(--font-size-xl);
+}
+
+h5 {
+    font-size: var(--font-size-lg);
+}
+
+h6 {
+    font-size: var(--font-size-base);
+}
+
+p {
+    margin-bottom: var(--spacing-4);
+}
+
+a {
+    color: var(--color-accent-primary);
+    text-decoration: none;
+    transition: color var(--transition-base);
+}
+
+a:hover {
+    color: var(--color-accent-secondary);
+}
+
+/* ====================================
+   Form Elements
+   ==================================== */
+
+input,
+textarea,
+select {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+}
+
+::placeholder {
+    color: var(--color-text-muted);
+}
+
+/* ====================================
+   Scrollbar Styling
+   ==================================== */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-glass-border);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ====================================
+   Selection
+   ==================================== */
+
+::selection {
+    background: rgba(212, 147, 139, 0.3);
+    color: var(--color-text-primary);
+}
+
+/* ====================================
+   Utility Classes
+   ==================================== */
+
+.container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--spacing-6);
+}
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-center {
+    justify-content: center;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.gap-4 {
+    gap: var(--spacing-4);
+}
+
+.text-center {
+    text-align: center;
+}
+
+.mt-4 {
+    margin-top: var(--spacing-4);
+}
+
+.mb-4 {
+    margin-bottom: var(--spacing-4);
+}
+
+.p-4 {
+    padding: var(--spacing-4);
+}
+
+.rounded-lg {
+    border-radius: var(--radius-lg);
+}

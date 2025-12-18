@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn src.gateway.main:app --host 0.0.0.0 --port 8000
+    container_name: hirebuddha-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - BACKEND_URL=http://app:8000
+      - REDIS_URL=redis://redis:6379
+      - RATE_LIMIT=100/minute
+    depends_on:
+      - app
+      - redis
+
+  app:
+    build: .
+    container_name: hirebuddha-backend
+    ports:
+      - "8001:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/hirebuddha
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=dev_secret_key_change_in_production
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: pgvector/pgvector:pg15
+    container_name: hirebuddha-db
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=hirebuddha
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: hirebuddha-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:

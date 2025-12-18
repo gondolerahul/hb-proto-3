@@ -1,0 +1,57 @@
+.jelly-button {
+    font-family: var(--font-family-primary);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    padding: var(--spacing-3) var(--spacing-6);
+    border-radius: var(--radius-lg);
+    border: none;
+    cursor: pointer;
+    outline: none;
+    transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.jelly-button--primary {
+    background: var(--gradient-rose-gold);
+    color: #ffffff;
+    box-shadow: var(--shadow-base);
+}
+
+.jelly-button--primary:hover {
+    box-shadow: var(--shadow-md), var(--shadow-glow);
+}
+
+.jelly-button--secondary {
+    background: var(--color-glass-bg);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-glass-border);
+    backdrop-filter: blur(var(--blur-md));
+}
+
+.jelly-button--secondary:hover {
+    background: var(--color-glass-hover);
+    border-color: var(--color-accent-primary);
+}
+
+.jelly-button--ghost {
+    background: transparent;
+    color: var(--color-text-primary);
+    border: 1px solid transparent;
+}
+
+.jelly-button--ghost:hover {
+    background: var(--color-glass-hover);
+    border-color: var(--color-glass-border);
+}
+
+.jelly-button--rose {
+    background-image: var(--gradient-rose-gold);
+    color: #ffffff;
+    font-weight: var(--font-weight-semibold);
+}
+
+.jelly-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

@@ -1,0 +1,66 @@
+.user-settings {
+    padding: var(--spacing-6);
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.settings-section {
+    margin-bottom: var(--spacing-6);
+}
+
+.settings-section h2 {
+    margin: 0 0 var(--spacing-6) 0;
+    font-size: var(--font-size-xl);
+}
+
+.theme-toggle-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-4);
+}
+
+.theme-toggle-section h3 {
+    margin: 0 0 var(--spacing-1) 0;
+    font-size: var(--font-size-lg);
+}
+
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    flex-shrink: 0;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-5);
+}
+
+.settings-form button {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.success-message {
+    padding: var(--spacing-3) var(--spacing-4);
+    background: rgba(74, 222, 128, 0.1);
+    border: 1px solid var(--color-success);
+    border-radius: var(--radius-md);
+    color: var(--color-success);
+    font-size: var(--font-size-sm);
+}
+
+@media (max-width: 768px) {
+    .theme-toggle-section {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .theme-toggle-btn {
+        width: 100%;
+    }
+}

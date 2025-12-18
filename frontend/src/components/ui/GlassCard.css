@@ -1,0 +1,11 @@
+.glass-card {
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-6);
+    transition: all var(--transition-base);
+}
+
+.glass-card--hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-xl), var(--shadow-glow);
+    border-color: rgba(212, 147, 139, 0.3);
+}

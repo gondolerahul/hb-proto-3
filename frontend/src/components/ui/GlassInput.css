@@ -1,0 +1,59 @@
+.glass-input-container {
+    position: relative;
+    margin-bottom: var(--spacing-6);
+}
+
+.glass-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid var(--color-glass-border);
+    padding: var(--spacing-3) var(--spacing-2);
+    font-size: var(--font-size-base);
+    color: var(--color-text-primary);
+    outline: none;
+    transition: all var(--transition-base);
+}
+
+.glass-input:focus {
+    border-bottom-color: var(--color-accent-primary);
+}
+
+.glass-input--error {
+    border-bottom-color: var(--color-error);
+}
+
+.glass-input-label {
+    position: absolute;
+    left: var(--spacing-2);
+    top: var(--spacing-3);
+    color: var(--color-text-secondary);
+    pointer-events: none;
+    transform-origin: left top;
+}
+
+.glass-input-label--active {
+    color: var(--color-accent-primary);
+}
+
+.glass-input-border {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: var(--gradient-rose-gold);
+    transition: all var(--transition-spring);
+    transform: translateX(-50%);
+}
+
+.glass-input-border--focused {
+    width: 100%;
+}
+
+.glass-input-error {
+    display: block;
+    margin-top: var(--spacing-1);
+    font-size: var(--font-size-sm);
+    color: var(--color-error);
+}
