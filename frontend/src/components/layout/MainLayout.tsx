@@ -8,7 +8,6 @@ import {
     Workflow,
     Play,
     Database,
-    DollarSign,
     Settings,
     Menu,
     X,
@@ -16,7 +15,10 @@ import {
     User,
     Moon,
     Sun,
+    Users,
+    Building,
 } from 'lucide-react';
+import { UserRole } from '@/types';
 import './MainLayout.css';
 
 interface MainLayoutProps {
@@ -32,13 +34,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     const navItems = [
         { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        ...((user?.role === 'partner_admin' || user?.role === 'PARTNER_ADMIN') ? [{ path: '/tenants', label: 'Tenants', icon: User }] : []),
+        ...(user?.role === UserRole.APP_ADMIN ? [{ path: '/partners', label: 'Partners', icon: Users }] : []),
+        ...((user?.role === UserRole.APP_ADMIN || user?.role === UserRole.PARTNER_ADMIN) ? [{ path: '/tenants', label: 'Tenants', icon: Building }] : []),
+        ...(([UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/users', label: 'Users', icon: User }] : []),
         { path: '/agents', label: 'AI Agents', icon: Brain },
         { path: '/workflows', label: 'Workflows', icon: Workflow },
         { path: '/executions', label: 'Executions', icon: Play },
         { path: '/knowledge', label: 'Knowledge Base', icon: Database },
-        { path: '/billing', label: 'Billing', icon: DollarSign },
-        { path: '/settings', label: 'Settings', icon: Settings },
+        { path: '/integrations', label: 'Integrations', icon: Settings },
     ];
 
     const isActive = (path: string) => location.pathname.startsWith(path);

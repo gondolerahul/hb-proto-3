@@ -1,3 +1,6 @@
+import os
+import base64
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import jwt, JWTError
@@ -29,4 +32,35 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+def encrypt_api_key(api_key: str) -> str:
+    """Encrypt API key using AES-256-GCM."""
+    if not api_key:
+        return None
+    key = settings.ENCRYPTION_MASTER_KEY.encode()
+    if len(key) > 32:
+        key = key[:32]
+    elif len(key) < 32:
+        key = key.ljust(32, b'\0')
+    
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, api_key.encode(), None)
+    return base64.b64encode(nonce + ciphertext).decode('utf-8')
+
+def decrypt_api_key(encrypted_key: str) -> str:
+    """Decrypt API key using AES-256-GCM."""
+    if not encrypted_key:
+        return None
+    key = settings.ENCRYPTION_MASTER_KEY.encode()
+    if len(key) > 32:
+        key = key[:32]
+    elif len(key) < 32:
+        key = key.ljust(32, b'\0')
+    
+    aesgcm = AESGCM(key)
+    data = base64.b64decode(encrypted_key)
+    nonce = data[:12]
+    ciphertext = data[12:]
+    return aesgcm.decrypt(nonce, ciphertext, None).decode('utf-8')
 

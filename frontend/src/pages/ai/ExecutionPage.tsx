@@ -17,7 +17,7 @@ export const ExecutionPage: React.FC = () => {
     const [executing, setExecuting] = useState(false);
     const [executionId, setExecutionId] = useState<string | null>(null);
     const [output, setOutput] = useState<string>('');
-    const [status, setStatus] = useState<'idle' | 'pending' | 'running' | 'completed' | 'failed'>('idle');
+    const [status, setStatus] = useState<'idle' | 'queued' | 'pending' | 'running' | 'completed' | 'failed'>('idle');
     const [error, setError] = useState('');
 
     // SSE connection
@@ -61,7 +61,7 @@ export const ExecutionPage: React.FC = () => {
             if (type === 'agent' && data.role) {
                 const regex = /\{\{(\w+)\}\}/g;
                 const matches = data.role.matchAll(regex);
-                const vars = Array.from(new Set(Array.from(matches, m => m[1])));
+                const vars = Array.from(new Set(Array.from(matches, (m: any) => m[1])));
                 setRequiredVars(vars);
 
                 // Initialize variable state

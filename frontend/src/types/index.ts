@@ -1,18 +1,31 @@
+export interface Company {
+    id: string;
+    name: string;
+    type: 'APP' | 'PARTNER' | 'TENANT';
+    parent_id?: string;
+    logo_url?: string;
+    status: 'active' | 'suspended';
+    created_at: string;
+    updated_at: string;
+}
+
 export interface User {
     id: string;
     email: string;
     full_name: string;
     role: UserRole;
-    tenant_id: string;
-    partner_id?: string;
+    company_id: string;
+    profile_picture_url?: string;
     created_at: string;
 }
 
 export enum UserRole {
-    APP_ADMIN = 'APP_ADMIN',
-    PARTNER_ADMIN = 'PARTNER_ADMIN',
-    TENANT_ADMIN = 'TENANT_ADMIN',
-    TENANT_USER = 'TENANT_USER',
+    APP_ADMIN = 'app_admin',
+    PARTNER_ADMIN = 'partner_admin',
+    TENANT_ADMIN = 'tenant_admin',
+    APP_USER = 'app_user',
+    PARTNER_USER = 'partner_user',
+    TENANT_USER = 'tenant_user',
 }
 
 export interface LoginRequest {
@@ -43,7 +56,7 @@ export interface ModelConfig {
 
 export interface Agent {
     id: string;
-    tenant_id: string;
+    company_id: string;
     name: string;
     description?: string;
     role: string;
@@ -55,7 +68,7 @@ export interface Agent {
 
 export interface Workflow {
     id: string;
-    tenant_id: string;
+    company_id: string;
     name: string;
     description?: string;
     dag: any;
@@ -65,7 +78,7 @@ export interface Workflow {
 
 export interface Execution {
     id: string;
-    tenant_id: string;
+    company_id: string;
     agent_id?: string;
     workflow_id?: string;
     status: 'queued' | 'running' | 'completed' | 'failed';

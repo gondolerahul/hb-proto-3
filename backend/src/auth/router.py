@@ -24,7 +24,7 @@ async def login(response: Response, login_data: UserLogin, db: AsyncSession = De
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token = create_access_token(data={"sub": user.email, "tenant_id": str(user.tenant_id)})
+    access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
     refresh_token = await service.create_refresh_token(db, user.id)
     
     # Set HttpOnly cookie
@@ -49,7 +49,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token = create_access_token(data={"sub": user.email, "tenant_id": str(user.tenant_id)})
+    access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
     return {"access_token": access_token, "token_type": "bearer"}
 
 from src.auth.dependencies import get_current_user, RoleChecker
@@ -72,7 +72,7 @@ async def refresh_token(
     new_refresh_token = await service.rotate_refresh_token(db, request.refresh_token)
     user = await service.verify_refresh_token(db, new_refresh_token)
     
-    access_token = create_access_token(data={"sub": user.email, "tenant_id": str(user.tenant_id)})
+    access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
     
     response.set_cookie(
         key="refresh_token",
@@ -145,7 +145,7 @@ async def oauth_login(
 
     user = await service.get_or_create_oauth_user(db, email, name)
     
-    access_token = create_access_token(data={"sub": user.email, "tenant_id": str(user.tenant_id)})
+    access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
     refresh_token = await service.create_refresh_token(db, user.id)
     
     response.set_cookie(

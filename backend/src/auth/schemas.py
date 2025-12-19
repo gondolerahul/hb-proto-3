@@ -7,6 +7,10 @@ class UserCreate(BaseModel):
     password: str
     full_name: str
 
+class UserCreateAdmin(UserCreate):
+    company_id: UUID
+    role: str
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
@@ -26,13 +30,29 @@ class OAuthRequest(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
+class CompanyBase(BaseModel):
+    name: str
+    type: str # APP, PARTNER, TENANT
+    status: str = "active"
+
+class CompanyCreate(CompanyBase):
+    parent_id: Optional[UUID] = None
+
+class CompanyResponse(CompanyBase):
+    id: UUID
+    logo_url: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
 class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
     full_name: str
-    tenant_id: UUID
+    company_id: UUID
     role: str
     is_active: bool
+    profile_picture_url: Optional[str] = None
 
     class Config:
         from_attributes = True

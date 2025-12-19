@@ -13,7 +13,6 @@ from src.common.config import settings
 # Import all models to ensure they are registered with Base.metadata
 from src.auth import models as auth_models
 from src.ai import models as ai_models
-from src.billing import models as billing_models
 from src.config import models as config_models
 
 # this is the Alembic Config object, which provides

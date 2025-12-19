@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from fastapi import HTTPException, status
-from src.auth.models import User, Tenant, RefreshToken
+from src.auth.models import User, Company, RefreshToken
 from src.auth.schemas import UserCreate, UserLogin
 from src.common.security import get_password_hash, verify_password, create_access_token
 from src.common.email import email_service
@@ -10,17 +10,68 @@ import uuid
 import secrets
 from sqlalchemy import or_
 
-async def create_user(db: AsyncSession, user: UserCreate):
+from src.auth.schemas import UserCreate, UserLogin, UserCreateAdmin
+
+async def create_user_as_admin(db: AsyncSession, user_in: UserCreateAdmin, creator: User):
+    # Permission Checks
+    if creator.role == "tenant_admin":
+        if user_in.company_id != creator.company_id:
+            raise HTTPException(status_code=403, detail="Can only create users in your own company")
+        if user_in.role not in ["tenant_admin", "tenant_user"]:
+            raise HTTPException(status_code=403, detail="Invalid role for tenant admin to assign")
+    
+    elif creator.role == "partner_admin":
+        # Get target company to check parent_id
+        result = await db.execute(select(Company).where(Company.id == user_in.company_id))
+        target_company = result.scalar_one_or_none()
+        if not target_company:
+            raise HTTPException(status_code=404, detail="Target company not found")
+        
+        # Partner admin can create for their own company or their tenants
+        if target_company.id != creator.company_id and target_company.parent_id != creator.company_id:
+            raise HTTPException(status_code=403, detail="Not authorized to create users for this company")
+        
+        if user_in.role not in ["partner_admin", "partner_user", "tenant_admin", "tenant_user"]:
+            raise HTTPException(status_code=403, detail="Invalid role for partner admin to assign")
+            
+    elif creator.role != "app_admin":
+        raise HTTPException(status_code=403, detail="Not authorized to create users")
+
+    # Check if email exists
+    result = await db.execute(select(User).filter(User.email == user_in.email))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Create User
+    hashed_password = get_password_hash(user_in.password)
+    new_user = User(
+        email=user_in.email,
+        full_name=user_in.full_name,
+        hashed_password=hashed_password,
+        company_id=user_in.company_id,
+        role=user_in.role,
+        is_verified=True # Admin created users are pre-verified
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user
+
+async def create_user(db: AsyncSession, user: UserCreate, creator: User = None):
     # Check if user exists
     result = await db.execute(select(User).filter(User.email == user.email))
     existing_user = result.scalars().first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Create Tenant
-    new_tenant = Tenant(name=f"{user.full_name}'s Workspace")
-    db.add(new_tenant)
-    await db.flush()  # Flush to get tenant ID
+    # For self-registration or direct creation without company context, create a TENANT company
+    new_company = Company(
+        name=f"{user.full_name}'s Workspace",
+        type="TENANT",
+        status="active"
+    )
+    db.add(new_company)
+    await db.flush()
 
     # Create User
     hashed_password = get_password_hash(user.password)
@@ -28,7 +79,7 @@ async def create_user(db: AsyncSession, user: UserCreate):
         email=user.email,
         full_name=user.full_name,
         hashed_password=hashed_password,
-        tenant_id=new_tenant.id,
+        company_id=new_company.id,
         role="tenant_admin"
     )
     db.add(new_user)
@@ -117,9 +168,13 @@ async def get_or_create_oauth_user(db: AsyncSession, email: str, full_name: str)
         return user
         
     # Create new user
-    # Create Tenant
-    new_tenant = Tenant(name=f"{full_name}'s Workspace")
-    db.add(new_tenant)
+    # Create Company
+    new_company = Company(
+        name=f"{full_name}'s Workspace",
+        type="TENANT",
+        status="active"
+    )
+    db.add(new_company)
     await db.flush()
     
     # Create User with random password (since they use OAuth)
@@ -130,9 +185,9 @@ async def get_or_create_oauth_user(db: AsyncSession, email: str, full_name: str)
         email=email,
         full_name=full_name,
         hashed_password=hashed_password,
-        tenant_id=new_tenant.id,
+        company_id=new_company.id,
         role="tenant_admin",
-        is_verified=True # OAuth users are verified by provider
+        is_verified=True # OAuth users are verified by provide
     )
     db.add(new_user)
     await db.commit()

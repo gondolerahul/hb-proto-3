@@ -19,20 +19,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from src.common.middleware import TenantSuspensionMiddleware
-app.add_middleware(TenantSuspensionMiddleware)
+from src.common.middleware import CompanySuspensionMiddleware
+app.add_middleware(CompanySuspensionMiddleware)
 
 
 
 app.include_router(auth_router, prefix="/api/v1")
-from src.tenant.router import router as tenant_router
-app.include_router(tenant_router, prefix="/api/v1")
+from src.auth.company_router import router as company_router
+app.include_router(company_router, prefix="/api/v1")
+from src.auth.profile_router import router as profile_router
+app.include_router(profile_router, prefix="/api/v1")
+from src.auth.user_router import router as user_router
+app.include_router(user_router, prefix="/api/v1")
+
+from fastapi.staticfiles import StaticFiles
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 from src.config.router import router as config_router
 app.include_router(config_router, prefix="/api/v1")
 from src.ai.router import router as ai_router
 app.include_router(ai_router, prefix="/api/v1")
-from src.billing.router import router as billing_router
-app.include_router(billing_router, prefix="/api/v1")
 
 
 @app.get("/")

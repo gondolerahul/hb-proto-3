@@ -50,7 +50,7 @@ export const WorkflowBuilder: React.FC = () => {
             // API returns: { dag_structure: { nodes: [...], edges: [...] } }
             if (data.dag_structure && data.dag_structure.nodes) {
                 // Convert nodes back to steps format
-                const loadedSteps = data.dag_structure.nodes.map((node: any, index: number) => ({
+                const loadedSteps: WorkflowStep[] = data.dag_structure.nodes.map((node: any, index: number) => ({
                     id: node.id,
                     agent_id: node.config.agent_id,
                     order: index,
@@ -62,7 +62,7 @@ export const WorkflowBuilder: React.FC = () => {
                 if (data.dag_structure.edges && data.dag_structure.edges.length > 0) {
                     const sortedSteps: WorkflowStep[] = [];
                     const nodeMap = new Map(loadedSteps.map((step: WorkflowStep) => [step.id, step]));
-                    const edgeMap = new Map(data.dag_structure.edges.map((edge: any) => [edge.source, edge.target]));
+                    const edgeMap = new Map<string, string>(data.dag_structure.edges.map((edge: any) => [edge.source, edge.target]));
 
                     // Find the first node (one without incoming edge)
                     let currentId = loadedSteps.find((step: WorkflowStep) =>

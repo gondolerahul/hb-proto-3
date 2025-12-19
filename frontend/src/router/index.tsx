@@ -14,28 +14,40 @@ import { ExecutionPage } from '@/pages/ai/ExecutionPage';
 import { ExecutionHistory } from '@/pages/ai/ExecutionHistory';
 import { ExecutionDetail } from '@/pages/ai/ExecutionDetail';
 import { KnowledgeBase } from '@/pages/KnowledgeBase';
-import { BillingDashboard } from '@/pages/BillingDashboard';
-import { SystemConfig } from '@/pages/SystemConfig';
+import { IntegrationsPage } from '@/pages/IntegrationsPage';
 import { UserSettings } from '@/pages/UserSettings';
 import TenantManagement from '@/pages/TenantManagement';
+
+import { UserRole } from '@/types';
+import PartnerManagement from '@/pages/PartnerManagement';
+import UserManagement from '@/pages/UserManagement';
 
 // Protected Route Component
 interface ProtectedRouteProps {
     children: React.ReactNode;
+    allowedRoles?: UserRole[];
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-    const { isAuthenticated, loading } = useAuth();
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
+    const { isAuthenticated, user, loading } = useAuth();
 
     if (loading) {
         return <div className="loading-screen">Loading...</div>;
     }
 
-    return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
+    }
+
+    if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
+    return <>{children}</>;
 };
 
 // Public Route (redirect if authenticated)
-const PublicRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { isAuthenticated, loading } = useAuth();
 
     if (loading) {
@@ -183,25 +195,13 @@ export const AppRouter: React.FC = () => {
                     }
                 />
 
-                {/* Billing */}
+                {/* Integrations */}
                 <Route
-                    path="/billing"
+                    path="/integrations"
                     element={
                         <ProtectedRoute>
                             <MainLayout>
-                                <BillingDashboard />
-                            </MainLayout>
-                        </ProtectedRoute>
-                    }
-                />
-
-                {/* System Settings */}
-                <Route
-                    path="/settings"
-                    element={
-                        <ProtectedRoute>
-                            <MainLayout>
-                                <SystemConfig />
+                                <IntegrationsPage />
                             </MainLayout>
                         </ProtectedRoute>
                     }
@@ -219,13 +219,37 @@ export const AppRouter: React.FC = () => {
                     }
                 />
 
+                {/* Partner Management */}
+                <Route
+                    path="/partners"
+                    element={
+                        <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN]}>
+                            <MainLayout>
+                                <PartnerManagement />
+                            </MainLayout>
+                        </ProtectedRoute>
+                    }
+                />
+
                 {/* Tenant Management */}
                 <Route
                     path="/tenants"
                     element={
-                        <ProtectedRoute>
+                        <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN]}>
                             <MainLayout>
                                 <TenantManagement />
+                            </MainLayout>
+                        </ProtectedRoute>
+                    }
+                />
+
+                {/* User Management */}
+                <Route
+                    path="/users"
+                    element={
+                        <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                            <MainLayout>
+                                <UserManagement />
                             </MainLayout>
                         </ProtectedRoute>
                     }

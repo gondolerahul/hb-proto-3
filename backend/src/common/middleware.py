@@ -1,19 +1,19 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request, HTTPException, status
 from src.common.database import AsyncSessionLocal
-from src.auth.models import Tenant
+from src.auth.models import Company
 from sqlalchemy import select
 import logging
 
 logger = logging.getLogger(__name__)
 
-class TenantSuspensionMiddleware(BaseHTTPMiddleware):
+class CompanySuspensionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Skip for public endpoints or if no auth header
         if request.url.path.startswith("/api/v1/auth") or request.url.path == "/" or request.url.path.startswith("/docs") or request.url.path.startswith("/openapi.json"):
             return await call_next(request)
         
-        # We need to extract tenant_id from the token or request state
+        # We need to extract company_id from the token or request state
         # Since the auth dependency runs *after* middleware in FastAPI, we have to manually check the token here
         # OR we can rely on the fact that if the user is authenticated, we can check their tenant status.
         # However, middleware runs before dependencies.
@@ -34,15 +34,15 @@ class TenantSuspensionMiddleware(BaseHTTPMiddleware):
                     
                     payload = decode_access_token(token)
                     if payload:
-                        tenant_id = payload.get("tenant_id")
-                        if tenant_id:
-                            # Check tenant status
-                            result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
-                            tenant = result.scalar_one_or_none()
+                        company_id = payload.get("company_id")
+                        if company_id:
+                            # Check company status
+                            result = await db.execute(select(Company).where(Company.id == company_id))
+                            company = result.scalar_one_or_none()
                             
-                            if tenant and tenant.status == "suspended":
+                            if company and company.status == "suspended":
                                 return Response(
-                                    content='{"detail": "Tenant is suspended. Please contact support."}',
+                                    content='{"detail": "Company is suspended. Please contact support."}',
                                     status_code=status.HTTP_403_FORBIDDEN,
                                     media_type="application/json"
                                 )

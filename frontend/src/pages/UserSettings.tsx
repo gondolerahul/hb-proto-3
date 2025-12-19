@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import { GlassCard, GlassInput, JellyButton } from '@/components/ui';
-import { Save, Moon, Sun } from 'lucide-react';
+import { Save, Moon, Sun, Camera, Image as ImageIcon } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import { profileService } from '@/services/profile.service';
+import { UserRole } from '@/types';
 import './UserSettings.css';
 
 export const UserSettings: React.FC = () => {
@@ -16,6 +18,11 @@ export const UserSettings: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
+
+    const avatarInputRef = useRef<HTMLInputElement>(null);
+    const logoInputRef = useRef<HTMLInputElement>(null);
+
+    const isAdmin = user && [UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN].includes(user.role);
 
     const handleProfileUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -66,6 +73,40 @@ export const UserSettings: React.FC = () => {
         }
     };
 
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setLoading(true);
+        setError('');
+        try {
+            await profileService.uploadAvatar(file);
+            setSuccess('Profile picture updated successfully');
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to upload avatar');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setLoading(true);
+        setError('');
+        try {
+            await profileService.uploadLogo(file);
+            setSuccess('Company logo updated successfully');
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to upload logo');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="user-settings">
             <div className="page-header">
@@ -73,24 +114,89 @@ export const UserSettings: React.FC = () => {
                 <p>Manage your account preferences</p>
             </div>
 
-            {/* Theme Toggle */}
-            <GlassCard className="settings-section">
-                <h2>Appearance</h2>
-                <div className="theme-toggle-section">
-                    <div>
-                        <h3>Theme</h3>
-                        <p className="help-text">Choose your preferred color scheme</p>
+            {/* Notifications */}
+            <div className="notifications-container">
+                {success && <div className="success-message">{success}</div>}
+                {error && <div className="error-message">{error}</div>}
+            </div>
+
+            {/* Profile & Branding */}
+            <div className="settings-grid">
+                <GlassCard className="settings-section profile-images">
+                    <h2>Profile & Branding</h2>
+                    <div className="image-uploads">
+                        <div className="upload-group">
+                            <h3>Profile Picture</h3>
+                            <div
+                                className="image-preview avatar"
+                                onClick={() => avatarInputRef.current?.click()}
+                            >
+                                {user?.profile_picture_url ? (
+                                    <img src={user.profile_picture_url} alt="Avatar" />
+                                ) : (
+                                    <div className="image-placeholder">
+                                        <Camera size={40} />
+                                    </div>
+                                )}
+                                <div className="upload-overlay">
+                                    <span>Change</span>
+                                </div>
+                            </div>
+                            <input
+                                type="file"
+                                ref={avatarInputRef}
+                                onChange={handleAvatarUpload}
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                            />
+                        </div>
+
+                        {isAdmin && (
+                            <div className="upload-group">
+                                <h3>Company Logo</h3>
+                                <div
+                                    className="image-preview logo"
+                                    onClick={() => logoInputRef.current?.click()}
+                                >
+                                    {/* Company logo url would need to be in user or fetched */}
+                                    <div className="image-placeholder">
+                                        <ImageIcon size={40} />
+                                    </div>
+                                    <div className="upload-overlay">
+                                        <span>Change</span>
+                                    </div>
+                                </div>
+                                <input
+                                    type="file"
+                                    ref={logoInputRef}
+                                    onChange={handleLogoUpload}
+                                    accept="image/*"
+                                    style={{ display: 'none' }}
+                                />
+                            </div>
+                        )}
                     </div>
-                    <JellyButton
-                        variant="secondary"
-                        onClick={toggleTheme}
-                        className="theme-toggle-btn"
-                    >
-                        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-                        {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-                    </JellyButton>
-                </div>
-            </GlassCard>
+                </GlassCard>
+
+                {/* Theme Toggle */}
+                <GlassCard className="settings-section">
+                    <h2>Appearance</h2>
+                    <div className="theme-toggle-section">
+                        <div>
+                            <h3>Theme</h3>
+                            <p className="help-text">Choose your preferred color scheme</p>
+                        </div>
+                        <JellyButton
+                            variant="secondary"
+                            onClick={toggleTheme}
+                            className="theme-toggle-btn"
+                        >
+                            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                        </JellyButton>
+                    </div>
+                </GlassCard>
+            </div>
 
             {/* Profile Settings */}
             <GlassCard className="settings-section">
@@ -109,12 +215,9 @@ export const UserSettings: React.FC = () => {
                     />
                     <GlassInput
                         label="Role"
-                        value={user?.role || ''}
+                        value={user?.role?.toUpperCase().replace('_', ' ') || ''}
                         disabled
                     />
-
-                    {success && <div className="success-message">{success}</div>}
-                    {error && <div className="error-message">{error}</div>}
 
                     <JellyButton
                         type="submit"

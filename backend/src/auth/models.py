@@ -5,29 +5,20 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.common.database import Base
 
-class Partner(Base):
-    __tablename__ = "partners"
+class Company(Base):
+    __tablename__ = "companies"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
-    admin_user_id = Column(UUID(as_uuid=True), nullable=True) # Link to a User who is the partner admin
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    tenants = relationship("Tenant", back_populates="partner")
-
-class Tenant(Base):
-    __tablename__ = "tenants"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
+    type = Column(String, nullable=False)  # APP, PARTNER, TENANT
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
+    logo_url = Column(String, nullable=True)
     status = Column(String, default="active")  # active, suspended
-    partner_id = Column(UUID(as_uuid=True), ForeignKey("partners.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    partner = relationship("Partner", back_populates="tenants")
-    users = relationship("User", back_populates="tenant")
+    parent = relationship("Company", remote_side=[id], backref="children")
+    users = relationship("User", back_populates="company")
 
 class User(Base):
     __tablename__ = "users"
@@ -36,14 +27,15 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     full_name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
-    role = Column(String, default="tenant_admin")  # tenant_admin, user
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    role = Column(String, default="tenant_user")  # app_admin, partner_admin, tenant_admin, app_user, partner_user, tenant_user
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
+    profile_picture_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    tenant = relationship("Tenant", back_populates="users")
+    company = relationship("Company", back_populates="users")
     refresh_tokens = relationship("RefreshToken", back_populates="user")
 
 class RefreshToken(Base):

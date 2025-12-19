@@ -16,7 +16,7 @@ async def create_agent(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.create_agent(agent_in, current_user.tenant_id)
+    return await service.create_agent(agent_in, current_user.company_id)
 
 @router.get("/stats", response_model=dict)
 async def get_dashboard_stats(
@@ -24,7 +24,7 @@ async def get_dashboard_stats(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_dashboard_stats(current_user.tenant_id)
+    return await service.get_dashboard_stats(current_user.company_id)
 
 @router.get("/agents", response_model=list[AgentResponse])
 async def list_agents(
@@ -32,7 +32,7 @@ async def list_agents(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_agents(current_user.tenant_id)
+    return await service.get_agents(current_user.company_id)
 
 @router.get("/agents/{agent_id}", response_model=AgentResponse)
 async def get_agent(
@@ -41,7 +41,7 @@ async def get_agent(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_agent(agent_id, current_user.tenant_id)
+    return await service.get_agent(agent_id, current_user.company_id)
 
 @router.put("/agents/{agent_id}", response_model=AgentResponse)
 async def update_agent(
@@ -51,7 +51,7 @@ async def update_agent(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.update_agent(agent_id, agent_in, current_user.tenant_id)
+    return await service.update_agent(agent_id, agent_in, current_user.company_id)
 
 @router.post("/workflows", response_model=WorkflowResponse)
 async def create_workflow(
@@ -70,7 +70,7 @@ async def create_workflow(
         )
     
     service = AIService(db)
-    return await service.create_workflow(workflow_in, current_user.tenant_id)
+    return await service.create_workflow(workflow_in, current_user.company_id)
 
 @router.get("/workflows", response_model=list[WorkflowResponse])
 async def list_workflows(
@@ -78,7 +78,7 @@ async def list_workflows(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_workflows(current_user.tenant_id)
+    return await service.get_workflows(current_user.company_id)
 
 @router.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(
@@ -87,7 +87,7 @@ async def get_workflow(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_workflow(workflow_id, current_user.tenant_id)
+    return await service.get_workflow(workflow_id, current_user.company_id)
 
 @router.put("/workflows/{workflow_id}", response_model=WorkflowResponse)
 async def update_workflow(
@@ -109,7 +109,7 @@ async def update_workflow(
             )
 
     service = AIService(db)
-    return await service.update_workflow(workflow_id, workflow_in, current_user.tenant_id)
+    return await service.update_workflow(workflow_id, workflow_in, current_user.company_id)
 
 @router.post("/execute", response_model=ExecutionResponse)
 async def trigger_execution(
@@ -118,7 +118,7 @@ async def trigger_execution(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.trigger_execution(execution_in, current_user.tenant_id)
+    return await service.trigger_execution(execution_in, current_user.company_id)
 
 @router.get("/executions", response_model=list[ExecutionResponse])
 async def list_executions(
@@ -126,7 +126,7 @@ async def list_executions(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_executions(current_user.tenant_id)
+    return await service.get_executions(current_user.company_id)
 
 @router.get("/executions/{execution_id}", response_model=ExecutionResponse)
 async def get_execution(
@@ -135,7 +135,7 @@ async def get_execution(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_execution(execution_id, current_user.tenant_id)
+    return await service.get_execution(execution_id, current_user.company_id)
 
 @router.get("/executions/{execution_id}/stream")
 async def stream_execution(
@@ -145,7 +145,7 @@ async def stream_execution(
 ):
     # Verify access
     service = AIService(db)
-    await service.get_execution(execution_id, current_user.tenant_id)
+    await service.get_execution(execution_id, current_user.company_id)
     
     from fastapi.responses import StreamingResponse
     import redis.asyncio as redis
@@ -201,7 +201,7 @@ async def upload_document(
         file_content=file_content,
         filename=file.filename,
         file_type=file_type,
-        tenant_id=current_user.tenant_id,
+        company_id=current_user.company_id,
         agent_id=agent_id
     )
     return {"id": str(document.id), "status": document.upload_status}
@@ -213,7 +213,7 @@ async def list_documents(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    documents = await service.get_documents(current_user.tenant_id, agent_id)
+    documents = await service.get_documents(current_user.company_id, agent_id)
     return documents
 
 @router.post("/documents/search")
@@ -227,7 +227,7 @@ async def search_documents(
     service = AIService(db)
     results = await service.search_documents(
         query=query,
-        tenant_id=current_user.tenant_id,
+        company_id=current_user.company_id,
         agent_id=agent_id,
         top_k=top_k
     )

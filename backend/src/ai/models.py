@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text, JSON
+from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text, JSON, Numeric
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.common.database import Base
@@ -11,7 +11,7 @@ class Agent(Base):
     __tablename__ = "agents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     name = Column(String, nullable=False)
     role = Column(String, nullable=False)  # System Prompt
     llm_config = Column(JSON, nullable=False)  # { "provider": "openai", "model": "gpt-4", ... }
@@ -19,28 +19,28 @@ class Agent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    tenant = relationship("Tenant")
+    company = relationship("src.auth.models.Company")
     executions = relationship("Execution", back_populates="agent")
 
 class Workflow(Base):
     __tablename__ = "workflows"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     name = Column(String, nullable=False)
     dag_structure = Column(JSON, nullable=False)  # { "nodes": [...], "edges": [...] }
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    tenant = relationship("Tenant")
+    company = relationship("src.auth.models.Company")
     executions = relationship("Execution", back_populates="workflow")
 
 class Execution(Base):
     __tablename__ = "executions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True)
     workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id"), nullable=True)
     status = Column(String, default="pending")  # pending, running, completed, failed
@@ -51,17 +51,32 @@ class Execution(Base):
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    tenant = relationship("Tenant")
+    company = relationship("src.auth.models.Company")
     agent = relationship("Agent", back_populates="executions")
     workflow = relationship("Workflow", back_populates="executions")
-    # Billing relationship
-    ledger_entries = relationship("LedgerEntry", back_populates="execution")
+    usage_logs = relationship("UsageLog", back_populates="execution")
+
+class UsageLog(Base):
+    __tablename__ = "usage_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    execution_id = Column(UUID(as_uuid=True), ForeignKey("executions.id"), nullable=True)
+    sku_id = Column(UUID(as_uuid=True), ForeignKey("integration_registry.id"), nullable=False)
+    raw_quantity = Column(Numeric(18, 6), nullable=False)
+    calculated_cost = Column(Numeric(18, 6), nullable=False)
+    log_metadata = Column(JSON, nullable=True)
+
+    company = relationship("src.auth.models.Company")
+    execution = relationship("Execution", back_populates="usage_logs")
+    sku = relationship("src.config.models.IntegrationRegistry")
 
 class Document(Base):
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True)  # Optional: associate with agent
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False)  # pdf, docx, txt
@@ -70,7 +85,7 @@ class Document(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    tenant = relationship("Tenant")
+    company = relationship("src.auth.models.Company")
     agent = relationship("Agent")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
 

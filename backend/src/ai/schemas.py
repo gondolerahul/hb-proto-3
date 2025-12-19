@@ -29,7 +29,7 @@ class AgentUpdate(BaseModel):
 
 class AgentResponse(AgentBase):
     id: UUID
-    tenant_id: UUID
+    company_id: UUID
     created_at: datetime
     updated_at: datetime
 
@@ -65,7 +65,7 @@ class WorkflowUpdate(BaseModel):
 
 class WorkflowResponse(WorkflowBase):
     id: UUID
-    tenant_id: UUID
+    company_id: UUID
     created_at: datetime
     updated_at: datetime
 
@@ -102,7 +102,7 @@ class DocumentUploadResponse(BaseModel):
 
 class DocumentResponse(BaseModel):
     id: UUID
-    tenant_id: UUID
+    company_id: UUID
     agent_id: Optional[UUID]
     filename: str
     file_type: str

@@ -1,73 +1,78 @@
-import os
+from typing import Optional
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from cryptography.fernet import Fernet
 from fastapi import HTTPException, status
-from src.config.models import AIModel, SystemConfig
-from src.config.schemas import AIModelCreate, AIModelUpdate, SystemConfigCreate, SystemConfigUpdate
-
-# Get encryption key from env or generate a temporary one (for dev only)
-ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
-if not ENCRYPTION_KEY:
-    # In production, this should raise an error. For now, we warn.
-    print("WARNING: ENCRYPTION_KEY not found. Using a temporary key.")
-    ENCRYPTION_KEY = Fernet.generate_key().decode()
-
-cipher_suite = Fernet(ENCRYPTION_KEY.encode())
+from src.config.models import IntegrationRegistry
+from src.config.schemas import IntegrationRegistryCreate, IntegrationRegistryUpdate
+from src.common.security import encrypt_api_key, decrypt_api_key
 
 class ConfigService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    # AI Model Methods
-    async def create_ai_model(self, model_in: AIModelCreate) -> AIModel:
-        model = AIModel(**model_in.model_dump())
-        self.db.add(model)
+    async def create_registry_entry(self, entry_in: IntegrationRegistryCreate) -> IntegrationRegistry:
+        encrypted_key = encrypt_api_key(entry_in.api_key)
+        
+        entry_data = entry_in.model_dump(exclude={"api_key"})
+        entry = IntegrationRegistry(
+            **entry_data,
+            encrypted_api_key=encrypted_key
+        )
+        self.db.add(entry)
         await self.db.commit()
-        await self.db.refresh(model)
-        return model
+        await self.db.refresh(entry)
+        return entry
 
-    async def get_ai_models(self) -> list[AIModel]:
-        result = await self.db.execute(select(AIModel))
+    async def get_registry_entries(self, company_id: Optional[UUID] = None) -> list[IntegrationRegistry]:
+        query = select(IntegrationRegistry)
+        if company_id:
+            query = query.where(IntegrationRegistry.company_id == company_id)
+        result = await self.db.execute(query)
         return result.scalars().all()
 
-    async def delete_ai_model(self, model_id: UUID) -> bool:
-        result = await self.db.execute(select(AIModel).where(AIModel.id == model_id))
-        model = result.scalar_one_or_none()
-        if not model:
-            return False
+    async def get_registry_entry(self, entry_id: UUID) -> IntegrationRegistry:
+        result = await self.db.execute(
+            select(IntegrationRegistry).where(IntegrationRegistry.id == entry_id)
+        )
+        entry = result.scalar_one_or_none()
+        if not entry:
+            raise HTTPException(status_code=404, detail="Registry entry not found")
+        return entry
+
+    async def update_registry_entry(self, entry_id: UUID, entry_in: IntegrationRegistryUpdate) -> IntegrationRegistry:
+        entry = await self.get_registry_entry(entry_id)
         
-        await self.db.delete(model)
+        update_data = entry_in.model_dump(exclude_unset=True)
+        if "api_key" in update_data:
+            update_data["encrypted_api_key"] = encrypt_api_key(update_data.pop("api_key"))
+        
+        for field, value in update_data.items():
+            setattr(entry, field, value)
+        
+        await self.db.commit()
+        await self.db.refresh(entry)
+        return entry
+
+    async def delete_registry_entry(self, entry_id: UUID) -> bool:
+        entry = await self.get_registry_entry(entry_id)
+        await self.db.delete(entry)
         await self.db.commit()
         return True
 
-    # System Config Methods
-    async def create_system_config(self, config_in: SystemConfigCreate) -> SystemConfig:
-        value = config_in.value
-        if config_in.is_encrypted:
-            value = cipher_suite.encrypt(value.encode()).decode()
-        
-        config = SystemConfig(
-            key=config_in.key,
-            value=value,
-            is_encrypted=config_in.is_encrypted,
-            description=config_in.description
+    async def get_decrypted_api_key(self, entry_id: UUID) -> str:
+        entry = await self.get_registry_entry(entry_id)
+        return decrypt_api_key(entry.encrypted_api_key)
+
+    async def get_api_key_by_sku(self, company_id: UUID, service_sku: str) -> str:
+        result = await self.db.execute(
+            select(IntegrationRegistry).where(
+                IntegrationRegistry.company_id == company_id,
+                IntegrationRegistry.service_sku == service_sku,
+                IntegrationRegistry.status == "active"
+            )
         )
-        self.db.add(config)
-        await self.db.commit()
-        await self.db.refresh(config)
-        return config
-
-    async def get_system_config(self, key: str) -> SystemConfig:
-        result = await self.db.execute(select(SystemConfig).where(SystemConfig.key == key))
-        config = result.scalar_one_or_none()
-        if not config:
-            raise HTTPException(status_code=404, detail="Config not found")
-        return config
-
-    async def get_decrypted_value(self, key: str) -> str:
-        config = await self.get_system_config(key)
-        if config.is_encrypted:
-            return cipher_suite.decrypt(config.value.encode()).decode()
-        return config.value
+        entry = result.scalar_one_or_none()
+        if not entry:
+            return None
+        return decrypt_api_key(entry.encrypted_api_key)

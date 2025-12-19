@@ -9,11 +9,11 @@ from decimal import Decimal
 from src.common.database import AsyncSessionLocal
 from src.ai.models import Execution, Agent, Workflow
 from src.config.service import ConfigService
-from src.billing.service import BillingService
-from src.auth.models import Tenant
+from src.ai.usage_service import UsageService
+from src.auth.models import Company
 import httpx
 import json
-from src.billing.schemas import InvoiceCreate
+import os
 
 import io
 
@@ -76,9 +76,15 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
             chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
             
             # Get Gemini API key for embeddings
-            gemini_api_key = os.getenv("GEMINI_API_KEY")
+            config_service = ConfigService(db)
+            gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, "gemini-embedding-004")
+            
             if not gemini_api_key:
-                raise Exception("GEMINI_API_KEY not found")
+                # Fallback
+                gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, "gemini-api-key")
+
+            if not gemini_api_key:
+                raise Exception(f"Gemini API Key not found in Integrations for company {document.company_id}")
             
             # Generate embeddings for each chunk
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -242,8 +248,6 @@ async def run_execution(ctx, execution_id_str: str):
                 
                 for node_id in execution_order:
                     node = node_map[node_id]
-                    # Extract agent_id from the node structure
-                    # The structure is: {"id": "...", "type": "agent", "config": {"agent_id": "...", "input_mapping": {}}}
                     agent_id = node.get("config", {}).get("agent_id") or node.get("data", {}).get("agentId") or node.get("agentId")
                     
                     if not agent_id:
@@ -262,33 +266,32 @@ async def run_execution(ctx, execution_id_str: str):
                         "agent_name": agent.name
                     }))
                     
-                    # Prepare input by combining outputs from dependencies
+                    # Prepare input
                     dependencies = DAGValidator.get_node_dependencies(node_id, edges)
-                    
                     if dependencies:
-                        # Combine outputs from all dependencies
                         combined_input = "\n\n".join([
                             f"Output from {dep}:\n{workflow_results.get(dep, '')}" 
                             for dep in dependencies
                         ])
                         node_input = {"input": combined_input}
                     else:
-                        # First node uses original execution input
                         node_input = execution.input_data
                     
                     # Execute agent
                     provider = agent.llm_config.get("provider", "openai")
                     model_name = agent.llm_config.get("model", "gpt-3.5-turbo")
                     
-                    api_key_config_key = "OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"
-                    try:
-                        api_key = await config_service.get_decrypted_value(api_key_config_key)
-                    except Exception:
-                        import os
-                        api_key = os.getenv(api_key_config_key)
+                    # Fetch API Key from Registry
+                    config_service = ConfigService(db)
+                    service_sku = f"{model_name}-in" if provider == "openai" else "gemini-api-key"
+                    api_key = await config_service.get_api_key_by_sku(execution.company_id, service_sku)
                     
                     if not api_key:
-                        raise Exception(f"API Key not found for provider {provider}")
+                        # try fallback to provider-wide key
+                        api_key = await config_service.get_api_key_by_sku(execution.company_id, f"{provider}-api-key")
+                    
+                    if not api_key:
+                        raise Exception(f"API Key not found for provider {provider} and company {execution.company_id}")
                     
                     # Parse variables in system prompt
                     system_prompt = parse_variables(agent.role, node_input if isinstance(node_input, dict) else {})
@@ -304,6 +307,26 @@ async def run_execution(ctx, execution_id_str: str):
                     step_output = llm_result["output"]
                     workflow_results[node_id] = step_output
                     
+                    # Log Usage
+                    usage_service = UsageService(db)
+                    usage = llm_result.get("usage", {})
+                    if usage.get("prompt_tokens"):
+                        await usage_service.log_usage(
+                            company_id=execution.company_id,
+                            service_sku=f"{model_name}-in", # or map to specific SKU
+                            raw_quantity=usage["prompt_tokens"],
+                            execution_id=execution.id,
+                            metadata={"node_id": node_id, "type": "input"}
+                        )
+                    if usage.get("completion_tokens"):
+                        await usage_service.log_usage(
+                            company_id=execution.company_id,
+                            service_sku=f"{model_name}-out",
+                            raw_quantity=usage["completion_tokens"],
+                            execution_id=execution.id,
+                            metadata={"node_id": node_id, "type": "output"}
+                        )
+
                     await r.publish(channel, json.dumps({
                         "status": "step_complete",
                         "node_id": node_id,
@@ -330,27 +353,23 @@ async def run_execution(ctx, execution_id_str: str):
                 agent_result = await db.execute(select(Agent).where(Agent.id == execution.agent_id))
                 agent = agent_result.scalar_one_or_none()
                 
-                # Real LLM Execution
+                # Fetch API Key from Registry
                 config_service = ConfigService(db)
-                
-                # Get API Key
                 provider = agent.llm_config.get("provider", "openai")
                 model_name = agent.llm_config.get("model", "gpt-3.5-turbo")
                 enabled_tools = agent.llm_config.get("tools", [])
                 
-                api_key_config_key = "OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"
-                try:
-                    api_key = await config_service.get_decrypted_value(api_key_config_key)
-                except Exception:
-                    # Fallback to env var if not in DB
-                    import os
-                    api_key = os.getenv(api_key_config_key)
-                    
-                if not api_key:
-                    raise Exception(f"API Key not found for provider {provider}")
+                service_sku = f"{model_name}-in" if provider == "openai" else "gemini-api-key"
+                api_key = await config_service.get_api_key_by_sku(execution.company_id, service_sku)
                 
-                # Prepare system prompt with tool instructions if tools are enabled
-                # Parse variables in system prompt
+                if not api_key:
+                    # Fallback
+                    api_key = await config_service.get_api_key_by_sku(execution.company_id, f"{provider}-api-key")
+                
+                if not api_key:
+                    raise Exception(f"API Key not found for provider {provider} and company {execution.company_id}")
+                
+                # Prepare system prompt
                 system_prompt = parse_variables(agent.role, execution.input_data if isinstance(execution.input_data, dict) else {})
                 
                 if enabled_tools:
@@ -369,22 +388,15 @@ async def run_execution(ctx, execution_id_str: str):
                     user_prompt=str(execution.input_data)
                 )
                 
-                # Check if LLM response contains tool calls
+                # Tool execution logic remains same...
                 if enabled_tools:
                     from src.ai.tool_executor import ToolExecutor
-                    
                     tool_calls = await ToolExecutor.parse_tool_calls(llm_result["output"])
-                    
                     if tool_calls:
-                        # Execute tools
                         await r.publish(channel, json.dumps({"status": "executing_tools", "tool_count": len(tool_calls)}))
-                        
                         tool_results = await ToolExecutor.execute_tools(tool_calls)
-                        
-                        # Make follow-up LLM call with tool results
                         tool_context = ToolExecutor.format_tool_results(tool_results)
                         follow_up_prompt = f"{execution.input_data}\n\n{tool_context}\n\nPlease provide your final response based on the tool results above."
-                        
                         llm_result = await call_llm(
                             provider=provider,
                             model=model_name,
@@ -392,12 +404,10 @@ async def run_execution(ctx, execution_id_str: str):
                             system_prompt=agent.role,
                             user_prompt=str(follow_up_prompt)
                         )
-                        
-                        # Add tool execution info to result
                         llm_result["tool_calls"] = tool_calls
                         llm_result["tool_results"] = tool_results
                 
-                mock_result = llm_result # It's real now!
+                mock_result = llm_result
 
             # Update Status to Completed
             execution.status = "completed"
@@ -407,51 +417,28 @@ async def run_execution(ctx, execution_id_str: str):
             
             await r.publish(channel, json.dumps({"status": "completed", "result": mock_result}))
             
-            # Create billing ledger entry
+            # Create usage log entries
             try:
-                # Get tenant's partner_id
-                tenant_result = await db.execute(select(Tenant).where(Tenant.id == execution.tenant_id))
-                tenant = tenant_result.scalar_one_or_none()
-                partner_id = tenant.partner_id if tenant else None
-                
-                # Extract token usage
+                usage_service = UsageService(db)
                 usage = mock_result.get("usage", {})
-                prompt_tokens = usage.get("prompt_tokens", 0)
-                completion_tokens = usage.get("completion_tokens", 0)
-                
-                # Create ledger entries for input and output tokens
-                billing_service = BillingService(db)
-                
-                if prompt_tokens > 0:
-                    # Convert tokens to 1k units (billing is per 1k tokens)
-                    input_quantity = Decimal(str(prompt_tokens / 1000))
-                    await billing_service.calculate_and_create_ledger_entry(
-                        tenant_id=execution.tenant_id,
-                        partner_id=partner_id,
+                if usage.get("prompt_tokens"):
+                    await usage_service.log_usage(
+                        company_id=execution.company_id,
+                        service_sku=f"{model_name}-in",
+                        raw_quantity=usage["prompt_tokens"],
                         execution_id=execution.id,
-                        resource_type="text_tokens_input",
-                        quantity=input_quantity,
-                        unit="1k_tokens",
-                        entry_metadata=f"Execution: {execution.id}"
+                        metadata={"type": "input"}
                     )
-                
-                if completion_tokens > 0:
-                    output_quantity = Decimal(str(completion_tokens / 1000))
-                    await billing_service.calculate_and_create_ledger_entry(
-                        tenant_id=execution.tenant_id,
-                        partner_id=partner_id,
+                if usage.get("completion_tokens"):
+                    await usage_service.log_usage(
+                        company_id=execution.company_id,
+                        service_sku=f"{model_name}-out",
+                        raw_quantity=usage["completion_tokens"],
                         execution_id=execution.id,
-                        resource_type="text_tokens_output",
-                        quantity=output_quantity,
-                        unit="1k_tokens",
-                        entry_metadata=f"Execution: {execution.id}"
+                        metadata={"type": "output"}
                     )
-                
-                print(f"Successfully created ledger entries for execution {execution_id}")
-                
-            except Exception as billing_error:
-                # Log billing errors but don't fail the execution
-                print(f"Billing error (non-fatal): {billing_error}")
+            except Exception as usage_error:
+                print(f"Usage logging error (non-fatal): {usage_error}")
             
         except Exception as e:
             execution.status = "failed"
@@ -463,63 +450,13 @@ async def run_execution(ctx, execution_id_str: str):
         finally:
             await r.close()
 
-async def generate_monthly_invoices(ctx, target_date: datetime = None):
-    """
-    Cron job to generate invoices for all active tenants for the previous month.
-    Designed to run on the 1st of every month.
-    """
-    print("Starting monthly invoice generation...")
-    
-    # Calculate previous month period
-    # If target_date is provided, use it as 'today'
-    today = (target_date or datetime.utcnow()).date()
-    # ... logic continues using 'today'
-    first_day_current_month = today.replace(day=1)
-    last_day_prev_month = first_day_current_month - timedelta(days=1)
-    first_day_prev_month = last_day_prev_month.replace(day=1)
-    
-    start_date = datetime.combine(first_day_prev_month, datetime.min.time())
-    end_date = datetime.combine(last_day_prev_month, datetime.max.time())
-    due_date = datetime.combine(today + timedelta(days=14), datetime.max.time()) # Due in 14 days
-    
-    print(f"Generating invoices for period: {start_date} to {end_date}")
-    
-    async with AsyncSessionLocal() as db:
-        billing_service = BillingService(db)
-        
-        # Fetch all active tenants
-        result = await db.execute(select(Tenant).where(Tenant.status == 'active'))
-        tenants = result.scalars().all()
-        
-        for tenant in tenants:
-            try:
-                print(f"Processing invoice for tenant: {tenant.name} ({tenant.id})")
-                
-                # Create invoice
-                invoice_in = InvoiceCreate(
-                    tenant_id=tenant.id,
-                    period_start=start_date,
-                    period_end=end_date,
-                    due_date=due_date
-                )
-                
-                invoice = await billing_service.generate_invoice(invoice_in)
-                print(f"Generated Invoice {invoice.invoice_number} for Tenant {tenant.id} - Amount: ${invoice.total_amount}")
-                
-                # TODO: Trigger email notification here
-                
-            except Exception as e:
-                print(f"Failed to generate invoice for tenant {tenant.id}: {e}")
-    
-    print("Monthly invoice generation completed.")
+# Removed legacy billing invoice generation
 
 from arq.connections import RedisSettings
 
 class WorkerSettings:
-    functions = [run_execution, process_document, generate_monthly_invoices]
-    cron_jobs = [
-        cron(generate_monthly_invoices, day=1, hour=0, minute=0)
-    ]
+    functions = [run_execution, process_document]
+    cron_jobs = []
     redis_settings = RedisSettings(host="localhost", port=6379)
     on_startup = None
     on_shutdown = None

@@ -26,15 +26,15 @@ async def _authenticate_user(token: str, db: AsyncSession):
     except JWTError:
         raise credentials_exception
     
-    result = await db.execute(select(User).options(selectinload(User.tenant)).filter(User.email == token_data.email))
+    result = await db.execute(select(User).options(selectinload(User.company)).filter(User.email == token_data.email))
     user = result.scalars().first()
     if user is None:
         raise credentials_exception
         
-    if user.tenant and user.tenant.status == "suspended":
+    if user.company and user.company.status == "suspended":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tenant account is suspended. Please contact support."
+            detail="Company account is suspended. Please contact support."
         )
         
     return user
