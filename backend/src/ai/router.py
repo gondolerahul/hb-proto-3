@@ -115,7 +115,7 @@ async def stream_execution(
     import asyncio
 
     async def event_generator():
-        r = redis.from_url(settings.REDIS_URL)
+        r = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
         pubsub = r.pubsub()
         channel = f"execution:{execution_id}"
         await pubsub.subscribe(channel)
@@ -128,9 +128,7 @@ async def stream_execution(
                 if message["type"] == "message":
                     data = message["data"].decode("utf-8")
                     yield f"data: {data}\n\n"
-                    # We might want to stream recursively for child runs? 
-                    # For now, let's assume the root run publishes mostly everything or the frontend polls.
-                    if "\"status\": \"COMPLETED\"" in data or "\"status\": \"FAILED\"" in data:
+                    if "\"status\": \"COMPLETED\"" in data or f"\"status\": \"FAILED\"" in data:
                         break
         except asyncio.CancelledError:
             pass
@@ -139,6 +137,37 @@ async def stream_execution(
             await r.close()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+# --- HITL (Human-In-The-Loop) ---
+@router.get("/approvals/pending", response_model=List[dict])
+async def list_pending_approvals(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AIService(db)
+    approvals = await service.get_pending_approvals(current_user.company_id)
+    return [
+        {
+            "id": str(a.id),
+            "run_id": str(a.run_id),
+            "checkpoint_trigger": a.checkpoint_trigger,
+            "status": a.status,
+            "requested_at": a.requested_at
+        }
+        for a in approvals
+    ]
+
+@router.post("/approvals/{approval_id}/respond")
+async def respond_to_approval(
+    approval_id: UUID,
+    status: str, # APPROVED | REJECTED
+    notes: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AIService(db)
+    await service.respond_to_approval(approval_id, status, current_user.id, notes)
+    return {"status": "success"}
 
 # --- Tools ---
 @router.get("/tools", response_model=list[dict])

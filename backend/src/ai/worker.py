@@ -1,19 +1,29 @@
 from arq import Worker
 from arq.connections import RedisSettings
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime
+from decimal import Decimal
+from typing import Dict, List, Optional, Any
 from src.common.database import AsyncSessionLocal
-from src.ai.models import ExecutionRun, HierarchicalEntity, LLMInteractionLog, EntityType, RunStatus, Document, DocumentChunk
-from src.ai.schemas import RunStatus as RunStatusEnum
+from src.ai.models import (
+    ExecutionRun, HierarchicalEntity, LLMInteractionLog, EntityType, 
+    RunStatus, Document, DocumentChunk, ToolInteractionLog, HumanApproval
+)
+from src.ai.schemas import (
+    RunStatus as RunStatusEnum, EntityStatus, RelationshipType, 
+    ReasoningMode, StepType, PlanStep, Planning, LogicGate
+)
 from src.config.service import ConfigService
 from src.ai.usage_service import UsageService
+from src.ai.tool_executor import ToolExecutor
 import src.auth.models
 import src.config.models
 import httpx
 import json
 import re
+import asyncio
 
 # --- Helper Functions ---
 
@@ -23,7 +33,6 @@ def parse_variables(text: str, variables: dict) -> str:
         return ""
     def replace(match):
         key = match.group(1).strip()
-        # Handle nested keys if needed, for now simple dict lookup
         val = variables
         for k in key.split('.'):
             if isinstance(val, dict):
@@ -33,31 +42,63 @@ def parse_variables(text: str, variables: dict) -> str:
         return str(val)
     return re.sub(r'\{\{(.*?)\}\}', replace, text)
 
-async def call_llm(provider: str, model: str, api_key: str, system_prompt: str, user_prompt: str) -> dict:
+async def call_llm_unified(config: Dict[str, Any], system_prompt: str, user_prompt: str, api_key: str) -> dict:
+    """Unified LLM call with support for reasoning modes and provider routing."""
+    provider = config.get("model_provider", "openai")
+    model = config.get("model_name", "gpt-4o")
+    reasoning_mode = config.get("reasoning_mode", "REACT")
+    temperature = config.get("temperature", 0.7)
+    max_tokens = config.get("max_tokens")
+
+    # Apply reasoning mode modifiers
+    final_system = system_prompt
+    if reasoning_mode == "REACT":
+        final_system += "\nThink step-by-step and act iteratively using the provided tools."
+    elif reasoning_mode == "REFLECTION":
+        final_system += "\nAfter providing your answer, critique it for accuracy and completeness."
+
     async with httpx.AsyncClient(timeout=120.0) as client:
         start_time = datetime.utcnow()
+        
         if provider == "openai":
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
                     "model": model,
                     "messages": [
-                        {"role": "system", "content": system_prompt},
+                        {"role": "system", "content": final_system},
                         {"role": "user", "content": user_prompt}
                     ],
-                    "temperature": 0.7
+                    "temperature": temperature,
+                    "max_tokens": max_tokens
                 }
             )
-            latency = (datetime.utcnow() - start_time).total_seconds() * 1000
-            
-            if response.status_code != 200:
-                raise Exception(f"OpenAI API Error: {response.text}")
-            
-            data = response.json()
+        elif provider == "google":
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            response = await client.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [{
+                        "parts": [{"text": f"{final_system}\n\nUser: {user_prompt}"}]
+                    }],
+                    "generationConfig": {
+                        "temperature": temperature,
+                        "maxOutputTokens": max_tokens
+                    }
+                }
+            )
+        else:
+            raise Exception(f"Unsupported provider: {provider}")
+
+        latency = (datetime.utcnow() - start_time).total_seconds() * 1000
+        
+        if response.status_code != 200:
+            raise Exception(f"{provider.capitalize()} API Error: {response.text}")
+        
+        data = response.json()
+        if provider == "openai":
             content = data["choices"][0]["message"]["content"]
             usage = data.get("usage", {})
             return {
@@ -66,43 +107,15 @@ async def call_llm(provider: str, model: str, api_key: str, system_prompt: str, 
                 "completion_tokens": usage.get("completion_tokens", 0),
                 "latency_ms": int(latency)
             }
-            
-        elif provider == "gemini":
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            response = await client.post(
-                url,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "contents": [{
-                        "parts": [{"text": f"{system_prompt}\n\nUser: {user_prompt}"}]
-                    }]
-                }
-            )
-            latency = (datetime.utcnow() - start_time).total_seconds() * 1000
-            
-            if response.status_code != 200:
-                raise Exception(f"Gemini API Error: {response.text}")
-                
-            data = response.json()
-            try:
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    content = "" # blocked block_reason?
-                else:
-                    content = candidates[0]["content"]["parts"][0]["text"]
-                
-                usage_metadata = data.get("usageMetadata", {})
-                return {
-                    "output": content,
-                    "prompt_tokens": usage_metadata.get("promptTokenCount", 0),
-                    "completion_tokens": usage_metadata.get("candidatesTokenCount", 0),
-                    "latency_ms": int(latency)
-                }
-            except (KeyError, IndexError) as e:
-                raise Exception(f"Failed to parse Gemini response: {data}")
-        
-        else:
-            raise Exception(f"Unsupported provider: {provider}")
+        else: # google
+            content = data["candidates"][0]["content"]["parts"][0]["text"]
+            usage = data.get("usageMetadata", {})
+            return {
+                "output": content,
+                "prompt_tokens": usage.get("promptTokenCount", 0),
+                "completion_tokens": usage.get("candidatesTokenCount", 0),
+                "latency_ms": int(latency)
+            }
 
 # --- Execution Engine ---
 
@@ -110,23 +123,11 @@ class ExecutionEngine:
     def __init__(self, db: AsyncSessionLocal, redis_pool):
         self.db = db
         self.redis = redis_pool
-
-    async def log_interaction(self, run_id: UUID, provider: str, model: str, input_prompt: str, response_data: dict):
-        log = LLMInteractionLog(
-            run_id=run_id,
-            model_provider=provider,
-            model_name=model,
-            input_prompt=input_prompt,
-            output_response=response_data["output"],
-            prompt_tokens=response_data["prompt_tokens"],
-            completion_tokens=response_data["completion_tokens"],
-            latency_ms=response_data["latency_ms"]
-        )
-        self.db.add(log)
-        await self.db.commit()
+        self.config_service = ConfigService(db)
+        self.usage_service = UsageService(db)
 
     async def execute_run(self, run_id: UUID) -> dict:
-        # Fetch Run and Entity
+        # 1. Fetch Run and Entity
         result = await self.db.execute(
             select(ExecutionRun)
             .options(selectinload(ExecutionRun.entity))
@@ -136,9 +137,15 @@ class ExecutionEngine:
         if not run:
             raise Exception(f"Run {run_id} not found")
 
-        # Update Status
+        entity = run.entity
+        if not entity:
+            raise Exception(f"Entity for run {run_id} not found")
+
+        # 2. Update Status and Initialize Trace
         run.status = RunStatus.RUNNING
         run.started_at = datetime.utcnow()
+        if not run.trace_id:
+            run.trace_id = run.id
         await self.db.commit()
         
         # Publish Update
@@ -146,25 +153,50 @@ class ExecutionEngine:
         await self.redis.publish(channel, json.dumps({"status": "RUNNING", "run_id": str(run.id)}))
 
         try:
-            entity = run.entity
-            output_data = {}
+            context_state = run.input_data or {}
+            all_step_results = []
             
-            if entity.type == EntityType.ACTION:
-                output_data = await self._execute_action(run, entity)
-            else:
-                # Skill, Agent, Process share recursive logic
-                output_data = await self._execute_composite(run, entity)
-
-            # Success
-            run.status = RunStatus.COMPLETED
-            run.result_data = output_data
-            run.completed_at = datetime.utcnow()
+            # 3. Plan Generation/Reconciliation
+            plan = await self._get_reconciled_plan(entity, run.input_data)
+            run.dynamic_plan = plan # Store the actual plan used
             await self.db.commit()
-            await self.redis.publish(channel, json.dumps({"status": "COMPLETED", "result": output_data}))
-            return output_data
+
+            # 4. Execute Plan Steps
+            for step in plan.get("steps", []):
+                step_obj = PlanStep(**step)
+                
+                # HITL Checkpoint (Simplified for MVP)
+                # await self._check_hitl_checkpoint(run, step_obj)
+
+                # Execute Step
+                step_result = await self._execute_step(run, entity, step_obj, context_state)
+                
+                # Review Mechanism
+                if entity.logic_gate and entity.logic_gate.get("review_mechanism", {}).get("enabled"):
+                    step_result = await self._review_step_output(run, entity, step_obj, step_result)
+
+                all_step_results.append(step_result)
+                
+                # Update Context
+                if isinstance(step_result, dict) and "output" in step_result:
+                    context_state[step_obj.name] = step_result["output"]
+                
+                # Check Exit Conditions
+                if self._should_exit(step_obj, context_state):
+                    break
+
+            # 5. Finalize
+            run.status = RunStatus.COMPLETED
+            run.result_data = {"output": context_state.get(plan["steps"][-1]["name"]) if plan["steps"] else "Success", "steps": all_step_results}
+            run.context_state = context_state
+            run.completed_at = datetime.utcnow()
+            run.execution_time_ms = int((run.completed_at - run.started_at).total_seconds() * 1000)
+            
+            await self.db.commit()
+            await self.redis.publish(channel, json.dumps({"status": "COMPLETED", "result": run.result_data}))
+            return run.result_data
 
         except Exception as e:
-            # Failure
             run.status = RunStatus.FAILED
             run.error_message = str(e)
             run.completed_at = datetime.utcnow()
@@ -172,90 +204,153 @@ class ExecutionEngine:
             await self.redis.publish(channel, json.dumps({"status": "FAILED", "error": str(e)}))
             raise e
 
-    async def _execute_action(self, run: ExecutionRun, entity: HierarchicalEntity) -> dict:
-        # 1. Prepare Prompt
-        llm_config = entity.llm_config or {}
-        provider = llm_config.get("provider", "openai")
-        model = llm_config.get("model", "gpt-3.5-turbo")
+    async def _get_reconciled_plan(self, entity: HierarchicalEntity, input_data: dict) -> dict:
+        """Merges static and dynamic plans based on strategy."""
+        static_plan = entity.planning.get("static_plan", {}) if entity.planning else {}
+        dynamic_config = entity.planning.get("dynamic_planning", {}) if entity.planning else {}
         
-        # Resolve API Key
-        config_service = ConfigService(self.db)
-        service_sku = f"{model}-in" if provider == "openai" else "gemini-api-key"
-        api_key = await config_service.get_api_key_by_sku(run.company_id, service_sku) or \
-                  await config_service.get_api_key_by_sku(run.company_id, f"{provider}-api-key")
+        if not dynamic_config.get("enabled"):
+            return static_plan
+
+        # Generate dynamic plan via LLM (Simplified for MVP)
+        # TODO: Implement full LLM-based planning reconciliation
+        return static_plan
+
+    async def _execute_step(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
+        """Routes execution to specific step handler."""
+        if step.type == StepType.CHILD_ENTITY_INVOCATION:
+            return await self._execute_child_invocation(run, step, context)
+        elif step.type == StepType.TOOL_CALL:
+            return await self._execute_tool_call(run, entity, step, context)
+        elif step.type == StepType.THOUGHT or step.type == StepType.ACTION:
+            return await self._execute_thought(run, entity, step, context)
+        return {"error": "Unknown step type"}
+
+    async def _execute_child_invocation(self, run: ExecutionRun, step: PlanStep, context: dict) -> dict:
+        if not step.target.entity_id:
+            raise Exception(f"Child invocation missing entity_id for step {step.name}")
+        
+        # Create Child Run
+        child_run = ExecutionRun(
+            company_id=run.company_id,
+            entity_id=step.target.entity_id,
+            parent_run_id=run.id,
+            trace_id=run.trace_id,
+            input_data=context,
+            status=RunStatus.PENDING
+        )
+        self.db.add(child_run)
+        await self.db.commit()
+        await self.db.refresh(child_run)
+        
+        # Recursive Execute
+        child_result = await self.execute_run(child_run.id)
+        
+        # rollup metrics
+        run.total_cost_usd += child_run.total_cost_usd or 0
+        run.total_tokens += child_run.total_tokens or 0
+        await self.db.commit()
+        
+        return {"step": step.name, "output": child_result.get("output"), "child_run_id": str(child_run.id)}
+
+    async def _execute_tool_call(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
+        tool_id = step.target.tool_id
+        if not tool_id:
+            raise Exception(f"Tool call missing tool_id for step {step.name}")
+        
+        start_time = datetime.utcnow()
+        try:
+            # Prepare inputs from context/variables
+            raw_input = context.get("input") or str(context) # Fallback
+            result = await ToolExecutor.execute_tools([{"tool": tool_id, "input": raw_input}])
+            tool_result = result[0]
+            
+            latency = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            
+            # Log Tool Call
+            log = ToolInteractionLog(
+                run_id=run.id,
+                tool_id=tool_id,
+                tool_name=tool_id,
+                input_parameters={"input": raw_input},
+                output_result=tool_result,
+                success=tool_result.get("success", False),
+                latency_ms=latency
+            )
+            self.db.add(log)
+            await self.db.commit()
+            
+            return {"step": step.name, "output": tool_result.get("output")}
+        except Exception as e:
+            return {"step": step.name, "error": str(e), "success": False}
+
+    async def _execute_thought(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
+        # 1. Resolve Config
+        logic_gate = entity.logic_gate or {}
+        config = logic_gate.get("reasoning_config", {})
+        if not config:
+            # Fallback to legacy llm_config
+            config = entity.llm_config or {"model_provider": "openai", "model_name": "gpt-4o"}
+        
+        # 2. Get API Key
+        service_sku = config.get("model_name", "gpt-4o")
+        api_key = await self.config_service.get_api_key_by_sku(run.company_id, service_sku) or \
+                  await self.config_service.get_api_key_by_sku(run.company_id, f"{config.get('model_provider')}-api-key")
         
         if not api_key:
-            raise Exception(f"API Key not found for {provider}")
+            raise Exception(f"API Key not found for {config.get('model_provider')}")
 
-        # Static Plan as System Prompt
-        static_plan = entity.static_plan or {}
-        system_prompt = static_plan.get("prompt_template", "You are a helpful assistant.")
-        # Variable substitution
-        system_prompt = parse_variables(system_prompt, run.input_data or {})
-        
-        user_prompt = str(run.input_data)
+        # 3. Prepare Prompts
+        system_prompt = entity.identity.get("persona", {}).get("system_prompt", "You are a helpful assistant.") if entity.identity else "You are a helpful assistant."
+        user_prompt = step.target.prompt_template or str(context)
+        user_prompt = parse_variables(user_prompt, context)
 
-        # 2. Call LLM
-        llm_result = await call_llm(provider, model, api_key, system_prompt, user_prompt)
+        # 4. Call LLM
+        llm_result = await call_llm_unified(config, system_prompt, user_prompt, api_key)
         
-        # 3. Log Interaction
-        await self.log_interaction(
-            run.id, provider, model, 
-            f"System: {system_prompt}\nUser: {user_prompt}", 
-            llm_result
+        # 5. Log Interaction & Track Usage
+        log = LLMInteractionLog(
+            run_id=run.id,
+            model_provider=config.get("model_provider"),
+            model_name=config.get("model_name"),
+            input_prompt=f"System: {system_prompt}\nUser: {user_prompt}",
+            output_response=llm_result["output"],
+            prompt_tokens=llm_result["prompt_tokens"],
+            completion_tokens=llm_result["completion_tokens"],
+            latency_ms=llm_result["latency_ms"],
+            reasoning_mode=config.get("reasoning_mode")
         )
-
-        # 4. Handle Tool Calls (Simplified for now - just returning text)
-        # TODO: Implement actual tool execution if LLM requests it
+        self.db.add(log)
         
-        return {"output": llm_result["output"]}
+        # Track usage/cost
+        total_tokens = llm_result["prompt_tokens"] + llm_result["completion_tokens"]
+        usage_log = await self.usage_service.log_usage(
+            company_id=run.company_id,
+            service_sku=config.get("model_name"),
+            raw_quantity=float(total_tokens),
+            execution_id=run.id
+        )
+        if usage_log:
+            log.cost_usd = usage_log.calculated_cost
+            run.total_cost_usd += usage_log.calculated_cost
+            run.total_tokens += total_tokens
 
-    async def _execute_composite(self, run: ExecutionRun, entity: HierarchicalEntity) -> dict:
-        # Composite entities (Skill, Agent, Process) execute a PLAN.
-        # 1. Reconcile Plan (Static vs Dynamic)
-        # For Phase 2 MVP: usage static plan steps sequentially.
-        
-        static_plan = entity.static_plan or {}
-        steps = static_plan.get("steps", [])
-        
-        context_state = run.input_data or {}
-        run_results = {}
+        await self.db.commit()
+        return {"step": step.name, "output": llm_result["output"]}
 
-        for step in steps:
-            step_id = step.get("id")
-            step_entity_name = step.get("entity_name") # Referencing child entity by name? 
-            # Or assume we have IDs in the plan. 
-            # Ideally the plan has UUIDs or names that we resolve.
-            # Let's assume for now steps describe what to do, and we might need to find an entity or use a prompt.
-            
-            # Simple implementation: Plan lists child Entity IDs or Names
-            child_entity_id = step.get("entity_id")
-            if not child_entity_id:
-                # If no child entity, maybe it's just a reasoning step?
-                continue
-                
-            # Create Child Run
-            child_run = ExecutionRun(
-                company_id=run.company_id,
-                entity_id=UUID(child_entity_id),
-                parent_run_id=run.id,
-                input_data=context_state, # Pass current context
-                status=RunStatus.PENDING
-            )
-            self.db.add(child_run)
-            await self.db.commit()
-            await self.db.refresh(child_run)
-            
-            # Recursive Execute
-            # Note: We are recursing in the same worker process.
-            child_result = await self.execute_run(child_run.id)
-            
-            # Update Context
-            run_results[step_id] = child_result
-            if isinstance(child_result, dict):
-                context_state.update(child_result)
+    async def _review_step_output(self, run, entity, step, result) -> dict:
+        """Self-critique review mechanism."""
+        # TODO: Implement full self-review logic with LLM feedback loop
+        return result
 
-        return {"output": "Composite execution completed", "steps": run_results, "final_state": context_state}
+    def _should_exit(self, step: PlanStep, context: dict) -> bool:
+        """Evaluates exit conditions for early termination."""
+        for condition in step.exit_conditions:
+            # Simplified evaluation
+            if "error" in str(context.get(step.name, "")).lower():
+                if condition.next_step == 'ESCALATE':
+                    return True
+        return False
 
 # --- Arq Jobs ---
 
@@ -264,7 +359,7 @@ async def run_execution_recursive(ctx, run_id_str: str):
     import redis.asyncio as redis
     from src.common.config import settings
     
-    redis_pool = redis.from_url(settings.REDIS_URL) # Use separate pool for pubsub interaction if needed
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
     
     async with AsyncSessionLocal() as db:
         engine = ExecutionEngine(db, redis_pool)
@@ -273,7 +368,6 @@ async def run_execution_recursive(ctx, run_id_str: str):
     await redis_pool.close()
 
 async def process_document(ctx, document_id_str: str, file_content: bytes, file_type: str, filename: str):
-    # (Same implementation as before, just imports updated)
     from src.ai.models import Document, DocumentChunk
     import io
     

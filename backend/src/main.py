@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.auth.router import router as auth_router
 from src.common.database import engine, Base
 
-app = FastAPI(title="HireBuddha Platform", version="0.1.0")
+app = FastAPI(title="HireBuddha Platform", version="0.2.0")
 
 # CORS middleware
 app.add_middleware(

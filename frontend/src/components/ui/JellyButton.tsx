@@ -1,36 +1,40 @@
 import React from 'react';
-import { motion, HTMLMotionProps } from 'framer-motion';
+import { motion } from 'framer-motion';
 import './JellyButton.css';
 
-interface JellyButtonProps extends Omit<HTMLMotionProps<'button'>, 'whileHover' | 'whileTap'> {
+interface JellyButtonProps {
     children: React.ReactNode;
-    variant?: 'primary' | 'secondary' | 'ghost';
+    onClick?: () => void;
+    type?: 'button' | 'submit' | 'reset';
+    variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+    size?: 'sm' | 'md' | 'lg';
+    disabled?: boolean;
+    className?: string;
     roseGold?: boolean;
 }
 
 export const JellyButton: React.FC<JellyButtonProps> = ({
     children,
+    onClick,
+    type = 'button',
     variant = 'primary',
-    roseGold = false,
+    size = 'md',
+    disabled = false,
     className = '',
-    ...props
+    roseGold = false
 }) => {
-    const variantClass = `jelly-button--${variant}`;
-    const roseClass = roseGold ? 'jelly-button--rose' : '';
-
     return (
         <motion.button
-            className={`jelly-button ${variantClass} ${roseClass} ${className}`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{
-                type: 'spring',
-                stiffness: 400,
-                damping: 10,
-            }}
-            {...props}
+            type={type}
+            onClick={onClick}
+            disabled={disabled}
+            className={`jelly-button jelly-button--${variant} jelly-button--${size} ${roseGold ? 'jelly-button--rose-gold' : ''} ${className}`}
+            whileHover={!disabled ? { scale: 1.02, y: -2 } : {}}
+            whileTap={!disabled ? { scale: 0.98, y: 0 } : {}}
+            transition={{ type: "spring", stiffness: 400, damping: 10 }}
         >
-            {children}
+            <span className="jelly-button-content">{children}</span>
+            <div className="jelly-button-overlay" />
         </motion.button>
     );
 };

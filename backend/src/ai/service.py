@@ -1,10 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 from fastapi import HTTPException
-from uuid import UUID
+from uuid import UUID, uuid4
 from arq import create_pool
 from arq.connections import RedisSettings
-from src.ai.models import HierarchicalEntity, ExecutionRun, LLMInteractionLog, Document, EntityType
+from src.ai.models import (
+    HierarchicalEntity, ExecutionRun, LLMInteractionLog, 
+    ToolInteractionLog, HumanApproval, Document, EntityType
+)
 from src.ai.schemas import (
     HierarchicalEntityCreate, HierarchicalEntityUpdate, ExecutionRunCreate
 )
@@ -17,7 +20,11 @@ class AIService:
 
     # Entity CRUD
     async def create_entity(self, entity_in: HierarchicalEntityCreate, company_id: UUID) -> HierarchicalEntity:
-        entity = HierarchicalEntity(**entity_in.model_dump(), company_id=company_id)
+        # Prepare data, handling nested Pydantic models
+        entity_data = entity_in.model_dump()
+        
+        # Flatten identity if provided as nested model to JSONB column
+        entity = HierarchicalEntity(**entity_data, company_id=company_id)
         self.db.add(entity)
         await self.db.commit()
         
@@ -78,7 +85,8 @@ class AIService:
             company_id=company_id,
             entity_id=execution_in.entity_id,
             input_data=execution_in.input_data,
-            status="PENDING"
+            status="PENDING",
+            trace_id=uuid4() # Initialize root trace
         )
         self.db.add(execution)
         await self.db.commit()
@@ -106,17 +114,20 @@ class AIService:
     async def get_execution(self, execution_id: UUID, company_id: UUID) -> ExecutionRun:
         from sqlalchemy.orm import selectinload, joinedload
         
-        # Load up to 3 levels of children for trace view
+        # Load detailed trace with logs and approvals
         result = await self.db.execute(
             select(ExecutionRun)
             .options(
                 joinedload(ExecutionRun.entity),
                 selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.tool_logs),
+                selectinload(ExecutionRun.human_approvals),
                 selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
                 selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.tool_logs),
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.human_approvals),
                 selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs)
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs)
             )
             .where(ExecutionRun.id == execution_id, ExecutionRun.company_id == company_id)
         )
@@ -137,6 +148,34 @@ class AIService:
             .order_by(ExecutionRun.created_at.desc())
         )
         return result.scalars().all()
+
+    # HITL Management
+    async def get_pending_approvals(self, company_id: UUID) -> list[HumanApproval]:
+        result = await self.db.execute(
+            select(HumanApproval)
+            .join(ExecutionRun)
+            .where(ExecutionRun.company_id == company_id, HumanApproval.status == "PENDING")
+            .order_by(HumanApproval.requested_at.desc())
+        )
+        return result.scalars().all()
+
+    async def respond_to_approval(self, approval_id: UUID, status: str, user_id: UUID, notes: str = None) -> HumanApproval:
+        result = await self.db.execute(select(HumanApproval).where(HumanApproval.id == approval_id))
+        approval = result.scalar_one_or_none()
+        if not approval:
+            raise HTTPException(status_code=404, detail="Approval request not found")
+        
+        approval.status = status
+        approval.responded_by = user_id
+        approval.responded_at = datetime.utcnow()
+        approval.reviewer_notes = notes
+        
+        await self.db.commit()
+        await self.db.refresh(approval)
+        
+        # TODO: Notify worker that approval is received (e.g. via Redis/Event)
+        
+        return approval
 
     async def get_dashboard_stats(self, company_id: UUID) -> dict:
         # Active Entities count

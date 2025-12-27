@@ -1,6 +1,5 @@
 #!/bin/bash
-
-# HireBuddha Platform - Service Shutdown Script
+# HireBuddha Platform v2.0 - Hierarchical AI Refactor
 # This script stops all backend services and the frontend
 
 # Colors for output
@@ -16,7 +15,7 @@ BACKEND_DIR="$SCRIPT_DIR/backend"
 LOG_DIR="$SCRIPT_DIR/logs"
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  HireBuddha Platform Shutdown Script${NC}"
+echo -e "${BLUE}  HireBuddha Hierarchical Shutdown v0.2${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 

@@ -9,6 +9,8 @@ import pgvector.sqlalchemy
 
 from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text, JSON, Numeric, Enum, Integer
 import enum
+from src.auth.models import Company, User
+from src.config.models import IntegrationRegistry
 
 class EntityType(str, enum.Enum):
     ACTION = "ACTION"
@@ -29,17 +31,35 @@ class HierarchicalEntity(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=True)
+    version = Column(String, nullable=False, default="1.0.0")
     type = Column(String, nullable=False) # ACTION, SKILL, AGENT, PROCESS
+    status = Column(String, nullable=False, default="ACTIVE") # DRAFT, ACTIVE, DEPRECATED, ARCHIVED
     name = Column(String, nullable=False)
+    display_name = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    static_plan = Column(JSON, nullable=True) # { "steps": [...], "rules": [...] }
-    llm_config = Column(JSON, nullable=True) # { "provider": "openai", "model": "gpt-4", ... }
-    toolkit = Column(JSON, nullable=True) # [ { "name": "web_search", ... } ]
+    tags = Column(JSON, nullable=True) # ["tag1", "tag2"]
+    
+    # New unified structure fields
+    identity = Column(JSON, nullable=True)
+    hierarchy = Column(JSON, nullable=True)
+    logic_gate = Column(JSON, nullable=True)
+    planning = Column(JSON, nullable=True)
+    capabilities = Column(JSON, nullable=True)
+    governance = Column(JSON, nullable=True)
+    io_contract = Column(JSON, nullable=True)
+    observability = Column(JSON, nullable=True)
+    metadata_extensions = Column(JSON, nullable=True)
+
+    # Legacy fields (kept for compatibility during transition)
+    static_plan = Column(JSON, nullable=True)
+    llm_config = Column(JSON, nullable=True)
+    toolkit = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    company = relationship("src.auth.models.Company")
+    company = relationship("Company")
     parent = relationship("HierarchicalEntity", remote_side=[id], backref="children")
     execution_runs = relationship("ExecutionRun", back_populates="entity")
 
@@ -56,15 +76,25 @@ class ExecutionRun(Base):
     result_data = Column(JSON, nullable=True)
     context_state = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
+    
+    # Metrics and Tracing
+    total_cost_usd = Column(Numeric(10, 4), default=0)
+    total_tokens = Column(Integer, default=0)
+    execution_time_ms = Column(Integer, nullable=True)
+    trace_id = Column(UUID(as_uuid=True), nullable=True)
+    span_id = Column(String, nullable=True)
+
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    company = relationship("src.auth.models.Company")
+    company = relationship("Company")
     entity = relationship("HierarchicalEntity", back_populates="execution_runs")
     parent_run = relationship("ExecutionRun", remote_side=[id], backref="child_runs")
     llm_logs = relationship("LLMInteractionLog", back_populates="run")
     usage_logs = relationship("UsageLog", back_populates="run")
+    human_approvals = relationship("HumanApproval", back_populates="run")
+    tool_logs = relationship("ToolInteractionLog", back_populates="run")
 
 class LLMInteractionLog(Base):
     __tablename__ = "llm_interaction_logs"
@@ -78,9 +108,49 @@ class LLMInteractionLog(Base):
     prompt_tokens = Column(Integer, default=0)
     completion_tokens = Column(Integer, default=0)
     latency_ms = Column(Integer, nullable=True)
+    cost_usd = Column(Numeric(10, 6), default=0)
+    reasoning_mode = Column(String, nullable=True)
+    log_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     run = relationship("ExecutionRun", back_populates="llm_logs")
+
+class ToolInteractionLog(Base):
+    __tablename__ = "tool_interaction_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=False)
+    tool_id = Column(String, nullable=False)
+    tool_name = Column(String, nullable=False)
+    provider = Column(String, nullable=True)
+    input_parameters = Column(JSON, nullable=True)
+    output_result = Column(JSON, nullable=True)
+    success = Column(Boolean, default=True)
+    error_message = Column(Text, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    log_metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    run = relationship("ExecutionRun", back_populates="tool_logs")
+
+class HumanApproval(Base):
+    __tablename__ = "human_approvals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=False)
+    checkpoint_trigger = Column(String, nullable=False)
+    status = Column(String, default="PENDING") # PENDING, APPROVED, REJECTED, TIMEOUT
+    requested_by = Column(String, nullable=True)
+    responded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    context_snapshot = Column(JSON, nullable=True)
+    reviewer_notes = Column(Text, nullable=True)
+    notification_channels = Column(JSON, nullable=True)
+    timeout_ms = Column(Integer, nullable=True)
+    requested_at = Column(DateTime, default=datetime.utcnow)
+    responded_at = Column(DateTime, nullable=True)
+
+    run = relationship("ExecutionRun", back_populates="human_approvals")
+    reviewer = relationship("User")
 
 class UsageLog(Base):
     __tablename__ = "usage_logs"
@@ -94,9 +164,9 @@ class UsageLog(Base):
     calculated_cost = Column(Numeric(18, 6), nullable=False)
     log_metadata = Column(JSON, nullable=True)
 
-    company = relationship("src.auth.models.Company")
+    company = relationship("Company")
     run = relationship("ExecutionRun", back_populates="usage_logs")
-    sku = relationship("src.config.models.IntegrationRegistry")
+    sku = relationship("IntegrationRegistry")
 
 class Document(Base):
     __tablename__ = "documents"
@@ -111,7 +181,7 @@ class Document(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    company = relationship("src.auth.models.Company")
+    company = relationship("Company")
     entity = relationship("HierarchicalEntity")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
 

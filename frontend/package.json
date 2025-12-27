@@ -10,16 +10,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.3.2",
+    "@reactflow/background": "^11.3.14",
+    "@reactflow/controls": "^11.2.14",
+    "@reactflow/minimap": "^11.7.14",
+    "@reactflow/node-resizer": "^2.2.14",
+    "axios": "^1.6.2",
+    "date-fns": "^3.0.0",
+    "framer-motion": "^10.16.5",
+    "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "framer-motion": "^10.16.5",
-    "axios": "^1.6.2",
     "react-hook-form": "^7.48.2",
-    "zod": "^3.22.4",
-    "@hookform/resolvers": "^3.3.2",
-    "lucide-react": "^0.294.0",
-    "date-fns": "^3.0.0"
+    "react-router-dom": "^6.20.0",
+    "reactflow": "^11.11.4",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

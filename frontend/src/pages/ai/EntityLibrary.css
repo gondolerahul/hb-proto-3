@@ -16,6 +16,7 @@
     margin-bottom: var(--spacing-xs);
     background: var(--gradient-gold);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -84,9 +85,38 @@
     justify-content: center;
 }
 
-.entity-info h3 {
-    margin-top: 0;
-    margin-bottom: 2px;
+.entity-info {
+    flex: 1;
+}
+
+.title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.title-row h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.version-tag {
+    font-size: 0.7rem;
+    color: var(--color-text-tertiary);
+    font-weight: 600;
+}
+
+.badge-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.status-badge {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
 }
 
 .entity-type-badge {
@@ -102,9 +132,10 @@
     color: var(--color-text-secondary);
     font-size: 0.9rem;
     line-height: 1.5;
-    margin-bottom: var(--spacing-lg);
+    margin: var(--spacing-sm) 0 var(--spacing-lg) 0;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     height: 2.7rem;
@@ -112,22 +143,35 @@
 
 .entity-meta {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-md);
     margin-top: auto;
     margin-bottom: var(--spacing-lg);
 }
 
 .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-size: 0.8rem;
     color: var(--color-text-tertiary);
-    background: rgba(255, 255, 255, 0.05);
-    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 4px 10px;
     border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .entity-actions {
     display: flex;
     gap: var(--spacing-sm);
+}
+
+.entity-actions a {
+    flex: 1;
+}
+
+.entity-actions a button {
+    width: 100%;
 }
 
 .empty-state {
@@ -136,14 +180,23 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--spacing-2xl);
+    padding: var(--spacing-3xl);
     text-align: center;
-    opacity: 0.7;
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .empty-state h3 {
     margin-top: var(--spacing-md);
     color: var(--color-text-primary);
+}
+
+.loading-container {
+    height: 60vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-lg);
 }
 
 .loading {

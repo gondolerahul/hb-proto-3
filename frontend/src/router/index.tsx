@@ -11,6 +11,7 @@ import { EntityBuilder } from '@/pages/ai/EntityBuilder';
 import { ExecutionPage } from '@/pages/ai/ExecutionPage';
 import { ExecutionHistory } from '@/pages/ai/ExecutionHistory';
 import { ExecutionDetail } from '@/pages/ai/ExecutionDetail';
+import { HITLPanel } from '@/pages/ai/HITLPanel';
 import { KnowledgeBase } from '@/pages/KnowledgeBase';
 import { IntegrationsPage } from '@/pages/IntegrationsPage';
 import { UserSettings } from '@/pages/UserSettings';
@@ -153,6 +154,18 @@ export const AppRouter: React.FC = () => {
                         <ProtectedRoute>
                             <MainLayout>
                                 <ExecutionDetail />
+                            </MainLayout>
+                        </ProtectedRoute>
+                    }
+                />
+
+                {/* HITL Oversights */}
+                <Route
+                    path="/ai/approvals"
+                    element={
+                        <ProtectedRoute>
+                            <MainLayout>
+                                <HITLPanel />
                             </MainLayout>
                         </ProtectedRoute>
                     }

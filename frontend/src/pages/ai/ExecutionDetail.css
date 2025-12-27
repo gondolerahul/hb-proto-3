@@ -56,8 +56,7 @@
 }
 
 .trace-node {
-    margin-bottom: var(--spacing-xs);
-    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: var(--spacing-sm);
 }
 
 .node-header {
@@ -65,14 +64,27 @@
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-md);
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all var(--transition-fast);
 }
 
 .node-header:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.node-header.completed {
+    border-left: 3px solid var(--color-success);
+}
+
+.node-header.failed {
+    border-left: 3px solid var(--color-error);
+}
+
+.node-header.running {
+    border-left: 3px solid var(--color-warning);
 }
 
 .node-icon {
@@ -86,7 +98,7 @@
     flex: 1;
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-md);
 }
 
 .node-name {
@@ -95,25 +107,33 @@
 }
 
 .node-type {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--color-text-tertiary);
+    text-transform: uppercase;
 }
 
 .node-meta {
     display: flex;
-    gap: var(--spacing-md);
+    align-items: center;
+    gap: var(--spacing-lg);
     font-size: 0.8rem;
 }
 
+.node-duration {
+    color: var(--color-text-tertiary);
+}
+
 .node-body {
-    padding: var(--spacing-md) var(--spacing-md) var(--spacing-md) var(--spacing-xl);
+    padding: var(--spacing-md) var(--spacing-md) var(--spacing-md) 40px;
+    border-left: 1px dashed rgba(255, 255, 255, 0.1);
+    margin-left: 10px;
 }
 
 .node-thought {
-    background: rgba(var(--color-secondary-rgb), 0.05);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-md);
     margin-bottom: var(--spacing-md);
+    background: rgba(var(--color-primary-rgb), 0.05);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-sm);
 }
 
 .thought-header {
@@ -121,58 +141,104 @@
     align-items: center;
     gap: 6px;
     font-size: 0.8rem;
-    font-weight: bold;
-    color: var(--color-secondary);
-    margin-bottom: var(--spacing-sm);
+    font-weight: 600;
+    color: var(--color-primary);
+    margin-bottom: 8px;
 }
 
 .thought-content {
     font-size: 0.9rem;
     line-height: 1.5;
     color: var(--color-text-secondary);
-    white-space: pre-wrap;
 }
 
-.node-logs {
-    margin-bottom: var(--spacing-md);
+.node-logs,
+.node-tools {
+    margin-top: var(--spacing-md);
 }
 
-.log-entry {
-    margin-top: var(--spacing-sm);
+.log-entry,
+.tool-entry {
     background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-md);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-sm);
+    padding: var(--spacing-sm);
 }
 
-.log-meta {
+.log-meta,
+.tool-meta {
     display: flex;
-    gap: var(--spacing-md);
+    justify-content: space-between;
     font-size: 0.75rem;
     color: var(--color-text-tertiary);
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.log-io {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+.stat-group {
+    display: flex;
     gap: var(--spacing-md);
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.io-box {
+    margin-top: 8px;
 }
 
 .io-box label {
     display: block;
     font-size: 0.7rem;
-    text-transform: uppercase;
     color: var(--color-text-tertiary);
     margin-bottom: 4px;
 }
 
 .io-box pre {
-    background: rgba(255, 255, 255, 0.02);
-    padding: var(--spacing-sm);
-    border-radius: var(--radius-sm);
-    font-size: 0.8rem;
-    max-height: 200px;
-    overflow: auto;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px;
+    font-size: 0.85rem;
+    overflow-x: auto;
+}
+
+.node-result pre {
+    background: rgba(var(--color-secondary-rgb), 0.05);
+    padding: 12px;
+    border: 1px solid rgba(var(--color-secondary-rgb), 0.1);
+}
+
+.loading-container {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-lg);
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
 }
 
 .node-result label,

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { GlassCard } from './ui/GlassCard';
-import { GlassInput } from './ui/GlassInput';
+import { GlassCard, GlassInput, JellyButton } from './ui';
 import { CompanyCreate } from '../services/company.service';
 
 interface CreateCompanyModalProps {
@@ -46,49 +45,49 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="modal-overlay">
             <GlassCard className="w-full max-w-md p-8 relative">
                 <button
                     onClick={onClose}
-                    className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white transition-colors"
+                    className="absolute top-6 right-6 p-2 text-tertiary hover:text-white transition-colors"
                 >
                     <X size={20} />
                 </button>
 
-                <h2 className="text-2xl font-bold text-white mb-6">
-                    Add New {type.charAt(0) + type.slice(1).toLowerCase()}
+                <h2 className="text-xl font-bold text-white mb-8">
+                    Add {type.charAt(0) + type.slice(1).toLowerCase()}
                 </h2>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-8">
                     <GlassInput
                         label="Company Name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder={`Enter ${type.toLowerCase()} name`}
+                        placeholder={`e.g. ${type === 'PARTNER' ? 'Global Logic' : 'Business Unit A'}`}
                         required
                     />
 
                     {error && (
-                        <p className="text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20">
+                        <div className="error-toast glass">
                             {error}
-                        </p>
+                        </div>
                     )}
 
                     <div className="flex justify-end gap-4 pt-4">
-                        <button
+                        <JellyButton
                             type="button"
                             onClick={onClose}
-                            className="px-6 py-2 text-gray-300 hover:text-white transition-colors"
+                            variant="ghost"
                         >
                             Cancel
-                        </button>
-                        <button
+                        </JellyButton>
+                        <JellyButton
                             type="submit"
                             disabled={loading || !name.trim()}
-                            className="px-6 py-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-all transform hover:scale-105 active:scale-95"
+                            roseGold
                         >
-                            {loading ? 'Creating...' : 'Create'}
-                        </button>
+                            {loading ? 'Synthesizing...' : 'Establish Entity'}
+                        </JellyButton>
                     </div>
                 </form>
             </GlassCard>

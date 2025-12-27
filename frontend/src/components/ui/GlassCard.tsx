@@ -1,25 +1,30 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import './GlassCard.css';
 
 interface GlassCardProps {
     children: React.ReactNode;
     className?: string;
-    variant?: 'default' | 'light' | 'heavy';
     hover?: boolean;
+    onClick?: () => void;
 }
 
 export const GlassCard: React.FC<GlassCardProps> = ({
     children,
     className = '',
-    variant = 'default',
     hover = false,
+    onClick
 }) => {
-    const variantClass = variant === 'light' ? 'glass-light' : variant === 'heavy' ? 'glass-heavy' : 'glass';
-    const hoverClass = hover ? 'glass-card--hover' : '';
-
     return (
-        <div className={`glass-card ${variantClass} ${hoverClass} ${className}`}>
-            {children}
-        </div>
+        <motion.div
+            className={`glass-card ${hover ? 'glass-card--hover' : ''} ${className}`}
+            whileHover={hover ? { y: -4, transition: { duration: 0.2 } } : {}}
+            onClick={onClick}
+        >
+            <div className="glass-card-content">
+                {children}
+            </div>
+            <div className="glass-card-shine" />
+        </motion.div>
     );
 };

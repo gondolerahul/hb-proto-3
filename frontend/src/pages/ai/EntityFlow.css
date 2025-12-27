@@ -1,0 +1,112 @@
+.entity-flow-wrapper {
+    display: flex;
+    height: calc(100vh - 120px);
+    width: 100%;
+    gap: var(--spacing-6);
+}
+
+.entity-flow-sidebar {
+    width: 300px;
+    background: var(--color-glass-bg);
+    border: 1px solid var(--color-glass-stroke);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(var(--blur-md));
+    -webkit-backdrop-filter: blur(var(--blur-md));
+    padding: var(--spacing-6);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.sidebar-hint {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    margin-bottom: var(--spacing-6);
+}
+
+.draggable-section {
+    margin-bottom: var(--spacing-8);
+}
+
+.draggable-section h4 {
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-text-tertiary);
+    margin-bottom: var(--spacing-4);
+}
+
+.draggable-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3) var(--spacing-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-glass-stroke);
+    background: rgba(255, 255, 255, 0.03);
+    cursor: grab;
+    margin-bottom: var(--spacing-3);
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-fast);
+}
+
+.draggable-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--color-accent-primary);
+}
+
+.draggable-item:active {
+    cursor: grabbing;
+}
+
+.tool-item:hover {
+    border-color: var(--color-info);
+}
+
+.entity-flow-canvas {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-glass-stroke);
+    overflow: hidden;
+    position: relative;
+}
+
+.react-flow__pane {
+    background: transparent !important;
+}
+
+.react-flow__background {
+    background: transparent !important;
+}
+
+.react-flow__controls {
+    box-shadow: var(--shadow-md) !important;
+    border-radius: var(--radius-md) !important;
+    overflow: hidden;
+    border: 1px solid var(--color-glass-stroke) !important;
+}
+
+.react-flow__controls-button {
+    background: var(--color-glass-bg) !important;
+    border-color: var(--color-glass-stroke) !important;
+    color: var(--color-text-primary) !important;
+}
+
+.react-flow__controls-button:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.react-flow__minimap {
+    border-radius: var(--radius-md) !important;
+    overflow: hidden;
+}
+
+.node-config-panel {
+    border-top: 1px solid var(--color-glass-stroke);
+    padding-top: var(--spacing-6);
+}
+
+.w-full {
+    width: 100%;
+}

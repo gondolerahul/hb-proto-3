@@ -4,8 +4,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import {
     LayoutDashboard,
-    Brain,
-    Workflow,
     Play,
     Database,
     Settings,
@@ -17,6 +15,8 @@ import {
     Sun,
     Users,
     Building,
+    Shield,
+    Layers
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import './MainLayout.css';
@@ -37,8 +37,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         ...(user?.role === UserRole.APP_ADMIN ? [{ path: '/partners', label: 'Partners', icon: Users }] : []),
         ...((user?.role === UserRole.APP_ADMIN || user?.role === UserRole.PARTNER_ADMIN) ? [{ path: '/tenants', label: 'Tenants', icon: Building }] : []),
         ...(([UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/users', label: 'Users', icon: User }] : []),
-        { path: '/agents', label: 'AI Agents', icon: Brain },
-        { path: '/workflows', label: 'Workflows', icon: Workflow },
+        { path: '/ai/entities', label: 'Entity Library', icon: Layers },
+        { path: '/ai/approvals', label: 'Guardian Oversight', icon: Shield },
         { path: '/executions', label: 'Executions', icon: Play },
         { path: '/knowledge', label: 'Knowledge Base', icon: Database },
         { path: '/integrations', label: 'Integrations', icon: Settings },
@@ -48,20 +48,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     return (
         <div className="main-layout">
-            <div className="liquid-background">
-                {[...Array(20)].map((_, i) => (
-                    <div
-                        key={i}
-                        className="glow-dot"
-                        style={{
-                            left: `${Math.random() * 100}%`,
-                            top: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 10}s`,
-                            '--glow-duration': `${5 + Math.random() * 10}s`
-                        } as React.CSSProperties}
-                    />
-                ))}
-            </div>
 
             {/* Sidebar */}
             <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
@@ -70,6 +56,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     <button
                         className="sidebar-toggle"
                         onClick={() => setSidebarOpen(!sidebarOpen)}
+                        aria-expanded={sidebarOpen}
+                        aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
                     >
                         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
                     </button>

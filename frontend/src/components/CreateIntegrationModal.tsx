@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { GlassCard } from './ui/GlassCard';
 import { GlassInput } from './ui/GlassInput';
-import { integrationService, Model, IntegrationCreate, IntegrationUpdate, Integration } from '../services/integration.service';
+import { integrationService, Model, Integration } from '../services/integration.service';
 import { User } from '../types';
 
 interface CreateIntegrationModalProps {

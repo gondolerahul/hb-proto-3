@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { Clock, CheckCircle, XCircle, Loader, Eye, RotateCcw } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, Loader, Eye, RotateCcw, DollarSign, Database } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus } from '@/types';
 import './ExecutionHistory.css';
@@ -55,7 +55,12 @@ export const ExecutionHistory: React.FC = () => {
     });
 
     if (loading) {
-        return <div className="loading">Consulting Historical Records...</div>;
+        return (
+            <div className="loading-container">
+                <Clock size={48} className="pulse" color="var(--color-secondary)" />
+                <div className="loading">Consulting Historical Records...</div>
+            </div>
+        );
     }
 
     return (
@@ -102,16 +107,31 @@ export const ExecutionHistory: React.FC = () => {
                                     <h3>
                                         {execution.entity?.name || 'Anonymous Unit'}
                                     </h3>
-                                    <span className={`status-badge ${execution.status.toLowerCase()}`}>
-                                        {execution.status}
-                                    </span>
+                                    <div className="header-meta">
+                                        <div className="metric-badge">
+                                            <DollarSign size={10} /> ${execution.total_cost_usd.toFixed(4)}
+                                        </div>
+                                        <div className="metric-badge">
+                                            <Database size={10} /> {execution.total_tokens.toLocaleString()}
+                                        </div>
+                                        <span className={`status-badge ${execution.status.toLowerCase()}`}>
+                                            {execution.status}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div className="execution-meta">
                                     <span className="execution-time">
                                         {formatDate(execution.created_at)}
                                     </span>
-                                    {execution.completed_at && execution.started_at && (
+                                    {execution.execution_time_ms ? (
+                                        <>
+                                            <span>•</span>
+                                            <span className="execution-duration">
+                                                Duration: {(execution.execution_time_ms / 1000).toFixed(1)}s
+                                            </span>
+                                        </>
+                                    ) : execution.completed_at && execution.started_at && (
                                         <>
                                             <span>•</span>
                                             <span className="execution-duration">

@@ -1,6 +1,5 @@
 #!/bin/bash
-
-# HireBuddha Platform - Service Startup Script
+# HireBuddha Platform v2.0 - Hierarchical AI Refactor
 # This script starts all backend services and the frontend
 
 set -e  # Exit on error
@@ -22,7 +21,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  HireBuddha Platform Startup Script${NC}"
+echo -e "${BLUE}  HireBuddha Hierarchical Platform v0.2${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -62,8 +61,8 @@ wait_for_service() {
 echo -e "${BLUE}[1/6] Starting Docker services (PostgreSQL & Redis)...${NC}"
 cd "$BACKEND_DIR"
 
-if docker compose ps | grep -q "Up"; then
-    echo -e "${YELLOW}Docker services already running${NC}"
+if docker compose ps db --status running | grep -q "db" && docker compose ps redis --status running | grep -q "redis"; then
+    echo -e "${YELLOW}Database and Redis are already running${NC}"
 else
     docker compose up -d db redis
     echo -e "${GREEN}✓ Docker services started${NC}"
