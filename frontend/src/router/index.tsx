@@ -6,10 +6,8 @@ import { LoginPage, RegisterPage } from '@/pages/auth';
 import { ForgotPasswordPage, ResetPasswordPage } from '@/pages/auth/PasswordReset';
 import { OAuthCallbackPage } from '@/pages/auth/OAuthCallback';
 import { Dashboard } from '@/pages/Dashboard';
-import { AgentList } from '@/pages/ai/AgentList';
-import { AgentBuilder } from '@/pages/ai/AgentBuilder';
-import { WorkflowList } from '@/pages/ai/WorkflowList';
-import { WorkflowBuilder } from '@/pages/ai/WorkflowBuilder';
+import { EntityLibrary } from '@/pages/ai/EntityLibrary';
+import { EntityBuilder } from '@/pages/ai/EntityBuilder';
 import { ExecutionPage } from '@/pages/ai/ExecutionPage';
 import { ExecutionHistory } from '@/pages/ai/ExecutionHistory';
 import { ExecutionDetail } from '@/pages/ai/ExecutionDetail';
@@ -83,73 +81,49 @@ export const AppRouter: React.FC = () => {
                     }
                 />
 
-                {/* AI Agents */}
+                {/* Hierarchical Entities */}
                 <Route
-                    path="/agents"
+                    path="/ai/entities"
                     element={
                         <ProtectedRoute>
                             <MainLayout>
-                                <AgentList />
+                                <EntityLibrary />
                             </MainLayout>
                         </ProtectedRoute>
                     }
                 />
                 <Route
-                    path="/agents/create"
+                    path="/ai/entities/create"
                     element={
                         <ProtectedRoute>
                             <MainLayout>
-                                <AgentBuilder />
+                                <EntityBuilder />
                             </MainLayout>
                         </ProtectedRoute>
                     }
                 />
                 <Route
-                    path="/agents/:id"
+                    path="/ai/entities/edit/:id"
                     element={
                         <ProtectedRoute>
                             <MainLayout>
-                                <AgentBuilder />
+                                <EntityBuilder />
                             </MainLayout>
                         </ProtectedRoute>
                     }
                 />
 
-                {/* Workflows */}
-                <Route
-                    path="/workflows"
-                    element={
-                        <ProtectedRoute>
-                            <MainLayout>
-                                <WorkflowList />
-                            </MainLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/workflows/create"
-                    element={
-                        <ProtectedRoute>
-                            <MainLayout>
-                                <WorkflowBuilder />
-                            </MainLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/workflows/:id"
-                    element={
-                        <ProtectedRoute>
-                            <MainLayout>
-                                <WorkflowBuilder />
-                            </MainLayout>
-                        </ProtectedRoute>
-                    }
-                />
+                {/* Legacy Redirects */}
+                <Route path="/agents" element={<Navigate to="/ai/entities" replace />} />
+                <Route path="/workflows" element={<Navigate to="/ai/entities" replace />} />
+                <Route path="/agents/create" element={<Navigate to="/ai/entities/create" replace />} />
+                <Route path="/workflows/create" element={<Navigate to="/ai/entities/create" replace />} />
+                <Route path="/agents/:id" element={<Navigate to="/ai/entities/edit/:id" replace />} />
+                <Route path="/workflows/:id" element={<Navigate to="/ai/entities/edit/:id" replace />} />
 
                 {/* Execution */}
                 <Route
-                    path="/execute/:type/:id"
+                    path="/ai/execute/:id"
                     element={
                         <ProtectedRoute>
                             <MainLayout>
@@ -158,6 +132,7 @@ export const AppRouter: React.FC = () => {
                         </ProtectedRoute>
                     }
                 />
+                <Route path="/execute/:type/:id" element={<Navigate to="/ai/execute/:id" replace />} />
 
                 {/* Executions History */}
                 <Route

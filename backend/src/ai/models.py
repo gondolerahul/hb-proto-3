@@ -7,54 +7,80 @@ from src.common.database import Base
 import pgvector.sqlalchemy
 
 
-class Agent(Base):
-    __tablename__ = "agents"
+from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text, JSON, Numeric, Enum, Integer
+import enum
+
+class EntityType(str, enum.Enum):
+    ACTION = "ACTION"
+    SKILL = "SKILL"
+    AGENT = "AGENT"
+    PROCESS = "PROCESS"
+
+class RunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    REPAIRING = "REPAIRING"
+
+class HierarchicalEntity(Base):
+    __tablename__ = "hierarchical_entities"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=True)
+    type = Column(String, nullable=False) # ACTION, SKILL, AGENT, PROCESS
     name = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # System Prompt
-    llm_config = Column(JSON, nullable=False)  # { "provider": "openai", "model": "gpt-4", ... }
+    description = Column(Text, nullable=True)
+    static_plan = Column(JSON, nullable=True) # { "steps": [...], "rules": [...] }
+    llm_config = Column(JSON, nullable=True) # { "provider": "openai", "model": "gpt-4", ... }
+    toolkit = Column(JSON, nullable=True) # [ { "name": "web_search", ... } ]
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     company = relationship("src.auth.models.Company")
-    executions = relationship("Execution", back_populates="agent")
+    parent = relationship("HierarchicalEntity", remote_side=[id], backref="children")
+    execution_runs = relationship("ExecutionRun", back_populates="entity")
 
-class Workflow(Base):
-    __tablename__ = "workflows"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
-    name = Column(String, nullable=False)
-    dag_structure = Column(JSON, nullable=False)  # { "nodes": [...], "edges": [...] }
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    company = relationship("src.auth.models.Company")
-    executions = relationship("Execution", back_populates="workflow")
-
-class Execution(Base):
-    __tablename__ = "executions"
+class ExecutionRun(Base):
+    __tablename__ = "execution_runs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=False)
+    parent_run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True)
-    workflow_id = Column(UUID(as_uuid=True), ForeignKey("workflows.id"), nullable=True)
-    status = Column(String, default="pending")  # pending, running, completed, failed
+    status = Column(String, default="PENDING")
     input_data = Column(JSON, nullable=True)
+    dynamic_plan = Column(JSON, nullable=True)
     result_data = Column(JSON, nullable=True)
+    context_state = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     company = relationship("src.auth.models.Company")
-    agent = relationship("Agent", back_populates="executions")
-    workflow = relationship("Workflow", back_populates="executions")
-    usage_logs = relationship("UsageLog", back_populates="execution")
+    entity = relationship("HierarchicalEntity", back_populates="execution_runs")
+    parent_run = relationship("ExecutionRun", remote_side=[id], backref="child_runs")
+    llm_logs = relationship("LLMInteractionLog", back_populates="run")
+    usage_logs = relationship("UsageLog", back_populates="run")
+
+class LLMInteractionLog(Base):
+    __tablename__ = "llm_interaction_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=False)
+    model_provider = Column(String, nullable=False)
+    model_name = Column(String, nullable=False)
+    input_prompt = Column(Text, nullable=False)
+    output_response = Column(Text, nullable=False)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    latency_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    run = relationship("ExecutionRun", back_populates="llm_logs")
 
 class UsageLog(Base):
     __tablename__ = "usage_logs"
@@ -62,14 +88,14 @@ class UsageLog(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     timestamp = Column(DateTime, default=datetime.utcnow)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
-    execution_id = Column(UUID(as_uuid=True), ForeignKey("executions.id"), nullable=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
     sku_id = Column(UUID(as_uuid=True), ForeignKey("integration_registry.id"), nullable=False)
     raw_quantity = Column(Numeric(18, 6), nullable=False)
     calculated_cost = Column(Numeric(18, 6), nullable=False)
     log_metadata = Column(JSON, nullable=True)
 
     company = relationship("src.auth.models.Company")
-    execution = relationship("Execution", back_populates="usage_logs")
+    run = relationship("ExecutionRun", back_populates="usage_logs")
     sku = relationship("src.config.models.IntegrationRegistry")
 
 class Document(Base):
@@ -77,7 +103,7 @@ class Document(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True)  # Optional: associate with agent
+    entity_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=True)
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False)  # pdf, docx, txt
     file_size = Column(String, nullable=True)
@@ -86,7 +112,7 @@ class Document(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     company = relationship("src.auth.models.Company")
-    agent = relationship("Agent")
+    entity = relationship("HierarchicalEntity")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
 
 class DocumentChunk(Base):

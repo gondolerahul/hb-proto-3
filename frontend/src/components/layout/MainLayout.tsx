@@ -48,7 +48,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     return (
         <div className="main-layout">
-            <div className="liquid-background" />
+            <div className="liquid-background">
+                {[...Array(20)].map((_, i) => (
+                    <div
+                        key={i}
+                        className="glow-dot"
+                        style={{
+                            left: `${Math.random() * 100}%`,
+                            top: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 10}s`,
+                            '--glow-duration': `${5 + Math.random() * 10}s`
+                        } as React.CSSProperties}
+                    />
+                ))}
+            </div>
 
             {/* Sidebar */}
             <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>

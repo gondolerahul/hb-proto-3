@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 import { GlassCard, JellyButton } from '@/components/ui';
 import { Clock, CheckCircle, XCircle, Loader, Eye, RotateCcw } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
-import { Execution } from '@/types';
+import { ExecutionRun, RunStatus } from '@/types';
 import './ExecutionHistory.css';
 
 export const ExecutionHistory: React.FC = () => {
-    const [executions, setExecutions] = useState<Execution[]>([]);
+    const [executions, setExecutions] = useState<ExecutionRun[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState<'all' | 'completed' | 'failed' | 'running'>('all');
+    const [filter, setFilter] = useState<RunStatus | 'ALL'>('ALL');
 
     useEffect(() => {
         fetchExecutions();
@@ -26,13 +26,13 @@ export const ExecutionHistory: React.FC = () => {
         }
     };
 
-    const getStatusIcon = (status: string) => {
+    const getStatusIcon = (status: RunStatus) => {
         switch (status) {
-            case 'completed':
+            case RunStatus.COMPLETED:
                 return <CheckCircle size={20} color="var(--color-success)" />;
-            case 'failed':
+            case RunStatus.FAILED:
                 return <XCircle size={20} color="var(--color-error)" />;
-            case 'running':
+            case RunStatus.RUNNING:
                 return <Loader className="spin" size={20} color="var(--color-info)" />;
             default:
                 return <Clock size={20} color="var(--color-warning)" />;
@@ -50,59 +50,44 @@ export const ExecutionHistory: React.FC = () => {
     };
 
     const filteredExecutions = executions.filter(exec => {
-        if (filter === 'all') return true;
+        if (filter === 'ALL') return true;
         return exec.status === filter;
     });
 
     if (loading) {
-        return <div className="loading">Loading execution history...</div>;
+        return <div className="loading">Consulting Historical Records...</div>;
     }
 
     return (
         <div className="execution-history">
             <div className="page-header">
                 <div>
-                    <h1>Execution History</h1>
-                    <p>View past agent and workflow executions</p>
+                    <h1>Execution Records</h1>
+                    <p>Audit trail of all hierarchical intelligence units</p>
                 </div>
             </div>
 
             <div className="filter-bar">
-                <button
-                    className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-                    onClick={() => setFilter('all')}
-                >
-                    All ({executions.length})
-                </button>
-                <button
-                    className={`filter-btn ${filter === 'completed' ? 'active' : ''}`}
-                    onClick={() => setFilter('completed')}
-                >
-                    Completed ({executions.filter(e => e.status === 'completed').length})
-                </button>
-                <button
-                    className={`filter-btn ${filter === 'running' ? 'active' : ''}`}
-                    onClick={() => setFilter('running')}
-                >
-                    Running ({executions.filter(e => e.status === 'running').length})
-                </button>
-                <button
-                    className={`filter-btn ${filter === 'failed' ? 'active' : ''}`}
-                    onClick={() => setFilter('failed')}
-                >
-                    Failed ({executions.filter(e => e.status === 'failed').length})
-                </button>
+                {(['ALL', ...Object.values(RunStatus)] as const).map(s => (
+                    <button
+                        key={s}
+                        className={`filter-btn ${filter === s ? 'active' : ''}`}
+                        onClick={() => setFilter(s)}
+                    >
+                        {s} ({s === 'ALL' ? executions.length : executions.filter(e => e.status === s).length})
+                    </button>
+                ))}
             </div>
 
             <div className="executions-list">
                 {filteredExecutions.length === 0 ? (
                     <GlassCard className="empty-state">
                         <Clock size={64} color="var(--color-text-tertiary)" />
-                        <h3>No executions found</h3>
+                        <h3>Quiet in the archives</h3>
                         <p>
-                            {filter === 'all'
-                                ? 'Execute an agent or workflow to see it here'
-                                : `No ${filter} executions`}
+                            {filter === 'ALL'
+                                ? 'Deploy a unit to see its trail here'
+                                : `No executions found with status: ${filter}`}
                         </p>
                     </GlassCard>
                 ) : (
@@ -115,9 +100,9 @@ export const ExecutionHistory: React.FC = () => {
                             <div className="execution-info">
                                 <div className="execution-header">
                                     <h3>
-                                        {execution.agent_id ? 'Agent' : 'Workflow'} Execution
+                                        {execution.entity?.name || 'Anonymous Unit'}
                                     </h3>
-                                    <span className={`status-badge ${execution.status}`}>
+                                    <span className={`status-badge ${execution.status.toLowerCase()}`}>
                                         {execution.status}
                                     </span>
                                 </div>
@@ -126,43 +111,37 @@ export const ExecutionHistory: React.FC = () => {
                                     <span className="execution-time">
                                         {formatDate(execution.created_at)}
                                     </span>
-                                    {execution.completed_at && (
+                                    {execution.completed_at && execution.started_at && (
                                         <>
                                             <span>•</span>
                                             <span className="execution-duration">
-                                                Duration: {Math.round(
-                                                    (new Date(execution.completed_at).getTime() -
-                                                        new Date(execution.created_at).getTime()) / 1000
-                                                )}s
+                                                Duration: {((new Date(execution.completed_at).getTime() -
+                                                    new Date(execution.started_at).getTime()) / 1000).toFixed(1)}s
                                             </span>
                                         </>
                                     )}
                                 </div>
 
-                                {execution.error && (
+                                {execution.error_message && (
                                     <div className="execution-error">
-                                        <strong>Error:</strong> {execution.error}
+                                        <strong>Error:</strong> {execution.error_message}
                                     </div>
                                 )}
                             </div>
 
                             <div className="execution-actions">
-                                {execution.output && (
-                                    <Link to={`/executions/${execution.id}`}>
-                                        <JellyButton variant="secondary">
-                                            <Eye size={16} />
-                                            View
-                                        </JellyButton>
-                                    </Link>
-                                )}
-                                {execution.status === 'completed' && execution.agent_id && (
-                                    <Link to={`/execute/agent/${execution.agent_id}`}>
-                                        <JellyButton variant="ghost">
-                                            <RotateCcw size={16} />
-                                            Re-run
-                                        </JellyButton>
-                                    </Link>
-                                )}
+                                <Link to={`/executions/${execution.id}`}>
+                                    <JellyButton variant="secondary">
+                                        <Eye size={16} />
+                                        Trace
+                                    </JellyButton>
+                                </Link>
+                                <Link to={`/ai/execute/${execution.entity_id}`}>
+                                    <JellyButton variant="ghost">
+                                        <RotateCcw size={16} />
+                                        Re-run
+                                    </JellyButton>
+                                </Link>
                             </div>
                         </GlassCard>
                     ))

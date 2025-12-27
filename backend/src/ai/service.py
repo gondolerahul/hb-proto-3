@@ -1,161 +1,173 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc, func
 from fastapi import HTTPException
 from uuid import UUID
 from arq import create_pool
 from arq.connections import RedisSettings
-from src.ai.models import Agent, Workflow, Execution
-from src.ai.schemas import AgentCreate, AgentUpdate, WorkflowCreate, WorkflowUpdate, ExecutionCreate
+from src.ai.models import HierarchicalEntity, ExecutionRun, LLMInteractionLog, Document, EntityType
+from src.ai.schemas import (
+    HierarchicalEntityCreate, HierarchicalEntityUpdate, ExecutionRunCreate
+)
 from datetime import datetime
+import json
 
 class AIService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    # Agent CRUD
-    async def create_agent(self, agent_in: AgentCreate, company_id: UUID) -> Agent:
-        agent = Agent(**agent_in.model_dump(), company_id=company_id)
-        self.db.add(agent)
+    # Entity CRUD
+    async def create_entity(self, entity_in: HierarchicalEntityCreate, company_id: UUID) -> HierarchicalEntity:
+        entity = HierarchicalEntity(**entity_in.model_dump(), company_id=company_id)
+        self.db.add(entity)
         await self.db.commit()
-        await self.db.refresh(agent)
-        return agent
+        
+        # Reload with relationships for schema
+        from sqlalchemy.orm import selectinload
+        result = await self.db.execute(
+            select(HierarchicalEntity)
+            .options(
+                selectinload(HierarchicalEntity.execution_runs)
+            )
+            .where(HierarchicalEntity.id == entity.id)
+        )
+        return result.scalar_one()
 
-    async def get_agents(self, company_id: UUID) -> list[Agent]:
-        result = await self.db.execute(select(Agent).where(Agent.company_id == company_id))
+    async def get_entities(self, company_id: UUID, type: EntityType = None) -> list[HierarchicalEntity]:
+        from sqlalchemy.orm import selectinload
+        query = select(HierarchicalEntity).where(HierarchicalEntity.company_id == company_id)
+        if type:
+            query = query.where(HierarchicalEntity.type == type)
+        
+        query = query.options(selectinload(HierarchicalEntity.execution_runs))
+        result = await self.db.execute(query)
         return result.scalars().all()
 
-    async def get_agent(self, agent_id: UUID, company_id: UUID) -> Agent:
-        result = await self.db.execute(select(Agent).where(Agent.id == agent_id, Agent.company_id == company_id))
-        agent = result.scalar_one_or_none()
-        if not agent:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        return agent
+    async def get_entity(self, entity_id: UUID, company_id: UUID) -> HierarchicalEntity:
+        from sqlalchemy.orm import selectinload
+        result = await self.db.execute(
+            select(HierarchicalEntity)
+            .options(selectinload(HierarchicalEntity.execution_runs))
+            .where(HierarchicalEntity.id == entity_id, HierarchicalEntity.company_id == company_id)
+        )
+        entity = result.scalar_one_or_none()
+        if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        return entity
 
-    async def update_agent(self, agent_id: UUID, agent_in: AgentUpdate, company_id: UUID) -> Agent:
-        agent = await self.get_agent(agent_id, company_id)
+    async def update_entity(self, entity_id: UUID, entity_in: HierarchicalEntityUpdate, company_id: UUID) -> HierarchicalEntity:
+        entity = await self.get_entity(entity_id, company_id)
         
-        update_data = agent_in.model_dump(exclude_unset=True)
+        update_data = entity_in.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            setattr(agent, field, value)
+            setattr(entity, field, value)
             
-        self.db.add(agent)
+        self.db.add(entity)
         await self.db.commit()
-        await self.db.refresh(agent)
-        return agent
+        await self.db.refresh(entity)
+        return entity
 
-    # Workflow CRUD
-    async def create_workflow(self, workflow_in: WorkflowCreate, company_id: UUID) -> Workflow:
-        workflow = Workflow(**workflow_in.model_dump(), company_id=company_id)
-        self.db.add(workflow)
+    async def delete_entity(self, entity_id: UUID, company_id: UUID):
+        entity = await self.get_entity(entity_id, company_id)
+        await self.db.delete(entity)
         await self.db.commit()
-        await self.db.refresh(workflow)
-        return workflow
-
-    async def get_workflows(self, company_id: UUID) -> list[Workflow]:
-        result = await self.db.execute(select(Workflow).where(Workflow.company_id == company_id))
-        return result.scalars().all()
-
-    async def get_workflow(self, workflow_id: UUID, company_id: UUID) -> Workflow:
-        result = await self.db.execute(select(Workflow).where(Workflow.id == workflow_id, Workflow.company_id == company_id))
-        workflow = result.scalar_one_or_none()
-        if not workflow:
-            raise HTTPException(status_code=404, detail="Workflow not found")
-        return workflow
-
-    async def update_workflow(self, workflow_id: UUID, workflow_in: WorkflowUpdate, company_id: UUID) -> Workflow:
-        from sqlalchemy.orm.attributes import flag_modified
-        
-        workflow = await self.get_workflow(workflow_id, company_id)
-        
-        # Use mode='json' to ensure nested Pydantic models (like WorkflowDAG) and special types (UUID, datetime)
-        # are converted to JSON-native types (dicts, strings) before being passed to SQLAlchemy's JSON column.
-        update_data = workflow_in.model_dump(exclude_unset=True, mode='json')
-        
-        for field, value in update_data.items():
-            setattr(workflow, field, value)
-            if field == 'dag_structure':
-                flag_modified(workflow, "dag_structure")
-        
-        self.db.add(workflow)
-        await self.db.commit()
-        await self.db.refresh(workflow)
-        
-        return workflow
 
     # Execution
-    async def trigger_execution(self, execution_in: ExecutionCreate, company_id: UUID) -> Execution:
+    async def trigger_execution(self, execution_in: ExecutionRunCreate, company_id: UUID) -> ExecutionRun:
         # Create Execution Record
-        execution = Execution(
+        execution = ExecutionRun(
             company_id=company_id,
-            agent_id=execution_in.agent_id,
-            workflow_id=execution_in.workflow_id,
+            entity_id=execution_in.entity_id,
             input_data=execution_in.input_data,
-            status="pending"
+            status="PENDING"
         )
         self.db.add(execution)
         await self.db.commit()
-        await self.db.refresh(execution)
+        
+        # Load relationships for response schema
+        from sqlalchemy.orm import selectinload
+        result = await self.db.execute(
+            select(ExecutionRun)
+            .options(
+                selectinload(ExecutionRun.entity),
+                selectinload(ExecutionRun.child_runs),
+                selectinload(ExecutionRun.llm_logs)
+            )
+            .where(ExecutionRun.id == execution.id)
+        )
+        execution = result.scalar_one()
 
         # Enqueue Job to Arq
         redis = await create_pool(RedisSettings())
-        await redis.enqueue_job('run_execution', str(execution.id))
+        await redis.enqueue_job('run_execution_recursive', str(execution.id))
         await redis.close()
 
         return execution
 
-    async def get_execution(self, execution_id: UUID, company_id: UUID) -> Execution:
-        result = await self.db.execute(select(Execution).where(Execution.id == execution_id, Execution.company_id == company_id))
+    async def get_execution(self, execution_id: UUID, company_id: UUID) -> ExecutionRun:
+        from sqlalchemy.orm import selectinload, joinedload
+        
+        # Load up to 3 levels of children for trace view
+        result = await self.db.execute(
+            select(ExecutionRun)
+            .options(
+                joinedload(ExecutionRun.entity),
+                selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs)
+            )
+            .where(ExecutionRun.id == execution_id, ExecutionRun.company_id == company_id)
+        )
         execution = result.scalar_one_or_none()
         if not execution:
             raise HTTPException(status_code=404, detail="Execution not found")
         return execution
 
-    async def get_executions(self, company_id: UUID) -> list[Execution]:
+    async def get_executions(self, company_id: UUID) -> list[ExecutionRun]:
+        from sqlalchemy.orm import joinedload
         result = await self.db.execute(
-            select(Execution)
-            .where(Execution.company_id == company_id)
-            .order_by(Execution.created_at.desc())
+            select(ExecutionRun)
+            .options(
+                joinedload(ExecutionRun.entity)
+            )
+            .where(ExecutionRun.company_id == company_id)
+            .where(ExecutionRun.parent_run_id.is_(None)) # Only show root executions in list
+            .order_by(ExecutionRun.created_at.desc())
         )
         return result.scalars().all()
 
     async def get_dashboard_stats(self, company_id: UUID) -> dict:
-        from src.ai.models import Document
-        from sqlalchemy import func
-        
-        # Agents count
-        agents_count = await self.db.execute(select(func.count(Agent.id)).where(Agent.company_id == company_id))
-        
-        # Workflows count
-        workflows_count = await self.db.execute(select(func.count(Workflow.id)).where(Workflow.company_id == company_id))
+        # Active Entities count
+        entities_count = await self.db.execute(
+            select(func.count(HierarchicalEntity.id))
+            .where(HierarchicalEntity.company_id == company_id)
+        )
         
         # Executions count (today)
         today = datetime.now().date()
         executions_count = await self.db.execute(
-            select(func.count(Execution.id))
-            .where(Execution.company_id == company_id)
-            .where(func.date(Execution.created_at) == today)
+            select(func.count(ExecutionRun.id))
+            .where(ExecutionRun.company_id == company_id)
+            .where(func.date(ExecutionRun.created_at) == today)
         )
         
         # Documents count
         documents_count = await self.db.execute(select(func.count(Document.id)).where(Document.company_id == company_id))
         
         return {
-            "agents_active": agents_count.scalar() or 0,
-            "workflows_active": workflows_count.scalar() or 0,
+            "entities_total": entities_count.scalar() or 0,
             "executions_today": executions_count.scalar() or 0,
             "documents_total": documents_count.scalar() or 0
         }
 
     # Document & RAG Methods
-    async def upload_document(self, file_content: bytes, filename: str, file_type: str, company_id: UUID, agent_id: UUID = None):
-        from src.ai.models import Document
-        from arq import create_pool
-        from arq.connections import RedisSettings
-        
+    async def upload_document(self, file_content: bytes, filename: str, file_type: str, company_id: UUID, entity_id: UUID = None):
         # Create document record
         document = Document(
             company_id=company_id,
-            agent_id=agent_id,
+            entity_id=entity_id,
             filename=filename,
             file_type=file_type,
             file_size=str(len(file_content)),
@@ -178,8 +190,8 @@ class AIService:
         
         return document
     
-    async def search_documents(self, query: str, company_id: UUID, agent_id: UUID = None, top_k: int = 5):
-        from src.ai.models import Document, DocumentChunk
+    async def search_documents(self, query: str, company_id: UUID, entity_id: UUID = None, top_k: int = 5):
+        from src.ai.models import DocumentChunk
         from src.config.service import ConfigService
         import httpx
         from sqlalchemy import text
@@ -225,7 +237,7 @@ class AIService:
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
             WHERE d.company_id = :company_id
-            AND (:agent_id::uuid IS NULL OR d.agent_id = :agent_id)
+            AND (:entity_id::uuid IS NULL OR d.entity_id = :entity_id)
             ORDER BY dc.embedding <=> :query_embedding::vector
             LIMIT :top_k
         """)
@@ -235,19 +247,17 @@ class AIService:
             {
                 "query_embedding": str(query_embedding),
                 "company_id": str(company_id),
-                "agent_id": str(agent_id) if agent_id else None,
+                "entity_id": str(entity_id) if entity_id else None,
                 "top_k": top_k
             }
         )
         
         return result.fetchall()
     
-    async def get_documents(self, company_id: UUID, agent_id: UUID = None):
-        from src.ai.models import Document
-        
+    async def get_documents(self, company_id: UUID, entity_id: UUID = None):
         query = select(Document).where(Document.company_id == company_id)
-        if agent_id:
-            query = query.where(Document.agent_id == agent_id)
+        if entity_id:
+            query = query.where(Document.entity_id == entity_id)
         
         result = await self.db.execute(query)
         return result.scalars().all()

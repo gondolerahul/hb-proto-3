@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { GlassCard } from '../components/ui/GlassCard';
-import { companyService } from '../services/company.service';
-import { Company } from '../types';
+import { companyService, CompanyCreate } from '../services/company.service';
+import { authService } from '../services/auth.service';
+import { Company, User } from '../types';
 import { AlertTriangle, CheckCircle, Ban, RefreshCw, Plus } from 'lucide-react';
+import { CreateCompanyModal } from '../components/CreateCompanyModal';
 
 const TenantManagement: React.FC = () => {
     const [tenants, setTenants] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
 
     const fetchTenants = async () => {
         try {
@@ -23,8 +27,18 @@ const TenantManagement: React.FC = () => {
         }
     };
 
+    const fetchUser = async () => {
+        try {
+            const user = await authService.getCurrentUser();
+            setCurrentUser(user);
+        } catch (err) {
+            console.error('Failed to fetch user', err);
+        }
+    };
+
     useEffect(() => {
         fetchTenants();
+        fetchUser();
     }, []);
 
     const handleToggleStatus = async (tenant: Company) => {
@@ -43,6 +57,11 @@ const TenantManagement: React.FC = () => {
         }
     };
 
+    const handleCreateTenant = async (data: CompanyCreate) => {
+        await companyService.createCompany(data);
+        fetchTenants();
+    };
+
     if (loading && tenants.length === 0) {
         return (
             <div className="p-8 flex justify-center">
@@ -57,7 +76,7 @@ const TenantManagement: React.FC = () => {
                 <h1 className="text-3xl font-bold text-white">Tenant Management</h1>
                 <div className="flex gap-4">
                     <button
-                        onClick={() => {/* TODO: Implement Create Modal */ }}
+                        onClick={() => setIsModalOpen(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg transition-colors"
                     >
                         <Plus size={20} />
@@ -71,6 +90,14 @@ const TenantManagement: React.FC = () => {
                     </button>
                 </div>
             </div>
+
+            <CreateCompanyModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onSubmit={handleCreateTenant}
+                type="TENANT"
+                parentId={currentUser?.company_id}
+            />
 
             {error && (
                 <div className="bg-red-500/20 border border-red-500/50 p-4 rounded-lg text-red-200 flex items-center gap-2">

@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { GlassCard } from '../components/ui/GlassCard';
-import { companyService } from '../services/company.service';
+import { companyService, CompanyCreate } from '../services/company.service';
 import { Company } from '../types';
 import { AlertTriangle, CheckCircle, Ban, RefreshCw, Plus } from 'lucide-react';
+import { CreateCompanyModal } from '../components/CreateCompanyModal';
 
 const PartnerManagement: React.FC = () => {
     const [partners, setPartners] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const fetchPartners = async () => {
         try {
@@ -43,6 +45,11 @@ const PartnerManagement: React.FC = () => {
         }
     };
 
+    const handleCreatePartner = async (data: CompanyCreate) => {
+        await companyService.createCompany(data);
+        fetchPartners();
+    };
+
     if (loading && partners.length === 0) {
         return (
             <div className="p-8 flex justify-center">
@@ -57,7 +64,7 @@ const PartnerManagement: React.FC = () => {
                 <h1 className="text-3xl font-bold text-white">Partner Management</h1>
                 <div className="flex gap-4">
                     <button
-                        onClick={() => {/* TODO: Implement Create Modal */ }}
+                        onClick={() => setIsModalOpen(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg transition-colors"
                     >
                         <Plus size={20} />
@@ -71,6 +78,13 @@ const PartnerManagement: React.FC = () => {
                     </button>
                 </div>
             </div>
+
+            <CreateCompanyModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onSubmit={handleCreatePartner}
+                type="PARTNER"
+            />
 
             {error && (
                 <div className="bg-red-500/20 border border-red-500/50 p-4 rounded-lg text-red-200 flex items-center gap-2">

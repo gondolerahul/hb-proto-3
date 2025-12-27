@@ -1,0 +1,200 @@
+.entity-builder {
+    padding: var(--spacing-xl);
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.builder-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-xl);
+}
+
+.builder-header h1 {
+    font-size: 2rem;
+    background: var(--gradient-gold);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: var(--spacing-xs);
+}
+
+.builder-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-lg);
+}
+
+.builder-section {
+    padding: var(--spacing-lg);
+}
+
+.builder-section.full-width {
+    grid-column: 1 / -1;
+}
+
+.builder-section h2 {
+    font-size: 1.2rem;
+    margin-bottom: var(--spacing-lg);
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: var(--spacing-sm);
+}
+
+.type-selector {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-md);
+}
+
+.type-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.type-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.type-btn.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 15px rgba(234, 179, 8, 0.2);
+}
+
+.type-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.prompt-editor {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.tool-card {
+    padding: var(--spacing-md);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.tool-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.tool-card.active {
+    border-color: var(--color-secondary);
+    background: rgba(var(--color-secondary-rgb), 0.1);
+}
+
+.tool-card h4 {
+    margin: 0 0 5px 0;
+    font-size: 0.95rem;
+}
+
+.tool-card p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+}
+
+.steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.step-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+}
+
+.step-idx {
+    width: 24px;
+    height: 24px;
+    background: var(--color-text-tertiary);
+    color: var(--color-bg-main);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+.step-config {
+    flex: 1;
+}
+
+.step-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.step-actions button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--color-text-secondary);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.step-actions button.delete:hover {
+    color: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.form-submit {
+    margin-top: var(--spacing-2xl);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.error-banner {
+    background: rgba(var(--color-error-rgb), 0.1);
+    color: var(--color-error);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    margin: var(--spacing-lg) 0;
+    font-size: 0.9rem;
+}
+
+.help-text {
+    font-size: 0.85rem;
+    color: var(--color-text-tertiary);
+    margin-bottom: var(--spacing-md);
+}

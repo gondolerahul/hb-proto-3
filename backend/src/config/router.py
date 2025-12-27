@@ -5,13 +5,26 @@ from src.common.database import get_db
 from src.config.schemas import (
     IntegrationRegistryCreate, 
     IntegrationRegistryUpdate, 
-    IntegrationRegistryResponse
+    IntegrationRegistryResponse,
+    ModelResponse
 )
 from src.config.service import ConfigService
 from src.auth.dependencies import get_current_user, RoleChecker
 from src.auth.models import User
 
-router = APIRouter(tags=["Integrations"])
+router = APIRouter(prefix="/config", tags=["Integrations"])
+
+@router.get("/models", response_model=list[ModelResponse])
+async def list_models():
+    # Predefined list of supported models in the platform
+    return [
+        {"model_key": "gpt-4o", "model_name": "GPT-4o", "provider": "openai", "model_type": "text", "is_active": True},
+        {"model_key": "gpt-4-turbo", "model_name": "GPT-4 Turbo", "provider": "openai", "model_type": "text", "is_active": True},
+        {"model_key": "gpt-3.5-turbo", "model_name": "GPT-3.5 Turbo", "provider": "openai", "model_type": "text", "is_active": True},
+        {"model_key": "gemini-1.5-pro", "model_name": "Gemini 1.5 Pro", "provider": "gemini", "model_type": "text", "is_active": True},
+        {"model_key": "gemini-1.5-flash", "model_name": "Gemini 1.5 Flash", "provider": "gemini", "model_type": "text", "is_active": True},
+        {"model_key": "text-embedding-004", "model_name": "Gemini Embedding 004", "provider": "gemini", "model_type": "embedding", "is_active": True}
+    ]
 
 @router.post("/integrations", response_model=IntegrationRegistryResponse)
 async def create_integration(

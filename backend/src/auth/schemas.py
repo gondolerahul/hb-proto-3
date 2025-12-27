@@ -38,12 +38,21 @@ class CompanyBase(BaseModel):
 class CompanyCreate(CompanyBase):
     parent_id: Optional[UUID] = None
 
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+
 class CompanyResponse(CompanyBase):
     id: UUID
     logo_url: Optional[str] = None
     
     class Config:
         from_attributes = True
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    role: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: UUID

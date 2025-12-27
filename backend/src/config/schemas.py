@@ -36,3 +36,10 @@ class IntegrationRegistryResponse(IntegrationRegistryBase):
     class Config:
         from_attributes = True
         populate_by_name = True
+
+class ModelResponse(BaseModel):
+    model_key: str
+    model_name: str
+    provider: str
+    model_type: str
+    is_active: bool

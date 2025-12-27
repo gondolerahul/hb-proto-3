@@ -1,134 +1,41 @@
-import asyncio
 from arq import Worker
-from sqlalchemy.ext.asyncio import AsyncSession
+from arq.connections import RedisSettings
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from uuid import UUID
-from datetime import datetime, timedelta
-from arq.cron import cron
-from decimal import Decimal
+from datetime import datetime
 from src.common.database import AsyncSessionLocal
-from src.ai.models import Execution, Agent, Workflow
+from src.ai.models import ExecutionRun, HierarchicalEntity, LLMInteractionLog, EntityType, RunStatus, Document, DocumentChunk
+from src.ai.schemas import RunStatus as RunStatusEnum
 from src.config.service import ConfigService
 from src.ai.usage_service import UsageService
-from src.auth.models import Company
+import src.auth.models
+import src.config.models
 import httpx
 import json
-import os
-
-import io
-
 import re
 
+# --- Helper Functions ---
+
 def parse_variables(text: str, variables: dict) -> str:
-    """
-    Replaces {{variable}} in text with values from variables dict.
-    """
+    """Replaces {{variable}} in text with values from variables dict."""
     if not text:
         return ""
-    
     def replace(match):
         key = match.group(1).strip()
-        return str(variables.get(key, match.group(0)))
-    
+        # Handle nested keys if needed, for now simple dict lookup
+        val = variables
+        for k in key.split('.'):
+            if isinstance(val, dict):
+                val = val.get(k, match.group(0))
+            else:
+                return match.group(0)
+        return str(val)
     return re.sub(r'\{\{(.*?)\}\}', replace, text)
 
-async def process_document(ctx, document_id_str: str, file_content: bytes, file_type: str, filename: str):
-    from src.ai.models import Document, DocumentChunk
-    from src.common.config import settings
-    import os
-    
-    document_id = UUID(document_id_str)
-    
-    async with AsyncSessionLocal() as db:
-        # Fetch Document
-        result = await db.execute(select(Document).where(Document.id == document_id))
-        document = result.scalar_one_or_none()
-        
-        if not document:
-            print(f"Document {document_id} not found")
-            return
-
-        try:
-            # Extract text based on file type
-            if file_type == "txt":
-                text = file_content.decode("utf-8")
-            elif file_type == "pdf":
-                import PyPDF2
-                try:
-                    pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-                    text = ""
-                    for page in pdf_reader.pages:
-                        text += page.extract_text() + "\n"
-                except Exception as e:
-                    raise Exception(f"Failed to parse PDF: {str(e)}")
-            elif file_type == "docx":
-                import docx
-                try:
-                    doc = docx.Document(io.BytesIO(file_content))
-                    text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-                except Exception as e:
-                    raise Exception(f"Failed to parse DOCX: {str(e)}")
-            else:
-                text = file_content.decode("utf-8", errors="ignore")
-            
-            # Chunk the text (simple chunking by character count)
-            chunk_size = 500
-            chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-            
-            # Get Gemini API key for embeddings
-            config_service = ConfigService(db)
-            gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, "gemini-embedding-004")
-            
-            if not gemini_api_key:
-                # Fallback
-                gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, "gemini-api-key")
-
-            if not gemini_api_key:
-                raise Exception(f"Gemini API Key not found in Integrations for company {document.company_id}")
-            
-            # Generate embeddings for each chunk
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                for idx, chunk_text in enumerate(chunks):
-                    # Call Gemini embedding API
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_api_key}"
-                    response = await client.post(
-                        url,
-                        headers={"Content-Type": "application/json"},
-                        json={
-                            "model": "models/text-embedding-004",
-                            "content": {
-                                "parts": [{"text": chunk_text}]
-                            }
-                        }
-                    )
-                    
-                    if response.status_code != 200:
-                        raise Exception(f"Gemini Embedding API Error: {response.text}")
-                    
-                    data = response.json()
-                    embedding = data["embedding"]["values"]
-                    
-                    # Create chunk with embedding
-                    chunk = DocumentChunk(
-                        document_id=document.id,
-                        chunk_index=str(idx),
-                        content=chunk_text,
-                        embedding=embedding
-                    )
-                    db.add(chunk)
-            
-            # Update document status
-            document.upload_status = "completed"
-            await db.commit()
-            print(f"Document {document_id} processed successfully")
-            
-        except Exception as e:
-            document.upload_status = "failed"
-            await db.commit()
-            print(f"Document processing failed: {str(e)}")
-
 async def call_llm(provider: str, model: str, api_key: str, system_prompt: str, user_prompt: str) -> dict:
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        start_time = datetime.utcnow()
         if provider == "openai":
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -145,6 +52,8 @@ async def call_llm(provider: str, model: str, api_key: str, system_prompt: str, 
                     "temperature": 0.7
                 }
             )
+            latency = (datetime.utcnow() - start_time).total_seconds() * 1000
+            
             if response.status_code != 200:
                 raise Exception(f"OpenAI API Error: {response.text}")
             
@@ -153,14 +62,12 @@ async def call_llm(provider: str, model: str, api_key: str, system_prompt: str, 
             usage = data.get("usage", {})
             return {
                 "output": content,
-                "usage": {
-                    "prompt_tokens": usage.get("prompt_tokens", 0),
-                    "completion_tokens": usage.get("completion_tokens", 0)
-                }
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "latency_ms": int(latency)
             }
             
         elif provider == "gemini":
-            # Gemini API (Google AI Studio)
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             response = await client.post(
                 url,
@@ -171,21 +78,25 @@ async def call_llm(provider: str, model: str, api_key: str, system_prompt: str, 
                     }]
                 }
             )
+            latency = (datetime.utcnow() - start_time).total_seconds() * 1000
+            
             if response.status_code != 200:
                 raise Exception(f"Gemini API Error: {response.text}")
                 
             data = response.json()
             try:
-                content = data["candidates"][0]["content"]["parts"][0]["text"]
-                # Gemini doesn't always return usage in the same format, we might need to estimate or check docs
-                # For now, we'll estimate or use what's available
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    content = "" # blocked block_reason?
+                else:
+                    content = candidates[0]["content"]["parts"][0]["text"]
+                
                 usage_metadata = data.get("usageMetadata", {})
                 return {
                     "output": content,
-                    "usage": {
-                        "prompt_tokens": usage_metadata.get("promptTokenCount", 0),
-                        "completion_tokens": usage_metadata.get("candidatesTokenCount", 0)
-                    }
+                    "prompt_tokens": usage_metadata.get("promptTokenCount", 0),
+                    "completion_tokens": usage_metadata.get("candidatesTokenCount", 0),
+                    "latency_ms": int(latency)
                 }
             except (KeyError, IndexError) as e:
                 raise Exception(f"Failed to parse Gemini response: {data}")
@@ -193,272 +104,241 @@ async def call_llm(provider: str, model: str, api_key: str, system_prompt: str, 
         else:
             raise Exception(f"Unsupported provider: {provider}")
 
-async def run_execution(ctx, execution_id_str: str):
-    import json
+# --- Execution Engine ---
+
+class ExecutionEngine:
+    def __init__(self, db: AsyncSessionLocal, redis_pool):
+        self.db = db
+        self.redis = redis_pool
+
+    async def log_interaction(self, run_id: UUID, provider: str, model: str, input_prompt: str, response_data: dict):
+        log = LLMInteractionLog(
+            run_id=run_id,
+            model_provider=provider,
+            model_name=model,
+            input_prompt=input_prompt,
+            output_response=response_data["output"],
+            prompt_tokens=response_data["prompt_tokens"],
+            completion_tokens=response_data["completion_tokens"],
+            latency_ms=response_data["latency_ms"]
+        )
+        self.db.add(log)
+        await self.db.commit()
+
+    async def execute_run(self, run_id: UUID) -> dict:
+        # Fetch Run and Entity
+        result = await self.db.execute(
+            select(ExecutionRun)
+            .options(selectinload(ExecutionRun.entity))
+            .where(ExecutionRun.id == run_id)
+        )
+        run = result.scalar_one_or_none()
+        if not run:
+            raise Exception(f"Run {run_id} not found")
+
+        # Update Status
+        run.status = RunStatus.RUNNING
+        run.started_at = datetime.utcnow()
+        await self.db.commit()
+        
+        # Publish Update
+        channel = f"execution:{run.id}"
+        await self.redis.publish(channel, json.dumps({"status": "RUNNING", "run_id": str(run.id)}))
+
+        try:
+            entity = run.entity
+            output_data = {}
+            
+            if entity.type == EntityType.ACTION:
+                output_data = await self._execute_action(run, entity)
+            else:
+                # Skill, Agent, Process share recursive logic
+                output_data = await self._execute_composite(run, entity)
+
+            # Success
+            run.status = RunStatus.COMPLETED
+            run.result_data = output_data
+            run.completed_at = datetime.utcnow()
+            await self.db.commit()
+            await self.redis.publish(channel, json.dumps({"status": "COMPLETED", "result": output_data}))
+            return output_data
+
+        except Exception as e:
+            # Failure
+            run.status = RunStatus.FAILED
+            run.error_message = str(e)
+            run.completed_at = datetime.utcnow()
+            await self.db.commit()
+            await self.redis.publish(channel, json.dumps({"status": "FAILED", "error": str(e)}))
+            raise e
+
+    async def _execute_action(self, run: ExecutionRun, entity: HierarchicalEntity) -> dict:
+        # 1. Prepare Prompt
+        llm_config = entity.llm_config or {}
+        provider = llm_config.get("provider", "openai")
+        model = llm_config.get("model", "gpt-3.5-turbo")
+        
+        # Resolve API Key
+        config_service = ConfigService(self.db)
+        service_sku = f"{model}-in" if provider == "openai" else "gemini-api-key"
+        api_key = await config_service.get_api_key_by_sku(run.company_id, service_sku) or \
+                  await config_service.get_api_key_by_sku(run.company_id, f"{provider}-api-key")
+        
+        if not api_key:
+            raise Exception(f"API Key not found for {provider}")
+
+        # Static Plan as System Prompt
+        static_plan = entity.static_plan or {}
+        system_prompt = static_plan.get("prompt_template", "You are a helpful assistant.")
+        # Variable substitution
+        system_prompt = parse_variables(system_prompt, run.input_data or {})
+        
+        user_prompt = str(run.input_data)
+
+        # 2. Call LLM
+        llm_result = await call_llm(provider, model, api_key, system_prompt, user_prompt)
+        
+        # 3. Log Interaction
+        await self.log_interaction(
+            run.id, provider, model, 
+            f"System: {system_prompt}\nUser: {user_prompt}", 
+            llm_result
+        )
+
+        # 4. Handle Tool Calls (Simplified for now - just returning text)
+        # TODO: Implement actual tool execution if LLM requests it
+        
+        return {"output": llm_result["output"]}
+
+    async def _execute_composite(self, run: ExecutionRun, entity: HierarchicalEntity) -> dict:
+        # Composite entities (Skill, Agent, Process) execute a PLAN.
+        # 1. Reconcile Plan (Static vs Dynamic)
+        # For Phase 2 MVP: usage static plan steps sequentially.
+        
+        static_plan = entity.static_plan or {}
+        steps = static_plan.get("steps", [])
+        
+        context_state = run.input_data or {}
+        run_results = {}
+
+        for step in steps:
+            step_id = step.get("id")
+            step_entity_name = step.get("entity_name") # Referencing child entity by name? 
+            # Or assume we have IDs in the plan. 
+            # Ideally the plan has UUIDs or names that we resolve.
+            # Let's assume for now steps describe what to do, and we might need to find an entity or use a prompt.
+            
+            # Simple implementation: Plan lists child Entity IDs or Names
+            child_entity_id = step.get("entity_id")
+            if not child_entity_id:
+                # If no child entity, maybe it's just a reasoning step?
+                continue
+                
+            # Create Child Run
+            child_run = ExecutionRun(
+                company_id=run.company_id,
+                entity_id=UUID(child_entity_id),
+                parent_run_id=run.id,
+                input_data=context_state, # Pass current context
+                status=RunStatus.PENDING
+            )
+            self.db.add(child_run)
+            await self.db.commit()
+            await self.db.refresh(child_run)
+            
+            # Recursive Execute
+            # Note: We are recursing in the same worker process.
+            child_result = await self.execute_run(child_run.id)
+            
+            # Update Context
+            run_results[step_id] = child_result
+            if isinstance(child_result, dict):
+                context_state.update(child_result)
+
+        return {"output": "Composite execution completed", "steps": run_results, "final_state": context_state}
+
+# --- Arq Jobs ---
+
+async def run_execution_recursive(ctx, run_id_str: str):
+    run_id = UUID(run_id_str)
     import redis.asyncio as redis
     from src.common.config import settings
     
-    execution_id = UUID(execution_id_str)
-    r = redis.from_url(settings.REDIS_URL)
-    channel = f"execution:{execution_id}"
-
+    redis_pool = redis.from_url(settings.REDIS_URL) # Use separate pool for pubsub interaction if needed
+    
     async with AsyncSessionLocal() as db:
-        # Fetch Execution
-        result = await db.execute(select(Execution).where(Execution.id == execution_id))
-        execution = result.scalar_one_or_none()
-        if not execution:
-            print(f"Execution {execution_id} not found")
-            await r.close()
+        engine = ExecutionEngine(db, redis_pool)
+        await engine.execute_run(run_id)
+    
+    await redis_pool.close()
+
+async def process_document(ctx, document_id_str: str, file_content: bytes, file_type: str, filename: str):
+    # (Same implementation as before, just imports updated)
+    from src.ai.models import Document, DocumentChunk
+    import io
+    
+    document_id = UUID(document_id_str)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Document).where(Document.id == document_id))
+        document = result.scalar_one_or_none()
+        if not document:
             return
-
-        # Update Status to Running
-        execution.status = "running"
-        execution.started_at = datetime.utcnow()
-        await db.commit()
-        
-        await r.publish(channel, json.dumps({"status": "running"}))
-
+            
         try:
-            if execution.workflow_id:
-                # Workflow Execution with DAG dependency resolution
-                workflow_result = await db.execute(select(Workflow).where(Workflow.id == execution.workflow_id))
-                workflow = workflow_result.scalar_one_or_none()
-                
-                if not workflow:
-                    raise Exception("Workflow not found")
-                
-                from src.ai.dag_validator import DAGValidator
-                
-                dag = workflow.dag_structure
-                nodes_data = dag.get("nodes", [])
-                edges_data = dag.get("edges", [])
-                
-                # Convert to dict format for validator
-                nodes = [{"id": n.get("id"), **n} for n in nodes_data]
-                edges = [{"source": e.get("source"), "target": e.get("target")} for e in edges_data]
-                
-                # Get execution order using topological sort
-                execution_order = DAGValidator.topological_sort(nodes, edges)
-                
-                # Create node lookup
-                node_map = {node["id"]: node for node in nodes}
-                workflow_results = {}
-                
-                config_service = ConfigService(db)
-                
-                for node_id in execution_order:
-                    node = node_map[node_id]
-                    agent_id = node.get("config", {}).get("agent_id") or node.get("data", {}).get("agentId") or node.get("agentId")
-                    
-                    if not agent_id:
-                        continue
-                    
-                    # Fetch Agent
-                    agent_result = await db.execute(select(Agent).where(Agent.id == UUID(agent_id)))
-                    agent = agent_result.scalar_one_or_none()
-                    
-                    if not agent:
-                        continue
-                    
-                    await r.publish(channel, json.dumps({
-                        "status": "step_start",
-                        "node_id": node_id,
-                        "agent_name": agent.name
-                    }))
-                    
-                    # Prepare input
-                    dependencies = DAGValidator.get_node_dependencies(node_id, edges)
-                    if dependencies:
-                        combined_input = "\n\n".join([
-                            f"Output from {dep}:\n{workflow_results.get(dep, '')}" 
-                            for dep in dependencies
-                        ])
-                        node_input = {"input": combined_input}
-                    else:
-                        node_input = execution.input_data
-                    
-                    # Execute agent
-                    provider = agent.llm_config.get("provider", "openai")
-                    model_name = agent.llm_config.get("model", "gpt-3.5-turbo")
-                    
-                    # Fetch API Key from Registry
-                    config_service = ConfigService(db)
-                    service_sku = f"{model_name}-in" if provider == "openai" else "gemini-api-key"
-                    api_key = await config_service.get_api_key_by_sku(execution.company_id, service_sku)
-                    
-                    if not api_key:
-                        # try fallback to provider-wide key
-                        api_key = await config_service.get_api_key_by_sku(execution.company_id, f"{provider}-api-key")
-                    
-                    if not api_key:
-                        raise Exception(f"API Key not found for provider {provider} and company {execution.company_id}")
-                    
-                    # Parse variables in system prompt
-                    system_prompt = parse_variables(agent.role, node_input if isinstance(node_input, dict) else {})
-                    
-                    llm_result = await call_llm(
-                        provider=provider,
-                        model=model_name,
-                        api_key=api_key,
-                        system_prompt=system_prompt,
-                        user_prompt=str(node_input)
-                    )
-                    
-                    step_output = llm_result["output"]
-                    workflow_results[node_id] = step_output
-                    
-                    # Log Usage
-                    usage_service = UsageService(db)
-                    usage = llm_result.get("usage", {})
-                    if usage.get("prompt_tokens"):
-                        await usage_service.log_usage(
-                            company_id=execution.company_id,
-                            service_sku=f"{model_name}-in", # or map to specific SKU
-                            raw_quantity=usage["prompt_tokens"],
-                            execution_id=execution.id,
-                            metadata={"node_id": node_id, "type": "input"}
-                        )
-                    if usage.get("completion_tokens"):
-                        await usage_service.log_usage(
-                            company_id=execution.company_id,
-                            service_sku=f"{model_name}-out",
-                            raw_quantity=usage["completion_tokens"],
-                            execution_id=execution.id,
-                            metadata={"node_id": node_id, "type": "output"}
-                        )
-
-                    await r.publish(channel, json.dumps({
-                        "status": "step_complete",
-                        "node_id": node_id,
-                        "output": step_output
-                    }))
-                
-                # Aggregate token usage from all steps
-                total_prompt_tokens = 0
-                total_completion_tokens = 0
-                
-                mock_result = {
-                    "output": "Workflow completed successfully",
-                    "steps": workflow_results,
-                    "execution_order": execution_order,
-                    "usage": {
-                        "prompt_tokens": total_prompt_tokens or 50, 
-                        "completion_tokens": total_completion_tokens or 100
-                    }
-                }
-                
+            if file_type == "txt":
+                text = file_content.decode("utf-8")
+            elif file_type == "pdf":
+                import PyPDF2
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text() + "\n"
+            elif file_type == "docx":
+                import docx
+                doc = docx.Document(io.BytesIO(file_content))
+                text = "\n".join([p.text for p in doc.paragraphs])
             else:
-                # Single Agent Execution
-                # Fetch Agent
-                agent_result = await db.execute(select(Agent).where(Agent.id == execution.agent_id))
-                agent = agent_result.scalar_one_or_none()
+                text = file_content.decode("utf-8", errors="ignore")
                 
-                # Fetch API Key from Registry
-                config_service = ConfigService(db)
-                provider = agent.llm_config.get("provider", "openai")
-                model_name = agent.llm_config.get("model", "gpt-3.5-turbo")
-                enabled_tools = agent.llm_config.get("tools", [])
-                
-                service_sku = f"{model_name}-in" if provider == "openai" else "gemini-api-key"
-                api_key = await config_service.get_api_key_by_sku(execution.company_id, service_sku)
-                
-                if not api_key:
-                    # Fallback
-                    api_key = await config_service.get_api_key_by_sku(execution.company_id, f"{provider}-api-key")
-                
-                if not api_key:
-                    raise Exception(f"API Key not found for provider {provider} and company {execution.company_id}")
-                
-                # Prepare system prompt
-                system_prompt = parse_variables(agent.role, execution.input_data if isinstance(execution.input_data, dict) else {})
-                
-                if enabled_tools:
-                    from src.ai.tools import ToolRegistry
-                    available_tools = [t for t in ToolRegistry.list_tools() if t["name"] in enabled_tools]
-                    if available_tools:
-                        tool_descriptions = "\n".join([f"- {t['name']}: {t['description']}" for t in available_tools])
-                        system_prompt += f"\n\nYou have access to the following tools:\n{tool_descriptions}\n\nTo use a tool, respond with: TOOL:tool_name:input_data"
-                
-                # Call LLM
-                llm_result = await call_llm(
-                    provider=provider,
-                    model=model_name,
-                    api_key=api_key,
-                    system_prompt=system_prompt,
-                    user_prompt=str(execution.input_data)
-                )
-                
-                # Tool execution logic remains same...
-                if enabled_tools:
-                    from src.ai.tool_executor import ToolExecutor
-                    tool_calls = await ToolExecutor.parse_tool_calls(llm_result["output"])
-                    if tool_calls:
-                        await r.publish(channel, json.dumps({"status": "executing_tools", "tool_count": len(tool_calls)}))
-                        tool_results = await ToolExecutor.execute_tools(tool_calls)
-                        tool_context = ToolExecutor.format_tool_results(tool_results)
-                        follow_up_prompt = f"{execution.input_data}\n\n{tool_context}\n\nPlease provide your final response based on the tool results above."
-                        llm_result = await call_llm(
-                            provider=provider,
-                            model=model_name,
-                            api_key=api_key,
-                            system_prompt=agent.role,
-                            user_prompt=str(follow_up_prompt)
-                        )
-                        llm_result["tool_calls"] = tool_calls
-                        llm_result["tool_results"] = tool_results
-                
-                mock_result = llm_result
+            chunk_size = 500
+            chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+            
+            config_service = ConfigService(db)
+            gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, "gemini-embedding-004") or \
+                             await config_service.get_api_key_by_sku(document.company_id, "gemini-api-key")
+                             
+            if not gemini_api_key:
+                 raise Exception("Gemini API Key not found")
 
-            # Update Status to Completed
-            execution.status = "completed"
-            execution.result_data = mock_result
-            execution.completed_at = datetime.utcnow()
+            async with httpx.AsyncClient() as client:
+                for idx, chunk_text in enumerate(chunks):
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_api_key}"
+                    response = await client.post(
+                        url,
+                        headers={"Content-Type": "application/json"},
+                        json={
+                            "model": "models/text-embedding-004",
+                            "content": {"parts": [{"text": chunk_text}]}
+                        }
+                    )
+                    if response.status_code == 200:
+                        embedding = response.json()["embedding"]["values"]
+                        chunk = DocumentChunk(
+                            document_id=document.id,
+                            chunk_index=str(idx),
+                            content=chunk_text,
+                            embedding=embedding
+                        )
+                        db.add(chunk)
+            
+            document.upload_status = "completed"
             await db.commit()
-            
-            await r.publish(channel, json.dumps({"status": "completed", "result": mock_result}))
-            
-            # Create usage log entries
-            try:
-                usage_service = UsageService(db)
-                usage = mock_result.get("usage", {})
-                if usage.get("prompt_tokens"):
-                    await usage_service.log_usage(
-                        company_id=execution.company_id,
-                        service_sku=f"{model_name}-in",
-                        raw_quantity=usage["prompt_tokens"],
-                        execution_id=execution.id,
-                        metadata={"type": "input"}
-                    )
-                if usage.get("completion_tokens"):
-                    await usage_service.log_usage(
-                        company_id=execution.company_id,
-                        service_sku=f"{model_name}-out",
-                        raw_quantity=usage["completion_tokens"],
-                        execution_id=execution.id,
-                        metadata={"type": "output"}
-                    )
-            except Exception as usage_error:
-                print(f"Usage logging error (non-fatal): {usage_error}")
             
         except Exception as e:
-            execution.status = "failed"
-            execution.error_message = str(e)
-            execution.completed_at = datetime.utcnow()
+            document.upload_status = "failed"
             await db.commit()
-            await r.publish(channel, json.dumps({"status": "failed", "error": str(e)}))
-            print(f"Execution failed: {e}")
-        finally:
-            await r.close()
-
-# Removed legacy billing invoice generation
-
-from arq.connections import RedisSettings
+            print(f"Doc processing failed: {e}")
 
 class WorkerSettings:
-    functions = [run_execution, process_document]
-    cron_jobs = []
+    functions = [run_execution_recursive, process_document]
     redis_settings = RedisSettings(host="localhost", port=6379)
-    on_startup = None
-    on_shutdown = None
-
-

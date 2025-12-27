@@ -54,37 +54,64 @@ export interface ModelConfig {
     tools: string[];
 }
 
-export interface Agent {
+export enum EntityType {
+    ACTION = 'ACTION',
+    SKILL = 'SKILL',
+    AGENT = 'AGENT',
+    PROCESS = 'PROCESS',
+}
+
+export enum RunStatus {
+    PENDING = 'PENDING',
+    RUNNING = 'RUNNING',
+    COMPLETED = 'COMPLETED',
+    FAILED = 'FAILED',
+    REPAIRING = 'REPAIRING',
+}
+
+export interface HierarchicalEntity {
     id: string;
     company_id: string;
+    parent_id?: string;
     name: string;
     description?: string;
-    role: string;
-    llm_config: ModelConfig;
+    type: EntityType;
+    static_plan?: any;
+    llm_config?: ModelConfig;
+    toolkit?: any[];
     is_active: boolean;
     created_at: string;
     updated_at: string;
 }
 
-export interface Workflow {
+export interface LLMInteractionLog {
     id: string;
-    company_id: string;
-    name: string;
-    description?: string;
-    dag: any;
+    run_id: string;
+    model_provider: string;
+    model_name: string;
+    input_prompt: string;
+    output_response: string;
+    prompt_tokens: number;
+    completion_tokens: number;
+    latency_ms?: number;
     created_at: string;
-    updated_at: string;
 }
 
-export interface Execution {
+export interface ExecutionRun {
     id: string;
+    entity_id: string;
+    parent_run_id?: string;
     company_id: string;
-    agent_id?: string;
-    workflow_id?: string;
-    status: 'queued' | 'running' | 'completed' | 'failed';
-    input: any;
-    output?: any;
-    error?: string;
-    created_at: string;
+    status: RunStatus;
+    input_data?: any;
+    dynamic_plan?: any;
+    result_data?: any;
+    context_state?: any;
+    error_message?: string;
+    started_at?: string;
     completed_at?: string;
+    created_at: string;
+    llm_logs?: LLMInteractionLog[];
+    child_runs?: ExecutionRun[];
+    entity?: HierarchicalEntity;
 }

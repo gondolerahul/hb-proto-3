@@ -4,8 +4,8 @@ from sqlalchemy.future import select
 from typing import List
 from uuid import UUID
 from src.common.database import get_db
-from src.auth.models import Company, User, Partner, Tenant
-from src.auth.schemas import CompanyCreate, CompanyResponse
+from src.auth.models import Company, User
+from src.auth.schemas import CompanyCreate, CompanyResponse, CompanyUpdate
 from src.auth.dependencies import get_current_user, RoleChecker
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -52,21 +52,6 @@ async def create_company(
         status="active"
     )
     db.add(new_company)
-    await db.flush()
-    
-    if company.type == "PARTNER":
-        partner = Partner(name=company.name, company_id=new_company.id)
-        db.add(partner)
-    elif company.type == "TENANT":
-        tenant = Tenant(name=company.name, company_id=new_company.id)
-        if company.parent_id:
-            # Try to find partner record for the parent company
-            res = await db.execute(select(Partner).filter(Partner.company_id == company.parent_id))
-            partner_record = res.scalars().first()
-            if partner_record:
-                tenant.partner_id = partner_record.id
-        db.add(tenant)
-
     await db.commit()
     await db.refresh(new_company)
     return new_company
@@ -74,12 +59,14 @@ async def create_company(
 @router.patch("/{company_id}", response_model=CompanyResponse)
 async def update_company(
     company_id: UUID,
-    company_update: CompanyCreate, # Simplified for now
+    company_update: CompanyUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     # Check permissions
     if current_user.role != "app_admin" and current_user.company_id != company_id:
+        # Also allow partner admins to update their own tenants?
+        # For now, stick to the current user's company or app_admin
         raise HTTPException(status_code=403, detail="Not authorized to update this company")
     
     result = await db.execute(select(Company).filter(Company.id == company_id))
@@ -87,8 +74,9 @@ async def update_company(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     
-    company.name = company_update.name
-    company.status = company_update.status
+    update_data = company_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(company, field, value)
     
     await db.commit()
     await db.refresh(company)
