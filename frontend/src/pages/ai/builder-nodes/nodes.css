@@ -110,3 +110,42 @@
     background: rgba(250, 173, 20, 0.15);
     color: var(--color-warning);
 }
+
+/* Node Status and Badges */
+.node-status-icon {
+    color: var(--color-success);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.node-optional-badge {
+    padding: 2px 6px;
+    background: var(--color-warning);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: var(--radius-sm);
+    line-height: 1;
+}
+
+.node-footer {
+    margin-top: var(--spacing-2);
+    padding-top: var(--spacing-2);
+    border-top: 1px solid var(--color-border);
+}
+
+.node-ref-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-rose-gold);
+    font-weight: 600;
+}
+
+.entity-node.linked {
+    border-color: var(--color-rose-gold);
+    background: linear-gradient(135deg, var(--color-glass-bg), rgba(197, 142, 127, 0.05));
+}
+
+.entity-node.linked:hover {
+    box-shadow: 0 0 20px rgba(197, 142, 127, 0.3);
+}
