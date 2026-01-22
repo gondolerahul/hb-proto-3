@@ -59,6 +59,29 @@ class AIService:
         entity = result.scalar_one_or_none()
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found")
+            
+        # Ensure Actions/Skills have at least one step in their plan for the UI to correctly display inputs
+        # This is a virtual fallback for UI purposes when no explicit steps are defined
+        if entity.type in [EntityType.ACTION, EntityType.SKILL]:
+            planning = entity.planning or {}
+            static_plan = planning.get("static_plan", {})
+            if not static_plan or not static_plan.get("steps"):
+                # Construct a virtual plan with a default step
+                virtual_planning = planning.copy()
+                virtual_planning["static_plan"] = {
+                    "enabled": True,
+                    "steps": [{
+                        "step_id": "default_execute",
+                        "name": "Execute",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": entity.description or "Process instruction: {{instruction}}"
+                        },
+                        "required": True
+                    }]
+                }
+                entity.planning = virtual_planning
+                
         return entity
 
     async def update_entity(self, entity_id: UUID, entity_in: HierarchicalEntityUpdate, company_id: UUID) -> HierarchicalEntity:
@@ -98,7 +121,9 @@ class AIService:
             .options(
                 selectinload(ExecutionRun.entity),
                 selectinload(ExecutionRun.child_runs),
-                selectinload(ExecutionRun.llm_logs)
+                selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.tool_logs),
+                selectinload(ExecutionRun.human_approvals)
             )
             .where(ExecutionRun.id == execution.id)
         )

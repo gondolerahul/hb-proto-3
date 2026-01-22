@@ -15,16 +15,35 @@ from src.auth.models import User
 router = APIRouter(prefix="/config", tags=["Integrations"])
 
 @router.get("/models", response_model=list[ModelResponse])
-async def list_models():
-    # Predefined list of supported models in the platform
-    return [
-        {"model_key": "gpt-4o", "model_name": "GPT-4o", "provider": "openai", "model_type": "text", "is_active": True},
-        {"model_key": "gpt-4-turbo", "model_name": "GPT-4 Turbo", "provider": "openai", "model_type": "text", "is_active": True},
-        {"model_key": "gpt-3.5-turbo", "model_name": "GPT-3.5 Turbo", "provider": "openai", "model_type": "text", "is_active": True},
-        {"model_key": "gemini-1.5-pro", "model_name": "Gemini 1.5 Pro", "provider": "gemini", "model_type": "text", "is_active": True},
-        {"model_key": "gemini-1.5-flash", "model_name": "Gemini 1.5 Flash", "provider": "gemini", "model_type": "text", "is_active": True},
-        {"model_key": "text-embedding-004", "model_name": "Gemini Embedding 004", "provider": "gemini", "model_type": "embedding", "is_active": True}
-    ]
+async def list_models(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    service = ConfigService(db)
+    integrations = await service.get_registry_entries(company_id=current_user.company_id)
+    
+    # Filter for LLM category and unique model names
+    models = []
+    seen_models = set()
+    
+    for integration in integrations:
+        if integration.service_category == "LLM" and integration.model_name not in seen_models:
+            models.append({
+                "model_key": integration.model_name,
+                "model_name": integration.model_name,
+                "provider": integration.provider_name,
+                "model_type": "text", # Default for LLM category
+                "is_active": integration.status == "active"
+            })
+            seen_models.add(integration.model_name)
+            
+    # If no integrations found, return a default list or empty
+    if not models:
+        # Optional: return some defaults if none configured? 
+        # But the user specifically said they should be related.
+        return []
+    
+    return models
 
 @router.post("/integrations", response_model=IntegrationRegistryResponse)
 async def create_integration(

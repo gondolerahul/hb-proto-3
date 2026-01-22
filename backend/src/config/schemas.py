@@ -8,9 +8,11 @@ class IntegrationRegistryBase(BaseModel):
     provider_name: str
     model_name: Optional[str] = None
     service_sku: str
+    service_category: str = "LLM"
     component_type: str
     internal_cost: Decimal
     cost_unit: str
+    service_metadata: Optional[dict] = None
     status: str = "active"
 
 class IntegrationRegistryCreate(IntegrationRegistryBase):
@@ -21,9 +23,11 @@ class IntegrationRegistryUpdate(BaseModel):
     provider_name: Optional[str] = None
     model_name: Optional[str] = None
     service_sku: Optional[str] = None
+    service_category: Optional[str] = None
     component_type: Optional[str] = None
     internal_cost: Optional[Decimal] = None
     cost_unit: Optional[str] = None
+    service_metadata: Optional[dict] = None
     status: Optional[str] = None
     api_key: Optional[str] = None
 

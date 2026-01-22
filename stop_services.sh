@@ -40,43 +40,58 @@ stop_service() {
     fi
 }
 
-# Stop Frontend
+# Function to force kill processes on a specific port
+kill_port() {
+    local name=$1
+    local port=$2
+    local pids=$(lsof -t -i:$port 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo -e "${YELLOW}Cleaning up remaining $name processes on port $port...${NC}"
+        kill -9 $pids 2>/dev/null
+        echo -e "${GREEN}✓ Port $port cleared${NC}"
+    fi
+}
+
+# Step 1: Stop Frontend (Port 3000)
 echo -e "${BLUE}[1/5] Stopping Frontend...${NC}"
 stop_service "Frontend" "$LOG_DIR/frontend.pid"
+pkill -f "npm run dev" 2>/dev/null || true
+pkill -f "vite" 2>/dev/null || true
+kill_port "Frontend" 3000
 
-# Also kill any remaining npm/vite processes
-pkill -f "vite" 2>/dev/null && echo -e "${GREEN}✓ Killed remaining Vite processes${NC}"
-
-# Stop Arq Worker
+# Step 2: Stop Arq Worker
 echo -e "${BLUE}[2/5] Stopping Arq Worker...${NC}"
 stop_service "Arq Worker" "$LOG_DIR/arq_worker.pid"
+pkill -f "arq src.ai.worker.WorkerSettings" 2>/dev/null && echo -e "${GREEN}✓ Arq processes terminated${NC}"
 
-# Also kill any remaining arq processes
-pkill -f "arq src.ai.worker.WorkerSettings" 2>/dev/null && echo -e "${GREEN}✓ Killed remaining Arq processes${NC}"
-
-# Stop API Gateway
+# Step 3: Stop API Gateway (Port 8000)
 echo -e "${BLUE}[3/5] Stopping API Gateway...${NC}"
 stop_service "API Gateway" "$LOG_DIR/api_gateway.pid"
+kill_port "API Gateway" 8000
 
-# Stop Backend API
+# Step 4: Stop Backend API (Port 8001)
 echo -e "${BLUE}[4/5] Stopping Backend API...${NC}"
 stop_service "Backend API" "$LOG_DIR/backend_api.pid"
+kill_port "Backend API" 8001
 
-# Kill any remaining uvicorn processes
-pkill -f "uvicorn" 2>/dev/null && echo -e "${GREEN}✓ Killed remaining Uvicorn processes${NC}"
+# Final cleanup of uvicorn
+pkill -f "uvicorn" 2>/dev/null && echo -e "${GREEN}✓ All remaining Uvicorn processes stopped${NC}"
 
-# Stop Docker services
+# Step 5: Stop Docker services
 echo -e "${BLUE}[5/5] Stopping Docker services...${NC}"
 cd "$BACKEND_DIR"
-docker compose down
-echo -e "${GREEN}✓ Docker services stopped${NC}"
+if docker compose ps > /dev/null 2>&1; then
+    docker compose down
+    echo -e "${GREEN}✓ Docker services stopped${NC}"
+else
+    echo -e "${YELLOW}Docker compose not found or not active in $BACKEND_DIR${NC}"
+fi
 
 echo ""
 echo -e "${BLUE}========================================${NC}"
-echo -e "${GREEN}✓ All services stopped successfully!${NC}"
+echo -e "${GREEN}✓ All HireBuddha services stopped${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "${YELLOW}Note: Logs are preserved in $LOG_DIR/${NC}"
 echo -e "${YELLOW}To start services again, run:${NC}"
 echo -e "  ${GREEN}./start_services.sh${NC}"
 echo ""

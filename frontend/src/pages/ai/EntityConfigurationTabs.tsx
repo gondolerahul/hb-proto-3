@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ToolSelectionPanel } from '@/components/ToolSelectionPanel';
+import { integrationService } from '../../services/integration.service';
 import { JellyButton } from '@/components/ui';
 import { Info, Brain, Settings, Route, Wrench, Shield, Layers, Plus, Trash2 } from 'lucide-react';
 import { EntityType, EntityStatus, HierarchicalEntity } from '@/types';
@@ -64,10 +65,40 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
     const [maxRecursionDepth, setMaxRecursionDepth] = useState(5);
     const [maxToolCalls, setMaxToolCalls] = useState<number | undefined>(undefined);
     const [hitlCheckpoints, setHitlCheckpoints] = useState(entity?.governance?.hitl_checkpoints || []);
+    const [availableModels, setAvailableModels] = useState<any[]>([]);
 
-    // Hierarchy State
     const [hierarchyNodes, setHierarchyNodes] = useState<Node[]>([]);
     const [hierarchyEdges, setHierarchyEdges] = useState<Edge[]>([]);
+
+    useEffect(() => {
+        const fetchModels = async () => {
+            try {
+                const models = await integrationService.getModels();
+                setAvailableModels(models);
+
+                const providers = Array.from(new Set(models.map(m => m.provider)));
+                const currentProviderValid = providers.includes(modelProvider);
+
+                // If current provider is invalid OR modelName is unset, pick defaults
+                if ((!currentProviderValid || !modelName) && models.length > 0) {
+                    const defaultModel = models[0];
+                    setModelProvider(defaultModel.provider);
+                    setModelName(defaultModel.model_key);
+                } else if (currentProviderValid && models.length > 0) {
+                    // Provider is valid, but check if the selected model exists for this provider
+                    const modelsForProvider = models.filter(m => m.provider === modelProvider);
+                    const currentModelValid = modelsForProvider.some(m => m.model_key === modelName);
+
+                    if (!currentModelValid && modelsForProvider.length > 0) {
+                        setModelName(modelsForProvider[0].model_key);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch models:', error);
+            }
+        };
+        fetchModels();
+    }, []);
 
     const addTag = () => {
         if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -216,11 +247,12 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
             }));
     };
 
-    const models: Record<string, string[]> = {
-        google: ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-        openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-        anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'],
-    };
+    // Group available models by provider
+    const providers = Array.from(new Set(availableModels.map(m => m.provider)));
+    const modelsByProvider: Record<string, string[]> = {};
+    providers.forEach(p => {
+        modelsByProvider[p] = availableModels.filter(m => m.provider === p).map(m => m.model_key);
+    });
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: Info },
@@ -421,19 +453,26 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                     <label>Model Provider *</label>
                                     <select value={modelProvider} onChange={(e) => {
                                         setModelProvider(e.target.value);
-                                        setModelName(models[e.target.value][0]);
+                                        const modelsForProvider = modelsByProvider[e.target.value] || [];
+                                        if (modelsForProvider.length > 0) {
+                                            setModelName(modelsForProvider[0]);
+                                        }
                                     }}>
-                                        <option value="google">Google</option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="anthropic">Anthropic</option>
+                                        {providers.map(p => (
+                                            <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                                        ))}
+                                        {providers.length === 0 && <option value="">No Providers Configured</option>}
                                     </select>
                                 </div>
                                 <div className="form-group">
                                     <label>Model Name *</label>
                                     <select value={modelName} onChange={(e) => setModelName(e.target.value)}>
-                                        {models[modelProvider].map(model => (
+                                        {(modelsByProvider[modelProvider] || []).map(model => (
                                             <option key={model} value={model}>{model}</option>
                                         ))}
+                                        {(!modelsByProvider[modelProvider] || modelsByProvider[modelProvider].length === 0) && (
+                                            <option value="">No Models Available</option>
+                                        )}
                                     </select>
                                 </div>
                             </div>

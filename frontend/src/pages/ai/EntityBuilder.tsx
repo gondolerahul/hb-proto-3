@@ -45,7 +45,21 @@ export const EntityBuilder: React.FC = () => {
             }
             navigate('/ai/entities');
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to save entity');
+            const detail = err.response?.data?.detail;
+            // Handle Pydantic validation errors which are arrays of {type, loc, msg, input}
+            if (Array.isArray(detail)) {
+                const messages = detail.map((e: any) => {
+                    const location = e.loc?.join(' → ') || '';
+                    return location ? `${location}: ${e.msg}` : e.msg;
+                });
+                setError(messages.join('; '));
+            } else if (typeof detail === 'string') {
+                setError(detail);
+            } else if (detail && typeof detail === 'object' && detail.msg) {
+                setError(detail.msg);
+            } else {
+                setError('Failed to save entity');
+            }
         } finally {
             setLoading(false);
         }

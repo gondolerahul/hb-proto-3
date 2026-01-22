@@ -6,9 +6,11 @@ export interface Integration {
     provider_name: string;
     model_name: string | null;
     service_sku: string;
+    service_category: string;
     component_type: string;
     internal_cost: number;
     cost_unit: string;
+    service_metadata: Record<string, any> | null;
     status: string;
     created_at: string;
     updated_at: string;
@@ -19,10 +21,12 @@ export interface IntegrationCreate {
     provider_name: string;
     model_name?: string;
     service_sku: string;
+    service_category?: string;
     component_type: string;
     internal_cost: number;
     cost_unit: string;
     api_key: string;
+    service_metadata?: Record<string, any>;
     status?: string;
 }
 
@@ -30,10 +34,12 @@ export interface IntegrationUpdate {
     provider_name?: string;
     model_name?: string;
     service_sku?: string;
+    service_category?: string;
     component_type?: string;
     internal_cost?: number;
     cost_unit?: string;
     api_key?: string;
+    service_metadata?: Record<string, any>;
     status?: string;
 }
 

@@ -40,16 +40,24 @@ class UsageService:
             return None
 
         # Calculate cost
-        # internal_cost is usually per 1M tokens or per unit
-        # Formula depends on the component_type, but simple multiplication for now
         # registry_entry.internal_cost is Decimal(18,6)
         # raw_quantity is float (e.g. number of tokens)
         
-        calculated_cost = registry_entry.internal_cost * Decimal(str(raw_quantity))
+        # Support unit-based costing (e.g., 1M Tokens)
+        divisor = Decimal("1.0")
+        if registry_entry.cost_unit:
+            if "1M Tokens" in registry_entry.cost_unit:
+                divisor = Decimal("1000000.0")
+            elif "1K Tokens" in registry_entry.cost_unit:
+                divisor = Decimal("1000.0")
+            elif "1000 Characters" in registry_entry.cost_unit:
+                divisor = Decimal("1000.0")
+        
+        calculated_cost = (registry_entry.internal_cost * Decimal(str(raw_quantity))) / divisor
 
         usage_log = UsageLog(
             company_id=company_id,
-            execution_id=execution_id,
+            run_id=execution_id,
             sku_id=registry_entry.id,
             raw_quantity=Decimal(str(raw_quantity)),
             calculated_cost=calculated_cost,

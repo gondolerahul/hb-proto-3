@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
@@ -68,9 +68,9 @@ class HierarchyChildCondition(BaseModel):
     description: Optional[str] = None
 
 class HierarchyChild(BaseModel):
-    child_id: UUID
-    child_type: EntityType
-    relationship: RelationshipType
+    child_id: Optional[str] = None  # Accept string IDs from frontend
+    child_type: Optional[str] = None  # Accept string type from frontend
+    relationship: Optional[str] = None  # Accept string relationship from frontend
     condition: Optional[HierarchyChildCondition] = None
 
 class Hierarchy(BaseModel):
@@ -120,12 +120,12 @@ class PlanStepTarget(BaseModel):
     prompt_template: Optional[str] = None
 
 class PlanStep(BaseModel):
-    step_id: UUID
-    order: int
-    name: str
+    step_id: Optional[str] = None  # Accept string IDs from frontend
+    order: int = 0
+    name: str = ""
     description: Optional[str] = None
-    type: StepType
-    target: PlanStepTarget
+    type: Optional[str] = None  # Accept string type from frontend
+    target: Optional[PlanStepTarget] = None
     required: bool = True
     exit_conditions: List[ExitCondition] = []
 
@@ -169,13 +169,17 @@ class ToolAuth(BaseModel):
 
 class ToolDefinition(BaseModel):
     tool_id: str
-    name: str
-    description: str
-    provider: str
-    authentication: ToolAuth = ToolAuth(type="NONE")
-    function_schema: Dict[str, Any]
+    name: Optional[str] = None
+    description: Optional[str] = None
+    provider: Optional[str] = None
+    authentication: Optional[ToolAuth] = None
+    function_schema: Optional[Dict[str, Any]] = None
     permissions: str = "READ" # READ | WRITE | EXECUTE
     sandbox_mode: bool = False
+
+# Simple tool reference (just tool_id)
+class ToolReference(BaseModel):
+    tool_id: str
 
 class MemoryConfig(BaseModel):
     enabled: bool = False
@@ -194,14 +198,19 @@ class ContextEngineering(BaseModel):
     artifact_handling: ArtifactHandling = ArtifactHandling()
 
 class Capabilities(BaseModel):
-    tools: List[ToolDefinition] = []
+    tools: List[ToolReference] = []  # Accept simple tool references
     memory: MemoryConfig = MemoryConfig()
     context_engineering: ContextEngineering = ContextEngineering()
+
+class ExecutionLimits(BaseModel):
+    max_recursion_depth: int = 5
+    max_tool_calls: Optional[int] = None
 
 class Governance(BaseModel):
     max_cost_usd: Optional[float] = None
     timeout_ms: int = 60000
     max_recursion_depth: int = 5
+    execution_limits: Optional[ExecutionLimits] = None
     hitl_checkpoints: List[Dict[str, Any]] = []
 
 class IOContract(BaseModel):
@@ -223,7 +232,7 @@ class HierarchicalEntityBase(BaseModel):
     status: EntityStatus = EntityStatus.ACTIVE
     tags: List[str] = []
     
-    identity: Optional[Persona] = None
+    identity: Optional[Any] = None  # Accept Persona or {persona: Persona} format
     hierarchy: Optional[Hierarchy] = None
     logic_gate: Optional[LogicGate] = None
     planning: Optional[Planning] = None
@@ -267,6 +276,20 @@ class HierarchicalEntityResponse(HierarchicalEntityBase):
 
     class Config:
         from_attributes = True
+
+    @field_validator("identity", mode="before")
+    @classmethod
+    def parse_identity(cls, v):
+        if isinstance(v, dict) and "persona" in v:
+            return v["persona"]
+        return v
+    
+    @field_validator("tags", mode="before")
+    @classmethod
+    def parse_tags(cls, v):
+        if v is None:
+            return []
+        return v
 
 # Execution Run Schemas
 class ExecutionRunCreate(BaseModel):
@@ -337,6 +360,20 @@ class ExecutionRunSummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator("total_cost_usd", mode="before")
+    @classmethod
+    def parse_total_cost_usd(cls, v):
+        if v is None:
+            return 0.0
+        return v
+
+    @field_validator("total_tokens", mode="before")
+    @classmethod
+    def parse_total_tokens(cls, v):
+        if v is None:
+            return 0
+        return v
 
 class ExecutionRunResponse(ExecutionRunSummary):
     input_data: Optional[Dict[str, Any]]

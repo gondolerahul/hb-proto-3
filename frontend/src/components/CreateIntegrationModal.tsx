@@ -22,6 +22,13 @@ const COMPONENT_TYPES = [
     { id: 'flat_fee', name: 'Flat Fee' }
 ];
 
+const SERVICE_CATEGORIES = [
+    { id: 'LLM', name: 'LLM (AI Model)' },
+    { id: 'COMMUNICATION', name: 'Communication (Twilio/Exotel)' },
+    { id: 'API_TOOL', name: 'API Tool (Apollo/Clay/Zapier)' },
+    { id: 'OTHER', name: 'Other' }
+];
+
 export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
     isOpen,
     onClose,
@@ -34,6 +41,7 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
         provider_name: '',
         model_name: '',
         service_sku: '',
+        service_category: 'LLM',
         component_type: 'input_token',
         internal_cost: 0,
         cost_unit: '1M Tokens',
@@ -63,6 +71,7 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                 provider_name: editingIntegration.provider_name,
                 model_name: editingIntegration.model_name || '',
                 service_sku: editingIntegration.service_sku,
+                service_category: editingIntegration.service_category || 'LLM',
                 component_type: editingIntegration.component_type,
                 internal_cost: editingIntegration.internal_cost,
                 cost_unit: editingIntegration.cost_unit,
@@ -74,6 +83,7 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                 provider_name: '',
                 model_name: '',
                 service_sku: '',
+                service_category: 'LLM',
                 component_type: 'input_token',
                 internal_cost: 0,
                 cost_unit: '1M Tokens',
@@ -139,17 +149,31 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
 
                 <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-6">
                     <div className="col-span-1">
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Model Template</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Model Template (Optional)</label>
                         <select
                             onChange={(e) => handleModelChange(e.target.value)}
                             value={formData.model_name}
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 transition-all"
                         >
-                            <option value="" className="bg-gray-900">Select Model...</option>
+                            <option value="" className="bg-gray-900">Custom / Select Model...</option>
                             {models.map(m => (
                                 <option key={m.model_key} value={m.model_key} className="bg-gray-900">
                                     {m.model_name} ({m.provider})
                                 </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="col-span-1">
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Service Category</label>
+                        <select
+                            value={formData.service_category}
+                            onChange={(e) => setFormData({ ...formData, service_category: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 transition-all"
+                            required
+                        >
+                            {SERVICE_CATEGORIES.map(c => (
+                                <option key={c.id} value={c.id} className="bg-gray-900">{c.name}</option>
                             ))}
                         </select>
                     </div>
@@ -234,6 +258,6 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                     </div>
                 </form>
             </GlassCard>
-        </div>
+        </div >
     );
 };

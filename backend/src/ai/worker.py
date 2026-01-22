@@ -157,7 +157,9 @@ class ExecutionEngine:
             all_step_results = []
             
             # 3. Plan Generation/Reconciliation
+            print(f"--- Starting Execution {run.id} for Entity {entity.name} ---")
             plan = await self._get_reconciled_plan(entity, run.input_data)
+            print(f"Plan reconciled. Steps to execute: {len(plan.get('steps', []))}")
             run.dynamic_plan = plan # Store the actual plan used
             await self.db.commit()
 
@@ -206,8 +208,28 @@ class ExecutionEngine:
 
     async def _get_reconciled_plan(self, entity: HierarchicalEntity, input_data: dict) -> dict:
         """Merges static and dynamic plans based on strategy."""
-        static_plan = entity.planning.get("static_plan", {}) if entity.planning else {}
-        dynamic_config = entity.planning.get("dynamic_planning", {}) if entity.planning else {}
+        import copy
+        planning = entity.planning or {}
+        static_plan = copy.deepcopy(planning.get("static_plan", {})) or {}
+        
+        if "steps" not in static_plan:
+            static_plan["steps"] = []
+            
+        # Fallback: If no steps and it is a leaf action/skill, add a default step
+        if not static_plan["steps"] and entity.type in [EntityType.ACTION, EntityType.SKILL]:
+            static_plan["steps"] = [{
+                "step_id": "auto_generated",
+                "order": 1,
+                "name": "Execute",
+                "description": f"Executing {entity.name}",
+                "type": "ACTION",
+                "target": {
+                    "prompt_template": entity.description or "Process instruction: {{instruction}}"
+                },
+                "required": True
+            }]
+
+        dynamic_config = planning.get("dynamic_planning", {}) or {}
         
         if not dynamic_config.get("enabled"):
             return static_plan
@@ -286,6 +308,7 @@ class ExecutionEngine:
 
     async def _execute_thought(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         # 1. Resolve Config
+        print(f"Executing Thought/Action step: {step.name}")
         logic_gate = entity.logic_gate or {}
         config = logic_gate.get("reasoning_config", {})
         if not config:
@@ -306,7 +329,9 @@ class ExecutionEngine:
         user_prompt = parse_variables(user_prompt, context)
 
         # 4. Call LLM
+        print(f"Calling LLM {config.get('model_name')} via {config.get('model_provider')}...")
         llm_result = await call_llm_unified(config, system_prompt, user_prompt, api_key)
+        print(f"LLM Response received ({llm_result['prompt_tokens']} prompt, {llm_result['completion_tokens']} completion)")
         
         # 5. Log Interaction & Track Usage
         log = LLMInteractionLog(
@@ -322,18 +347,35 @@ class ExecutionEngine:
         )
         self.db.add(log)
         
-        # Track usage/cost
-        total_tokens = llm_result["prompt_tokens"] + llm_result["completion_tokens"]
-        usage_log = await self.usage_service.log_usage(
+        # Track usage/cost for input and output separately
+        input_sku = f"{config.get('model_name')}-in"
+        output_sku = f"{config.get('model_name')}-out"
+        
+        # Log input usage
+        input_usage = await self.usage_service.log_usage(
             company_id=run.company_id,
-            service_sku=config.get("model_name"),
-            raw_quantity=float(total_tokens),
+            service_sku=input_sku,
+            raw_quantity=float(llm_result["prompt_tokens"]),
             execution_id=run.id
         )
-        if usage_log:
-            log.cost_usd = usage_log.calculated_cost
-            run.total_cost_usd += usage_log.calculated_cost
-            run.total_tokens += total_tokens
+        
+        # Log output usage
+        output_usage = await self.usage_service.log_usage(
+            company_id=run.company_id,
+            service_sku=output_sku,
+            raw_quantity=float(llm_result["completion_tokens"]),
+            execution_id=run.id
+        )
+
+        if input_usage:
+            log.cost_usd += input_usage.calculated_cost
+            run.total_cost_usd += input_usage.calculated_cost
+        
+        if output_usage:
+            log.cost_usd += output_usage.calculated_cost
+            run.total_cost_usd += output_usage.calculated_cost
+            
+        run.total_tokens += (llm_result["prompt_tokens"] + llm_result["completion_tokens"])
 
         await self.db.commit()
         return {"step": step.name, "output": llm_result["output"]}

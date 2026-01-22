@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Text, Numeric, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, Text, Numeric, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.common.database import Base
@@ -16,10 +16,12 @@ class IntegrationRegistry(Base):
     provider_name = Column(String, nullable=False)  # e.g., OpenAI, Twilio
     model_name = Column(String, nullable=True)     # e.g., gpt-4o
     service_sku = Column(String, nullable=False)   # e.g., gpt-4o-in
+    service_category = Column(String, nullable=False, default="LLM") # e.g., LLM, API_TOOL, COMMUNICATION
     component_type = Column(String, nullable=False) # input_token, output_token, analysis, minute, character, flat_fee
     encrypted_api_key = Column(Text, nullable=True)
     internal_cost = Column(Numeric(18, 6), nullable=False)
     cost_unit = Column(String, nullable=False)      # e.g., 1M Tokens, 1 Image
+    service_metadata = Column(JSON, nullable=True)  # Service-specific configs
     status = Column(String, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
