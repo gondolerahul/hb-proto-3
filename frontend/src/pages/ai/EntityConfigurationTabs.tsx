@@ -35,7 +35,7 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
 
     // Logic Gate State
     const [modelProvider, setModelProvider] = useState(entity?.logic_gate?.reasoning_config?.model_provider || 'google');
-    const [modelName, setModelName] = useState(entity?.logic_gate?.reasoning_config?.model_name || 'gemini-2.0-flash-exp');
+    const [modelName, setModelName] = useState(entity?.logic_gate?.reasoning_config?.model_name || 'gemini-3-flash-preview');
     const [temperature, setTemperature] = useState(entity?.logic_gate?.reasoning_config?.temperature || 0.7);
     const [topP, setTopP] = useState(entity?.logic_gate?.reasoning_config?.top_p || 1.0);
     const [maxTokens, setMaxTokens] = useState<number | undefined>(entity?.logic_gate?.reasoning_config?.max_tokens);
@@ -76,12 +76,13 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                 const models = await integrationService.getModels();
                 setAvailableModels(models);
 
-                const providers = Array.from(new Set(models.map(m => m.provider)));
+                const providers = Array.from(new Set(models.map(m => m.provider))).filter(p => p !== 'openai');
                 const currentProviderValid = providers.includes(modelProvider);
 
-                // If current provider is invalid OR modelName is unset, pick defaults
+                // If current provider is invalid OR modelName is unset, pick defaults (preferring gemini if available)
                 if ((!currentProviderValid || !modelName) && models.length > 0) {
-                    const defaultModel = models[0];
+                    const geminiModel = models.find(m => m.model_key.includes('gemini'));
+                    const defaultModel = geminiModel || models[0];
                     setModelProvider(defaultModel.provider);
                     setModelName(defaultModel.model_key);
                 } else if (currentProviderValid && models.length > 0) {

@@ -20,10 +20,11 @@ from src.ai.usage_service import UsageService
 from src.ai.tool_executor import ToolExecutor
 import src.auth.models
 import src.config.models
-import httpx
+from google import genai
+from google.genai import types
+import asyncio
 import json
 import re
-import asyncio
 
 # --- Helper Functions ---
 
@@ -43,9 +44,8 @@ def parse_variables(text: str, variables: dict) -> str:
     return re.sub(r'\{\{(.*?)\}\}', replace, text)
 
 async def call_llm_unified(config: Dict[str, Any], system_prompt: str, user_prompt: str, api_key: str) -> dict:
-    """Unified LLM call with support for reasoning modes and provider routing."""
-    provider = config.get("model_provider", "openai")
-    model = config.get("model_name", "gpt-4o")
+    """Unified LLM call using google-genai library."""
+    model = config.get("model_name", "gemini-3-flash-preview")
     reasoning_mode = config.get("reasoning_mode", "REACT")
     temperature = config.get("temperature", 0.7)
     max_tokens = config.get("max_tokens")
@@ -57,65 +57,47 @@ async def call_llm_unified(config: Dict[str, Any], system_prompt: str, user_prom
     elif reasoning_mode == "REFLECTION":
         final_system += "\nAfter providing your answer, critique it for accuracy and completeness."
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        start_time = datetime.utcnow()
+    start_time = datetime.utcnow()
+    
+    # Initialize Google GenAI client
+    client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
+    
+    try:
+        # Prepare contents
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=f"{final_system}\n\nUser: {user_prompt}")]
+            )
+        ]
         
-        if provider == "openai":
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": final_system},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": temperature,
-                    "max_tokens": max_tokens
-                }
-            )
-        elif provider == "google":
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            response = await client.post(
-                url,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "contents": [{
-                        "parts": [{"text": f"{final_system}\n\nUser: {user_prompt}"}]
-                    }],
-                    "generationConfig": {
-                        "temperature": temperature,
-                        "maxOutputTokens": max_tokens
-                    }
-                }
-            )
-        else:
-            raise Exception(f"Unsupported provider: {provider}")
-
+        # Configure generation
+        generate_config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+        
+        # Call Gemini via google-genai
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=generate_config
+        )
+        
         latency = (datetime.utcnow() - start_time).total_seconds() * 1000
         
-        if response.status_code != 200:
-            raise Exception(f"{provider.capitalize()} API Error: {response.text}")
+        # Extract content and usage info
+        content = response.text
+        usage = response.usage_metadata
         
-        data = response.json()
-        if provider == "openai":
-            content = data["choices"][0]["message"]["content"]
-            usage = data.get("usage", {})
-            return {
-                "output": content,
-                "prompt_tokens": usage.get("prompt_tokens", 0),
-                "completion_tokens": usage.get("completion_tokens", 0),
-                "latency_ms": int(latency)
-            }
-        else: # google
-            content = data["candidates"][0]["content"]["parts"][0]["text"]
-            usage = data.get("usageMetadata", {})
-            return {
-                "output": content,
-                "prompt_tokens": usage.get("promptTokenCount", 0),
-                "completion_tokens": usage.get("candidatesTokenCount", 0),
-                "latency_ms": int(latency)
-            }
+        return {
+            "output": content,
+            "prompt_tokens": usage.prompt_token_count if usage else 0,
+            "completion_tokens": usage.candidates_token_count if usage else 0,
+            "latency_ms": int(latency)
+        }
+    except Exception as e:
+        raise Exception(f"Gemini API Error (google-genai): {str(e)}")
 
 # --- Execution Engine ---
 
@@ -313,15 +295,34 @@ class ExecutionEngine:
         config = logic_gate.get("reasoning_config", {})
         if not config:
             # Fallback to legacy llm_config
-            config = entity.llm_config or {"model_provider": "openai", "model_name": "gpt-4o"}
+            config = entity.llm_config or {"model_provider": "google", "model_name": "gemini-3-flash-preview"}
         
-        # 2. Get API Key
-        service_sku = config.get("model_name", "gpt-4o")
-        api_key = await self.config_service.get_api_key_by_sku(run.company_id, service_sku) or \
-                  await self.config_service.get_api_key_by_sku(run.company_id, f"{config.get('model_provider')}-api-key")
+        # 2. Get API Key - try multiple resolution strategies
+        model_name = config.get("model_name", "gemini-3-flash-preview")
+        provider = config.get("model_provider", "google")
+        print(f"DEBUG: Resolving API Key for Company {run.company_id}, Model: {model_name}, Provider: {provider}")
+        
+        # Strategy 1: Exact SKU match
+        api_key = await self.config_service.get_api_key_by_sku(run.company_id, model_name)
+        
+        # Strategy 2: Try {model_name}-in SKU (billing SKUs)
+        if not api_key:
+            api_key = await self.config_service.get_api_key_by_sku(run.company_id, f"{model_name}-in")
+            
+        # Strategy 3: Pattern match - any SKU starting with model name
+        if not api_key:
+            api_key = await self.config_service.get_api_key_by_model(run.company_id, model_name)
+            
+        # Strategy 4: Provider generic key e.g. google-api-key
+        if not api_key:
+            api_key = await self.config_service.get_api_key_by_sku(run.company_id, f"{provider}-api-key")
+        
+        # Strategy 5: Any key for this provider
+        if not api_key:
+            api_key = await self.config_service.get_api_key_by_provider(run.company_id, provider)
         
         if not api_key:
-            raise Exception(f"API Key not found for {config.get('model_provider')}")
+            raise Exception(f"API Key not found for {provider}. Checked: {model_name}, {model_name}-in, pattern:{model_name}*, {provider}-api-key, provider:{provider}")
 
         # 3. Prepare Prompts
         system_prompt = entity.identity.get("persona", {}).get("system_prompt", "You are a helpful assistant.") if entity.identity else "You are a helpful assistant."
@@ -440,11 +441,26 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
             chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
             
             config_service = ConfigService(db)
-            gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, "gemini-embedding-004") or \
-                             await config_service.get_api_key_by_sku(document.company_id, "gemini-api-key")
+            model_name = "gemini-embedding-004"
+            
+            # Strategy 1: Exact SKU match
+            gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, model_name)
+            
+            # Strategy 2: Pattern match (finds -in/-out SKUs)
+            if not gemini_api_key:
+                gemini_api_key = await config_service.get_api_key_by_model(document.company_id, model_name)
+                
+            # Strategy 3: Provider generic key
+            if not gemini_api_key:
+                gemini_api_key = await config_service.get_api_key_by_sku(document.company_id, "google-api-key") or \
+                                 await config_service.get_api_key_by_sku(document.company_id, "gemini-api-key")
+            
+            # Strategy 4: Any key for google provider
+            if not gemini_api_key:
+                gemini_api_key = await config_service.get_api_key_by_provider(document.company_id, "google")
                              
             if not gemini_api_key:
-                 raise Exception("Gemini API Key not found")
+                 raise Exception("Gemini API Key not found. Please ensure you have a 'google' integration configured.")
 
             async with httpx.AsyncClient() as client:
                 for idx, chunk_text in enumerate(chunks):
@@ -477,4 +493,15 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
 
 class WorkerSettings:
     functions = [run_execution_recursive, process_document]
-    redis_settings = RedisSettings(host="localhost", port=6379)
+    
+    # Parse Redis URL from environment config
+    @staticmethod
+    def _parse_redis_url():
+        from src.common.config import settings
+        from urllib.parse import urlparse
+        parsed = urlparse(settings.REDIS_URL or "redis://localhost:6379")
+        return parsed.hostname or "localhost", parsed.port or 6379
+    
+    _host, _port = _parse_redis_url.__func__()
+    redis_settings = RedisSettings(host=_host, port=_port)
+

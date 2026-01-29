@@ -186,6 +186,13 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                     />
 
                     <GlassInput
+                        label="Model Name"
+                        value={formData.model_name}
+                        onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
+                        placeholder="e.g. gemini-1.5-pro"
+                    />
+
+                    <GlassInput
                         label="Service SKU (Unique)"
                         value={formData.service_sku}
                         onChange={(e) => setFormData({ ...formData, service_sku: e.target.value })}

@@ -98,6 +98,56 @@ class AIService:
 
     async def delete_entity(self, entity_id: UUID, company_id: UUID):
         entity = await self.get_entity(entity_id, company_id)
+        
+        # Delete related execution runs first (they have FK constraint to entity)
+        from sqlalchemy import delete
+        from src.ai.models import UsageLog
+        
+        # Get all execution run IDs for this entity (including child runs)
+        runs_result = await self.db.execute(
+            select(ExecutionRun.id).where(ExecutionRun.entity_id == entity_id)
+        )
+        parent_run_ids = [r[0] for r in runs_result.fetchall()]
+        
+        # Get child run IDs
+        child_runs_result = await self.db.execute(
+            select(ExecutionRun.id).where(ExecutionRun.parent_run_id.in_(parent_run_ids))
+        ) if parent_run_ids else None
+        child_run_ids = [r[0] for r in child_runs_result.fetchall()] if child_runs_result else []
+        
+        all_run_ids = parent_run_ids + child_run_ids
+        
+        if all_run_ids:
+            # Delete related logs and approvals first (they have FK to execution_runs)
+            await self.db.execute(
+                delete(LLMInteractionLog).where(LLMInteractionLog.run_id.in_(all_run_ids))
+            )
+            await self.db.execute(
+                delete(ToolInteractionLog).where(ToolInteractionLog.run_id.in_(all_run_ids))
+            )
+            await self.db.execute(
+                delete(HumanApproval).where(HumanApproval.run_id.in_(all_run_ids))
+            )
+            await self.db.execute(
+                delete(UsageLog).where(UsageLog.run_id.in_(all_run_ids))
+            )
+            
+            # Delete child execution runs first (due to parent_run_id FK)
+            if child_run_ids:
+                await self.db.execute(
+                    delete(ExecutionRun).where(ExecutionRun.id.in_(child_run_ids))
+                )
+            # Delete parent execution runs
+            await self.db.execute(
+                delete(ExecutionRun).where(ExecutionRun.id.in_(parent_run_ids))
+            )
+        
+        # Unlink documents from this entity (set entity_id to NULL)
+        from sqlalchemy import update
+        await self.db.execute(
+            update(Document).where(Document.entity_id == entity_id).values(entity_id=None)
+        )
+        
         await self.db.delete(entity)
         await self.db.commit()
 
@@ -262,33 +312,42 @@ class AIService:
         
         # Get query embedding
         config_service = ConfigService(self.db)
-        gemini_api_key = await config_service.get_api_key_by_sku(company_id, "gemini-embedding-004")
+        model_name = "gemini-embedding-004"
         
+        # Strategy 1: Exact SKU match
+        gemini_api_key = await config_service.get_api_key_by_sku(company_id, model_name)
+        
+        # Strategy 2: Pattern match (finds -in/-out SKUs)
         if not gemini_api_key:
-            # Fallback to general gemini SKU if specific embedding SKU is not found
-            gemini_api_key = await config_service.get_api_key_by_sku(company_id, "gemini-api-key")
+            gemini_api_key = await config_service.get_api_key_by_model(company_id, model_name)
+            
+        # Strategy 3: Provider generic key
+        if not gemini_api_key:
+            gemini_api_key = await config_service.get_api_key_by_sku(company_id, "google-api-key") or \
+                             await config_service.get_api_key_by_sku(company_id, "gemini-api-key")
+        
+        from google import genai
+        from google.genai import types
+
+        # ... (rest of the key resolution logic remains same)
+        
+        # Strategy 4: Any key for google provider
+        if not gemini_api_key:
+            gemini_api_key = await config_service.get_api_key_by_provider(company_id, "google")
             
         if not gemini_api_key:
-            raise HTTPException(status_code=500, detail="Gemini API Key not found in Integrations for this company")
+            raise HTTPException(status_code=500, detail="Gemini API Key not found. Please ensure you have a 'google' integration configured.")
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_api_key}"
-            response = await client.post(
-                url,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "model": "models/text-embedding-004",
-                    "content": {
-                        "parts": [{"text": query}]
-                    }
-                }
+        try:
+            client = genai.Client(api_key=gemini_api_key, http_options={'api_version': 'v1beta'})
+            response = client.models.embed_content(
+                model=model_name,
+                contents=query,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
             )
-            
-            if response.status_code != 200:
-                raise HTTPException(status_code=500, detail=f"Gemini Embedding API Error: {response.text}")
-            
-            data = response.json()
-            query_embedding = data["embedding"]["values"]
+            query_embedding = response.embeddings[0].values
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Gemini Embedding API Error (google-genai): {str(e)}")
         
         # Search using cosine similarity
         sql = text("""

@@ -254,9 +254,11 @@ class HierarchicalEntityUpdate(BaseModel):
     name: Optional[str] = None
     display_name: Optional[str] = None
     description: Optional[str] = None
+    type: Optional[EntityType] = None  # Added to allow type updates
     status: Optional[EntityStatus] = None
     version: Optional[str] = None
-    identity: Optional[Persona] = None
+    tags: Optional[List[str]] = None  # Added to allow tags updates
+    identity: Optional[Any] = None  # Accept Any format like create (Persona or {persona: Persona})
     hierarchy: Optional[Hierarchy] = None
     logic_gate: Optional[LogicGate] = None
     planning: Optional[Planning] = None
@@ -266,6 +268,7 @@ class HierarchicalEntityUpdate(BaseModel):
     observability: Optional[Observability] = None
     metadata_extensions: Optional[Dict[str, Any]] = None
     parent_id: Optional[UUID] = None
+    is_active: Optional[bool] = None  # Added for legacy field support
 
 class HierarchicalEntityResponse(HierarchicalEntityBase):
     id: UUID

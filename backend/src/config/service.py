@@ -76,3 +76,39 @@ class ConfigService:
         if not entry:
             return None
         return decrypt_api_key(entry.encrypted_api_key)
+
+    async def get_api_key_by_model(self, company_id: UUID, model_name: str) -> str:
+        """
+        Find an API key by searching for the exact model_name.
+        """
+        result = await self.db.execute(
+            select(IntegrationRegistry)
+            .where(
+                IntegrationRegistry.company_id == company_id,
+                IntegrationRegistry.model_name == model_name,
+                IntegrationRegistry.status == "active",
+                IntegrationRegistry.encrypted_api_key.isnot(None)
+            )
+        )
+        entry = result.scalars().first()
+        if not entry or not entry.encrypted_api_key:
+            return None
+        return decrypt_api_key(entry.encrypted_api_key)
+
+    async def get_api_key_by_provider(self, company_id: UUID, provider_name: str) -> str:
+        """
+        Find any API key for a given provider (e.g., 'google', 'openai').
+        Falls back to finding any active integration for that provider.
+        """
+        result = await self.db.execute(
+            select(IntegrationRegistry).where(
+                IntegrationRegistry.company_id == company_id,
+                IntegrationRegistry.provider_name == provider_name,
+                IntegrationRegistry.status == "active",
+                IntegrationRegistry.encrypted_api_key.isnot(None)
+            )
+        )
+        entry = result.scalars().first()
+        if not entry or not entry.encrypted_api_key:
+            return None
+        return decrypt_api_key(entry.encrypted_api_key)

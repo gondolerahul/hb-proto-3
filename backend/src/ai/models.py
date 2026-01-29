@@ -8,22 +8,11 @@ import pgvector.sqlalchemy
 
 
 from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text, JSON, Numeric, Enum, Integer
-import enum
 from src.auth.models import Company, User
 from src.config.models import IntegrationRegistry
 
-class EntityType(str, enum.Enum):
-    ACTION = "ACTION"
-    SKILL = "SKILL"
-    AGENT = "AGENT"
-    PROCESS = "PROCESS"
-
-class RunStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    REPAIRING = "REPAIRING"
+# Import enums from schemas to avoid duplication
+from src.ai.schemas import EntityType, RunStatus
 
 class HierarchicalEntity(Base):
     __tablename__ = "hierarchical_entities"
