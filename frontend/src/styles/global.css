@@ -1,5 +1,4 @@
-/* Import Tokens */
-@import './tokens.css';
+/* Import Utils */
 @import './utils.css';
 
 /* ====================================
@@ -27,7 +26,7 @@ body {
     font-weight: var(--font-weight-normal);
     line-height: var(--line-height-normal);
     color: var(--color-text-primary);
-    background-color: var(--color-bg-primary);
+    background-color: transparent;
     overflow-x: hidden;
 }
 
@@ -69,10 +68,7 @@ body {
     height: 200%;
     top: -50%;
     left: -50%;
-    background:
-        radial-gradient(circle at 20% 50%, rgba(197, 142, 127, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 80% 80%, rgba(197, 142, 127, 0.05) 0%, transparent 40%),
-        radial-gradient(circle at 50% 20%, rgba(197, 142, 127, 0.03) 0%, transparent 50%);
+    background: var(--liquid-bg-1), var(--liquid-bg-2), var(--liquid-bg-3);
     animation: backgroundMove 40s linear infinite;
     filter: blur(80px);
 }
@@ -109,7 +105,11 @@ h6 {
 
 h1 {
     font-size: var(--font-size-4xl);
-    margin-bottom: var(--spacing-8);
+    margin-bottom: var(--spacing-4);
+    background: var(--gradient-gold);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
 h2 {
@@ -141,6 +141,33 @@ a {
 a:hover {
     color: var(--color-accent-secondary);
     text-shadow: 0 0 8px rgba(197, 142, 127, 0.3);
+}
+
+.page-container {
+    padding: var(--spacing-xl);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-xl);
+}
+
+.page-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-xs);
+    background: var(--gradient-gold);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.page-header p {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-base);
 }
 
 /* ====================================
@@ -264,8 +291,8 @@ button {
     padding: 0 var(--spacing-6);
 }
 
-.grid {
-    display: grid;
+.grid-cols-1 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
 .grid-cols-2 {
@@ -274,6 +301,12 @@ button {
 
 .grid-cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.standard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--spacing-lg);
 }
 
 .gap-1 {
