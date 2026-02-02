@@ -145,120 +145,133 @@ export const KnowledgeBase: React.FC = () => {
     };
 
     return (
-        <div className="knowledge-base">
-            <div className="page-header">
+        <div className="page-container knowledge-base">
+            <header className="page-header">
                 <div>
                     <h1>Knowledge Base</h1>
-                    <p>Upload documents for AI agents to reference using RAG</p>
+                    <p>Power your AI with structured document context (RAG)</p>
                 </div>
-            </div>
+                <JellyButton roseGold onClick={() => fileInputRef.current?.click()}>
+                    <Upload size={18} /> Add Documents
+                </JellyButton>
+            </header>
 
-            <GlassCard className="upload-section">
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.docx,.txt"
-                    multiple
-                    onChange={handleFileSelect}
-                    style={{ display: 'none' }}
-                />
-
-                <div className="upload-area" onClick={() => fileInputRef.current?.click()}>
-                    <Upload size={48} color="var(--color-accent-primary)" />
-                    <h3>Upload Documents</h3>
-                    <p>Click to select files or drag and drop</p>
-                    <span className="file-types">Supports PDF, DOCX, TXT</span>
-                </div>
-
-                {uploading && (
-                    <div className="upload-progress">
-                        <Loader className="spin" size={24} />
-                        <span>Processing documents...</span>
+            {uploading && (
+                <GlassCard className="mb-8 p-4 border-rose-gold/30">
+                    <div className="flex items-center gap-4">
+                        <Loader className="spin text-rose-gold" size={24} />
+                        <span className="font-medium">Ingesting knowledge...</span>
                     </div>
-                )}
-            </GlassCard>
+                </GlassCard>
+            )}
 
-            <GlassCard className="search-section">
-                <h2>Search Documents</h2>
-                <div className="search-bar">
+            <div className="mb-6">
+                <div className="search-bar-wrapper glass-effect p-2 rounded-full flex items-center gap-2 max-w-2xl">
+                    <div className="pl-4 text-tertiary">
+                        <Search size={20} />
+                    </div>
                     <input
                         type="text"
                         placeholder="Search across all documents using semantic search..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        className="flex-1 bg-transparent border-none outline-none text-white py-2"
                     />
-                    <JellyButton onClick={handleSearch} disabled={searching}>
-                        {searching ? <Loader className="spin" size={16} /> : <Search size={16} />}
-                        Search
+                    <JellyButton
+                        variant="secondary"
+                        onClick={handleSearch}
+                        disabled={searching}
+                        className="rounded-full"
+                    >
+                        {searching ? <Loader className="spin" size={16} /> : 'Search'}
                     </JellyButton>
                 </div>
 
                 {searchResults.length > 0 && (
-                    <div className="search-results">
-                        <h3>Search Results ({searchResults.length})</h3>
+                    <div className="search-results mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                         {searchResults.map((result) => (
-                            <div key={result.chunk_id} className="search-result-card">
-                                <div className="result-header">
-                                    <FileText size={16} />
-                                    <span className="result-filename">{result.filename}</span>
-                                    <span className="result-similarity">
-                                        {(result.similarity * 100).toFixed(1)}% match
-                                    </span>
-                                </div>
-                                <p className="result-content">{result.content}</p>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </GlassCard>
-
-            <div className="documents-section">
-                <h2>Documents ({documents.length})</h2>
-
-                {loading ? (
-                    <GlassCard className="empty-state">
-                        <Loader className="spin" size={64} />
-                        <h3>Loading documents...</h3>
-                    </GlassCard>
-                ) : documents.length === 0 ? (
-                    <GlassCard className="empty-state">
-                        <FileText size={64} color="var(--color-text-tertiary)" />
-                        <h3>No documents yet</h3>
-                        <p>Upload your first document to get started</p>
-                    </GlassCard>
-                ) : (
-                    <div className="documents-list">
-                        {documents.map((doc) => (
-                            <GlassCard key={doc.id} hover className="document-card">
-                                <div className="document-icon">
-                                    <FileText size={24} />
-                                </div>
-
-                                <div className="document-info">
-                                    <h4>{doc.filename}</h4>
-                                    <div className="document-meta">
-                                        <span>{formatFileSize(doc.file_size)}</span>
-                                        <span>•</span>
-                                        <span>{formatDate(doc.created_at)}</span>
+                            <GlassCard key={result.chunk_id} className="p-4 bg-white/5 border-white/10">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2 text-rose-gold">
+                                        <FileText size={16} />
+                                        <span className="text-sm font-semibold truncate max-w-[150px]">{result.filename}</span>
+                                    </div>
+                                    <div className="badge badge-ready scale-75">
+                                        {(result.similarity * 100).toFixed(0)}% MATCH
                                     </div>
                                 </div>
-
-                                <div className="document-status">
-                                    {getStatusBadge(doc.upload_status)}
-                                </div>
-
-                                <JellyButton
-                                    variant="ghost"
-                                    onClick={() => handleDelete(doc.id)}
-                                >
-                                    <Trash2 size={16} />
-                                </JellyButton>
+                                <p className="text-sm text-secondary line-clamp-3 leading-relaxed">{result.content}</p>
                             </GlassCard>
                         ))}
                     </div>
                 )}
             </div>
+
+            <div className="standard-grid">
+                {loading ? (
+                    Array(3).fill(0).map((_, i) => (
+                        <GlassCard key={i} className="glass-card-item opacity-50 pulse" />
+                    ))
+                ) : documents.length === 0 ? (
+                    <GlassCard className="empty-state">
+                        <FileText size={64} className="mb-4" />
+                        <p>No knowledge assets found in scope.</p>
+                    </GlassCard>
+                ) : (
+                    documents.map((doc) => (
+                        <GlassCard key={doc.id} hover className="glass-card-item">
+                            <div className="card-header">
+                                <div className="card-icon" style={{ color: 'var(--color-rose-gold)' }}>
+                                    <FileText size={20} />
+                                </div>
+                                <div className="card-info">
+                                    <div className="card-title-row">
+                                        <h3 title={doc.filename}>{doc.filename}</h3>
+                                    </div>
+                                    <div className="card-badge-row">
+                                        {getStatusBadge(doc.upload_status)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="card-description">
+                                ID: {doc.id.slice(0, 8)}...
+                            </div>
+
+                            <div className="card-meta">
+                                <span className="meta-item">
+                                    <FileText size={12} /> {formatFileSize(doc.file_size)}
+                                </span>
+                                <span className="meta-item">
+                                    {doc.file_type.toUpperCase()}
+                                </span>
+                                <span className="meta-item">
+                                    {formatDate(doc.created_at)}
+                                </span>
+                            </div>
+
+                            <div className="card-actions">
+                                <JellyButton
+                                    variant="ghost"
+                                    onClick={() => handleDelete(doc.id)}
+                                    className="w-full text-red-400 hover:text-red-300"
+                                >
+                                    <Trash2 size={16} /> Purge Asset
+                                </JellyButton>
+                            </div>
+                        </GlassCard>
+                    )))}
+            </div>
+
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                multiple
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+            />
         </div>
     );
 };

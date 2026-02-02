@@ -64,13 +64,13 @@ export const ExecutionHistory: React.FC = () => {
     }
 
     return (
-        <div className="execution-history">
-            <div className="page-header">
+        <div className="page-container execution-history">
+            <header className="page-header">
                 <div>
                     <h1>Execution Records</h1>
                     <p>Audit trail of all hierarchical intelligence units</p>
                 </div>
-            </div>
+            </header>
 
             <div className="filter-bar">
                 {(['ALL', ...Object.values(RunStatus)] as const).map(s => (
@@ -84,10 +84,10 @@ export const ExecutionHistory: React.FC = () => {
                 ))}
             </div>
 
-            <div className="executions-list">
+            <div className="standard-grid">
                 {filteredExecutions.length === 0 ? (
                     <GlassCard className="empty-state">
-                        <Clock size={64} color="var(--color-text-tertiary)" />
+                        <Clock size={64} className="mb-4 text-tertiary" color="var(--color-text-tertiary)" />
                         <h3>Quiet in the archives</h3>
                         <p>
                             {filter === 'ALL'
@@ -97,69 +97,54 @@ export const ExecutionHistory: React.FC = () => {
                     </GlassCard>
                 ) : (
                     filteredExecutions.map((execution) => (
-                        <GlassCard key={execution.id} hover className="execution-card">
-                            <div className="execution-status-icon">
-                                {getStatusIcon(execution.status)}
-                            </div>
-
-                            <div className="execution-info">
-                                <div className="execution-header">
-                                    <h3>
-                                        {execution.entity?.name || 'Anonymous Unit'}
-                                    </h3>
-                                    <div className="header-meta">
-                                        <div className="metric-badge">
-                                            <DollarSign size={10} /> ${execution.total_cost_usd.toFixed(4)}
-                                        </div>
-                                        <div className="metric-badge">
-                                            <Database size={10} /> {execution.total_tokens.toLocaleString()}
-                                        </div>
-                                        <span className={`status-badge ${execution.status.toLowerCase()}`}>
+                        <GlassCard key={execution.id} hover className="glass-card-item">
+                            <div className="card-header">
+                                <div className="card-icon">
+                                    {getStatusIcon(execution.status)}
+                                </div>
+                                <div className="card-info">
+                                    <div className="card-title-row">
+                                        <h3 title={execution.entity?.name}>{execution.entity?.name || 'Anonymous Unit'}</h3>
+                                        <span className="version-tag">{formatDate(execution.created_at)}</span>
+                                    </div>
+                                    <div className="card-badge-row">
+                                        <span className={`status-badge ${execution.status.toLowerCase()}`} style={{
+                                            color: execution.status === 'COMPLETED' ? 'var(--color-success)' :
+                                                execution.status === 'FAILED' ? 'var(--color-error)' :
+                                                    execution.status === 'RUNNING' ? 'var(--color-info)' : 'var(--color-warning)'
+                                        }}>
                                             {execution.status}
                                         </span>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div className="execution-meta">
-                                    <span className="execution-time">
-                                        {formatDate(execution.created_at)}
-                                    </span>
-                                    {execution.execution_time_ms ? (
-                                        <>
-                                            <span>•</span>
-                                            <span className="execution-duration">
-                                                Duration: {(execution.execution_time_ms / 1000).toFixed(1)}s
-                                            </span>
-                                        </>
-                                    ) : execution.completed_at && execution.started_at && (
-                                        <>
-                                            <span>•</span>
-                                            <span className="execution-duration">
-                                                Duration: {((new Date(execution.completed_at).getTime() -
-                                                    new Date(execution.started_at).getTime()) / 1000).toFixed(1)}s
-                                            </span>
-                                        </>
-                                    )}
-                                </div>
-
-                                {execution.error_message && (
-                                    <div className="execution-error">
-                                        <strong>Error:</strong> {execution.error_message}
-                                    </div>
+                            <div className="card-description">
+                                {execution.error_message ? (
+                                    <span style={{ color: 'var(--color-error)' }}>Error: {execution.error_message}</span>
+                                ) : (
+                                    <span>Executed successfully.</span>
                                 )}
                             </div>
 
-                            <div className="execution-actions">
+                            <div className="card-meta">
+                                <span className="meta-item" title="Total Cost">
+                                    <DollarSign size={12} /> ${execution.total_cost_usd.toFixed(4)}
+                                </span>
+                                <span className="meta-item" title="Token Usage">
+                                    <Database size={12} /> {execution.total_tokens.toLocaleString()}
+                                </span>
+                            </div>
+
+                            <div className="card-actions">
                                 <Link to={`/executions/${execution.id}`}>
-                                    <JellyButton variant="secondary">
-                                        <Eye size={16} />
-                                        Trace
+                                    <JellyButton variant="secondary" size="sm">
+                                        <Eye size={16} /> Trace
                                     </JellyButton>
                                 </Link>
                                 <Link to={`/ai/execute/${execution.entity_id}`}>
-                                    <JellyButton variant="ghost">
-                                        <RotateCcw size={16} />
-                                        Re-run
+                                    <JellyButton variant="ghost" size="sm">
+                                        <RotateCcw size={16} /> Retry
                                     </JellyButton>
                                 </Link>
                             </div>

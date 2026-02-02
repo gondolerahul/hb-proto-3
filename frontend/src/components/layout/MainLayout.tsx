@@ -19,6 +19,7 @@ import {
     Layers
 } from 'lucide-react';
 import { UserRole } from '@/types';
+import logo from '@/assets/logo.png';
 import './MainLayout.css';
 
 interface MainLayoutProps {
@@ -34,9 +35,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     const navItems = [
         { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        ...(user?.role === UserRole.APP_ADMIN ? [{ path: '/partners', label: 'Partners', icon: Users }] : []),
-        ...((user?.role === UserRole.APP_ADMIN || user?.role === UserRole.PARTNER_ADMIN) ? [{ path: '/tenants', label: 'Tenants', icon: Building }] : []),
-        ...(([UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/users', label: 'Users', icon: User }] : []),
+        ...(([UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/platform-management', label: 'Platform Management', icon: Shield }] : []),
         { path: '/ai/entities', label: 'Entity Library', icon: Layers },
         { path: '/ai/approvals', label: 'Guardian Oversight', icon: Shield },
         { path: '/executions', label: 'Executions', icon: Play },
@@ -52,7 +51,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             {/* Sidebar */}
             <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
                 <div className="sidebar-header">
-                    <h2 className="text-rose-gold">HireBuddha</h2>
+                    <div className="logo-container">
+                        <img src={logo} alt="HireBuddha" className="sidebar-logo-img" />
+                        {sidebarOpen && <h2 className="text-rose-gold">HireBuddha</h2>}
+                    </div>
                     <button
                         className="sidebar-toggle"
                         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -64,65 +66,71 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 </div>
 
                 <nav className="sidebar-nav">
-                    {navItems.map((item) => {
-                        const Icon = item.icon;
-                        return (
-                            <Link
-                                key={item.path}
-                                to={item.path}
-                                className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-                            >
-                                <Icon size={20} />
-                                {sidebarOpen && <span>{item.label}</span>}
-                            </Link>
-                        );
-                    })}
-                </nav>
-            </aside>
+                    <div className="sidebar-nav-links">
+                        {navItems.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
+                                    title={!sidebarOpen ? item.label : ''}
+                                >
+                                    <div className="nav-item-icon">
+                                        <Icon size={20} />
+                                    </div>
+                                    {sidebarOpen && <span className="nav-item-label">{item.label}</span>}
+                                </Link>
+                            );
+                        })}
+                    </div>
 
-            {/* Main Content */}
-            <div className="main-content">
-                <header className="top-header glass">
-                    <h1>Welcome to HireBuddha</h1>
-
-                    <div className="header-actions">
+                    <div className="sidebar-footer pt-4 border-t border-white/5 mt-4 space-y-2">
                         <button
-                            className="theme-toggle-icon"
+                            className="theme-toggle-button w-full"
                             onClick={toggleTheme}
                             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
                         >
-                            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                            <div className="nav-item-icon">
+                                {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                            </div>
+                            {sidebarOpen && <span>{theme === 'dark' ? 'Luminescence' : 'Eclipse'} Mode</span>}
                         </button>
 
                         <div className="user-menu">
                             <button
-                                className="user-menu-button"
+                                className="user-menu-button w-full"
                                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                             >
-                                <User size={20} />
-                                <span>{user?.full_name || user?.email}</span>
+                                <div className="nav-item-icon">
+                                    <User size={20} />
+                                </div>
+                                {sidebarOpen && <span className="truncate flex-1 text-left">{user?.full_name || user?.email}</span>}
                             </button>
 
                             {userMenuOpen && (
-                                <div className="user-menu-dropdown glass">
+                                <div className={`user-menu-dropdown glass ${sidebarOpen ? 'open' : 'closed-compact'}`}>
                                     <Link
                                         to="/profile"
                                         className="user-menu-item"
                                         onClick={() => setUserMenuOpen(false)}
                                     >
                                         <User size={16} />
-                                        Profile Settings
+                                        {sidebarOpen && <span>Profile Settings</span>}
                                     </Link>
                                     <button className="user-menu-item" onClick={logout}>
                                         <LogOut size={16} />
-                                        Logout
+                                        {sidebarOpen && <span>Logout</span>}
                                     </button>
                                 </div>
                             )}
                         </div>
                     </div>
-                </header>
+                </nav>
+            </aside>
 
+            {/* Main Content */}
+            <div className="main-content">
                 <main>{children}</main>
             </div>
         </div>

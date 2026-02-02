@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { CheckCircle, XCircle, Clock, Shield, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Shield } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { HumanApproval } from '@/types';
 import './HITLPanel.css';
@@ -41,57 +41,66 @@ export const HITLPanel: React.FC = () => {
     if (loading) return <div className="loading">Authorized Personnel Required...</div>;
 
     return (
-        <div className="hitl-panel">
-            <div className="panel-header">
-                <div className="title-area">
-                    <Shield size={24} color="var(--color-secondary)" />
+        <div className="page-container hitl-panel">
+            <header className="page-header">
+                <div>
                     <h1>Guardian Oversight</h1>
-                    <p>Human-in-the-Loop Decision Center</p>
+                    <p>Decision center for Human-in-the-Loop interventions</p>
                 </div>
-                <div className="approval-count">
-                    {approvals.length} Pending
+                <div className="badge badge-purple px-6 py-2 text-sm font-bold tracking-widest">
+                    {approvals.length} PENDING BLOCKS
                 </div>
-            </div>
+            </header>
 
-            <div className="approvals-list">
+            <div className="standard-grid">
                 {approvals.length === 0 ? (
-                    <GlassCard className="empty-hitl">
-                        <CheckCircle size={48} color="var(--color-success)" />
-                        <h3>All Systems Nominal</h3>
-                        <p>No pending human intervention requests at this time.</p>
+                    <GlassCard className="col-span-full py-20 opacity-30 flex flex-col items-center">
+                        <CheckCircle size={64} className="mb-4 text-green-400" />
+                        <p>All neural systems are operating within nominal autonomous boundaries.</p>
                     </GlassCard>
                 ) : (
                     approvals.map(approval => (
-                        <GlassCard key={approval.id} className="approval-card">
-                            <div className="approval-info">
-                                <div className="trigger-source">
-                                    <AlertTriangle size={16} />
-                                    <span>Checkpoint: {approval.checkpoint_trigger}</span>
+                        <GlassCard key={approval.id} className="flex flex-col h-full" hover>
+                            <div className="p-6 flex-1">
+                                <div className="flex items-start gap-4 mb-6">
+                                    <div className="bg-red-500/10 p-3 rounded-lg text-red-400">
+                                        <Shield size={24} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <h3 className="mb-1 truncate text-lg">Checkpoint Required</h3>
+                                        <div className="text-xs text-tertiary font-mono truncate">{approval.checkpoint_trigger}</div>
+                                    </div>
                                 </div>
-                                <div className="run-reference">
-                                    Execution: {approval.run_id.slice(0, 8)}
-                                </div>
-                                <div className="timestamp">
-                                    <Clock size={14} />
-                                    {new Date(approval.requested_at).toLocaleString()}
+
+                                <div className="space-y-4 mb-8">
+                                    <div className="flex items-center justify-between text-xs text-tertiary">
+                                        <span>EXECUTION REF</span>
+                                        <span className="text-secondary font-mono bg-white/5 px-2 py-1 rounded">{approval.run_id.slice(0, 12)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs text-tertiary">
+                                        <span>REQUESTED AT</span>
+                                        <div className="flex items-center gap-1.5 text-secondary">
+                                            <Clock size={12} />
+                                            {new Date(approval.requested_at).toLocaleTimeString()}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="approval-actions">
+                            <div className="p-4 pt-0 border-t border-white/5 mt-auto grid grid-cols-2 gap-3">
                                 <JellyButton
-                                    className="approve-btn"
+                                    roseGold
                                     onClick={() => handleRespond(approval.id, 'APPROVED')}
+                                    className="w-full"
                                 >
-                                    <CheckCircle size={18} />
-                                    Authorize
+                                    <CheckCircle size={16} /> Authorize
                                 </JellyButton>
                                 <JellyButton
                                     variant="ghost"
-                                    className="reject-btn"
                                     onClick={() => handleRespond(approval.id, 'REJECTED')}
+                                    className="w-full text-red-500 hover:text-red-400"
                                 >
-                                    <XCircle size={18} />
-                                    Reject
+                                    <XCircle size={16} /> Block Cycle
                                 </JellyButton>
                             </div>
                         </GlassCard>

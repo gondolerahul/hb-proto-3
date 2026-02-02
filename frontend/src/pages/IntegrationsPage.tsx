@@ -12,6 +12,7 @@ import { integrationService, Integration } from '../services/integration.service
 import { authService } from '../services/auth.service';
 import { User } from '../types';
 import { CreateIntegrationModal } from '../components/CreateIntegrationModal';
+import { JellyButton, GlassCard } from '@/components/ui';
 import './IntegrationsPage.css';
 
 export const IntegrationsPage: React.FC = () => {
@@ -88,108 +89,100 @@ export const IntegrationsPage: React.FC = () => {
     }
 
     return (
-        <div className="integrations-page p-8">
-            <header className="flex justify-between items-center mb-8">
+        <div className="page-container integrations-page">
+            <header className="page-header">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Service Integrations</h1>
-                    <p className="text-gray-400">Manage your AI provider keys and SKU-based costing mappings.</p>
+                    <h1>Service Integrations</h1>
+                    <p>Manage your AI provider keys and SKU-based costing mappings.</p>
                 </div>
                 <div className="flex gap-4">
-                    <button
-                        onClick={openCreateModal}
-                        className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg font-semibold hover:bg-rose-600 transition-all"
-                    >
-                        <Plus size={18} />
-                        Add Integration
-                    </button>
-                    <button
+                    <JellyButton
+                        variant="ghost"
                         onClick={fetchData}
-                        className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                        className="p-2"
                     >
                         <RefreshCw className="text-rose-300" size={20} />
-                    </button>
+                    </JellyButton>
+                    <JellyButton
+                        roseGold
+                        onClick={openCreateModal}
+                    >
+                        <Plus size={18} /> Add Integration
+                    </JellyButton>
                 </div>
             </header>
 
             {error && (
-                <div className="bg-red-500/20 border border-red-500/50 p-4 rounded-lg text-red-200 flex items-center gap-2 mb-6">
+                <div className="error-banner mb-6 p-4 flex items-center gap-2">
                     <AlertTriangle size={20} />
                     {error}
                 </div>
             )}
 
-            <div className="grid grid-cols-1 gap-6">
-                <div className="integrations-list glass overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-white/5">
-                                <th className="p-4 border-b border-white/10 text-white">Provider</th>
-                                <th className="p-4 border-b border-white/10 text-white">SKU / Model</th>
-                                <th className="p-4 border-b border-white/10 text-white">Type</th>
-                                <th className="p-4 border-b border-white/10 text-white">Internal Cost</th>
-                                <th className="p-4 border-b border-white/10 text-white">Status</th>
-                                <th className="p-4 border-b border-white/10 text-white">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {integrations.map((item) => (
-                                <tr key={item.id} className="hover:bg-white/5 transition-colors">
-                                    <td className="p-4 border-b border-white/5">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400">
-                                                <Cpu size={16} />
-                                            </div>
-                                            <span className="font-medium text-white">{item.provider_name}</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4 border-b border-white/5 text-gray-300">
-                                        <div className="flex flex-col">
-                                            <span className="text-rose-400 text-sm font-mono">{item.service_sku}</span>
-                                            <span className="text-xs">{item.model_name || 'N/A'}</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4 border-b border-white/5">
-                                        <span className="px-2 py-1 bg-white/10 rounded text-xs text-gray-400 uppercase tracking-wider">
-                                            {item.component_type.replace('_', ' ')}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 border-b border-white/5 text-green-400 font-mono">
-                                        ${Number(item.internal_cost).toFixed(6)} / {item.cost_unit}
-                                    </td>
-                                    <td className="p-4 border-b border-white/5">
-                                        <div className="flex items-center gap-1.5 text-green-500 text-sm">
-                                            <CheckCircle2 size={14} />
-                                            {item.status.toUpperCase()}
-                                        </div>
-                                    </td>
-                                    <td className="p-4 border-b border-white/5">
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => openEditModal(item)}
-                                                className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-all"
-                                            >
-                                                <Settings size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="p-2 hover:bg-red-500/20 rounded-lg text-gray-400 hover:text-red-500 transition-all"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {integrations.length === 0 && !loading && (
-                                <tr>
-                                    <td colSpan={6} className="p-8 text-center text-gray-500">
-                                        No integrations found. Add your first AI provider key.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+            <div className="standard-grid">
+                {integrations.map((item) => (
+                    <GlassCard key={item.id} className="glass-card-item" hover>
+                        <div className="card-header">
+                            <div className="card-icon-wrapper card-icon" style={{ color: 'var(--color-rose-gold)' }}>
+                                <Cpu size={24} />
+                            </div>
+                            <div className="card-info">
+                                <div className="card-title-row">
+                                    <h3 title={item.provider_name}>{item.provider_name}</h3>
+                                </div>
+                                <div className="card-badge-row">
+                                    <span className="type-badge" style={{ background: 'rgba(124, 58, 237, 0.2)', color: '#c4b5fd' }}>
+                                        {item.component_type.replace('_', ' ')}
+                                    </span>
+                                    <span className="status-badge" style={{ color: 'var(--color-success)' }}>
+                                        <CheckCircle2 size={10} /> {item.status}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="card-description">
+                            Model: {item.model_name || 'Generic'}
+                            <br />
+                            SKU: <span style={{ fontFamily: 'monospace', fontSize: '0.8em' }}>{item.service_sku}</span>
+                        </div>
+
+                        <div className="card-meta">
+                            <span className="meta-item">
+                                <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>${Number(item.internal_cost).toFixed(6)}</span>
+                            </span>
+                            <span className="meta-item">
+                                {item.cost_unit}
+                            </span>
+                        </div>
+
+                        <div className="card-actions">
+                            <JellyButton
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => openEditModal(item)}
+                            >
+                                <Settings size={14} /> Configure
+                            </JellyButton>
+                            <JellyButton
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(item.id)}
+                                className="text-red-500 hover:text-red-400"
+                            >
+                                <Trash2 size={14} /> Remove
+                            </JellyButton>
+                        </div>
+                    </GlassCard>
+                ))}
+
+                {integrations.length === 0 && !loading && (
+                    <GlassCard className="empty-state">
+                        <Cpu size={64} className="mb-4" color="var(--color-text-tertiary)" />
+                        <h3>No integrations found</h3>
+                        <p>Add your first AI provider key to get started.</p>
+                    </GlassCard>
+                )}
             </div>
 
             <CreateIntegrationModal

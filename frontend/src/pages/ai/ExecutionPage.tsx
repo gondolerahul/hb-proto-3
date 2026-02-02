@@ -86,37 +86,43 @@ export const ExecutionPage: React.FC = () => {
     );
 
     return (
-        <div className="execution-page">
-            <div className="execution-header">
-                <JellyButton variant="ghost" onClick={() => navigate(-1)}>
-                    <ArrowLeft size={18} />
-                    Back
-                </JellyButton>
-                <div className="header-info">
-                    <h1>Execute: {entity?.name}</h1>
-                    <div className="entity-path">
-                        <span className="type-tag">{entity?.type}</span>
-                        <span className="version-tag">v{entity?.version}</span>
+        <div className="page-container execution-page">
+            <header className="page-header">
+                <div className="flex items-center gap-6">
+                    <JellyButton variant="ghost" onClick={() => navigate(-1)} className="p-2">
+                        <ArrowLeft size={24} />
+                    </JellyButton>
+                    <div>
+                        <h1>Execute {entity?.name}</h1>
+                        <p>Configure and launch your neural unit into the cluster</p>
                     </div>
                 </div>
-            </div>
+                <div className="flex items-center gap-3">
+                    <span className="badge badge-purple px-4 py-2">{entity?.type.toUpperCase()}</span>
+                    <span className="badge border-white/10 px-4 py-2 text-tertiary">VERSION {entity?.version}</span>
+                </div>
+            </header>
 
             <div className="execution-grid">
                 {/* Input Panel */}
-                <GlassCard className="execution-input">
-                    <div className="card-header-icon">
-                        <Activity size={20} color="var(--color-secondary)" />
-                        <h2>Deployment Parameters</h2>
+                <GlassCard className="p-8">
+                    <div className="flex items-center gap-3 mb-8">
+                        <div className="p-3 bg-rose-gold/10 rounded-lg text-rose-gold">
+                            <Activity size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold">Deployment Parameters</h2>
+                            <p className="text-sm text-tertiary">Required context for the entity's reasoning engine</p>
+                        </div>
                     </div>
 
                     {requiredVars.length > 0 ? (
-                        <div className="variables-list">
-                            <p className="help-text">Input required context for the AI entity:</p>
+                        <div className="space-y-6">
                             {requiredVars.map((varName) => (
                                 <GlassInput
                                     key={varName}
                                     label={varName.replace(/_/g, ' ').toUpperCase()}
-                                    placeholder={`Enter ${varName}...`}
+                                    placeholder={`Enter context for ${varName}...`}
                                     value={variables[varName] || ''}
                                     onChange={(e) => setVariables({ ...variables, [varName]: e.target.value })}
                                     required
@@ -124,23 +130,23 @@ export const ExecutionPage: React.FC = () => {
                             ))}
                         </div>
                     ) : (
-                        <div className="no-vars">
-                            <Zap size={32} color="var(--color-text-tertiary)" />
-                            <p>This entity is configured for autonomous execution without external parameters.</p>
+                        <div className="py-12 flex flex-col items-center opacity-30">
+                            <Zap size={48} className="mb-4" />
+                            <p>No external parameters required for this unit.</p>
                         </div>
                     )}
 
-                    <div className="action-area">
+                    <div className="mt-10 pt-8 border-t border-white/10">
                         <JellyButton
                             roseGold
                             onClick={handleExecute}
                             disabled={executing || !canExecute}
-                            className="execute-btn"
+                            className="w-full py-4 text-lg"
                         >
                             {executing ? (
                                 <>
-                                    <Loader className="spin" size={20} />
-                                    Initialising...
+                                    <Loader className="spin" size={24} />
+                                    Synchronizing...
                                 </>
                             ) : (
                                 <>
@@ -154,24 +160,33 @@ export const ExecutionPage: React.FC = () => {
                 </GlassCard>
 
                 {/* Info Panel */}
-                <GlassCard className="execution-info-card">
-                    <div className="card-header-icon">
-                        <Info size={20} color="var(--color-primary)" />
-                        <h2>Execution Context</h2>
+                <GlassCard className="p-8 h-fit">
+                    <div className="flex items-center gap-3 mb-8">
+                        <div className="p-3 bg-blue-500/10 rounded-lg text-blue-400">
+                            <Info size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold">Execution Context</h2>
+                            <p className="text-sm text-tertiary">Operational constraints and governance</p>
+                        </div>
                     </div>
-                    <div className="info-content">
-                        <div className="info-item">
-                            <label>Reasoning Mode</label>
-                            <span>{entity?.logic_gate?.reasoning_config?.reasoning_mode || 'STANDARD'}</span>
+
+                    <div className="space-y-6">
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/5">
+                            <label className="text-[10px] text-tertiary uppercase tracking-widest font-mono block mb-1">Reasoning Mode</label>
+                            <span className="font-semibold text-rose-gold text-lg">{entity?.logic_gate?.reasoning_config?.reasoning_mode || 'STANDARD'}</span>
                         </div>
-                        <div className="info-item">
-                            <label>Model Configuration</label>
-                            <span>{entity?.logic_gate?.reasoning_config?.model_name} ({entity?.logic_gate?.reasoning_config?.model_provider})</span>
+
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/5">
+                            <label className="text-[10px] text-tertiary uppercase tracking-widest font-mono block mb-1">Compute Resource</label>
+                            <span className="font-medium text-secondary">{entity?.logic_gate?.reasoning_config?.model_name}</span>
+                            <div className="text-xs text-tertiary mt-1 opacity-60">Provider: {entity?.logic_gate?.reasoning_config?.model_provider}</div>
                         </div>
+
                         {entity?.governance?.hitl_checkpoints && entity.governance.hitl_checkpoints.length > 0 && (
-                            <div className="info-item">
-                                <label>Guardrails</label>
-                                <span className="warning-text">Human-in-the-loop enabled ({entity.governance.hitl_checkpoints.length} checkpoints)</span>
+                            <div className="p-4 rounded-xl bg-red-400/5 border border-red-400/20">
+                                <label className="text-[10px] text-red-400 uppercase tracking-widest font-bold block mb-1">Active Guardrails</label>
+                                <div className="text-sm text-red-300">Human-in-the-loop enabled ({entity.governance.hitl_checkpoints.length} blocks)</div>
                             </div>
                         )}
                     </div>

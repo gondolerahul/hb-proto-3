@@ -61,6 +61,7 @@ class Persona(BaseModel):
     system_prompt: str
     examples: List[PersonaExample] = []
     behavioral_constraints: List[str] = []
+    few_shot_examples: List[Dict[str, str]] = []  # Explicit few-shot examples for prompt injection
 
 class HierarchyChildCondition(BaseModel):
     enabled: bool = False
@@ -105,10 +106,19 @@ class ReviewMechanism(BaseModel):
     success_criteria: List[SuccessCriterion] = []
     on_failure: str = "RETRY" # RETRY | ESCALATE | ABORT
 
+class ContextPolicy(BaseModel):
+    """Context filtering policy for step execution."""
+    type: str = "FULL"  # FULL | LAST_N | SLIDING_WINDOW | EXPLICIT
+    n: Optional[int] = None  # For LAST_N: number of previous steps to include
+    max_chars: Optional[int] = None  # For SLIDING_WINDOW: max characters
+    summarize_threshold: Optional[int] = 8000  # Auto-summarize if context exceeds this
+    explicit_keys: List[str] = []  # For EXPLICIT: specific context keys to include
+
 class LogicGate(BaseModel):
     reasoning_config: ReasoningConfig
     retry_policy: RetryPolicy = RetryPolicy()
     review_mechanism: ReviewMechanism = ReviewMechanism()
+    context_policy: ContextPolicy = ContextPolicy()  # Context filtering configuration
 
 class ExitCondition(BaseModel):
     condition: str
@@ -118,6 +128,7 @@ class PlanStepTarget(BaseModel):
     entity_id: Optional[UUID] = None
     tool_id: Optional[str] = None
     prompt_template: Optional[str] = None
+    input_dependencies: List[str] = []  # Explicit step output dependencies (e.g., ["step_1", "step_2"])
 
 class PlanStep(BaseModel):
     step_id: Optional[str] = None  # Accept string IDs from frontend

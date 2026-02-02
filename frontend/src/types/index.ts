@@ -88,6 +88,7 @@ export interface Persona {
     system_prompt: string;
     examples: PersonaExample[];
     behavioral_constraints: string[];
+    few_shot_examples?: { [key: string]: string }[]; // New strict few-shot examples
 }
 
 export interface HierarchyChild {
@@ -108,34 +109,77 @@ export interface Hierarchy {
     composition_depth: number;
 }
 
+export interface ContextPolicy {
+    type: 'FULL' | 'LAST_N' | 'SLIDING_WINDOW' | 'EXPLICIT';
+    n?: number;
+    max_chars?: number;
+    summarize_threshold?: number;
+    explicit_keys?: string[];
+}
+
 export interface LogicGate {
     reasoning_config: {
         model_provider: string;
         model_name: string;
         temperature: number;
+        top_p?: number;
+        max_tokens?: number;
         reasoning_mode: 'REACT' | 'CHAIN_OF_THOUGHT' | 'REFLECTION' | 'TREE_OF_THOUGHTS';
     };
     retry_policy: {
         max_retries: number;
         backoff_strategy: 'LINEAR' | 'EXPONENTIAL' | 'NONE';
+        backoff_multiplier?: number;
+        retry_on?: string[];
     };
     review_mechanism: {
         enabled: boolean;
         review_prompt?: string;
+        on_failure?: 'RETRY' | 'ESCALATE' | 'ABORT';
+        success_criteria?: any[];
     };
+    context_policy?: ContextPolicy;
+}
+
+export interface PlanStepTarget {
+    entity_id?: string;
+    tool_id?: string;
+    prompt_template?: string;
+    input_dependencies?: string[]; // Explicit dependencies
+}
+
+export interface PlanStep {
+    step_id: string;
+    order: number;
+    name: string;
+    description?: string;
+    type: 'ACTION' | 'TOOL_CALL' | 'CHILD_ENTITY_INVOCATION' | 'THOUGHT';
+    target?: PlanStepTarget;
+    required: boolean;
+    exit_conditions?: any[];
 }
 
 export interface Planning {
     static_plan: {
         enabled: boolean;
-        steps: any[];
+        steps: PlanStep[];
+        fallback_behavior?: 'STRICT' | 'ADAPTIVE' | 'DYNAMIC_ONLY';
     };
     dynamic_planning: {
         enabled: boolean;
         planning_prompt?: string;
+        constraints?: string[];
+        reconciliation_strategy?: 'STATIC_PRIORITY' | 'DYNAMIC_PRIORITY' | 'HYBRID';
+        allowed_deviations?: {
+            can_add_steps: boolean;
+            can_skip_optional_steps: boolean;
+            can_reorder_steps: boolean;
+            can_change_tools: boolean;
+        };
     };
     loop_control: {
         max_iterations: number;
+        iteration_context_mode?: 'FULL_HISTORY' | 'SUMMARIZED' | 'LAST_N';
     };
 }
 
@@ -144,21 +188,37 @@ export interface capabilities {
     memory: {
         enabled: boolean;
         scope: string;
+        storage_backend?: string;
     };
     context_engineering: {
         max_context_tokens: number;
+        context_priority?: string[];
+        artifact_handling?: {
+            artifact_reference_mode: 'INLINE' | 'REFERENCE' | 'SUMMARY';
+            store_large_objects: boolean;
+        };
     };
 }
 
 export interface Governance {
     max_cost_usd?: number;
     timeout_ms: number;
+    execution_limits?: {
+        max_recursion_depth: number;
+        max_tool_calls?: number;
+    };
     hitl_checkpoints: any[];
 }
 
 export interface IOContract {
     input_schema: any;
     output_schema: any;
+}
+
+export interface Observability {
+    log_level: string;
+    log_thoughts: boolean;
+    track_cost: boolean;
 }
 
 export interface HierarchicalEntity {
@@ -180,7 +240,7 @@ export interface HierarchicalEntity {
     capabilities?: capabilities;
     governance?: Governance;
     io_contract?: IOContract;
-    observability?: any;
+    observability?: Observability;
     metadata_extensions?: any;
 
     created_at: string;

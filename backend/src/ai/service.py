@@ -20,8 +20,8 @@ class AIService:
 
     # Entity CRUD
     async def create_entity(self, entity_in: HierarchicalEntityCreate, company_id: UUID) -> HierarchicalEntity:
-        # Prepare data, handling nested Pydantic models
-        entity_data = entity_in.model_dump()
+        # Prepare data, handling nested Pydantic models and ensuring JSON serializability (e.g. UUID -> str)
+        entity_data = entity_in.model_dump(mode='json')
         
         # Flatten identity if provided as nested model to JSONB column
         entity = HierarchicalEntity(**entity_data, company_id=company_id)

@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { GlassCard, GlassInput, JellyButton } from './ui';
 import { CompanyCreate } from '../services/company.service';
+import { Company } from '../types';
 
 interface CreateCompanyModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (data: CompanyCreate) => Promise<void>;
+    onSubmit: (id: string | undefined, data: any) => Promise<void>;
     type: 'PARTNER' | 'TENANT';
     parentId?: string;
+    initialData?: Company;
 }
 
 export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
@@ -16,11 +18,19 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
     onClose,
     onSubmit,
     type,
-    parentId
+    parentId,
+    initialData
 }) => {
     const [name, setName] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setName(initialData?.name || '');
+            setError(null);
+        }
+    }, [isOpen, initialData]);
 
     if (!isOpen) return null;
 
@@ -30,15 +40,15 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
         setLoading(true);
 
         try {
-            await onSubmit({
+            await onSubmit(initialData?.id, {
                 name,
-                type,
-                parent_id: parentId
+                type: initialData?.type || type,
+                parent_id: initialData?.parent_id || parentId
             });
             setName('');
             onClose();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to create company');
+            setError(err.response?.data?.detail || `Failed to ${initialData ? 'update' : 'create'} company`);
         } finally {
             setLoading(false);
         }
@@ -55,7 +65,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
                 </button>
 
                 <h2 className="text-xl font-bold text-white mb-8">
-                    Add {type.charAt(0) + type.slice(1).toLowerCase()}
+                    {initialData ? 'Update' : 'Add'} {type.charAt(0) + type.slice(1).toLowerCase()}
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-8">
@@ -86,7 +96,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({
                             disabled={loading || !name.trim()}
                             roseGold
                         >
-                            {loading ? 'Synthesizing...' : 'Establish Entity'}
+                            {loading ? 'Synthesizing...' : (initialData ? 'Update Entity' : 'Establish Entity')}
                         </JellyButton>
                     </div>
                 </form>

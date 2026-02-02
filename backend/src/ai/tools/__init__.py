@@ -11,17 +11,20 @@ This package contains production-ready tool implementations for:
 from src.ai.tools.base import Tool, ToolRegistry
 from src.ai.tools.calculator import CalculatorTool
 from src.ai.tools.search import WebSearchTool
-from src.ai.tools.email import EmailTool
+from src.ai.tools.excel import ExcelTool
+from src.ai.tools.scraper import ScraperTool
 
 # Register all default tools
 ToolRegistry.register(CalculatorTool())
 ToolRegistry.register(WebSearchTool())
-ToolRegistry.register(EmailTool())
+ToolRegistry.register(ExcelTool())
+ToolRegistry.register(ScraperTool())
 
 __all__ = [
     "Tool",
     "ToolRegistry",
     "CalculatorTool", 
     "WebSearchTool",
-    "EmailTool"
+    "ExcelTool",
+    "ScraperTool"
 ]

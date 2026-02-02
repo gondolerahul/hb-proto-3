@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { ArrowLeft, ChevronDown, ChevronRight, Zap, Cpu, MessageSquare, Wrench, Clock, DollarSign, Database, Brain, Layers } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Zap, Cpu, MessageSquare, Wrench, Clock, DollarSign, Database, Brain, Layers, Activity } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus, EntityType, LLMInteractionLog, ToolInteractionLog } from '@/types';
 import './ExecutionDetail.css';
@@ -25,29 +25,29 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
     };
 
     return (
-        <div className="trace-node" style={{ marginLeft: depth > 0 ? '20px' : '0' }}>
+        <div className="trace-node" style={{ marginLeft: depth > 0 ? '32px' : '0' }}>
             <div className={`node-header ${run.status.toLowerCase()}`} onClick={() => hasChildren && setExpanded(!expanded)}>
                 <div className="node-icon">
-                    {hasChildren ? (expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <div style={{ width: 14 }} />}
-                    {run.entity?.type === EntityType.ACTION ? <Zap size={14} /> : <Cpu size={14} />}
+                    {hasChildren ? (expanded ? <ChevronDown size={14} strokeWidth={3} /> : <ChevronRight size={14} strokeWidth={3} />) : <div style={{ width: 14 }} />}
+                    {run.entity?.type === EntityType.ACTION ? <Zap size={16} className="text-rose-gold" /> : <Cpu size={16} className="text-secondary" />}
                 </div>
 
                 <div className="node-info">
+                    <span className="node-type">{run.entity?.type || 'UNKNOWN'}</span>
                     <span className="node-name">{run.entity?.name || 'Anonymous Unit'}</span>
-                    <span className="node-type">[{run.entity?.type || 'UNKNOWN'}]</span>
                 </div>
 
                 <div className="node-meta">
                     <div className="stat-group">
                         {run.total_cost_usd > 0 && (
-                            <span className="stat-item mini" title="Cost">
+                            <div className="stat-item mini" title="Cost">
                                 <DollarSign size={10} /> ${run.total_cost_usd.toFixed(4)}
-                            </span>
+                            </div>
                         )}
                         {run.total_tokens > 0 && (
-                            <span className="stat-item mini" title="Tokens">
+                            <div className="stat-item mini" title="Tokens">
                                 <Database size={10} /> {run.total_tokens.toLocaleString()}
-                            </span>
+                            </div>
                         )}
                     </div>
                     <span className="node-status" style={{ color: getStatusColor(run.status) }}>
@@ -193,25 +193,28 @@ export const ExecutionDetail: React.FC = () => {
     if (!run) return <div className="error-message">Execution not found.</div>;
 
     return (
-        <div className="execution-detail-page">
-            <div className="detail-header">
-                <JellyButton variant="ghost" onClick={() => navigate('/ai/executions')}>
-                    <ArrowLeft size={18} />
-                    History
-                </JellyButton>
-                <div className="header-title">
-                    <h1>Trace Archive</h1>
-                    <p>{run.entity?.name} • ID: {run.id.slice(0, 8)}</p>
+        <div className="page-container execution-detail-page">
+            <header className="page-header">
+                <div className="flex items-center gap-6">
+                    <JellyButton variant="ghost" onClick={() => navigate('/ai/executions')} className="p-2">
+                        <ArrowLeft size={24} />
+                    </JellyButton>
+                    <div>
+                        <h1>Neural Trace Archive</h1>
+                        <p>{run.entity?.name} • Deployment ID: {run.id.slice(0, 12)}</p>
+                    </div>
                 </div>
-                <div className={`status-pill ${run.status.toLowerCase()}`}>{run.status}</div>
-            </div>
+                <div className={`badge ${run.status === RunStatus.COMPLETED ? 'badge-ready' : run.status === RunStatus.FAILED ? 'badge-failed' : 'bg-blue-500/20 text-blue-400'} px-6 py-3 text-sm font-bold tracking-widest`}>
+                    {run.status.toUpperCase()}
+                </div>
+            </header>
 
-            <div className="detail-grid">
-                <div className="trace-section">
-                    <GlassCard>
-                        <div className="card-header-with-icon">
-                            <Layers size={18} />
-                            <h2>Hierarchical Invocation Tree</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <div className="lg:col-span-3">
+                    <GlassCard className="p-8">
+                        <div className="flex items-center gap-3 mb-8">
+                            <Layers size={24} className="text-rose-gold" />
+                            <h2 className="text-2xl font-black italic uppercase tracking-tighter">Hierarchical Invocation Tree</h2>
                         </div>
                         <div className="trace-container">
                             <TraceNode run={run} depth={0} />
@@ -219,25 +222,44 @@ export const ExecutionDetail: React.FC = () => {
                     </GlassCard>
                 </div>
 
-                <div className="stats-section">
-                    <GlassCard className="execution-summary-card">
-                        <h2>Operational Context</h2>
-                        <div className="stats-list">
-                            <div className="stat-item">
-                                <label><Clock size={12} /> Timeline</label>
-                                <span>{new Date(run.created_at).toLocaleString()}</span>
+                <div className="space-y-8 operational-context-card">
+                    <GlassCard className="p-8">
+                        <h2 className="text-lg font-bold mb-8 flex items-center gap-2 border-b border-white/5 pb-4">
+                            <Activity size={18} className="text-rose-gold" />
+                            Operational Context
+                        </h2>
+                        <div className="space-y-6">
+                            <div className="context-item">
+                                <label className="context-label">Timeline</label>
+                                <span className="context-value">{new Date(run.created_at).toLocaleString()}</span>
                             </div>
-                            <div className="stat-item">
-                                <label><DollarSign size={12} /> Total Accrued Cost</label>
-                                <span className="highlight-texted">${run.total_cost_usd.toFixed(4)}</span>
+
+                            <div className="grid grid-cols-1 gap-4">
+                                <div className="context-item">
+                                    <label className="context-label">Deployment Status</label>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <div className={`w-2 h-2 rounded-full ${run.status === RunStatus.COMPLETED ? 'bg-success' : 'bg-error'} animate-pulse`} />
+                                        <span className="text-sm font-bold uppercase tracking-widest">{run.status}</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="stat-item">
-                                <label><Database size={12} /> Token Consumption</label>
-                                <span>{run.total_tokens.toLocaleString()} tokens</span>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="context-item border-l-2 border-rose-gold">
+                                    <label className="context-label">Cost</label>
+                                    <span className="text-xl font-black text-rose-gold">${run.total_cost_usd.toFixed(4)}</span>
+                                </div>
+                                <div className="context-item border-l-2 border-secondary">
+                                    <label className="context-label">Tokens</label>
+                                    <span className="text-xl font-black text-secondary">{run.total_tokens.toLocaleString()}</span>
+                                </div>
                             </div>
-                            <div className="stat-item">
-                                <label>Input Parameters</label>
-                                <pre className="mini-pre">{JSON.stringify(run.input_data, null, 2)}</pre>
+
+                            <div className="context-item">
+                                <label className="context-label">Input Sequence</label>
+                                <pre className="mt-2">
+                                    {JSON.stringify(run.input_data, null, 2)}
+                                </pre>
                             </div>
                         </div>
                     </GlassCard>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { JellyButton } from '@/components/ui';
-import { X } from 'lucide-react';
+import { X, Layers } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { HierarchicalEntity } from '@/types';
 import { EntityConfigurationTabs } from './EntityConfigurationTabs';
@@ -73,13 +73,18 @@ export const EntityBuilder: React.FC = () => {
         <div className="entity-builder">
             <div className="builder-header">
                 <div className="title-section">
-                    <div className="breadcrumb">AI Architect / {id ? 'Edit' : 'Create'}</div>
-                    <h1>{entity?.display_name || entity?.name || 'New Entity'}</h1>
+                    <div className="breadcrumb">AI Core / {id ? 'Modify Interface' : 'Architect Interface'}</div>
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-white/5 rounded-2xl border border-white/10">
+                            <Layers className="text-accent-primary" size={28} />
+                        </div>
+                        <h1>{entity?.display_name || entity?.name || 'New Neural Core'}</h1>
+                    </div>
                 </div>
 
                 <div className="header-actions">
-                    <JellyButton variant="ghost" onClick={handleCancel}>
-                        <X size={20} />
+                    <JellyButton variant="ghost" className="hover:bg-red-500/10 hover:text-red-400 p-4 border border-white/5 rounded-2xl" onClick={handleCancel}>
+                        <X size={24} />
                     </JellyButton>
                 </div>
             </div>

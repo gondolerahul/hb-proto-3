@@ -40,70 +40,79 @@ export const Dashboard: React.FC = () => {
     }, []);
 
     return (
-        <div className="dashboard">
-            <div className="dashboard-header">
-                <h1>Welcome back, {user?.full_name}!</h1>
-                <p className="dashboard-subtitle">Here's what's happening with your AI agents today</p>
+        <div className="page-container dashboard">
+            <header className="page-header">
+                <div>
+                    <h1>Welcome back, {user?.full_name}!</h1>
+                    <p>Orchestrating your neural network today</p>
+                </div>
+            </header>
+
+            <div className="standard-grid mb-12">
+                <GlassCard hover className="p-6 flex items-center gap-6">
+                    <div className="stat-icon-box bg-rose-gold/10 p-4 rounded-xl text-rose-gold">
+                        <Brain size={32} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-bold bg-gradient-rose-gold-text bg-clip-text text-transparent">{stats.agents_active}</div>
+                        <div className="text-sm text-tertiary font-medium uppercase tracking-wider">Active Units</div>
+                    </div>
+                </GlassCard>
+
+                <GlassCard hover className="p-6 flex items-center gap-6">
+                    <div className="stat-icon-box bg-blue-500/10 p-4 rounded-xl text-blue-400">
+                        <Workflow size={32} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-bold text-blue-400">{stats.workflows_active}</div>
+                        <div className="text-sm text-tertiary font-medium uppercase tracking-wider">Active Logic</div>
+                    </div>
+                </GlassCard>
+
+                <GlassCard hover className="p-6 flex items-center gap-6">
+                    <div className="stat-icon-box bg-green-500/10 p-4 rounded-xl text-green-400">
+                        <Clock size={32} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-bold text-green-400">{stats.executions_today}</div>
+                        <div className="text-sm text-tertiary font-medium uppercase tracking-wider">Cycles Today</div>
+                    </div>
+                </GlassCard>
+
+                <GlassCard hover className="p-6 flex items-center gap-6">
+                    <div className="stat-icon-box bg-amber-500/10 p-4 rounded-xl text-amber-400">
+                        <FileText size={32} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-bold text-amber-400">{stats.documents_total}</div>
+                        <div className="text-sm text-tertiary font-medium uppercase tracking-wider">Knowledge Assets</div>
+                    </div>
+                </GlassCard>
             </div>
 
-            <div className="stats-grid">
-                <GlassCard hover className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(212, 147, 139, 0.2)' }}>
-                        <Brain size={32} color="var(--color-accent-primary)" />
-                    </div>
-                    <div className="stat-content">
-                        <h3>{stats.agents_active}</h3>
-                        <p>Active Agents</p>
-                    </div>
-                </GlassCard>
-
-                <GlassCard hover className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(96, 165, 250, 0.2)' }}>
-                        <Workflow size={32} color="var(--color-info)" />
-                    </div>
-                    <div className="stat-content">
-                        <h3>{stats.workflows_active}</h3>
-                        <p>Workflows</p>
-                    </div>
-                </GlassCard>
-
-                <GlassCard hover className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(74, 222, 128, 0.2)' }}>
-                        <Clock size={32} color="var(--color-success)" />
-                    </div>
-                    <div className="stat-content">
-                        <h3>{stats.executions_today}</h3>
-                        <p>Executions Today</p>
-                    </div>
-                </GlassCard>
-
-                <GlassCard hover className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(251, 191, 36, 0.2)' }}>
-                        <FileText size={32} color="var(--color-warning)" />
-                    </div>
-                    <div className="stat-content">
-                        <h3>{stats.documents_total}</h3>
-                        <p>Documents</p>
-                    </div>
-                </GlassCard>
-            </div>
-
-            <div className="dashboard-content">
-                <GlassCard className="recent-activity">
-                    <h2>Recent Activity</h2>
-                    <div className="activity-list">
+            <div className="dashboard-content max-w-2xl">
+                <GlassCard className="p-8">
+                    <h2 className="text-xl mb-6 font-semibold flex items-center gap-2">
+                        <Clock size={20} className="text-rose-gold" />
+                        Neural Trail
+                    </h2>
+                    <div className="space-y-4">
                         {recentActivity.length === 0 ? (
-                            <p>No recent activity</p>
+                            <div className="py-10 text-center opacity-30">
+                                <Clock size={48} className="mx-auto mb-2" />
+                                <p>No cycles recorded yet</p>
+                            </div>
                         ) : (
                             recentActivity.map((activity) => (
-                                <div key={activity.id} className="activity-item">
-                                    <div className="activity-icon">
-                                        <Clock size={20} />
+                                <div key={activity.id} className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                                    <div className="p-2 rounded-lg bg-rose-gold/10 text-rose-gold">
+                                        <Clock size={16} />
                                     </div>
-                                    <div className="activity-details">
-                                        <p className="activity-title">{activity.title}</p>
-                                        <p className="activity-time">{activity.time}</p>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium white-space-nowrap truncate">{activity.title}</p>
+                                        <p className="text-[10px] text-tertiary font-mono">{activity.time}</p>
                                     </div>
+                                    <div className="badge badge-ready scale-75">LIVE</div>
                                 </div>
                             ))
                         )}

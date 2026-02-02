@@ -8,15 +8,17 @@ import { companyService } from '../services/company.service';
 interface CreateUserModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (data: UserCreateAdmin) => Promise<void>;
+    onSubmit: (id: string | undefined, data: any) => Promise<void>;
     currentUser: User | null;
+    initialData?: User;
 }
 
 export const CreateUserModal: React.FC<CreateUserModalProps> = ({
     isOpen,
     onClose,
     onSubmit,
-    currentUser
+    currentUser,
+    initialData
 }) => {
     const [formData, setFormData] = useState({
         email: '',
@@ -30,11 +32,30 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (isOpen && currentUser) {
-            fetchAvailableCompanies();
-            setFormData(prev => ({ ...prev, company_id: currentUser.company_id }));
+        if (isOpen) {
+            if (initialData) {
+                setFormData({
+                    email: initialData.email,
+                    password: '',
+                    full_name: initialData.full_name,
+                    company_id: initialData.company_id,
+                    role: initialData.role
+                });
+            } else if (currentUser) {
+                setFormData({
+                    email: '',
+                    password: '',
+                    full_name: '',
+                    company_id: currentUser.company_id,
+                    role: '' as UserRole
+                });
+            }
+            if (currentUser) {
+                fetchAvailableCompanies();
+            }
+            setError(null);
         }
-    }, [isOpen, currentUser]);
+    }, [isOpen, currentUser, initialData]);
 
     const fetchAvailableCompanies = async () => {
         try {
@@ -59,17 +80,25 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
         setLoading(true);
 
         try {
-            await onSubmit(formData as UserCreateAdmin);
-            setFormData({
-                email: '',
-                password: '',
-                full_name: '',
-                company_id: currentUser?.company_id || '',
-                role: '' as UserRole
-            });
+            const data = { ...formData };
+            if (initialData && !data.password) {
+                delete (data as any).password;
+            }
+
+            await onSubmit(initialData?.id, data);
+
+            if (!initialData) {
+                setFormData({
+                    email: '',
+                    password: '',
+                    full_name: '',
+                    company_id: currentUser?.company_id || '',
+                    role: '' as UserRole
+                });
+            }
             onClose();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to create user');
+            setError(err.response?.data?.detail || `Failed to ${initialData ? 'update' : 'create'} user`);
         } finally {
             setLoading(false);
         }
@@ -113,10 +142,12 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
                     <X size={20} />
                 </button>
 
-                <h2 className="text-xl font-bold text-white mb-8">Establish Identity</h2>
+                <h2 className="text-xl font-bold text-white mb-8">
+                    {initialData ? 'Update Identity' : 'Establish Identity'}
+                </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 gap-6">
                         <GlassInput
                             label="Full Name"
                             value={formData.full_name}
@@ -139,11 +170,11 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
                         type="password"
                         value={formData.password}
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        placeholder="••••••••"
-                        required
+                        placeholder={initialData ? "Leave blank to keep current" : "••••••••"}
+                        required={!initialData}
                     />
 
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 gap-6">
                         <div className="form-group">
                             <label>Company</label>
                             <select
@@ -185,10 +216,10 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
                         </JellyButton>
                         <JellyButton
                             type="submit"
-                            disabled={loading || !formData.email || !formData.password || !formData.role}
+                            disabled={loading || !formData.email || (!initialData && !formData.password) || !formData.role}
                             roseGold
                         >
-                            {loading ? 'Synthesizing...' : 'Calibrate Identity'}
+                            {loading ? 'Synthesizing...' : (initialData ? 'Update Identity' : 'Calibrate Identity')}
                         </JellyButton>
                     </div>
                 </form>

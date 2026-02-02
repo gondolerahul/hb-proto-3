@@ -1,142 +1,111 @@
 .entity-flow-wrapper {
     display: flex;
-    height: calc(100vh - 120px);
+    height: 100%;
+    flex: 1;
     width: 100%;
-    gap: var(--spacing-6);
+    gap: var(--spacing-lg);
+    background: transparent;
 }
 
 .entity-flow-sidebar {
-    width: 300px;
-    background: var(--color-glass-bg);
-    border: 1px solid var(--color-glass-stroke);
-    border-radius: var(--radius-lg);
-    backdrop-filter: blur(var(--blur-md));
-    -webkit-backdrop-filter: blur(var(--blur-md));
-    padding: var(--spacing-6);
+    width: 340px;
+    background: rgba(255, 255, 255, 0.02);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    padding: var(--spacing-xl);
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.entity-flow-sidebar h3 {
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #fff;
+    margin-bottom: var(--spacing-sm);
 }
 
 .sidebar-hint {
-    font-size: var(--font-size-xs);
+    font-size: 0.7rem;
     color: var(--color-text-tertiary);
-    margin-bottom: var(--spacing-6);
-}
-
-.draggable-section {
-    margin-bottom: var(--spacing-8);
-}
-
-.draggable-section h4 {
-    font-size: var(--font-size-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--color-text-tertiary);
-    margin-bottom: var(--spacing-4);
+    margin-bottom: var(--spacing-xl);
+    font-weight: 600;
 }
 
 .draggable-item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-2);
-    padding: var(--spacing-3) var(--spacing-4);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-glass-stroke);
+    padding: var(--spacing-md);
     background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-xl);
     cursor: grab;
-    margin-bottom: var(--spacing-3);
-    font-size: var(--font-size-sm);
-    transition: all var(--transition-fast);
-}
-
-.draggable-item .item-header {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-2);
-    font-weight: 600;
-    color: var(--color-text-primary);
-}
-
-.draggable-item .item-type {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.draggable-item .item-description {
-    font-size: var(--font-size-xs);
-    color: var(--color-text-secondary);
-    line-height: 1.3;
+    margin-bottom: var(--spacing-md);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .draggable-item:hover {
     background: rgba(255, 255, 255, 0.08);
     border-color: var(--color-accent-primary);
+    transform: translateX(4px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
-.draggable-item:active {
-    cursor: grabbing;
+.draggable-item .item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.85rem;
+    margin-bottom: 4px;
 }
 
-.tool-item:hover {
-    border-color: var(--color-info);
+.draggable-item .item-type {
+    font-size: 0.6rem;
+    color: var(--color-accent-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 800;
 }
-
-.library-loading,
-.library-empty {
-    padding: var(--spacing-6);
-    text-align: center;
-    color: var(--color-text-tertiary);
-    font-size: var(--font-size-sm);
-}
-
 
 .entity-flow-canvas {
     flex: 1;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-glass-stroke);
-    overflow: hidden;
+    background: rgba(0, 0, 0, 0.3);
     position: relative;
-}
-
-.react-flow__pane {
-    background: transparent !important;
-}
-
-.react-flow__background {
-    background: transparent !important;
+    border-radius: 0 0 var(--radius-2xl) 0;
 }
 
 .react-flow__controls {
-    box-shadow: var(--shadow-md) !important;
-    border-radius: var(--radius-md) !important;
-    overflow: hidden;
-    border: 1px solid var(--color-glass-stroke) !important;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.5) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 4px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(10px);
 }
 
 .react-flow__controls-button {
-    background: var(--color-glass-bg) !important;
-    border-color: var(--color-glass-stroke) !important;
-    color: var(--color-text-primary) !important;
+    background: transparent !important;
+    border: none !important;
+    color: #fff !important;
+    border-radius: var(--radius-md) !important;
+    transition: all 0.2s !important;
 }
 
 .react-flow__controls-button:hover {
     background: rgba(255, 255, 255, 0.1) !important;
 }
 
-.react-flow__minimap {
-    border-radius: var(--radius-md) !important;
-    overflow: hidden;
-}
-
 .node-config-panel {
-    border-top: 1px solid var(--color-glass-stroke);
-    padding-top: var(--spacing-6);
+    margin-top: var(--spacing-2xl);
+    padding-top: var(--spacing-xl);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.w-full {
-    width: 100%;
+.node-config-panel h3 {
+    color: var(--color-accent-primary);
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { GlassCard } from './ui/GlassCard';
 import { GlassInput } from './ui/GlassInput';
+import { JellyButton } from './ui/JellyButton';
 import { integrationService, Model, Integration } from '../services/integration.service';
 import { User } from '../types';
 
@@ -134,8 +135,8 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <GlassCard className="w-full max-w-2xl p-8 relative max-h-[90vh] overflow-y-auto">
+        <div className="modal-overlay">
+            <GlassCard className="w-full max-w-2xl p-8 relative max-h-90vh overflow-y-auto">
                 <button
                     onClick={onClose}
                     className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white transition-colors"
@@ -247,21 +248,20 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                         </p>
                     )}
 
-                    <div className="col-span-2 flex justify-end gap-4 pt-4">
-                        <button
-                            type="button"
+                    <div className="col-span-2 flex justify-end gap-4 pt-6 mt-2 border-t border-white/5">
+                        <JellyButton
+                            variant="ghost"
                             onClick={onClose}
-                            className="px-6 py-2 text-gray-300 hover:text-white transition-colors"
                         >
                             Cancel
-                        </button>
-                        <button
+                        </JellyButton>
+                        <JellyButton
                             type="submit"
+                            roseGold
                             disabled={loading}
-                            className="px-6 py-2 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white rounded-lg transition-all"
                         >
-                            {loading ? 'Saving...' : (editingIntegration ? 'Update' : 'Create')}
-                        </button>
+                            {loading ? 'Saving...' : (editingIntegration ? 'Update Integration' : 'Create Integration')}
+                        </JellyButton>
                     </div>
                 </form>
             </GlassCard>

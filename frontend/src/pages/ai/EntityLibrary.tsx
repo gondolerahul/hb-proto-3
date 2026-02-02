@@ -115,8 +115,8 @@ export const EntityLibrary: React.FC = () => {
                 ) : (
                     filteredEntities.map((entity) => (
                         <GlassCard key={entity.id} hover className="entity-card">
-                            <div className="entity-card-header">
-                                <div className="entity-icon" style={{ color: getTypeColor(entity.type) }}>
+                            <div className="card-header">
+                                <div className="card-icon-wrapper entity-icon" style={{ color: getTypeColor(entity.type) }}>
                                     {getTypeIcon(entity.type)}
                                 </div>
                                 <div className="entity-info">

@@ -30,8 +30,28 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
     // Identity State
     const [systemPrompt, setSystemPrompt] = useState(entity?.identity?.system_prompt || '');
     const [examples, setExamples] = useState(entity?.identity?.examples || []);
+    // NEW Few Shot State
+    const [fewShotExamples, setFewShotExamples] = useState<{ [key: string]: string }[]>(entity?.identity?.few_shot_examples || []);
+
     const [behavioralConstraints, setBehavioralConstraints] = useState(entity?.identity?.behavioral_constraints || []);
     const [constraintInput, setConstraintInput] = useState('');
+
+
+
+    // Few Shot Handlers
+    const addFewShot = () => {
+        setFewShotExamples([...fewShotExamples, { input: '', output: '' }]);
+    };
+
+    const updateFewShot = (index: number, key: string, value: string) => {
+        const updated = [...fewShotExamples];
+        updated[index] = { ...updated[index], [key]: value };
+        setFewShotExamples(updated);
+    };
+
+    const removeFewShot = (index: number) => {
+        setFewShotExamples(fewShotExamples.filter((_, i) => i !== index));
+    };
 
     // Logic Gate State
     const [modelProvider, setModelProvider] = useState(entity?.logic_gate?.reasoning_config?.model_provider || 'google');
@@ -44,6 +64,12 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
     const [backoffStrategy, setBackoffStrategy] = useState(entity?.logic_gate?.retry_policy?.backoff_strategy || 'EXPONENTIAL');
     const [reviewEnabled, setReviewEnabled] = useState(entity?.logic_gate?.review_mechanism?.enabled || false);
     const [reviewPrompt, setReviewPrompt] = useState(entity?.logic_gate?.review_mechanism?.review_prompt || '');
+
+    // NEW Context Policy State
+    const [contextPolicyType, setContextPolicyType] = useState<'FULL' | 'LAST_N' | 'SLIDING_WINDOW' | 'EXPLICIT'>(entity?.logic_gate?.context_policy?.type || 'FULL');
+    const [contextPolicyN, setContextPolicyN] = useState<number | undefined>(entity?.logic_gate?.context_policy?.n);
+    const [contextPolicyMaxChars, setContextPolicyMaxChars] = useState<number | undefined>(entity?.logic_gate?.context_policy?.max_chars);
+    const [contextPolicySummarizeThreshold, setContextPolicySummarizeThreshold] = useState<number | undefined>(entity?.logic_gate?.context_policy?.summarize_threshold);
 
     // Planning State
     const [staticPlanEnabled, setStaticPlanEnabled] = useState(entity?.planning?.static_plan?.enabled ?? true);
@@ -65,6 +91,39 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
     const [maxRecursionDepth, setMaxRecursionDepth] = useState(5);
     const [maxToolCalls, setMaxToolCalls] = useState<number | undefined>(undefined);
     const [hitlCheckpoints, setHitlCheckpoints] = useState(entity?.governance?.hitl_checkpoints || []);
+
+    // NEW Logic Gate Additional State
+    const [backoffMultiplier, setBackoffMultiplier] = useState(entity?.logic_gate?.retry_policy?.backoff_multiplier || 2.0);
+    const [retryOn, setRetryOn] = useState<string[]>(entity?.logic_gate?.retry_policy?.retry_on || ["TOOL_FAILURE", "LLM_ERROR", "TIMEOUT"]);
+    const [reviewOnFailure, setReviewOnFailure] = useState(entity?.logic_gate?.review_mechanism?.on_failure || "RETRY");
+    const [successCriteria, setSuccessCriteria] = useState<any[]>(entity?.logic_gate?.review_mechanism?.success_criteria || []);
+
+    // NEW Planning Additional State
+    const [fallbackBehavior, setFallbackBehavior] = useState(entity?.planning?.static_plan?.fallback_behavior || 'ADAPTIVE');
+    const [dynamicConstraints, setDynamicConstraints] = useState<string[]>(entity?.planning?.dynamic_planning?.constraints || []);
+    const [reconciliationStrategy, setReconciliationStrategy] = useState(entity?.planning?.dynamic_planning?.reconciliation_strategy || 'HYBRID');
+    const [allowedDeviations, setAllowedDeviations] = useState(entity?.planning?.dynamic_planning?.allowed_deviations || {
+        can_add_steps: true,
+        can_skip_optional_steps: true,
+        can_reorder_steps: false,
+        can_change_tools: false
+    });
+    const [iterationContextMode, setIterationContextMode] = useState(entity?.planning?.loop_control?.iteration_context_mode || 'FULL_HISTORY');
+
+    // NEW Capabilities Additional State
+    const [memoryStorageBackend, setMemoryStorageBackend] = useState(entity?.capabilities?.memory?.storage_backend || 'POSTGRES_JSONB');
+    const [contextPriority, setContextPriority] = useState<string[]>(entity?.capabilities?.context_engineering?.context_priority || ["SYSTEM_PROMPT", "STATIC_PLAN", "USER_INPUT"]);
+    const [artifactHandlingMode, setArtifactHandlingMode] = useState(entity?.capabilities?.context_engineering?.artifact_handling?.artifact_reference_mode || 'REFERENCE');
+
+    // NEW IO Contract State
+    const [inputSchema, setInputSchema] = useState(JSON.stringify(entity?.io_contract?.input_schema || { type: "object", properties: {} }, null, 2));
+    const [outputSchema, setOutputSchema] = useState(JSON.stringify(entity?.io_contract?.output_schema || { type: "object", properties: {} }, null, 2));
+
+    // NEW Observability State
+    const [logLevel, setLogLevel] = useState(entity?.observability?.log_level || 'INFO');
+    const [logThoughts, setLogThoughts] = useState(entity?.observability?.log_thoughts ?? true);
+    const [trackCost, setTrackCost] = useState(entity?.observability?.track_cost ?? true);
+
     const [availableModels, setAvailableModels] = useState<any[]>([]);
 
     const [hierarchyNodes, setHierarchyNodes] = useState<Node[]>([]);
@@ -79,17 +138,14 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                 const providers = Array.from(new Set(models.map(m => m.provider))).filter(p => p !== 'openai');
                 const currentProviderValid = providers.includes(modelProvider);
 
-                // If current provider is invalid OR modelName is unset, pick defaults (preferring gemini if available)
                 if ((!currentProviderValid || !modelName) && models.length > 0) {
                     const geminiModel = models.find(m => m.model_key.includes('gemini'));
                     const defaultModel = geminiModel || models[0];
                     setModelProvider(defaultModel.provider);
                     setModelName(defaultModel.model_key);
                 } else if (currentProviderValid && models.length > 0) {
-                    // Provider is valid, but check if the selected model exists for this provider
                     const modelsForProvider = models.filter(m => m.provider === modelProvider);
                     const currentModelValid = modelsForProvider.some(m => m.model_key === modelName);
-
                     if (!currentModelValid && modelsForProvider.length > 0) {
                         setModelName(modelsForProvider[0].model_key);
                     }
@@ -100,6 +156,44 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
         };
         fetchModels();
     }, []);
+
+    // Initialize Hierarchy Nodes from Entity Steps
+    useEffect(() => {
+        if (entity?.planning?.static_plan?.steps && entity.planning.static_plan.steps.length > 0) {
+            const steps = entity.planning.static_plan.steps;
+            const nodes: Node[] = steps.map((step: any, idx: number) => {
+                const isEntity = step.type === 'CHILD_ENTITY_INVOCATION';
+                const isTool = step.type === 'TOOL_CALL';
+
+                return {
+                    id: step.step_id || crypto.randomUUID(),
+                    type: isEntity ? 'entityNode' : isTool ? 'toolNode' : 'defaultNode',
+                    position: { x: 400, y: 100 + idx * 150 },
+                    data: {
+                        label: step.name,
+                        description: step.description,
+                        required: step.required,
+                        entityRef: step.target?.entity_id ? { id: step.target.entity_id } : undefined,
+                        toolRef: step.target?.tool_id ? { tool_id: step.target.tool_id } : undefined,
+                    }
+                };
+            });
+
+            setHierarchyNodes(nodes);
+
+            // Create default sequential edges if no edge logic is stored
+            const edges: Edge[] = [];
+            for (let i = 0; i < nodes.length - 1; i++) {
+                edges.push({
+                    id: `e${nodes[i].id}-${nodes[i + 1].id}`,
+                    source: nodes[i].id,
+                    target: nodes[i + 1].id,
+                    animated: true,
+                });
+            }
+            setHierarchyEdges(edges);
+        }
+    }, [entity?.id]); // Only re-run when actual entity ID changes (loaded)
 
     const addTag = () => {
         if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -152,6 +246,7 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                     system_prompt: systemPrompt,
                     examples,
                     behavioral_constraints: behavioralConstraints,
+                    few_shot_examples: fewShotExamples,
                 }
             },
 
@@ -167,10 +262,20 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                 retry_policy: {
                     max_retries: maxRetries,
                     backoff_strategy: backoffStrategy,
+                    backoff_multiplier: backoffMultiplier,
+                    retry_on: retryOn,
                 },
                 review_mechanism: {
                     enabled: reviewEnabled,
                     review_prompt: reviewPrompt,
+                    on_failure: reviewOnFailure,
+                    success_criteria: successCriteria,
+                },
+                context_policy: {
+                    type: contextPolicyType,
+                    n: contextPolicyN,
+                    max_chars: contextPolicyMaxChars,
+                    summarize_threshold: contextPolicySummarizeThreshold,
                 }
             },
 
@@ -178,13 +283,18 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                 static_plan: {
                     enabled: staticPlanEnabled,
                     steps: convertNodesToSteps(hierarchyNodes, hierarchyEdges),
+                    fallback_behavior: fallbackBehavior,
                 },
                 dynamic_planning: {
                     enabled: dynamicPlanningEnabled,
                     planning_prompt: planningPrompt,
+                    constraints: dynamicConstraints,
+                    reconciliation_strategy: reconciliationStrategy,
+                    allowed_deviations: allowedDeviations,
                 },
                 loop_control: {
                     max_iterations: maxIterations,
+                    iteration_context_mode: iterationContextMode,
                 }
             },
 
@@ -193,9 +303,15 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                 memory: {
                     enabled: memoryEnabled,
                     scope: memoryScope,
+                    storage_backend: memoryStorageBackend,
                 },
                 context_engineering: {
                     max_context_tokens: maxContextTokens,
+                    context_priority: contextPriority,
+                    artifact_handling: {
+                        artifact_reference_mode: artifactHandlingMode,
+                        store_large_objects: true,
+                    }
                 }
             },
 
@@ -207,6 +323,17 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                     max_tool_calls: maxToolCalls,
                 },
                 hitl_checkpoints: hitlCheckpoints,
+            },
+
+            io_contract: {
+                input_schema: JSON.parse(inputSchema),
+                output_schema: JSON.parse(outputSchema),
+            },
+
+            observability: {
+                log_level: logLevel,
+                log_thoughts: logThoughts,
+                track_cost: trackCost,
             },
 
             hierarchy: {
@@ -222,19 +349,27 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
         // Convert ReactFlow nodes/edges to static plan steps
         return nodes
             .filter(n => n.id !== 'root')
-            .map((node, idx) => ({
-                step_id: node.id,
-                order: idx + 1,
-                name: node.data.label,
-                description: node.data.description || '',
-                type: node.data.entityRef ? 'CHILD_ENTITY_INVOCATION' : node.data.toolRef ? 'TOOL_CALL' : 'ACTION',
-                target: {
-                    entity_id: node.data.entityRef?.id,
-                    tool_id: node.data.toolRef?.tool_id,
-                    prompt_template: !node.data.entityRef && !node.data.toolRef ? node.data.description : undefined,
-                },
-                required: node.data.required ?? true,
-            }));
+            .map((node, idx) => {
+                // Find incoming edges to determine dependencies
+                const dependencies = edges
+                    .filter(e => e.target === node.id)
+                    .map(e => e.source);
+
+                return {
+                    step_id: node.id,
+                    order: idx + 1, // Visual order, but dependencies dictate execution
+                    name: node.data.label,
+                    description: node.data.description || '',
+                    type: node.data.entityRef ? 'CHILD_ENTITY_INVOCATION' : node.data.toolRef ? 'TOOL_CALL' : 'ACTION',
+                    target: {
+                        entity_id: node.data.entityRef?.id,
+                        tool_id: node.data.toolRef?.tool_id,
+                        prompt_template: !node.data.entityRef && !node.data.toolRef ? node.data.description : undefined,
+                        input_dependencies: dependencies.length > 0 ? dependencies : undefined,
+                    },
+                    required: node.data.required ?? true,
+                };
+            });
     };
 
     const extractChildrenFromGraph = (nodes: Node[], edges: Edge[]) => {
@@ -262,6 +397,8 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
         { id: 'planning', label: 'Planning', icon: Route },
         { id: 'capabilities', label: 'Capabilities', icon: Wrench },
         { id: 'governance', label: 'Governance', icon: Shield },
+        { id: 'contract', label: 'IO Contract', icon: Layers },
+        { id: 'observability', label: 'Observability', icon: Settings },
         { id: 'hierarchy', label: 'Hierarchy', icon: Layers },
     ];
 
@@ -418,6 +555,39 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                 <Plus size={16} /> Add Example
                             </JellyButton>
 
+                            <h3>Few-Shot Prompt Examples (Advanced)</h3>
+                            <div className="info-box">
+                                <small>These examples are injected directly into the prompt context. Use 'input' and 'output' keys.</small>
+                            </div>
+                            {fewShotExamples.map((ex, idx) => (
+                                <div key={`fs-${idx}`} className="example-item">
+                                    <div className="form-group">
+                                        <label>Input / User</label>
+                                        <textarea
+                                            value={ex.input || ''}
+                                            onChange={(e) => updateFewShot(idx, 'input', e.target.value)}
+                                            placeholder="User input..."
+                                            rows={2}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Output / Model</label>
+                                        <textarea
+                                            value={ex.output || ''}
+                                            onChange={(e) => updateFewShot(idx, 'output', e.target.value)}
+                                            placeholder="Expected model response..."
+                                            rows={2}
+                                        />
+                                    </div>
+                                    <JellyButton variant="danger" size="sm" onClick={() => removeFewShot(idx)}>
+                                        <Trash2 size={14} /> Remove
+                                    </JellyButton>
+                                </div>
+                            ))}
+                            <JellyButton onClick={addFewShot}>
+                                <Plus size={16} /> Add Few-Shot Pair
+                            </JellyButton>
+
                             <h3 className="mt-4">Behavioral Constraints</h3>
                             <div className="form-group">
                                 <div className="tag-input-wrapper">
@@ -525,6 +695,52 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                 </div>
                             </div>
 
+                            <h3>Context Policy</h3>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Policy Type</label>
+                                    <select
+                                        value={contextPolicyType}
+                                        onChange={(e) => setContextPolicyType(e.target.value as any)}
+                                    >
+                                        <option value="FULL">Full Context</option>
+                                        <option value="LAST_N">Last N Steps</option>
+                                        <option value="SLIDING_WINDOW">Sliding Window (Chars)</option>
+                                        <option value="EXPLICIT">Explicit Keys Only</option>
+                                    </select>
+                                </div>
+                                {contextPolicyType === 'LAST_N' && (
+                                    <div className="form-group">
+                                        <label>Number of Steps (N)</label>
+                                        <input
+                                            type="number"
+                                            value={contextPolicyN || 3}
+                                            onChange={(e) => setContextPolicyN(parseInt(e.target.value))}
+                                        />
+                                    </div>
+                                )}
+                                {contextPolicyType === 'SLIDING_WINDOW' && (
+                                    <div className="form-group">
+                                        <label>Max Characters</label>
+                                        <input
+                                            type="number"
+                                            value={contextPolicyMaxChars || 4000}
+                                            onChange={(e) => setContextPolicyMaxChars(parseInt(e.target.value))}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="form-group">
+                                <label>Summarization Threshold (Chars)</label>
+                                <input
+                                    type="number"
+                                    value={contextPolicySummarizeThreshold || 8000}
+                                    onChange={(e) => setContextPolicySummarizeThreshold(parseInt(e.target.value))}
+                                    placeholder="8000"
+                                />
+                                <small>Auto-summarize context if it exceeds this size</small>
+                            </div>
+
                             <h3>Retry Policy</h3>
                             <div className="form-row">
                                 <div className="form-group">
@@ -544,6 +760,35 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                         <option value="LINEAR">Linear</option>
                                         <option value="NONE">None</option>
                                     </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Backoff Multiplier</label>
+                                    <input
+                                        type="number"
+                                        value={backoffMultiplier}
+                                        onChange={(e) => setBackoffMultiplier(parseFloat(e.target.value) || 2.0)}
+                                        step="0.1"
+                                        min="1"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Retry On (Events)</label>
+                                <div className="tag-list">
+                                    {['TOOL_FAILURE', 'LLM_ERROR', 'TIMEOUT', 'VALIDATION_ERROR'].map(event => (
+                                        <label key={event} className="checkbox-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={retryOn.includes(event)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setRetryOn([...retryOn, event]);
+                                                    else setRetryOn(retryOn.filter(item => item !== event));
+                                                }}
+                                            />
+                                            {event}
+                                        </label>
+                                    ))}
                                 </div>
                             </div>
 
@@ -590,6 +835,15 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                             </div>
 
                             <div className="form-group">
+                                <label>Fallback Behavior</label>
+                                <select value={fallbackBehavior} onChange={(e) => setFallbackBehavior(e.target.value)}>
+                                    <option value="ADAPTIVE">Adaptive (LLM can adjust order/tools)</option>
+                                    <option value="STRICT">Strict (Must follow exactly)</option>
+                                    <option value="DYNAMIC_ONLY">Dynamic Only (Ignore static plan)</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group">
                                 <label className="checkbox-label">
                                     <input
                                         type="checkbox"
@@ -612,17 +866,63 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                 </div>
                             )}
 
+                            {dynamicPlanningEnabled && (
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Reconciliation Strategy</label>
+                                        <select value={reconciliationStrategy} onChange={(e) => setReconciliationStrategy(e.target.value)}>
+                                            <option value="HYBRID">Hybrid (Mix Static & Dynamic)</option>
+                                            <option value="STATIC_PRIORITY">Static Priority</option>
+                                            <option value="DYNAMIC_PRIORITY">Dynamic Priority</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+
+                            {dynamicPlanningEnabled && (
+                                <div className="form-group">
+                                    <label>Allowed Deviations</label>
+                                    <div className="tag-list">
+                                        <label className="checkbox-label">
+                                            <input type="checkbox" checked={allowedDeviations.can_add_steps} onChange={(e) => setAllowedDeviations({ ...allowedDeviations, can_add_steps: e.target.checked })} />
+                                            Can Add Steps
+                                        </label>
+                                        <label className="checkbox-label">
+                                            <input type="checkbox" checked={allowedDeviations.can_skip_optional_steps} onChange={(e) => setAllowedDeviations({ ...allowedDeviations, can_skip_optional_steps: e.target.checked })} />
+                                            Can Skip Optional
+                                        </label>
+                                        <label className="checkbox-label">
+                                            <input type="checkbox" checked={allowedDeviations.can_reorder_steps} onChange={(e) => setAllowedDeviations({ ...allowedDeviations, can_reorder_steps: e.target.checked })} />
+                                            Can Reorder
+                                        </label>
+                                        <label className="checkbox-label">
+                                            <input type="checkbox" checked={allowedDeviations.can_change_tools} onChange={(e) => setAllowedDeviations({ ...allowedDeviations, can_change_tools: e.target.checked })} />
+                                            Can Change Tools
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
                             <h3>Loop Control</h3>
-                            <div className="form-group">
-                                <label>Max Iterations</label>
-                                <input
-                                    type="number"
-                                    value={maxIterations}
-                                    onChange={(e) => setMaxIterations(parseInt(e.target.value) || 1)}
-                                    min="1"
-                                    max="100"
-                                />
-                                <small>Prevents infinite loops</small>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Max Iterations</label>
+                                    <input
+                                        type="number"
+                                        value={maxIterations}
+                                        onChange={(e) => setMaxIterations(parseInt(e.target.value) || 1)}
+                                        min="1"
+                                        max="100"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Iteration Context Mode</label>
+                                    <select value={iterationContextMode} onChange={(e) => setIterationContextMode(e.target.value)}>
+                                        <option value="FULL_HISTORY">Full History</option>
+                                        <option value="SUMMARIZED">Summarized</option>
+                                        <option value="LAST_N">Last N Steps</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -649,28 +949,66 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                 </label>
                             </div>
                             {memoryEnabled && (
-                                <div className="form-group">
-                                    <label>Memory Scope</label>
-                                    <select value={memoryScope} onChange={(e) => setMemoryScope(e.target.value)}>
-                                        <option value="SESSION">Session (cleared after execution)</option>
-                                        <option value="ENTITY">Entity (persists across runs)</option>
-                                        <option value="GLOBAL">Global (shared across entities)</option>
-                                    </select>
-                                </div>
+                                <>
+                                    <div className="form-group">
+                                        <label>Memory Scope</label>
+                                        <select value={memoryScope} onChange={(e) => setMemoryScope(e.target.value)}>
+                                            <option value="SESSION">Session (cleared after execution)</option>
+                                            <option value="ENTITY">Entity (persists across runs)</option>
+                                            <option value="GLOBAL">Global (shared across entities)</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Storage Backend</label>
+                                        <select value={memoryStorageBackend} onChange={(e) => setMemoryStorageBackend(e.target.value)}>
+                                            <option value="POSTGRES_JSONB">Postgres JSONB</option>
+                                            <option value="VECTOR_DB">Vector Database</option>
+                                            <option value="REDIS">Redis</option>
+                                        </select>
+                                    </div>
+                                </>
                             )}
 
                             <h3>Context Engineering</h3>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Max Context Tokens</label>
+                                    <input
+                                        type="number"
+                                        value={maxContextTokens}
+                                        onChange={(e) => setMaxContextTokens(parseInt(e.target.value) || 8000)}
+                                        min="1000"
+                                        max="100000"
+                                        step="1000"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Artifact Mode</label>
+                                    <select value={artifactHandlingMode} onChange={(e) => setArtifactHandlingMode(e.target.value)}>
+                                        <option value="REFERENCE">Reference</option>
+                                        <option value="INLINE">Inline</option>
+                                        <option value="SUMMARY">Summary</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div className="form-group">
-                                <label>Max Context Tokens</label>
-                                <input
-                                    type="number"
-                                    value={maxContextTokens}
-                                    onChange={(e) => setMaxContextTokens(parseInt(e.target.value) || 8000)}
-                                    min="1000"
-                                    max="100000"
-                                    step="1000"
-                                />
-                                <small>Hard limit for prompt size to prevent overflow</small>
+                                <label>Context Priority (order)</label>
+                                <div className="tag-list">
+                                    {['SYSTEM_PROMPT', 'STATIC_PLAN', 'USER_INPUT', 'MEMORY', 'TOOLS'].map(item => (
+                                        <label key={item} className="checkbox-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={contextPriority.includes(item)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setContextPriority([...contextPriority, item]);
+                                                    else setContextPriority(contextPriority.filter(p => p !== item));
+                                                }}
+                                            />
+                                            {item}
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -730,6 +1068,75 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
 
                             <h3>Human-In-The-Loop (HITL)</h3>
                             <p className="form-hint">Configure approval checkpoints for critical operations (coming soon)</p>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'contract' && (
+                    <div className="tab-panel">
+                        <div className="form-section">
+                            <h3>IO Contract (JSON Schema)</h3>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Input Schema</label>
+                                    <textarea
+                                        value={inputSchema}
+                                        onChange={(e) => setInputSchema(e.target.value)}
+                                        placeholder='{ "type": "object", ... }'
+                                        rows={15}
+                                        className="code-textarea"
+                                    />
+                                    <small>JSON Schema for input validation</small>
+                                </div>
+                                <div className="form-group">
+                                    <label>Output Schema</label>
+                                    <textarea
+                                        value={outputSchema}
+                                        onChange={(e) => setOutputSchema(e.target.value)}
+                                        placeholder='{ "type": "object", ... }'
+                                        rows={15}
+                                        className="code-textarea"
+                                    />
+                                    <small>JSON Schema for output validation</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'observability' && (
+                    <div className="tab-panel">
+                        <div className="form-section">
+                            <h3>Observability Settings</h3>
+                            <div className="form-group">
+                                <label>Log Level</label>
+                                <select value={logLevel} onChange={(e) => setLogLevel(e.target.value)}>
+                                    <option value="DEBUG">Debug</option>
+                                    <option value="INFO">Info</option>
+                                    <option value="WARN">Warn</option>
+                                    <option value="ERROR">Error</option>
+                                </select>
+                            </div>
+                            <div className="form-group mt-4">
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={logThoughts}
+                                        onChange={(e) => setLogThoughts(e.target.checked)}
+                                    />
+                                    Log Internal Thoughts/Reasoning
+                                </label>
+                            </div>
+                            <div className="form-group">
+                                <label className="checkbox-label">
+                                    <input
+                                        type="checkbox"
+                                        checked={trackCost}
+                                        onChange={(e) => setTrackCost(e.target.checked)}
+                                    />
+                                    Track Execution Cost & Tokens
+                                </label>
+                            </div>
                         </div>
                     </div>
                 )}

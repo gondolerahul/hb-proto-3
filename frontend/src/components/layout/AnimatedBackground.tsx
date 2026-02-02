@@ -7,17 +7,17 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-// Muted, sophisticated colors (Burnt Orange/Copper & Steel Blue)
-const NEON_ORANGE = new THREE.Vector3(0.8, 0.35, 0.15); // Muted Copper/Orange
-const ELECTRIC_BLUE = new THREE.Vector3(0.15, 0.35, 0.6); // Muted Steel Blue
+// Muted, sophisticated colors (Dimmed)
+const NEON_ORANGE = new THREE.Vector3(0.4, 0.2, 0.1); // Significantly Dimmed Copper/Orange
+const ELECTRIC_BLUE = new THREE.Vector3(0.1, 0.2, 0.4); // Significantly Dimmed Steel Blue
 const TILE_COLOR = new THREE.Color('#080808'); // Matte Black
-const BACKGROUND_COLOR = new THREE.Color('#000000');
+const BACKGROUND_COLOR = new THREE.Color('#382b02ff');
 
-const HEX_RADIUS = 0.6;
+const HEX_RADIUS = 0.2;
 const HEX_HEIGHT = 0.2;
-const GAP = 0.08; // Defined gap for light to shine through
-const GRID_ROWS = 30;
-const GRID_COLS = 40;
+const GAP = 0.03; // Defined gap for light to shine through
+const GRID_ROWS = 60;
+const GRID_COLS = 105;
 
 // ============================================================================
 // SHADERS (The secret sauce for the "Lava" look)
@@ -84,12 +84,12 @@ void main() {
     float intensity = smoothstep(0.1, 0.6, pattern);
     
     // mostly Dark (0.0) with bright peaks (1.0), but less intense
-    vec3 finalColor = mix(vec3(0.0), colorA * 1.5, intensity); // Reduced from 2.5
+    vec3 finalColor = mix(vec3(0.0), colorA * 1.2, intensity); // Reduced multiplier
     
     // Add subtle blue pulses
     float bluePulse = smoothstep(0.4, 0.6, snoise(uv - vec2(time * 1.2)));
     if(bluePulse > 0.0) {
-        finalColor = mix(finalColor, colorB * 1.8, bluePulse * 0.5); // Reduced from 3.0
+        finalColor = mix(finalColor, colorB * 1.3, bluePulse * 0.5); // Reduced multiplier
     }
     
     gl_FragColor = vec4(finalColor, 1.0);
@@ -165,7 +165,7 @@ export const AnimatedBackground: React.FC = () => {
         // Intense Bloom for the "Lava" effect
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(width, height),
-            1.5,  // strength
+            0.8,  // strength
             0.4,  // radius
             0.1   // threshold
         );
