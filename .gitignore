@@ -31,3 +31,8 @@ Thumbs.db
 # Project specific
 logs/
 *.log
+
+# Backend runtime / generated directories
+backend/uploads/
+backend/artifact/
+backend/assets/
