@@ -20,13 +20,18 @@ const COMPONENT_TYPES = [
     { id: 'analysis', name: 'Analysis' },
     { id: 'minute', name: 'Minute' },
     { id: 'character', name: 'Character' },
-    { id: 'flat_fee', name: 'Flat Fee' }
+    { id: 'flat_fee', name: 'Flat Fee' },
+    { id: 'image', name: 'Per Image' },
+    { id: 'per_second', name: 'Per Second (Video)' }
 ];
 
 const SERVICE_CATEGORIES = [
     { id: 'LLM', name: 'LLM (AI Model)' },
     { id: 'COMMUNICATION', name: 'Communication (Twilio/Exotel)' },
     { id: 'API_TOOL', name: 'API Tool (Apollo/Clay/Zapier)' },
+    { id: 'IMAGE_GENERATION', name: 'Image Generation' },
+    { id: 'VIDEO_GENERATION', name: 'Video Generation' },
+    { id: 'EMAIL', name: 'Email (IMAP/SMTP)' },
     { id: 'OTHER', name: 'Other' }
 ];
 
@@ -47,8 +52,10 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
         internal_cost: 0,
         cost_unit: '1M Tokens',
         api_key: '',
-        status: 'active'
+        status: 'active',
+        service_metadata: {} as Record<string, any>
     });
+    const [metadataJson, setMetadataJson] = useState('{}');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -77,8 +84,10 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                 internal_cost: editingIntegration.internal_cost,
                 cost_unit: editingIntegration.cost_unit,
                 api_key: '', // Don't show existing key
-                status: editingIntegration.status
+                status: editingIntegration.status,
+                service_metadata: editingIntegration.service_metadata || {}
             });
+            setMetadataJson(JSON.stringify(editingIntegration.service_metadata || {}, null, 2));
         } else {
             setFormData({
                 provider_name: '',
@@ -89,8 +98,10 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                 internal_cost: 0,
                 cost_unit: '1M Tokens',
                 api_key: '',
-                status: 'active'
+                status: 'active',
+                service_metadata: {}
             });
+            setMetadataJson('{}');
         }
     }, [editingIntegration, isOpen]);
 
@@ -102,8 +113,20 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
         setLoading(true);
 
         try {
+            let metadata = formData.service_metadata;
+
+            // If the provider isn't twilio, try to parse the JSON field
+            if (formData.provider_name.toLowerCase() !== 'twilio') {
+                try {
+                    metadata = JSON.parse(metadataJson);
+                } catch (e) {
+                    throw new Error('Invalid Metadata JSON format');
+                }
+            }
+
             const payload = {
                 ...formData,
+                service_metadata: metadata,
                 company_id: currentUser?.company_id,
                 internal_cost: Number(formData.internal_cost)
             };
@@ -116,7 +139,7 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
             await onSubmit(payload);
             onClose();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to save integration');
+            setError(err.message || err.response?.data?.detail || 'Failed to save integration');
         } finally {
             setLoading(false);
         }
@@ -133,6 +156,8 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
             });
         }
     };
+
+    const isTwilio = formData.provider_name.toLowerCase() === 'twilio';
 
     return (
         <div className="modal-overlay">
@@ -234,13 +259,41 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
 
                     <div className="col-span-2">
                         <GlassInput
-                            label={editingIntegration ? "API Key (Leave blank to keep current)" : "API Key"}
+                            label={editingIntegration ? "API Key / Auth Token (Leave blank to keep current)" : "API Key / Auth Token"}
                             type="password"
                             value={formData.api_key}
                             onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                             required={!editingIntegration}
                         />
                     </div>
+
+                    {isTwilio ? (
+                        <div className="col-span-2">
+                            <GlassInput
+                                label="Twilio Account SID"
+                                value={formData.service_metadata.account_sid || ''}
+                                onChange={(e) => setFormData({
+                                    ...formData,
+                                    service_metadata: { ...formData.service_metadata, account_sid: e.target.value }
+                                })}
+                                required
+                                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                            />
+                        </div>
+                    ) : (
+                        <div className="col-span-2">
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Service Metadata (JSON)</label>
+                            <div className="bg-white/5 border border-white/10 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-rose-500/50 transition-all">
+                                <textarea
+                                    value={metadataJson}
+                                    onChange={(e) => setMetadataJson(e.target.value)}
+                                    className="w-full bg-transparent p-4 text-white focus:outline-none h-32 font-mono text-sm border-none resize-none"
+                                    placeholder='{ "key": "value" }'
+                                />
+                            </div>
+                            <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider">Configure additional provider settings as JSON</p>
+                        </div>
+                    )}
 
                     {error && (
                         <p className="col-span-2 text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20">

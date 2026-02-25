@@ -59,6 +59,7 @@ class ExecutionRun(Base):
     entity_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=False)
     parent_run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     status = Column(String, default="PENDING")
     input_data = Column(JSON, nullable=True)
     dynamic_plan = Column(JSON, nullable=True)

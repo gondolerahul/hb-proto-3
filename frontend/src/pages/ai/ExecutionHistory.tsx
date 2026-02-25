@@ -137,7 +137,7 @@ export const ExecutionHistory: React.FC = () => {
                             </div>
 
                             <div className="card-actions">
-                                <Link to={`/executions/${execution.id}`}>
+                                <Link to={`/ai/executions/${execution.id}`}>
                                     <JellyButton variant="secondary" size="sm">
                                         <Eye size={16} /> Trace
                                     </JellyButton>

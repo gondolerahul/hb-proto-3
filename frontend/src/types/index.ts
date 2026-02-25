@@ -267,6 +267,7 @@ export interface ToolInteractionLog {
     run_id: string;
     tool_id: string;
     tool_name: string;
+    output_result?: any;
     success: boolean;
     latency_ms?: number;
     created_at: string;

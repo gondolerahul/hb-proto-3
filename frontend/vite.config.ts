@@ -18,10 +18,28 @@ export default defineConfig({
         },
     },
     server: {
+        allowedHosts: ["dev.hirebuddha.com"],
+        hmr: false, // Completely disable HMR for testing
+        host: '0.0.0.0', // Listen on all interfaces
         port: 3000,
+        watch: {
+            // Prevent watching too many files and false positives
+            usePolling: false,
+            interval: 1000,
+            ignored: ['**/node_modules/**', '**/.git/**']
+        },
         proxy: {
             '/api': {
-                target: 'http://localhost:8000',
+                target: 'http://gateway.hirebuddha.com',
+                changeOrigin: true,
+                secure: false
+            },
+            '/reports': {
+                target: 'http://gateway.hirebuddha.com',
+                changeOrigin: true,
+            },
+            '/artifact': {
+                target: 'http://gateway.hirebuddha.com',
                 changeOrigin: true,
             },
         },

@@ -53,32 +53,37 @@ kill_port() {
 }
 
 # Step 1: Stop Frontend (Port 3000)
-echo -e "${BLUE}[1/5] Stopping Frontend...${NC}"
+echo -e "${BLUE}[1/6] Stopping Frontend...${NC}"
 stop_service "Frontend" "$LOG_DIR/frontend.pid"
 pkill -f "npm run dev" 2>/dev/null || true
 pkill -f "vite" 2>/dev/null || true
 kill_port "Frontend" 3000
 
 # Step 2: Stop Arq Worker
-echo -e "${BLUE}[2/5] Stopping Arq Worker...${NC}"
+echo -e "${BLUE}[2/6] Stopping Arq Worker...${NC}"
 stop_service "Arq Worker" "$LOG_DIR/arq_worker.pid"
 pkill -f "arq src.ai.worker.WorkerSettings" 2>/dev/null && echo -e "${GREEN}✓ Arq processes terminated${NC}"
 
 # Step 3: Stop API Gateway (Port 8000)
-echo -e "${BLUE}[3/5] Stopping API Gateway...${NC}"
+echo -e "${BLUE}[3/6] Stopping API Gateway...${NC}"
 stop_service "API Gateway" "$LOG_DIR/api_gateway.pid"
 kill_port "API Gateway" 8000
 
-# Step 4: Stop Backend API (Port 8001)
-echo -e "${BLUE}[4/5] Stopping Backend API...${NC}"
+# Step 4: Stop Streaming Service (Port 8002)
+echo -e "${BLUE}[4/6] Stopping Streaming Service...${NC}"
+stop_service "Streaming Service" "$LOG_DIR/streaming_service.pid"
+kill_port "Streaming Service" 8002
+
+# Step 5: Stop Backend API (Port 8001)
+echo -e "${BLUE}[5/6] Stopping Backend API...${NC}"
 stop_service "Backend API" "$LOG_DIR/backend_api.pid"
 kill_port "Backend API" 8001
 
 # Final cleanup of uvicorn
 pkill -f "uvicorn" 2>/dev/null && echo -e "${GREEN}✓ All remaining Uvicorn processes stopped${NC}"
 
-# Step 5: Stop Docker services
-echo -e "${BLUE}[5/5] Stopping Docker services...${NC}"
+# Step 6: Stop Docker services
+echo -e "${BLUE}[6/6] Stopping Docker services...${NC}"
 cd "$BACKEND_DIR"
 if docker compose ps > /dev/null 2>&1; then
     docker compose down

@@ -333,7 +333,7 @@ class ToolInteractionLogResponse(BaseModel):
     tool_name: str
     provider: Optional[str] = None
     input_parameters: Optional[Dict[str, Any]] = None
-    output_result: Optional[Dict[str, Any]] = None
+    output_result: Optional[Any] = None
     success: bool
     error_message: Optional[str] = None
     latency_ms: Optional[int] = None

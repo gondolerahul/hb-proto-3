@@ -9,9 +9,19 @@ from src.common.database import get_db
 from src.auth.models import User
 from src.auth.schemas import TokenData
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+from typing import Optional
 
-async def _authenticate_user(token: str, db: AsyncSession):
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
+
+async def _authenticate_user(token: Optional[str], db: AsyncSession):
+    if token is None:
+        print("Auth Debug: Token is None - Authorization header missing or invalid")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -21,17 +31,21 @@ async def _authenticate_user(token: str, db: AsyncSession):
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
+            print("Auth Debug: Token payload missing 'sub'")
             raise credentials_exception
         token_data = TokenData(email=email)
-    except JWTError:
+    except JWTError as e:
+        print(f"Auth Debug: JWT Error: {e}")
         raise credentials_exception
     
     result = await db.execute(select(User).options(selectinload(User.company)).filter(User.email == token_data.email))
     user = result.scalars().first()
     if user is None:
+        print(f"Auth Debug: User not found for email {token_data.email}")
         raise credentials_exception
         
     if user.company and user.company.status == "suspended":
+        print(f"Auth Debug: Company suspended for user {user.email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Company account is suspended. Please contact support."
@@ -39,7 +53,7 @@ async def _authenticate_user(token: str, db: AsyncSession):
         
     return user
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     return await _authenticate_user(token, db)
 
 async def get_current_user_from_query(token: str, db: AsyncSession = Depends(get_db)):

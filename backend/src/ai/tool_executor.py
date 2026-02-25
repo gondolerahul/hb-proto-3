@@ -41,7 +41,7 @@ class ToolExecutor:
         return tool_calls
     
     @staticmethod
-    async def execute_from_function_calls(function_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def execute_from_function_calls(function_calls: List[Dict[str, Any]], extra_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Execute tools from native function call format (Gemini function calling).
         
@@ -59,15 +59,22 @@ class ToolExecutor:
             
             if tool:
                 try:
-                    # Support both string input and structured args
+                    # Build the raw input string the tool expects
                     if isinstance(tool_args, dict) and "input" in tool_args:
-                        output = await tool.run(tool_args["input"])
+                        raw_input = tool_args["input"]
                     elif isinstance(tool_args, str):
-                        output = await tool.run(tool_args)
+                        raw_input = tool_args
                     else:
-                        # Serialize args to JSON string for tools expecting string input
-                        output = await tool.run(json.dumps(tool_args))
-                    
+                        # Serialize all args (possibly including model_name, prompt, etc.)
+                        # Strip injected context keys so the tool's JSON schema isn't polluted
+                        clean_args = {k: v for k, v in tool_args.items()
+                                      if k not in ("company_id", "user_id")}
+                        raw_input = json.dumps(clean_args)
+
+                    # Always pass extra_context through run_with_context so tools that
+                    # need DB-based API keys (e.g. image_generation) can use company_id.
+                    output = await tool.run_with_context(raw_input, context=extra_context)
+
                     results.append({
                         "tool": tool_name,
                         "args": tool_args,
@@ -92,7 +99,7 @@ class ToolExecutor:
         return results
     
     @staticmethod
-    async def execute_tools(tool_calls: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    async def execute_tools(tool_calls: List[Dict[str, str]], extra_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
         """
         Execute tool calls and return results (legacy method).
         
@@ -107,7 +114,19 @@ class ToolExecutor:
             tool = ToolRegistry.get_tool(call["tool"])
             if tool:
                 try:
-                    output = await tool.run(call["input"])
+                    # Inject extra context into input if it's JSON
+                    tool_input = call["input"]
+                    if extra_context:
+                        try:
+                            # Try to parse and inject
+                            input_dict = json.loads(tool_input) if isinstance(tool_input, str) else tool_input
+                            if isinstance(input_dict, dict):
+                                input_dict.update(extra_context)
+                                tool_input = json.dumps(input_dict)
+                        except:
+                            pass # Keep as is if not JSON
+                            
+                    output = await tool.run(tool_input)
                     results.append({
                         "tool": call["tool"],
                         "input": call["input"],

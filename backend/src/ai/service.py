@@ -39,9 +39,14 @@ class AIService:
         )
         return result.scalar_one()
 
-    async def get_entities(self, company_id: UUID, type: EntityType = None) -> list[HierarchicalEntity]:
+    async def get_entities(self, company_id: UUID, type: EntityType = None, user_role: str = None) -> list[HierarchicalEntity]:
         from sqlalchemy.orm import selectinload
-        query = select(HierarchicalEntity).where(HierarchicalEntity.company_id == company_id)
+        query = select(HierarchicalEntity)
+        
+        # Platform administrators can view all entities across all companies
+        if user_role != "app_admin":
+            query = query.where(HierarchicalEntity.company_id == company_id)
+        
         if type:
             query = query.where(HierarchicalEntity.type == type)
         
@@ -49,13 +54,16 @@ class AIService:
         result = await self.db.execute(query)
         return result.scalars().all()
 
-    async def get_entity(self, entity_id: UUID, company_id: UUID) -> HierarchicalEntity:
+    async def get_entity(self, entity_id: UUID, company_id: UUID, user_role: str = None) -> HierarchicalEntity:
         from sqlalchemy.orm import selectinload
-        result = await self.db.execute(
-            select(HierarchicalEntity)
-            .options(selectinload(HierarchicalEntity.execution_runs))
-            .where(HierarchicalEntity.id == entity_id, HierarchicalEntity.company_id == company_id)
-        )
+        query = select(HierarchicalEntity).options(selectinload(HierarchicalEntity.execution_runs))
+        query = query.where(HierarchicalEntity.id == entity_id)
+        
+        # Platform administrators can view any entity across all companies
+        if user_role != "app_admin":
+            query = query.where(HierarchicalEntity.company_id == company_id)
+        
+        result = await self.db.execute(query)
         entity = result.scalar_one_or_none()
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found")
@@ -152,10 +160,11 @@ class AIService:
         await self.db.commit()
 
     # Execution
-    async def trigger_execution(self, execution_in: ExecutionRunCreate, company_id: UUID) -> ExecutionRun:
+    async def trigger_execution(self, execution_in: ExecutionRunCreate, company_id: UUID, user_id: UUID = None) -> ExecutionRun:
         # Create Execution Record
         execution = ExecutionRun(
             company_id=company_id,
+            user_id=user_id,
             entity_id=execution_in.entity_id,
             input_data=execution_in.input_data,
             status="PENDING",
@@ -186,42 +195,69 @@ class AIService:
 
         return execution
 
-    async def get_execution(self, execution_id: UUID, company_id: UUID) -> ExecutionRun:
+    async def get_execution(self, execution_id: UUID, company_id: UUID, user_role: str = None) -> ExecutionRun:
         from sqlalchemy.orm import selectinload, joinedload
         
-        # Load detailed trace with logs and approvals
-        result = await self.db.execute(
-            select(ExecutionRun)
-            .options(
-                joinedload(ExecutionRun.entity),
-                selectinload(ExecutionRun.llm_logs),
-                selectinload(ExecutionRun.tool_logs),
-                selectinload(ExecutionRun.human_approvals),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.tool_logs),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.human_approvals),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
-                selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs)
-            )
-            .where(ExecutionRun.id == execution_id, ExecutionRun.company_id == company_id)
+        # Load detailed trace with logs and approvals (up to 5 levels deep for deep research trees)
+        query = select(ExecutionRun).options(
+            joinedload(ExecutionRun.entity),
+            selectinload(ExecutionRun.llm_logs),
+            selectinload(ExecutionRun.tool_logs),
+            selectinload(ExecutionRun.human_approvals),
+            
+            # Level 1 Child Runs
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.tool_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.human_approvals),
+            
+            # Level 2 Child Runs (Grandchildren)
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.tool_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.human_approvals),
+            
+            # Level 3 Child Runs (Great-grandchildren)
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.tool_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.human_approvals),
+
+            # Level 4 Child Runs 
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.tool_logs),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.human_approvals),
+
+            # Level 5 Child Runs (Final fallback)
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.entity),
+            selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.child_runs).selectinload(ExecutionRun.llm_logs)
         )
+        
+        query = query.where(ExecutionRun.id == execution_id)
+        
+        # Platform administrators can view any execution across all companies
+        if user_role != "app_admin":
+            query = query.where(ExecutionRun.company_id == company_id)
+        
+        result = await self.db.execute(query)
         execution = result.scalar_one_or_none()
         if not execution:
             raise HTTPException(status_code=404, detail="Execution not found")
         return execution
 
-    async def get_executions(self, company_id: UUID) -> list[ExecutionRun]:
+    async def get_executions(self, company_id: UUID, user_role: str = None) -> list[ExecutionRun]:
         from sqlalchemy.orm import joinedload
-        result = await self.db.execute(
-            select(ExecutionRun)
-            .options(
-                joinedload(ExecutionRun.entity)
-            )
-            .where(ExecutionRun.company_id == company_id)
-            .where(ExecutionRun.parent_run_id.is_(None)) # Only show root executions in list
-            .order_by(ExecutionRun.created_at.desc())
-        )
+        query = select(ExecutionRun).options(joinedload(ExecutionRun.entity))
+        
+        # Platform administrators can view all executions across all companies
+        if user_role != "app_admin":
+            query = query.where(ExecutionRun.company_id == company_id)
+        
+        query = query.where(ExecutionRun.parent_run_id.is_(None))  # Only show root executions in list
+        query = query.order_by(ExecutionRun.created_at.desc())
+        
+        result = await self.db.execute(query)
         return result.scalars().all()
 
     # HITL Management
@@ -252,23 +288,40 @@ class AIService:
         
         return approval
 
-    async def get_dashboard_stats(self, company_id: UUID) -> dict:
-        # Active Entities count
-        entities_count = await self.db.execute(
-            select(func.count(HierarchicalEntity.id))
-            .where(HierarchicalEntity.company_id == company_id)
-        )
-        
-        # Executions count (today)
-        today = datetime.now().date()
-        executions_count = await self.db.execute(
-            select(func.count(ExecutionRun.id))
-            .where(ExecutionRun.company_id == company_id)
-            .where(func.date(ExecutionRun.created_at) == today)
-        )
-        
-        # Documents count
-        documents_count = await self.db.execute(select(func.count(Document.id)).where(Document.company_id == company_id))
+    async def get_dashboard_stats(self, company_id: UUID, user_role: str = None) -> dict:
+        # Platform administrators can view stats across all companies
+        if user_role == "app_admin":
+            # Active Entities count (all companies)
+            entities_count = await self.db.execute(
+                select(func.count(HierarchicalEntity.id))
+            )
+            
+            # Executions count (today, all companies)
+            today = datetime.now().date()
+            executions_count = await self.db.execute(
+                select(func.count(ExecutionRun.id))
+                .where(func.date(ExecutionRun.created_at) == today)
+            )
+            
+            # Documents count (all companies)
+            documents_count = await self.db.execute(select(func.count(Document.id)))
+        else:
+            # Active Entities count
+            entities_count = await self.db.execute(
+                select(func.count(HierarchicalEntity.id))
+                .where(HierarchicalEntity.company_id == company_id)
+            )
+            
+            # Executions count (today)
+            today = datetime.now().date()
+            executions_count = await self.db.execute(
+                select(func.count(ExecutionRun.id))
+                .where(ExecutionRun.company_id == company_id)
+                .where(func.date(ExecutionRun.created_at) == today)
+            )
+            
+            # Documents count
+            documents_count = await self.db.execute(select(func.count(Document.id)).where(Document.company_id == company_id))
         
         return {
             "entities_total": entities_count.scalar() or 0,

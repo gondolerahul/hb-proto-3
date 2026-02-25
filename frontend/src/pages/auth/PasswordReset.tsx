@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { GlassCard, GlassInput, JellyButton } from '@/components/ui';
 import { ArrowLeft } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import logo from '@/assets/logo.png';
+import './LoginPage.css';
 import './PasswordReset.css';
 
 export const ForgotPasswordPage: React.FC = () => {
@@ -39,8 +41,9 @@ export const ForgotPasswordPage: React.FC = () => {
                     </button>
 
                     <div className="auth-header">
-                        <h1 className="text-rose-gold">Reset Password</h1>
-                        <p>Enter your email to receive a password reset link</p>
+                        <img src={logo} alt="HireBuddha" className="auth-logo" />
+                        <h1 className="text-rose-gold">HireBuddha</h1>
+                        <p>Reset your password</p>
                     </div>
 
                     {success ? (
@@ -144,8 +147,9 @@ export const ResetPasswordPage: React.FC = () => {
             <div className="auth-container">
                 <GlassCard className="auth-card">
                     <div className="auth-header">
-                        <h1 className="text-rose-gold">Set New Password</h1>
-                        <p>Choose a strong password for your account</p>
+                        <img src={logo} alt="HireBuddha" className="auth-logo" />
+                        <h1 className="text-rose-gold">HireBuddha</h1>
+                        <p>Set a new password</p>
                     </div>
 
                     {success ? (

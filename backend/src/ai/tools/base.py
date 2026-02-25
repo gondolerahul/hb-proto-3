@@ -16,6 +16,10 @@ class Tool(ABC):
         - name: Human-readable tool name
         - description: Tool description for LLM context
         - run(): Async execution method
+    
+    Subclasses that need execution context (e.g. to look up API keys from the DB)
+    should also override:
+        - run_with_context(): Async method that receives extra_context dict
     """
     name: str
     description: str
@@ -31,6 +35,28 @@ class Tool(ABC):
             String output to be returned to the LLM
         """
         pass
+
+    async def run_with_context(self, input_data: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """Execute the tool with extra execution context.
+
+        Override this in tools that need access to context fields like
+        'company_id' or 'user_id' (e.g. to look up API keys from the DB).
+
+        Default implementation ignores context and delegates to run().
+
+        Args:
+            input_data: String (JSON) input from the LLM
+            context: Optional dict containing extra_context keys such as
+                     'company_id', 'user_id', and any injected args.
+
+        Returns:
+            String output to be returned to the LLM
+        """
+        return await self.run(input_data)
+
+    def supports_context(self) -> bool:
+        """Return True if this tool overrides run_with_context for special DB/key handling."""
+        return type(self).run_with_context is not Tool.run_with_context
     
     def get_function_schema(self) -> Dict[str, Any]:
         """Return JSON schema for function calling.

@@ -218,7 +218,7 @@ async def call_llm_unified(
     Returns:
         Dict with 'output', 'function_calls', 'prompt_tokens', 'completion_tokens', 'latency_ms'
     """
-    model = config.get("model_name", "gemini-2.0-flash")
+    model = config.get("model_name", "gemini-3-flash-preview")
     reasoning_mode = config.get("reasoning_mode", "REACT")
     temperature = config.get("temperature", 0.7)
     max_tokens = config.get("max_tokens")
@@ -278,12 +278,19 @@ async def call_llm_unified(
             if function_declarations:
                 gemini_tools = [types.Tool(function_declarations=function_declarations)]
         
+        # Include tools in the config if present
+        if gemini_tools:
+            generate_config = types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                tools=gemini_tools
+            )
+        
         # Call Gemini via google-genai
         response = client.models.generate_content(
             model=model,
             contents=contents,
-            config=generate_config,
-            tools=gemini_tools
+            config=generate_config
         )
         
         latency = (datetime.utcnow() - start_time).total_seconds() * 1000
@@ -569,19 +576,26 @@ class ExecutionEngine:
             "entity_name": entity.name,
             "entity_description": entity.description,
             "goal": goal,
-            "tools": [t["name"] for t in entity.capabilities.get("tools", [])] if entity.capabilities else []
+            "tools": [t.get("tool_id", t.get("name")) for t in entity.capabilities.get("tools", [])] if entity.capabilities else []
         }
         
         system_prompt = DYNAMIC_PLANNER_PROMPT
         user_prompt = f"Goal: {goal}\n\nAvailable Tools: {context['tools']}\n\nGenerate the execution plan."
         
-        # 2. Call Planer LLM
+        # 2. Call Planar LLM
         # Use a reasoning model if available for better planning
-        api_key = await self.config_service.get_api_key_by_sku(entity.company_id, "gemini-2.0-flash") # Default
-         
+        base_config = entity.llm_config or {}
+        # Default to a capable model if not configured, but prioritize entity config
+        model_name = base_config.get("model_name", "gemini-1.5-flash")
+        model_config = {"model_name": model_name, "temperature": 0.4, "model_provider": base_config.get("model_provider", "google")}
         try:
+            # Use dummy run object for API key resolution
+            from types import SimpleNamespace
+            dummy_run = SimpleNamespace(company_id=entity.company_id)
+            api_key = await self._get_api_key(dummy_run, model_config)
+            
             plan_result = await call_llm_unified(
-                config={"model_name": "gemini-2.0-flash", "temperature": 0.4},
+                config=model_config,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 api_key=api_key
@@ -632,6 +646,7 @@ class ExecutionEngine:
         # Create Child Run
         child_run = ExecutionRun(
             company_id=run.company_id,
+            user_id=run.user_id,
             entity_id=step.target.entity_id,
             parent_run_id=run.id,
             trace_id=run.trace_id,
@@ -661,7 +676,13 @@ class ExecutionEngine:
         try:
             # Prepare inputs from context/variables
             raw_input = context.get("input") or str(context) # Fallback
-            result = await ToolExecutor.execute_tools([{"tool": tool_id, "input": raw_input}])
+            
+            extra_context = {
+                "company_id": str(run.company_id),
+                "user_id": str(run.user_id) if run.user_id else "default"
+            }
+                
+            result = await ToolExecutor.execute_tools([{"tool": tool_id, "input": raw_input}], extra_context=extra_context)
             tool_result = result[0]
             
             latency = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -690,7 +711,7 @@ class ExecutionEngine:
         config = logic_gate.get("reasoning_config", {})
         if not config:
             # Fallback to legacy llm_config
-            config = entity.llm_config or {"model_provider": "google", "model_name": "gemini-2.0-flash"}
+            config = entity.llm_config or {"model_provider": "google", "model_name": "gemini-1.5-flash"}
         
         # 2. Get API Key strategy (reused for other calls too)
         api_key = await self._get_api_key(run, config)
@@ -724,66 +745,111 @@ class ExecutionEngine:
         user_prompt = step.target.prompt_template if step.target and step.target.prompt_template else "{{input}}"
         user_prompt = parse_variables(user_prompt, input_vars)
 
-        # 6. Call LLM
+        # 6. REACT Multi-Turn Loop: LLM → Tools → LLM → ... until final text output
         print(f"Calling LLM {config.get('model_name')} via {config.get('model_provider')}...")
         
-        llm_result = await call_llm_unified(
-            config=config, 
-            system_prompt=system_prompt, 
-            user_prompt=user_prompt, 
-            api_key=api_key,
-            tools=tools,
-            few_shot_examples=few_shot_examples
-        )
+        max_react_turns = 12  # Safety limit for tool call cycles
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_latency_ms = 0
+        all_tool_results = []  # Accumulate all tool results across turns
         
-        print(f"LLM Response: {llm_result['prompt_tokens']} prompt, {llm_result['completion_tokens']} completion")
+        # Build the running conversation: starts with initial user prompt
+        running_prompt = user_prompt
+        output = ""
         
-        # 7. Handle Function Calls (if any)
-        output = llm_result["output"]
-        if llm_result.get("function_calls"):
-            print(f"Executing {len(llm_result['function_calls'])} function calls...")
-            tool_results = await ToolExecutor.execute_from_function_calls(llm_result["function_calls"])
-            
-            # Record tool logs
-            for tr in tool_results:
-                self.db.add(ToolInteractionLog(
-                    run_id=run.id,
-                    tool_id=tr["tool"],
-                    tool_name=tr["tool"],
-                    input_parameters=tr.get("args"),
-                    output_result=tr.get("output"),
-                    success=tr.get("success", False),
-                    latency_ms=0 # Simplified
-                ))
-            
-            # Format results and append to output
-            output += ToolExecutor.format_tool_results(tool_results)
-            
-            # Optional: Feedback loop to LLM with tool results could be added here
+        extra_context = {
+            "company_id": str(run.company_id),
+            "user_id": str(run.user_id) if run.user_id else "default"
+        }
+
+        for react_turn in range(max_react_turns):
+            llm_result = await call_llm_unified(
+                config=config,
+                system_prompt=system_prompt,
+                user_prompt=running_prompt,
+                api_key=api_key,
+                tools=tools,
+                few_shot_examples=few_shot_examples if react_turn == 0 else None  # Only inject examples on first turn
+            )
+
+            total_prompt_tokens += llm_result["prompt_tokens"]
+            total_completion_tokens += llm_result["completion_tokens"]
+            total_latency_ms += llm_result["latency_ms"]
+
+            print(f"  REACT turn {react_turn+1}: {llm_result['prompt_tokens']} prompt, {llm_result['completion_tokens']} completion, {len(llm_result.get('function_calls', []))} tool calls")
+
+            if llm_result.get("function_calls"):
+                # Execute all tool calls in this turn
+                turn_tool_results = await ToolExecutor.execute_from_function_calls(
+                    llm_result["function_calls"], extra_context=extra_context
+                )
+
+                # Record tool logs
+                for tr in turn_tool_results:
+                    self.db.add(ToolInteractionLog(
+                        run_id=run.id,
+                        tool_id=tr["tool"],
+                        tool_name=tr["tool"],
+                        input_parameters=tr.get("args"),
+                        output_result=tr.get("output"),
+                        success=tr.get("success", False),
+                        latency_ms=0
+                    ))
+                    all_tool_results.append(tr)
+
+                # Feed tool results back as the next user prompt turn
+                tool_results_text = ToolExecutor.format_tool_results(turn_tool_results)
+                print(f"  Tool results ({len(turn_tool_results)} calls): {tool_results_text[:200]}...")
+
+                # Append assistant's partial text + tool results to running prompt
+                # so the LLM has full context of what happened
+                if llm_result["output"]:
+                    output += llm_result["output"]
+                running_prompt = (
+                    running_prompt
+                    + "\n\n[Assistant partial response]: " + (llm_result["output"] or "(tool calls only)")
+                    + "\n\n" + tool_results_text
+                    + "\n\nNow use the above tool results to complete your response."
+                    + " If all tool calls are done, provide your final JSON/text answer."
+                )
+                # Continue to next turn with tool results injected
+                continue
+            else:
+                # No tool calls — LLM produced its final text response
+                output += llm_result["output"]
+                print(f"  REACT loop complete after {react_turn+1} turn(s). Final output length: {len(output)}")
+                break
+        else:
+            print(f"  Warning: REACT loop reached max turns ({max_react_turns}). Using accumulated output.")
         
-        # 8. Log Interaction & Track Usage
+        # If we accumulated tool results but LLM gave no final summary, append formatted results
+        if all_tool_results and not output.strip():
+            output = ToolExecutor.format_tool_results(all_tool_results)
+
+        # 7. Log Interaction & Track Usage
         log = LLMInteractionLog(
             run_id=run.id,
             model_provider=config.get("model_provider"),
             model_name=config.get("model_name"),
             input_prompt=f"System: {system_prompt}\nUser: {user_prompt}",
             output_response=output,
-            prompt_tokens=llm_result["prompt_tokens"],
-            completion_tokens=llm_result["completion_tokens"],
-            latency_ms=llm_result["latency_ms"],
+            prompt_tokens=total_prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            latency_ms=total_latency_ms,
             reasoning_mode=config.get("reasoning_mode")
         )
         self.db.add(log)
         
         # Track usage
-        await self._log_usage(run, config, llm_result["prompt_tokens"], llm_result["completion_tokens"], log)
+        await self._log_usage(run, config, total_prompt_tokens, total_completion_tokens, log)
 
         await self.db.commit()
         return {"step": step.name, "output": output}
 
     async def _get_api_key(self, run, config):
         """Helper to resolve API Key using multiple strategies."""
-        model_name = config.get("model_name", "gemini-2.0-flash")
+        model_name = config.get("model_name", "gemini-1.5-flash")
         provider = config.get("model_provider", "google")
         
         # Strategy 1: Exact SKU match
@@ -804,6 +870,13 @@ class ExecutionEngine:
         # Strategy 5: Any key for this provider
         if not api_key:
             api_key = await self.config_service.get_api_key_by_provider(run.company_id, provider)
+            
+        # Strategy 6: Case-insensitive provider match (e.g., google vs Gemini)
+        if not api_key:
+            if provider.lower() == "google":
+                api_key = await self.config_service.get_api_key_by_provider(run.company_id, "Gemini")
+            elif provider.lower() == "gemini":
+                api_key = await self.config_service.get_api_key_by_provider(run.company_id, "google")
         
         if not api_key:
             raise Exception(f"API Key not found for {provider}/{model_name}")
@@ -840,23 +913,75 @@ class ExecutionEngine:
         run.total_tokens += (prompt_tokens + completion_tokens)
 
     async def _maybe_summarize_context(self, run, entity, context_state: dict, api_key: str) -> dict:
-        """Summarize context if it exceeds threshold."""
-        context_str = json.dumps(context_state, default=str)
-        threshold = entity.logic_gate.get("context_policy", {}).get("summarize_threshold", 8000)
+        """Smartly trim context if it exceeds threshold, preserving critical keys.
         
+        Strategy:
+          1. Always keep 'input' and any explicitly listed 'preserve_keys'.
+          2. Always keep the LAST 3 step output keys (most recent results) verbatim –
+             these contain structured data like image paths / JSON arrays that must
+             not be destroyed by free-text summarisation.
+          3. Only summarise older/bulkier keys if the total still exceeds the threshold.
+        """
+        if not entity.logic_gate:
+            return context_state
+
+        context_policy = entity.logic_gate.get("context_policy", {})
+        threshold = context_policy.get("summarize_threshold", 20000)  # Raised default to 20k
+
+        context_str = json.dumps(context_state, default=str)
         if len(context_str) <= threshold:
             return context_state
-        
-        print(f"Context size {len(context_str)} exceeds threshold {threshold}. Summarizing...")
-        
-        summary_result = await call_llm_unified(
-            config={"model_name": "gemini-2.0-flash", "temperature": 0.3, "max_tokens": 500},
-            system_prompt="Summarize the following execution context into a concise paragraph preserving key information.",
-            user_prompt=context_str,
-            api_key=api_key
-        )
-        
-        return {"context_summary": summary_result["output"], "input": context_state.get("input")}
+
+        print(f"Context size {len(context_str)} exceeds threshold {threshold}. Smart-trimming...")
+
+        # --- Keys that must be preserved verbatim ---
+        always_keep = {"input", "age_group", "style", "topic"}
+        explicit_preserve = set(context_policy.get("preserve_keys", []))
+        always_keep |= explicit_preserve
+
+        # Identify all step-output keys (everything that is NOT in always_keep)
+        all_keys = list(context_state.keys())
+        step_keys = [k for k in all_keys if k not in always_keep]
+
+        # Always keep the last 3 step output keys verbatim (most recent results)
+        recent_keys = set(step_keys[-3:]) if step_keys else set()
+
+        # Build the trimmed context: always_keep + recent_keys verbatim
+        trimmed = {}
+        for k in all_keys:
+            if k in always_keep or k in recent_keys:
+                trimmed[k] = context_state[k]
+
+        # Check if trimmed version is now within threshold
+        trimmed_str = json.dumps(trimmed, default=str)
+        if len(trimmed_str) <= threshold:
+            print(f"  Smart-trim reduced context to {len(trimmed_str)} chars (kept {list(trimmed.keys())}).")
+            return trimmed
+
+        # If still too large, summarise only the older step keys (not recent/critical ones)
+        old_keys = [k for k in step_keys if k not in recent_keys]
+        if old_keys:
+            old_context_str = json.dumps(
+                {k: context_state[k] for k in old_keys}, default=str
+            )
+            summ_config = entity.llm_config or {"model_name": "gemini-2.0-flash", "model_provider": "google"}
+            summ_config = summ_config.copy()
+            summ_config.update({"temperature": 0.3, "max_tokens": 800})
+
+            summary_result = await call_llm_unified(
+                config=summ_config,
+                system_prompt=(
+                    "Summarise the following execution context into 2-3 concise sentences. "
+                    "Preserve any specific names, numbers, facts, or JSON structures mentioned."
+                ),
+                user_prompt=old_context_str,
+                api_key=api_key
+            )
+            trimmed["earlier_context_summary"] = summary_result["output"]
+
+        final_str = json.dumps(trimmed, default=str)
+        print(f"  Context trimmed from {len(context_str)} → {len(final_str)} chars. Keys kept verbatim: {list(trimmed.keys())}")
+        return trimmed
 
     async def _review_step_output(self, run, entity, step, result) -> dict:
         """Self-critique review mechanism with retry logic."""
@@ -872,7 +997,10 @@ class ExecutionEngine:
         review_prompt = review_config.get("review_prompt") or DEFAULT_REVIEW_PROMPT
         
         # Get independent API key for critic
-        config = {"model_name": "gemini-2.0-flash", "temperature": 0.2} 
+        # Use entity's reasoning config or LLM config
+        config = entity.logic_gate.get("reasoning_config") or entity.llm_config or {"model_name": "gemini-2.0-flash", "model_provider": "google"}
+        config = config.copy()
+        config["temperature"] = 0.2  # Ensure low temperature for critic 
         api_key = await self._get_api_key(run, config)
         
         current_result = result
@@ -914,13 +1042,8 @@ class ExecutionEngine:
                     reason = critique_text
             except Exception as e:
                 print(f"Failed to parse critique: {e}")
-                start_json = critique_text.find('{')
-                end_json = critique_text.LastIndexOf('}')
-                if start_json != -1 and end_json != -1:
-                    try: 
-                        critique_json = json.loads(critique_text[start_json: end_json+1])
-                        passed = critique_json.get('passed', False)
-                    except: pass
+                passed = False
+                reason = "Critique parsing failed"
 
             if passed:
                 return current_result
@@ -1062,8 +1185,18 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
             await db.commit()
             print(f"Doc processing failed: {e}")
 
+# Import campaign worker functions
+from src.ai.campaign_worker import execute_campaign_task, pause_campaign_task, stop_campaign_task
+
 class WorkerSettings:
-    functions = [run_execution_recursive, process_document]
+    functions = [
+        run_execution_recursive, 
+        process_document,
+        execute_campaign_task,
+        pause_campaign_task,
+        stop_campaign_task
+    ]
+    job_timeout = 1800  # 30 minutes for long research tasks
     
     # Parse Redis URL from environment config
     @staticmethod

@@ -13,10 +13,15 @@ import {
     User,
     Moon,
     Sun,
-    Users,
-    Building,
     Shield,
-    Layers
+    Layers,
+    Phone,
+    Activity,
+    Megaphone,
+    Library,
+    BarChart2,
+    DollarSign,
+    Wallet
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import logo from '@/assets/logo.png';
@@ -38,9 +43,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         ...(([UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/platform-management', label: 'Platform Management', icon: Shield }] : []),
         { path: '/ai/entities', label: 'Entity Library', icon: Layers },
         { path: '/ai/approvals', label: 'Guardian Oversight', icon: Shield },
-        { path: '/executions', label: 'Executions', icon: Play },
+        { path: '/ai/executions', label: 'Executions', icon: Play },
         { path: '/knowledge', label: 'Knowledge Base', icon: Database },
         { path: '/integrations', label: 'Integrations', icon: Settings },
+        { path: '/streaming/phone-numbers', label: 'Phone Numbers', icon: Phone },
+        { path: '/streaming/sessions', label: 'Streaming Sessions', icon: Activity },
+        { path: '/streaming/campaigns', label: 'Campaigns', icon: Megaphone },
+        { path: '/assets', label: 'Asset Library', icon: Library },
+        { path: '/reports/costing', label: 'Costing Report', icon: BarChart2 },
+        { path: '/reports/billing', label: 'Billing Report', icon: DollarSign },
+        { path: '/wallet', label: 'Wallet & Credits', icon: Wallet },
     ];
 
     const isActive = (path: string) => location.pathname.startsWith(path);

@@ -31,7 +31,7 @@ async def list_entities(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_entities(current_user.company_id, type)
+    return await service.get_entities(current_user.company_id, type, current_user.role)
 
 @router.get("/entities/{entity_id}", response_model=HierarchicalEntityResponse)
 async def get_entity(
@@ -40,7 +40,7 @@ async def get_entity(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_entity(entity_id, current_user.company_id)
+    return await service.get_entity(entity_id, current_user.company_id, current_user.role)
 
 @router.put("/entities/{entity_id}", response_model=HierarchicalEntityResponse)
 async def update_entity(
@@ -69,7 +69,7 @@ async def get_dashboard_stats(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_dashboard_stats(current_user.company_id)
+    return await service.get_dashboard_stats(current_user.company_id, current_user.role)
 
 # --- Executions ---
 @router.post("/execute", response_model=ExecutionRunResponse)
@@ -79,7 +79,7 @@ async def trigger_execution(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.trigger_execution(execution_in, current_user.company_id)
+    return await service.trigger_execution(execution_in, current_user.company_id, current_user.id)
 
 @router.get("/executions", response_model=List[ExecutionRunSummary])
 async def list_executions(
@@ -87,7 +87,7 @@ async def list_executions(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_executions(current_user.company_id)
+    return await service.get_executions(current_user.company_id, current_user.role)
 
 @router.get("/executions/{execution_id}", response_model=ExecutionRunResponse)
 async def get_execution(
@@ -96,7 +96,7 @@ async def get_execution(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    execution = await service.get_execution(execution_id, current_user.company_id)
+    execution = await service.get_execution(execution_id, current_user.company_id, current_user.role)
     return execution
 
 @router.get("/executions/{execution_id}/stream")
@@ -107,7 +107,7 @@ async def stream_execution(
 ):
     # Verify access
     service = AIService(db)
-    await service.get_execution(execution_id, current_user.company_id)
+    await service.get_execution(execution_id, current_user.company_id, current_user.role)
     
     from fastapi.responses import StreamingResponse
     import redis.asyncio as redis

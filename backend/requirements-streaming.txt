@@ -1,0 +1,13 @@
+# Additional dependencies for Phase 3 - Gemini Live API Integration
+
+# Google Generative AI SDK for Gemini Live API
+google-genai>=0.2.0
+
+# Audio processing
+audioop-lts>=0.2.1  # For Python 3.13+ compatibility
+pydub>=0.25.1
+numpy>=1.24.0
+
+# WebSocket support (already in fastapi, but explicit)
+websockets>=12.0
+twilio>=9.0.0

@@ -96,8 +96,22 @@ else
     wait_for_service "Backend API" 8001
 fi
 
-# Step 3: Start API Gateway
-echo -e "${BLUE}[3/5] Starting API Gateway (Port 8000)...${NC}"
+# Step 3: Start Streaming Service
+echo -e "${BLUE}[3/6] Starting Streaming Service (Port 8002)...${NC}"
+
+if check_port 8002; then
+    echo -e "${YELLOW}Port 8002 already in use. Skipping Streaming Service startup.${NC}"
+else
+    cd "$BACKEND_DIR"
+    nohup "$BACKEND_DIR/.venv/bin/python" -m uvicorn src.streaming.main:app --host 0.0.0.0 --port 8002 --reload > "$LOG_DIR/streaming_service.log" 2>&1 &
+    STREAMING_PID=$!
+    echo $STREAMING_PID > "$LOG_DIR/streaming_service.pid"
+    echo -e "${GREEN}✓ Streaming Service process spawned (PID: $STREAMING_PID)${NC}"
+    wait_for_service "Streaming Service" 8002
+fi
+
+# Step 4: Start API Gateway
+echo -e "${BLUE}[4/6] Starting API Gateway (Port 8000)...${NC}"
 
 if check_port 8000; then
     echo -e "${YELLOW}Port 8000 already in use. Skipping API Gateway startup.${NC}"
@@ -110,8 +124,8 @@ else
     wait_for_service "API Gateway" 8000
 fi
 
-# Step 4: Start Arq Worker
-echo -e "${BLUE}[4/5] Starting Arq Worker...${NC}"
+# Step 5: Start Arq Worker
+echo -e "${BLUE}[5/6] Starting Arq Worker...${NC}"
 
 # Check if arq worker is already running by process name
 if pgrep -f "arq src.ai.worker.WorkerSettings" > /dev/null; then
@@ -125,14 +139,14 @@ else
     echo -e "${GREEN}✓ Arq Worker started (PID: $ARQ_PID)${NC}"
 fi
 
-# Step 5: Start Frontend
-echo -e "${BLUE}[5/5] Starting Frontend (Port 3000)...${NC}"
+# Step 6: Start Frontend
+echo -e "${BLUE}[6/6] Starting Frontend (Port 3000)...${NC}"
 
 if check_port 3000; then
     echo -e "${YELLOW}Port 3000 already in use. Skipping Frontend startup.${NC}"
 else
     cd "$FRONTEND_DIR"
-    nohup npm run dev > "$LOG_DIR/frontend.log" 2>&1 &
+    nohup npm run dev -- --host 0.0.0.0 > "$LOG_DIR/frontend.log" 2>&1 &
     FRONTEND_PID=$!
     echo $FRONTEND_PID > "$LOG_DIR/frontend.pid"
     echo -e "${GREEN}✓ Frontend started (PID: $FRONTEND_PID)${NC}"
@@ -145,10 +159,12 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${GREEN}✓ All services are running!${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "Access the application at: ${GREEN}http://localhost:3000${NC}"
-echo -e "API Gateway:              ${GREEN}http://localhost:8000${NC}"
-echo -e "Backend API (Raw):        ${GREEN}http://localhost:8001${NC}"
-echo -e "API Documentation:        ${GREEN}http://localhost:8001/docs${NC}"
+echo -e "Access the application at: ${GREEN}https://dev.hirebuddha.com${NC}"
+echo -e "API Gateway:              ${GREEN}https://gateway.hirebuddha.com${NC}"
+echo -e "Backend API (Raw):        ${GREEN}https://api.hirebuddha.com${NC}"
+echo -e "Streaming Service:        ${GREEN}https://streaming.hirebuddha.com${NC}"
+echo -e "API Documentation:        ${GREEN}https://api.hirebuddha.com/docs${NC}"
+echo -e "Streaming Docs:           ${GREEN}https://streaming.hirebuddha.com/docs${NC}"
 echo ""
 echo -e "Logs available in:        ${YELLOW}$LOG_DIR/${NC}"
 echo -e "To stop services, run:    ${GREEN}./stop_services.sh${NC}"

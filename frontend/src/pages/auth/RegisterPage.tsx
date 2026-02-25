@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { GlassCard, GlassInput, JellyButton } from '@/components/ui';
+import logo from '@/assets/logo.png';
 import './LoginPage.css';
 
 export const RegisterPage: React.FC = () => {
@@ -52,8 +53,9 @@ export const RegisterPage: React.FC = () => {
             <div className="auth-container">
                 <GlassCard className="auth-card">
                     <div className="auth-header">
-                        <h1 className="text-rose-gold">Create Account</h1>
-                        <p>Start your AI journey with HireBuddha</p>
+                        <img src={logo} alt="HireBuddha" className="auth-logo" />
+                        <h1 className="text-rose-gold">HireBuddha</h1>
+                        <p>Create your account</p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="auth-form">

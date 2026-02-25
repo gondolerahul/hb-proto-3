@@ -429,6 +429,8 @@ For issues or questions, please refer to the documentation in the `docs/` direct
 - [Technical Architecture](docs/hire_buddha_technical_architecture_document.md)
 - [Implementation Gap Analysis](docs/Implementation_Gap_Analysis.md)
 - [Gap Analysis Report 2](docs/Gap%20Analysis%20Report%202.md)
+- [System Analysis Report](docs/System_Analysis_Report.md) - Comprehensive analysis of execution flow, database structure, and integration extension points
+- [Real-Time Voice & WhatsApp Streaming Architecture](docs/Real_Time_Voice_WhatsApp_Streaming_Architecture.md) - WebSocket-based bidirectional streaming design for Twilio, Tata Tele, and Gemini Live API integration
 
 ---
 

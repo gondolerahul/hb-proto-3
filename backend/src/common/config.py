@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
     ENCRYPTION_MASTER_KEY: str = "your-default-dev-key-must-be-32-bytes" # Overridden by env
+    STREAMING_HOST: str = "localhost:8002"
+    STREAMING_PROTOCOL: str = "ws"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

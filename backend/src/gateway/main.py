@@ -16,6 +16,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://34.100.230.121:3000",
+        "https://dev.hirebuddha.com",
+       
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -37,6 +40,9 @@ async def proxy(request: Request, path: str):
     url = f"/{path}"
     if request.query_params:
         url += f"?{request.query_params}"
+    
+    if "upload-csv" in path:
+        print(f"Gateway Debug: Headers for {path}: {request.headers}")
     
     # Forward headers but exclude host to avoid confusion
     headers = dict(request.headers)

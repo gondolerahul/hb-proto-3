@@ -26,8 +26,15 @@ export const ExecutionPage: React.FC = () => {
             const { data } = await apiClient.get<HierarchicalEntity>(`/ai/entities/${id}`);
             setEntity(data);
 
-            // Extract variables from all prompt templates in the plan
             const allVars = new Set<string>();
+            // Extract variables from IO Contract if available
+            if (data.io_contract?.input_schema?.properties) {
+                Object.keys(data.io_contract.input_schema.properties).forEach(key => {
+                    allVars.add(key);
+                });
+            }
+
+            // Extract variables from all prompt templates in the plan
             const steps = data.planning?.static_plan?.steps || [];
 
             steps.forEach(step => {
@@ -68,7 +75,7 @@ export const ExecutionPage: React.FC = () => {
 
             // Redirect to detail page with trace
             setTimeout(() => {
-                navigate(`/executions/${data.id}`);
+                navigate(`/ai/executions/${data.id}`);
             }, 1000);
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Execution failed');

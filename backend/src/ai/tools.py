@@ -8,7 +8,9 @@ src.ai.tools package.
 Available Tools:
     - CalculatorTool: Safe mathematical expression evaluation
     - WebSearchTool: Real web search using DuckDuckGo
-    - EmailTool: Email sending via SMTP
+    - ExcelTool: Excel file processing
+    - ScraperTool: Web scraping capabilities
+    - PDFGeneratorTool: PDF document generation
 """
 
 # Re-export from the new tools package for backward compatibility
@@ -17,7 +19,10 @@ from src.ai.tools import (
     ToolRegistry,
     CalculatorTool,
     WebSearchTool,
-    EmailTool
+    ExcelTool,
+    ScraperTool,
+    PDFGeneratorTool,
+    FileWriterTool
 )
 
 __all__ = [
@@ -25,5 +30,8 @@ __all__ = [
     "ToolRegistry", 
     "CalculatorTool",
     "WebSearchTool",
-    "EmailTool"
+    "ExcelTool",
+    "ScraperTool",
+    "PDFGeneratorTool",
+    "FileWriterTool"
 ]

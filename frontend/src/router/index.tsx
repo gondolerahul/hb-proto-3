@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { MainLayout } from '@/components/layout';
 import { UserRole } from '@/types';
@@ -21,6 +21,18 @@ const KnowledgeBase = lazy(() => import('@/pages/KnowledgeBase').then(m => ({ de
 const IntegrationsPage = lazy(() => import('@/pages/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
 const UserSettings = lazy(() => import('@/pages/UserSettings').then(m => ({ default: m.UserSettings })));
 const PlatformManagement = lazy(() => import('@/pages/PlatformManagement').then(m => ({ default: m.PlatformManagement })));
+
+// Streaming pages
+const PhoneNumbersPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.PhoneNumbersPage })));
+const StreamingSessionsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.StreamingSessionsPage })));
+const CampaignsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CampaignsPage })));
+
+// Assets & Billing pages
+const AssetLibrary = lazy(() => import('@/pages/assets/AssetLibrary').then(m => ({ default: m.AssetLibrary })));
+const CostingReport = lazy(() => import('@/pages/reports/CostingReport').then(m => ({ default: m.CostingReport })));
+const BillingReport = lazy(() => import('@/pages/reports/BillingReport').then(m => ({ default: m.BillingReport })));
+const WalletPage = lazy(() => import('@/pages/billing/WalletPage').then(m => ({ default: m.WalletPage })));
+
 
 // Loading Component for Suspense
 const PageLoader = () => (
@@ -64,6 +76,12 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
 
     return !isAuthenticated ? <>{children}</> : <Navigate to="/dashboard" replace />;
+};
+
+// Execution Redirect component to preserve :id parameter
+const ExecutionRedirect: React.FC = () => {
+    const { id } = useParams();
+    return <Navigate to={`/ai/executions/${id}`} replace />;
 };
 
 export const AppRouter: React.FC = () => {
@@ -148,7 +166,7 @@ export const AppRouter: React.FC = () => {
 
                     {/* Executions History */}
                     <Route
-                        path="/executions"
+                        path="/ai/executions"
                         element={
                             <ProtectedRoute>
                                 <MainLayout>
@@ -160,7 +178,7 @@ export const AppRouter: React.FC = () => {
 
                     {/* Execution Detail */}
                     <Route
-                        path="/executions/:id"
+                        path="/ai/executions/:id"
                         element={
                             <ProtectedRoute>
                                 <MainLayout>
@@ -169,6 +187,10 @@ export const AppRouter: React.FC = () => {
                             </ProtectedRoute>
                         }
                     />
+
+                    {/* Legacy Execution Redirects */}
+                    <Route path="/executions" element={<Navigate to="/ai/executions" replace />} />
+                    <Route path="/executions/:id" element={<ExecutionRedirect />} />
 
                     {/* HITL Oversights */}
                     <Route
@@ -225,6 +247,91 @@ export const AppRouter: React.FC = () => {
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
                                 <MainLayout>
                                     <PlatformManagement />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Streaming - Phone Numbers */}
+                    <Route
+                        path="/streaming/phone-numbers"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <PhoneNumbersPage />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Streaming - Sessions */}
+                    <Route
+                        path="/streaming/sessions"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <StreamingSessionsPage />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Streaming - Campaigns */}
+                    <Route
+                        path="/streaming/campaigns"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <CampaignsPage />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+
+                    {/* Asset Library */}
+                    <Route
+                        path="/assets"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <AssetLibrary />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Reports - Costing */}
+                    <Route
+                        path="/reports/costing"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <CostingReport />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Reports - Billing */}
+                    <Route
+                        path="/reports/billing"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <BillingReport />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Wallet & Credits */}
+                    <Route
+                        path="/wallet"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <WalletPage />
                                 </MainLayout>
                             </ProtectedRoute>
                         }
