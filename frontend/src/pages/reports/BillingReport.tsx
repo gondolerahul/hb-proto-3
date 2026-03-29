@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { DollarSign, Download, RefreshCw, ChevronDown, TrendingUp } from 'lucide-react';
-import { billingService, BillingEvent, ReportTotals } from '@/services/billing.service';
+import { DollarSign, Download, RefreshCw, ChevronDown } from 'lucide-react'; import { billingService, BillingEvent, ReportTotals } from '@/services/billing.service';
 import './Report.css';
 
 const GROUPING_OPTIONS = [
@@ -22,10 +21,9 @@ function formatUSD(val: number): string {
 }
 
 function exportToCSV(events: BillingEvent[], filename: string) {
-    const headers = ['Period', 'Grouping', 'Total Billing', 'Platform Fees', 'Partner Fees', 'Discounts', 'Tel In', 'Tel Out', 'Images', 'Videos'];
+    const headers = ['Period', 'Grouping', 'Telephony Charge', 'Images Charge', 'Video Charge', 'API Charge', 'Total Billing', 'Tel In', 'Tel Out', 'Images', 'Videos'];
     const rows = events.map((e) => [
-        e.period_month, e.grouping_value || '', e.total_billing,
-        e.platform_fee_amount, e.partner_fee_amount, e.discount_amount,
+        e.period_month, e.grouping_value || '', e.telephony_charge, e.image_charge, e.video_charge, e.api_charge, e.total_billing,
         e.telephony_in_minutes, e.telephony_out_minutes, e.image_gen_count, e.video_gen_count,
     ]);
     const csv = [headers, ...rows].map((r) => r.join(',')).join('\n');
@@ -118,28 +116,10 @@ export const BillingReport: React.FC = () => {
 
             {/* Summary Cards */}
             <div className="summary-grid">
-                <SummaryCard accent label="Total Revenue (TB)" value={formatUSD(totals.total_revenue || 0)} />
-                <SummaryCard label="Platform Fees" value={formatUSD(totals.total_platform_fees || 0)} />
-                <SummaryCard label="Partner Fees" value={formatUSD(totals.total_partner_fees || 0)} />
-                <SummaryCard label="Total Discounts" value={`-${formatUSD(totals.total_discounts || 0)}`} />
-            </div>
-
-            {/* Formula Legend */}
-            <div className="formula-card glass">
-                <div className="formula-header">
-                    <TrendingUp size={16} />
-                    <span>TB Formula</span>
-                </div>
-                <code className="formula-text">
-                    TB = (c × mf) + (c × mf × pf) + (c × mf × spf) - (c × mf × d)
-                </code>
-                <div className="formula-legend">
-                    <span><b>c</b> = base cost</span>
-                    <span><b>mf</b> = multiplier factor</span>
-                    <span><b>pf</b> = platform fee %</span>
-                    <span><b>spf</b> = partner fee %</span>
-                    <span><b>d</b> = discount %</span>
-                </div>
+                <SummaryCard accent label="Total Billed" value={formatUSD(totals.total_revenue || 0)} />
+                <SummaryCard label="Telephony Cost" value={formatUSD(totals.total_telephony_charge || 0)} />
+                <SummaryCard label="Intelligence Cost (LLM & API)" value={formatUSD((totals.total_llm_charge || 0) + (totals.total_api_charge || 0))} />
+                <SummaryCard label="Media Content Cost" value={formatUSD((totals.total_image_charge || 0) + (totals.total_video_charge || 0))} />
             </div>
 
             {error && <div className="error-banner">{error}</div>}
@@ -159,13 +139,12 @@ export const BillingReport: React.FC = () => {
                             <tr>
                                 <th>Period</th>
                                 {groupingType && <th>Grouping</th>}
-                                <th>Telephony</th>
-                                <th>Images</th>
-                                <th>Videos</th>
-                                <th>Platform Fee</th>
-                                <th>Partner Fee</th>
-                                <th>Discount</th>
-                                <th className="highlight-col">Total Billing (TB)</th>
+                                <th>Telephony Use</th>
+                                <th>Telephony Cost</th>
+                                <th>Media Gen Use</th>
+                                <th>Media Gen Cost</th>
+                                <th>Intelligence Cost</th>
+                                <th className="highlight-col">Total Billing</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -176,11 +155,10 @@ export const BillingReport: React.FC = () => {
                                     <td className="num">
                                         {e.telephony_in_minutes.toFixed(1)}↓ / {e.telephony_out_minutes.toFixed(1)}↑
                                     </td>
-                                    <td className="num">{e.image_gen_count}</td>
-                                    <td className="num">{e.video_gen_count}</td>
-                                    <td className="num">{formatUSD(e.platform_fee_amount)}</td>
-                                    <td className="num">{formatUSD(e.partner_fee_amount)}</td>
-                                    <td className="num deduction">-{formatUSD(e.discount_amount)}</td>
+                                    <td className="num">{formatUSD(e.telephony_charge)}</td>
+                                    <td className="num">{e.image_gen_count} imgs / {e.video_gen_count} vids</td>
+                                    <td className="num">{formatUSD(e.image_charge + e.video_charge)}</td>
+                                    <td className="num">{formatUSD(e.llm_charge + e.api_charge)}</td>
                                     <td className="num total highlight-col">{formatUSD(e.total_billing)}</td>
                                 </tr>
                             ))}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { GlassCard, GlassInput, JellyButton } from './ui';
-import { UserCreateAdmin } from '../services/user.service';
 import { UserRole, Company, User } from '../types';
 import { companyService } from '../services/company.service';
 

@@ -26,6 +26,10 @@ class BillingConfigUpdate(BaseModel):
     platform_fee_pct: Optional[Decimal] = None
     sales_partner_fee_pct: Optional[Decimal] = None
     discount_pct: Optional[Decimal] = None
+    default_daily_credits: Optional[Decimal] = None
+    base_cost_telephony: Optional[Decimal] = None
+    base_cost_llm: Optional[Decimal] = None
+    base_cost_image_gen: Optional[Decimal] = None
     company_id: Optional[UUID] = None  # None = update global default
 
 
@@ -41,6 +45,11 @@ class BillingEventResponse(BaseModel):
     partner_fee_amount: float
     discount_amount: float
     total_billing: float
+    telephony_charge: float
+    llm_charge: float
+    image_charge: float
+    video_charge: float
+    api_charge: float
     telephony_in_minutes: float
     telephony_out_minutes: float
     image_gen_count: int
@@ -64,6 +73,11 @@ def _event_to_dict(e: BillingEvent) -> dict:
         "partner_fee_amount": float(e.partner_fee_amount),
         "discount_amount": float(e.discount_amount),
         "total_billing": float(e.total_billing),
+        "telephony_charge": float(e.telephony_charge),
+        "llm_charge": float(e.llm_charge),
+        "image_charge": float(e.image_charge),
+        "video_charge": float(e.video_charge),
+        "api_charge": float(e.api_charge),
         "telephony_in_minutes": float(e.telephony_in_minutes),
         "telephony_out_minutes": float(e.telephony_out_minutes),
         "image_gen_count": e.image_gen_count,
@@ -81,6 +95,10 @@ def _config_to_dict(c: BillingConfig) -> dict:
         "platform_fee_pct": float(c.platform_fee_pct),
         "sales_partner_fee_pct": float(c.sales_partner_fee_pct),
         "discount_pct": float(c.discount_pct),
+        "default_daily_credits": float(c.default_daily_credits),
+        "base_cost_telephony": float(c.base_cost_telephony) if c.base_cost_telephony is not None else None,
+        "base_cost_llm": float(c.base_cost_llm) if c.base_cost_llm is not None else None,
+        "base_cost_image_gen": float(c.base_cost_image_gen) if c.base_cost_image_gen is not None else None,
         "is_active": c.is_active,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
     }
@@ -117,6 +135,10 @@ async def update_billing_config(
         platform_fee_pct=payload.platform_fee_pct,
         sales_partner_fee_pct=payload.sales_partner_fee_pct,
         discount_pct=payload.discount_pct,
+        default_daily_credits=payload.default_daily_credits,
+        base_cost_telephony=payload.base_cost_telephony,
+        base_cost_llm=payload.base_cost_llm,
+        base_cost_image_gen=payload.base_cost_image_gen,
     )
     return {"config": _config_to_dict(config)}
 
@@ -145,6 +167,11 @@ async def get_costing_report(
         "total_image_gen": sum(r["image_gen_count"] for r in rows),
         "total_video_gen": sum(r["video_gen_count"] for r in rows),
         "total_other_ai_cost": sum(r["other_ai_cost"] for r in rows),
+        "total_telephony_charge": sum(r["telephony_charge"] for r in rows),
+        "total_llm_charge": sum(r["llm_charge"] for r in rows),
+        "total_image_charge": sum(r["image_charge"] for r in rows),
+        "total_video_charge": sum(r["video_charge"] for r in rows),
+        "total_api_charge": sum(r["api_charge"] for r in rows),
     }
     return {"events": rows, "totals": totals, "count": len(rows)}
 
@@ -172,5 +199,10 @@ async def get_billing_report(
         "total_platform_fees": sum(r["platform_fee_amount"] for r in rows),
         "total_partner_fees": sum(r["partner_fee_amount"] for r in rows),
         "total_discounts": sum(r["discount_amount"] for r in rows),
+        "total_telephony_charge": sum(r["telephony_charge"] for r in rows),
+        "total_llm_charge": sum(r["llm_charge"] for r in rows),
+        "total_image_charge": sum(r["image_charge"] for r in rows),
+        "total_video_charge": sum(r["video_charge"] for r in rows),
+        "total_api_charge": sum(r["api_charge"] for r in rows),
     }
     return {"events": rows, "totals": totals, "count": len(rows)}

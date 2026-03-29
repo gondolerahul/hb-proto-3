@@ -14,6 +14,33 @@ from src.config.models import IntegrationRegistry
 # Import enums from schemas to avoid duplication
 from src.ai.schemas import EntityType, RunStatus
 
+class EpisodicMemory(Base):
+    """
+    S1: Short-term interaction record.
+    One row per completed ExecutionRun (for top-level runs only).
+    """
+    __tablename__ = "episodic_memories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
+
+    input_summary = Column(Text, nullable=True)
+    output_summary = Column(Text, nullable=True)
+
+    status = Column(String(50), nullable=True)
+    total_cost_usd = Column(String(20), nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    execution_time_ms = Column(Integer, nullable=True)
+
+    metadata_info = Column(JSON, nullable=True) # avoiding 'metadata' reserved word
+    channel = Column(String(50), nullable=True)
+    tree_id = Column(UUID(as_uuid=True), ForeignKey("cortex_trees.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class HierarchicalEntity(Base):
     __tablename__ = "hierarchical_entities"
 
@@ -26,7 +53,13 @@ class HierarchicalEntity(Base):
     name = Column(String, nullable=False)
     display_name = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    tags = Column(JSON, nullable=True) # ["tag1", "tag2"]
+    goal = Column(Text, nullable=True)  # Entity's objective, used in prompt generation
+    tags = Column(JSON, nullable=True)
+
+    # Template fields
+    is_template = Column(Boolean, default=False)  # True = blueprint, not executable
+    template_source_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     
     # New unified structure fields
     identity = Column(JSON, nullable=True)
@@ -49,7 +82,11 @@ class HierarchicalEntity(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     company = relationship("Company")
-    parent = relationship("HierarchicalEntity", remote_side=[id], backref="children")
+    parent = relationship("HierarchicalEntity", remote_side=[id], backref="children",
+                          foreign_keys=[parent_id])
+    template_source = relationship("HierarchicalEntity", remote_side=[id],
+                                   foreign_keys=[template_source_id])
+    creator = relationship("User", foreign_keys=[created_by])
     execution_runs = relationship("ExecutionRun", back_populates="entity")
 
 class ExecutionRun(Base):
@@ -186,3 +223,30 @@ class DocumentChunk(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     document = relationship("Document", back_populates="chunks")
+
+
+class ToolRegistryEntry(Base):
+    """
+    Persistent registry of both built-in and custom tools.
+
+    Built-in tools are seeded at startup. Custom tools are created/managed
+    by Application Admins via the Tool Management API.
+    """
+    __tablename__ = "tool_registry_entries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)  # null = system-wide
+    name = Column(String, nullable=False, unique=True)  # Tool identifier (matches Tool.name)
+    display_name = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    category = Column(String, nullable=True)  # e.g., "browser", "social", "document", "utility"
+    tool_type = Column(String, nullable=False, default="BUILT_IN")  # BUILT_IN | CUSTOM
+    function_schema = Column(JSON, nullable=True)  # OpenAI-compatible function schema
+    is_enabled = Column(Boolean, default=True)
+    configuration = Column(JSON, nullable=True)  # Custom config (API keys ref, etc.)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    company = relationship("Company")
+    creator = relationship("User", foreign_keys=[created_by])

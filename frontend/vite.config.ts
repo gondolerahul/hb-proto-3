@@ -18,7 +18,7 @@ export default defineConfig({
         },
     },
     server: {
-        allowedHosts: ["dev.hirebuddha.com"],
+        allowedHosts: ["dev.hirebuddha.com", "app.hirebuddha.com"],
         hmr: false, // Completely disable HMR for testing
         host: '0.0.0.0', // Listen on all interfaces
         port: 3000,

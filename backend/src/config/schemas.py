@@ -1,8 +1,29 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from uuid import UUID
 from decimal import Decimal
+
+# ---------------------------------------------------------------------------
+# Task Types for AI model routing
+# ---------------------------------------------------------------------------
+TaskType = Literal[
+    "text_generation",
+    "thinking",
+    "text_to_image",
+    "image_to_image",
+    "text_to_speech",
+    "text_to_music",
+    "text_to_video",
+    "text_to_3d",
+    "image_to_video",
+    "audio_to_video",
+    "speech_to_speech",
+]
+
+# ---------------------------------------------------------------------------
+# Integration Registry schemas
+# ---------------------------------------------------------------------------
 
 class IntegrationRegistryBase(BaseModel):
     provider_name: str
@@ -47,3 +68,31 @@ class ModelResponse(BaseModel):
     provider: str
     model_type: str
     is_active: bool
+
+# ---------------------------------------------------------------------------
+# Model Task Default schemas
+# ---------------------------------------------------------------------------
+
+class ModelTaskDefaultCreate(BaseModel):
+    task_type: str  # One of TASK_TYPES values
+    integration_id: UUID
+    routing_mode: Literal["single", "router"] = "single"
+    company_id: Optional[UUID] = None  # If None, use current user's company
+
+class ModelTaskDefaultUpdate(BaseModel):
+    integration_id: Optional[UUID] = None
+    routing_mode: Optional[Literal["single", "router"]] = None
+
+class ModelTaskDefaultResponse(BaseModel):
+    id: UUID
+    company_id: UUID
+    task_type: str
+    integration_id: UUID
+    routing_mode: str
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+    integration: Optional[IntegrationRegistryResponse] = None
+
+    class Config:
+        from_attributes = True

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { ArrowLeft, ChevronDown, ChevronRight, Zap, Cpu, MessageSquare, Wrench, Clock, DollarSign, Database, Brain, Layers, Activity, Download } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Zap, Cpu, MessageSquare, Wrench, DollarSign, Database, Brain, Layers, Activity, Download } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus, EntityType, LLMInteractionLog, ToolInteractionLog } from '@/types';
 import './ExecutionDetail.css';

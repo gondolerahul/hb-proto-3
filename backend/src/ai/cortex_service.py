@@ -1,0 +1,789 @@
+"""
+cortex_service.py — CortexRouter: The CORTEX Memory System Engine
+
+Implements the 7 CORTEX API operations that give agents persistent,
+navigable, writable cognitive trees for long-running tasks.
+
+The CortexRouter orchestrates:
+  - Tree lifecycle (create / resume / suspend)
+  - Viewport-based navigation (PageIndex-derived)
+  - Paged content access (read / write)
+  - Recursive child execution (RLM-derived)
+  - Context budget compaction (checkpointing)
+  - Output assembly (depth-first tree traversal)
+
+Usage:
+    router = CortexRouter(db, company_id)
+    tree = await router.create_tree(entity_id, user_id, "Due diligence report")
+    viewport = await router.navigate(tree.root_node_id)
+    node_id = await router.write(parent_id, "finding", "Revenue Q2", content, summary)
+    ...
+"""
+from __future__ import annotations
+
+import json
+import logging
+import math
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID, uuid4
+from dataclasses import dataclass, field, asdict
+
+from sqlalchemy import select, update, func, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from src.ai.cortex_models import (
+    CortexTree, CortexNode,
+    CortexTreeStatus, CortexNodeType, CortexNodeStatus,
+)
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Data Transfer Objects
+# ---------------------------------------------------------------------------
+
+@dataclass
+class NodeSummaryDTO:
+    """Lightweight node info shown in viewports."""
+    id: str
+    title: str
+    summary: Optional[str]
+    status: str
+    node_type: str
+    sibling_order: int = 0
+    depth: int = 0
+    content_tokens: int = 0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class Viewport:
+    """What the agent sees at any moment — bounded context."""
+    current_node: NodeSummaryDTO
+    children: List[NodeSummaryDTO]
+    parent: Optional[NodeSummaryDTO]
+    breadcrumb: List[Dict[str, str]]   # [{id, title}, ...] from root to current
+
+    def to_dict(self) -> dict:
+        return {
+            "current_node": self.current_node.to_dict(),
+            "children": [c.to_dict() for c in self.children],
+            "parent": self.parent.to_dict() if self.parent else None,
+            "breadcrumb": self.breadcrumb,
+        }
+
+    def to_prompt_text(self) -> str:
+        """Render viewport as structured text for LLM prompt injection."""
+        parts = []
+
+        # Breadcrumb
+        if self.breadcrumb:
+            trail = " → ".join(b["title"] for b in self.breadcrumb)
+            parts.append(f"## Navigation Path\n{trail}")
+
+        # Current node
+        cn = self.current_node
+        parts.append(
+            f"## Current Node: {cn.title}\n"
+            f"Type: {cn.node_type} | Status: {cn.status} | Depth: {cn.depth}\n"
+            f"Summary: {cn.summary or '(no summary)'}"
+        )
+
+        # Children
+        if self.children:
+            child_lines = []
+            for i, ch in enumerate(self.children):
+                child_lines.append(
+                    f"  [{i+1}] {ch.title} ({ch.node_type}, {ch.status}) — {ch.summary or '(no summary)'}"
+                )
+            parts.append("## Children\n" + "\n".join(child_lines))
+        else:
+            parts.append("## Children\n  (leaf node — no children)")
+
+        return "\n\n".join(parts)
+
+
+@dataclass
+class NodeContent:
+    """Paged content from a node read."""
+    node_id: str
+    title: str
+    content: str
+    page: int
+    total_pages: int
+    content_tokens: int
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class CheckpointData:
+    """Checkpoint metadata written during compaction."""
+    progress_summary: str
+    key_facts: List[str]
+    next_steps: List[str]
+    nodes_written: List[str] = field(default_factory=list)
+    time_elapsed_hours: float = 0.0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+# ---------------------------------------------------------------------------
+# CortexRouter — The 7 CORTEX Operations
+# ---------------------------------------------------------------------------
+
+class CortexRouter:
+    """
+    Orchestrates all CORTEX tree operations.
+
+    The agent never receives "context." It receives a viewport: a one-level
+    slice of the tree showing the current node's summary and its direct
+    children's summaries. All other information is reachable by navigating
+    the tree.
+    """
+
+    DEFAULT_MAX_CHILDREN = 12
+    DEFAULT_PAGE_SIZE_TOKENS = 8000
+    DEFAULT_CONTEXT_BUDGET_PCT = 40
+    CHARS_PER_TOKEN = 4  # rough approximation
+
+    def __init__(self, db: AsyncSession, company_id: UUID):
+        self.db = db
+        self.company_id = company_id
+
+    # ===================================================================
+    # 1. TREE LIFECYCLE
+    # ===================================================================
+
+    async def create_tree(
+        self,
+        entity_id: UUID,
+        user_id: Optional[UUID],
+        task_description: str,
+        max_children: int = DEFAULT_MAX_CHILDREN,
+        page_size_tokens: int = DEFAULT_PAGE_SIZE_TOKENS,
+        context_budget_pct: int = DEFAULT_CONTEXT_BUDGET_PCT,
+    ) -> CortexTree:
+        """
+        Create a new cognitive tree for a task.
+        
+        Initialises the tree with:
+          - A root node
+          - A Knowledge Root subtree anchor
+          - A Working Root subtree anchor
+          - An Output Root subtree anchor
+        """
+        tree_id = uuid4()
+
+        # Create the tree record (root_node_id set after node creation)
+        tree = CortexTree(
+            id=tree_id,
+            entity_id=entity_id,
+            user_id=user_id,
+            company_id=self.company_id,
+            task_description=task_description,
+            status=CortexTreeStatus.ACTIVE,
+            total_nodes=0,
+            max_children=max_children,
+            page_size_tokens=page_size_tokens,
+            context_budget_pct=context_budget_pct,
+        )
+        self.db.add(tree)
+        await self.db.flush()
+
+        # Create root node
+        root_node = await self._create_node(
+            tree_id=tree_id,
+            parent_id=None,
+            node_type=CortexNodeType.ROOT,
+            title=f"Task: {task_description[:200]}",
+            summary=task_description[:500],
+            content=task_description,
+            status=CortexNodeStatus.ACTIVE,
+            depth=0,
+            sibling_order=0,
+        )
+
+        # Create three subtree anchors under root
+        knowledge_root = await self._create_node(
+            tree_id=tree_id,
+            parent_id=root_node.id,
+            node_type=CortexNodeType.KNOWLEDGE,
+            title="📚 Knowledge Base",
+            summary="Ingested documents and external knowledge sources.",
+            content=None,
+            status=CortexNodeStatus.ACTIVE,
+            depth=1,
+            sibling_order=0,
+        )
+
+        working_root = await self._create_node(
+            tree_id=tree_id,
+            parent_id=root_node.id,
+            node_type=CortexNodeType.FINDING,
+            title="🔬 Working Memory",
+            summary="Agent's intermediate findings, reasoning, and discovered facts.",
+            content=None,
+            status=CortexNodeStatus.ACTIVE,
+            depth=1,
+            sibling_order=1,
+        )
+
+        output_root = await self._create_node(
+            tree_id=tree_id,
+            parent_id=root_node.id,
+            node_type=CortexNodeType.OUTPUT,
+            title="📝 Output",
+            summary="Assembled output document sections.",
+            content=None,
+            status=CortexNodeStatus.PENDING,
+            depth=1,
+            sibling_order=2,
+        )
+
+        # Update tree with node IDs
+        tree.root_node_id = root_node.id
+        tree.output_root_id = output_root.id
+        tree.resume_cursor_id = root_node.id
+        tree.total_nodes = 4
+
+        await self.db.flush()
+        logger.info(f"CortexTree created: {tree_id} with 4 initial nodes")
+        return tree
+
+    async def resume_tree(self, tree_id: UUID) -> Tuple[CortexTree, Viewport, Optional[Dict]]:
+        """
+        Load an existing tree and return the viewport at the resume cursor.
+        Also returns the last checkpoint data if available.
+        """
+        tree = await self._get_tree(tree_id)
+        if tree.status not in (CortexTreeStatus.ACTIVE, CortexTreeStatus.SUSPENDED):
+            raise ValueError(f"Tree {tree_id} is {tree.status}, cannot resume")
+
+        tree.status = CortexTreeStatus.ACTIVE
+        tree.last_active_at = datetime.utcnow()
+
+        cursor_id = tree.resume_cursor_id or tree.root_node_id
+        viewport = await self.navigate(cursor_id)
+
+        # Load last checkpoint if available
+        checkpoint_data = await self._get_last_checkpoint(cursor_id)
+
+        await self.db.flush()
+        logger.info(f"CortexTree resumed: {tree_id} at cursor {cursor_id}")
+        return tree, viewport, checkpoint_data
+
+    async def suspend_tree(self, tree_id: UUID) -> UUID:
+        """
+        Suspend a tree. Writes a checkpoint at the current cursor before suspending.
+        Returns the checkpoint node ID.
+        """
+        tree = await self._get_tree(tree_id)
+
+        # Auto-checkpoint before suspending
+        checkpoint_id = await self.checkpoint(
+            tree_id=tree_id,
+            progress_summary="Tree suspended by user or system.",
+            key_facts=[],
+            next_steps=["Resume and continue from this point."],
+        )
+
+        tree.status = CortexTreeStatus.SUSPENDED
+        await self.db.flush()
+        logger.info(f"CortexTree suspended: {tree_id}")
+        return checkpoint_id
+
+    # ===================================================================
+    # 2. NAVIGATION (PageIndex navigation model)
+    # ===================================================================
+
+    async def navigate(self, node_id: UUID) -> Viewport:
+        """
+        Move cursor to node_id and return the viewport.
+        
+        The viewport contains:
+          - current_node: {id, title, summary, status, depth}
+          - children: [{id, title, summary, status, sibling_order}, ...]
+          - parent: {id, title, summary} | None
+          - breadcrumb: [{id, title}, ...] path from root to current
+          
+        Token cost: bounded (MAX_CHILDREN × ~40 tokens per child summary)
+        """
+        node = await self._get_node(node_id)
+
+        # Update resume cursor on the tree
+        tree = await self._get_tree(node.tree_id)
+        tree.resume_cursor_id = node_id
+        tree.last_active_at = datetime.utcnow()
+
+        # Build current node DTO
+        current = self._node_to_dto(node)
+
+        # Load children (ordered by sibling_order)
+        children_result = await self.db.execute(
+            select(CortexNode)
+            .where(CortexNode.parent_id == node_id)
+            .order_by(CortexNode.sibling_order)
+        )
+        children = [self._node_to_dto(c) for c in children_result.scalars().all()]
+
+        # Load parent
+        parent_dto = None
+        if node.parent_id:
+            parent_node = await self._get_node(node.parent_id)
+            parent_dto = self._node_to_dto(parent_node)
+
+        # Build breadcrumb (walk up to root)
+        breadcrumb = await self._build_breadcrumb(node)
+
+        await self.db.flush()
+        return Viewport(
+            current_node=current,
+            children=children,
+            parent=parent_dto,
+            breadcrumb=breadcrumb,
+        )
+
+    # ===================================================================
+    # 3. CONTENT ACCESS (read / write)
+    # ===================================================================
+
+    async def read(self, node_id: UUID, page: int = 0) -> NodeContent:
+        """
+        Read full content of a node, paged.
+        
+        Updates resume_cursor to this node.
+        Token cost: max 1 page (configurable page_size_tokens)
+        """
+        node = await self._get_node(node_id)
+        content = node.content or ""
+
+        # Update status and cursor
+        if node.status == CortexNodeStatus.PENDING:
+            node.status = CortexNodeStatus.ACTIVE
+        tree = await self._get_tree(node.tree_id)
+        tree.resume_cursor_id = node_id
+        tree.last_active_at = datetime.utcnow()
+
+        # Page the content
+        page_size_chars = tree.page_size_tokens * self.CHARS_PER_TOKEN
+        total_pages = max(1, math.ceil(len(content) / page_size_chars)) if content else 1
+
+        start = page * page_size_chars
+        end = start + page_size_chars
+        paged_content = content[start:end]
+
+        await self.db.flush()
+        return NodeContent(
+            node_id=str(node_id),
+            title=node.title,
+            content=paged_content,
+            page=page,
+            total_pages=total_pages,
+            content_tokens=node.content_tokens,
+        )
+
+    async def write(
+        self,
+        parent_id: UUID,
+        node_type: str,
+        title: str,
+        content: Optional[str] = None,
+        summary: Optional[str] = None,
+        status: str = "complete",
+        sibling_order: Optional[int] = None,
+        source_ref: Optional[Dict] = None,
+        metadata_extra: Optional[Dict] = None,
+    ) -> UUID:
+        """
+        Write a new child node. This is how the agent externalises ALL its outputs:
+        findings, task plans, output sections, checkpoints.
+        
+        Returns new node's UUID.
+        """
+        parent = await self._get_node(parent_id)
+        tree = await self._get_tree(parent.tree_id)
+
+        # Determine sibling order
+        if sibling_order is None:
+            result = await self.db.execute(
+                select(func.coalesce(func.max(CortexNode.sibling_order), -1))
+                .where(CortexNode.parent_id == parent_id)
+            )
+            sibling_order = result.scalar() + 1
+
+        # Enforce MAX_CHILDREN invariant
+        child_count_result = await self.db.execute(
+            select(func.count(CortexNode.id))
+            .where(CortexNode.parent_id == parent_id)
+        )
+        child_count = child_count_result.scalar() or 0
+        if child_count >= tree.max_children:
+            logger.warning(
+                f"Parent {parent_id} has {child_count} children (max {tree.max_children}). "
+                f"Re-clustering recommended."
+            )
+            # For now we allow exceeding but log the warning.
+            # Future: trigger automatic re-clustering.
+
+        # Map string to enum
+        node_type_enum = CortexNodeType(node_type)
+        status_enum = CortexNodeStatus(status)
+
+        # Estimate tokens
+        content_tokens = len(content) // self.CHARS_PER_TOKEN if content else 0
+
+        new_node = await self._create_node(
+            tree_id=parent.tree_id,
+            parent_id=parent_id,
+            node_type=node_type_enum,
+            title=title,
+            summary=summary,
+            content=content,
+            status=status_enum,
+            depth=parent.depth + 1,
+            sibling_order=sibling_order,
+            source_ref=source_ref,
+            metadata_extra=metadata_extra,
+            content_tokens=content_tokens,
+        )
+
+        # Update tree
+        tree.total_nodes = (tree.total_nodes or 0) + 1
+        tree.resume_cursor_id = new_node.id
+        tree.last_active_at = datetime.utcnow()
+
+        await self.db.flush()
+        return new_node.id
+
+    # ===================================================================
+    # 4. RECURSIVE EXECUTION (RLM layer)
+    # ===================================================================
+
+    async def recurse(
+        self,
+        node_id: UUID,
+        task: str,
+        result_slot: str,
+        execution_run_id: Optional[UUID] = None,
+    ) -> UUID:
+        """
+        Spawn a child execution run scoped to a specific subtree.
+        
+        Creates a task node under the target subtree root, marking
+        the child run's scope and task description.
+        
+        Returns the task node ID that the child run should work on.
+        """
+        node = await self._get_node(node_id)
+
+        task_node_id = await self.write(
+            parent_id=node_id,
+            node_type="task",
+            title=f"Task: {task[:200]}",
+            content=json.dumps({
+                "task": task,
+                "result_slot": result_slot,
+                "scoped_to": str(node_id),
+            }),
+            summary=task[:500],
+            status="pending",
+            metadata_extra={
+                "result_slot": result_slot,
+                "execution_run_id": str(execution_run_id) if execution_run_id else None,
+            },
+        )
+
+        return task_node_id
+
+    async def await_children(
+        self,
+        parent_node_id: UUID,
+    ) -> Dict[str, NodeSummaryDTO]:
+        """
+        Collect results from all completed child task nodes under parent_node_id.
+        Returns dict of {result_slot: NodeSummaryDTO}
+        """
+        result = await self.db.execute(
+            select(CortexNode)
+            .where(
+                CortexNode.parent_id == parent_node_id,
+                CortexNode.node_type == CortexNodeType.TASK,
+                CortexNode.status == CortexNodeStatus.COMPLETE,
+            )
+            .order_by(CortexNode.sibling_order)
+        )
+        children = result.scalars().all()
+
+        results = {}
+        for child in children:
+            slot = (child.metadata_extra or {}).get("result_slot", f"task_{child.sibling_order}")
+            results[slot] = self._node_to_dto(child)
+
+        return results
+
+    # ===================================================================
+    # 5. COMPACTION (Checkpointing)
+    # ===================================================================
+
+    async def checkpoint(
+        self,
+        tree_id: UUID,
+        progress_summary: str,
+        key_facts: List[str],
+        next_steps: List[str],
+    ) -> UUID:
+        """
+        Write a checkpoint node at the current cursor.
+        Compress the run's working context.
+        Returns checkpoint node UUID.
+        """
+        tree = await self._get_tree(tree_id)
+        cursor_id = tree.resume_cursor_id or tree.root_node_id
+
+        checkpoint_content = CheckpointData(
+            progress_summary=progress_summary,
+            key_facts=key_facts,
+            next_steps=next_steps,
+        )
+
+        checkpoint_id = await self.write(
+            parent_id=cursor_id,
+            node_type="checkpoint",
+            title=f"📌 Checkpoint: {progress_summary[:100]}",
+            content=json.dumps(checkpoint_content.to_dict()),
+            summary=progress_summary[:500],
+            status="complete",
+            metadata_extra={
+                "checkpoint_at": datetime.utcnow().isoformat(),
+                "key_facts_count": len(key_facts),
+            },
+        )
+
+        logger.info(f"Checkpoint written: {checkpoint_id} for tree {tree_id}")
+        return checkpoint_id
+
+    # ===================================================================
+    # 6. ASSEMBLY
+    # ===================================================================
+
+    async def assemble_output(self, tree_id: UUID) -> str:
+        """
+        Depth-first traversal of Output Subtree.
+        Concatenate all 'complete' output nodes in order.
+        Returns assembled full output as string.
+        """
+        tree = await self._get_tree(tree_id)
+        if not tree.output_root_id:
+            return ""
+
+        sections = []
+        await self._dfs_collect(tree.output_root_id, sections)
+        return "\n\n".join(sections)
+
+    # ===================================================================
+    # 7. QUERY HELPERS (for API / frontend)
+    # ===================================================================
+
+    async def get_tree_status(self, tree_id: UUID) -> Dict[str, Any]:
+        """Get tree metadata for API response."""
+        tree = await self._get_tree(tree_id)
+        return {
+            "id": str(tree.id),
+            "entity_id": str(tree.entity_id),
+            "task_description": tree.task_description,
+            "status": tree.status.value if tree.status else "active",
+            "total_nodes": tree.total_nodes,
+            "root_node_id": str(tree.root_node_id) if tree.root_node_id else None,
+            "output_root_id": str(tree.output_root_id) if tree.output_root_id else None,
+            "resume_cursor_id": str(tree.resume_cursor_id) if tree.resume_cursor_id else None,
+            "max_children": tree.max_children,
+            "created_at": tree.created_at.isoformat() if tree.created_at else None,
+            "last_active_at": tree.last_active_at.isoformat() if tree.last_active_at else None,
+        }
+
+    async def list_trees(
+        self,
+        entity_id: Optional[UUID] = None,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List trees for this company, optionally filtering by entity/status."""
+        stmt = (
+            select(CortexTree)
+            .where(CortexTree.company_id == self.company_id)
+            .order_by(CortexTree.last_active_at.desc())
+        )
+        if entity_id:
+            stmt = stmt.where(CortexTree.entity_id == entity_id)
+        if status:
+            stmt = stmt.where(CortexTree.status == CortexTreeStatus(status))
+
+        result = await self.db.execute(stmt)
+        trees = result.scalars().all()
+        return [
+            {
+                "id": str(t.id),
+                "entity_id": str(t.entity_id),
+                "task_description": t.task_description,
+                "status": t.status.value if t.status else "active",
+                "total_nodes": t.total_nodes,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "last_active_at": t.last_active_at.isoformat() if t.last_active_at else None,
+            }
+            for t in trees
+        ]
+
+    async def get_node_details(self, node_id: UUID) -> Dict[str, Any]:
+        """Get full node details for API response."""
+        node = await self._get_node(node_id)
+        return {
+            "id": str(node.id),
+            "tree_id": str(node.tree_id),
+            "parent_id": str(node.parent_id) if node.parent_id else None,
+            "node_type": node.node_type.value if node.node_type else None,
+            "title": node.title,
+            "summary": node.summary,
+            "content_tokens": node.content_tokens,
+            "status": node.status.value if node.status else "pending",
+            "depth": node.depth,
+            "sibling_order": node.sibling_order,
+            "source_ref": node.source_ref,
+            "metadata_extra": node.metadata_extra,
+            "created_at": node.created_at.isoformat() if node.created_at else None,
+            "updated_at": node.updated_at.isoformat() if node.updated_at else None,
+        }
+
+    # ===================================================================
+    # INTERNAL HELPERS
+    # ===================================================================
+
+    async def _create_node(
+        self,
+        tree_id: UUID,
+        parent_id: Optional[UUID],
+        node_type: CortexNodeType,
+        title: str,
+        summary: Optional[str],
+        content: Optional[str],
+        status: CortexNodeStatus,
+        depth: int,
+        sibling_order: int,
+        source_ref: Optional[Dict] = None,
+        metadata_extra: Optional[Dict] = None,
+        content_tokens: int = 0,
+    ) -> CortexNode:
+        """Create and flush a new CortexNode."""
+        if content and content_tokens == 0:
+            content_tokens = len(content) // self.CHARS_PER_TOKEN
+
+        node = CortexNode(
+            id=uuid4(),
+            tree_id=tree_id,
+            parent_id=parent_id,
+            node_type=node_type,
+            title=title,
+            summary=summary,
+            content=content,
+            content_tokens=content_tokens,
+            status=status,
+            depth=depth,
+            sibling_order=sibling_order,
+            source_ref=source_ref,
+            metadata_extra=metadata_extra,
+        )
+        self.db.add(node)
+        await self.db.flush()
+        return node
+
+    async def _get_tree(self, tree_id: UUID) -> CortexTree:
+        """Load a CortexTree by ID."""
+        result = await self.db.execute(
+            select(CortexTree).where(CortexTree.id == tree_id)
+        )
+        tree = result.scalar_one_or_none()
+        if not tree:
+            raise ValueError(f"CortexTree {tree_id} not found")
+        return tree
+
+    async def _get_node(self, node_id: UUID) -> CortexNode:
+        """Load a CortexNode by ID."""
+        result = await self.db.execute(
+            select(CortexNode).where(CortexNode.id == node_id)
+        )
+        node = result.scalar_one_or_none()
+        if not node:
+            raise ValueError(f"CortexNode {node_id} not found")
+        return node
+
+    def _node_to_dto(self, node: CortexNode) -> NodeSummaryDTO:
+        """Convert ORM node to lightweight DTO."""
+        return NodeSummaryDTO(
+            id=str(node.id),
+            title=node.title,
+            summary=node.summary,
+            status=node.status.value if node.status else "pending",
+            node_type=node.node_type.value if node.node_type else "root",
+            sibling_order=node.sibling_order or 0,
+            depth=node.depth or 0,
+            content_tokens=node.content_tokens or 0,
+        )
+
+    async def _build_breadcrumb(self, node: CortexNode) -> List[Dict[str, str]]:
+        """Walk up from node to root, building breadcrumb trail."""
+        crumbs = []
+        current = node
+        visited = set()  # prevent infinite loops
+
+        while current and current.id not in visited:
+            visited.add(current.id)
+            crumbs.append({"id": str(current.id), "title": current.title})
+            if current.parent_id:
+                current = await self._get_node(current.parent_id)
+            else:
+                break
+
+        crumbs.reverse()  # root → ... → current
+        return crumbs
+
+    async def _get_last_checkpoint(self, cursor_id: UUID) -> Optional[Dict]:
+        """Find the most recent checkpoint node under the cursor."""
+        result = await self.db.execute(
+            select(CortexNode)
+            .where(
+                CortexNode.parent_id == cursor_id,
+                CortexNode.node_type == CortexNodeType.CHECKPOINT,
+            )
+            .order_by(CortexNode.created_at.desc())
+            .limit(1)
+        )
+        checkpoint = result.scalar_one_or_none()
+        if checkpoint and checkpoint.content:
+            try:
+                return json.loads(checkpoint.content)
+            except json.JSONDecodeError:
+                return {"progress_summary": checkpoint.summary}
+        return None
+
+    async def _dfs_collect(self, node_id: UUID, sections: List[str]) -> None:
+        """Depth-first traversal collecting content from complete output nodes."""
+        node = await self._get_node(node_id)
+
+        # Collect content from complete nodes (skip the output root itself)
+        if node.status == CortexNodeStatus.COMPLETE and node.content:
+            sections.append(node.content)
+
+        # Recurse into children
+        result = await self.db.execute(
+            select(CortexNode)
+            .where(CortexNode.parent_id == node_id)
+            .order_by(CortexNode.sibling_order)
+        )
+        children = result.scalars().all()
+        for child in children:
+            await self._dfs_collect(child.id, sections)

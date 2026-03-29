@@ -18,14 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.billing.billing_models import CreditWallet, Subscription
+from src.billing.billing_service import BillingService
 
 
 class InsufficientCreditsError(Exception):
     """Raised when all credit buckets are exhausted and task execution should be blocked."""
     pass
-
-
-DAILY_CREDIT_AMOUNT = Decimal("5.00")
 
 
 class CreditService:
@@ -41,9 +39,14 @@ class CreditService:
         if not wallet:
             tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             tomorrow = tomorrow + timedelta(days=1)
+            
+            billing_svc = BillingService(self.db)
+            config = await billing_svc.get_billing_config(company_id)
+            daily_amount = config.default_daily_credits if config else Decimal("5.00")
+            
             wallet = CreditWallet(
                 company_id=company_id,
-                daily_credits=DAILY_CREDIT_AMOUNT,
+                daily_credits=daily_amount,
                 daily_expires_at=tomorrow,
             )
             self.db.add(wallet)
@@ -53,14 +56,19 @@ class CreditService:
         return wallet
 
     async def get_balance(self, company_id: UUID) -> dict:
-        """Return current credit balance across all buckets."""
+        """Return current credit balance across all buckets.
+        
+        Auto-renews daily credits if they have expired (so the $5 daily allowance
+        is not stuck at 0 between cron runs).
+        """
         wallet = await self.get_or_create_wallet(company_id)
         now = datetime.utcnow()
 
-        # Check if daily credits expired
-        daily = Decimal(str(wallet.daily_credits))
+        # Auto-renew expired daily credits in place (no cron needed)
         if wallet.daily_expires_at and wallet.daily_expires_at < now:
-            daily = Decimal("0")
+            wallet = await self.flush_and_inject_daily_credits(company_id)
+
+        daily = Decimal(str(wallet.daily_credits))
 
         # Check wallet balance expiry
         wallet_bal = Decimal(str(wallet.wallet_balance))
@@ -202,11 +210,16 @@ class CreditService:
 
     async def flush_and_inject_daily_credits(self, company_id: UUID) -> CreditWallet:
         """
-        Flush expired daily credits and inject fresh $5.
+        Flush expired daily credits and inject fresh amount from config.
         Called daily at 00:00:00 by cron job.
         """
         wallet = await self.get_or_create_wallet(company_id)
-        wallet.daily_credits = DAILY_CREDIT_AMOUNT
+        
+        billing_svc = BillingService(self.db)
+        config = await billing_svc.get_billing_config(company_id)
+        daily_amount = config.default_daily_credits if config else Decimal("5.00")
+        
+        wallet.daily_credits = daily_amount
         tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = tomorrow + timedelta(days=1)
         wallet.daily_expires_at = tomorrow

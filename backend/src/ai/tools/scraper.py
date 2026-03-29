@@ -1,29 +1,26 @@
-"""Web Scraping tool for AI Entities."""
-
 import json
 import httpx
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from src.ai.tools.base import Tool
 
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    BeautifulSoup = None
-
 class ScraperTool(Tool):
-    """Tool for scraping content from web pages.
+    """Tool for scraping content from web pages using Firecrawl.
     
     Actions:
-    1. scrape_url: Get text content from a URL.
+    1. scrape_url: Get text content from a URL via Firecrawl and save it as an artifact.
     """
     
     name = "scraper_tool"
     description = (
-        "Extract text content from a web page URL. "
-        "Input should be a JSON object with 'url'."
+        "Extract text content from a web page URL using Firecrawl API. "
+        "Input should be a JSON object with 'url'. "
+        "Returns the scraped content and saves it as a document artifact."
     )
 
     async def run(self, input_data: str) -> str:
+        return await self.run_with_context(input_data)
+
+    async def run_with_context(self, input_data: str, context: dict = None) -> str:
         try:
             params = json.loads(input_data)
             url = params.get("url")
@@ -31,46 +28,108 @@ class ScraperTool(Tool):
             if not url:
                 return json.dumps({"error": "Missing 'url'"})
 
-            return await self._scrape_url(url)
+            # Retrieve execution context info
+            context = context or {}
+            company_id = context.get("company_id")
+            purpose = params.get("purpose", f"Scraped content from {url}")
+            
+            # Extract campaign/run IDs if provided
+            campaign_id = context.get("campaign_id")
+            agent_id = context.get("agent_id")
+            run_id = context.get("run_id")
 
+            # Need DB access for API key and to save artifact
+            from src.common.database import AsyncSessionLocal
+            from src.config.service import ConfigService
+            from src.ai.artifact_service import ArtifactService, ORIGIN_SYSTEM
+            
+            async with AsyncSessionLocal() as db_session:
+                config_svc = ConfigService(db_session)
+                art_svc = ArtifactService(db_session)
+                
+                # Fetch API key
+                # Per feedback: App Admin configures Firecrawl SKU system-wide.
+                # config_svc auto-falls back to APP company if company-specific key is missing
+                # get_api_key_by_provider already checks the app company ID as fallback
+                key = None
+                if company_id:
+                    key = await config_svc.get_api_key_by_provider(company_id, "firecrawl")
+                else:
+                    app_company_id_val = await config_svc._get_app_company_id()
+                    if app_company_id_val:
+                        key = await config_svc.get_api_key_by_provider(app_company_id_val, "firecrawl")
+                
+                if not key:
+                    return json.dumps({"error": "Firecrawl integration is not configured. Please add the 'firecrawl' provider key in the system settings."})
+                
+                # Call Firecrawl
+                api_url = "https://api.firecrawl.dev/v1/scrape"
+                headers = {
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "url": url,
+                    "formats": ["markdown"]
+                }
+                
+                # Increased timeout to handle large web pages
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(api_url, headers=headers, json=payload)
+                    
+                    if response.status_code != 200:
+                        return json.dumps({"error": f"Firecrawl API error: {response.text}"})
+                        
+                    resp_data = response.json()
+                    
+                    if not resp_data.get("success"):
+                        return json.dumps({"error": f"Scrape failed: {resp_data.get('error', 'Unknown error')}"})
+                        
+                    markdown_content = resp_data.get("data", {}).get("markdown", "")
+                    
+                    if not markdown_content:
+                        return json.dumps({"error": "No markdown content extracted from URL"})
+                    
+                    # Create Artifact
+                    # Generate a safe filename from the URL, max 50 chars
+                    safe_url = url.split("://")[-1].replace("/", "_").replace("?", "_").replace("&", "_")
+                    file_name = f"scraped_{safe_url[:50]}.md"
+                    
+                    # Store file path in DB, ArtifactService physically saves to @artifact base folder
+                    # Uses company_id from context if available, otherwise app company id
+                    target_company_id = company_id
+                    if not target_company_id:
+                        target_company_id = await config_svc._get_app_company_id()
+                        
+                    content_bytes = markdown_content.encode("utf-8")
+                    
+                    saved_artifact = await art_svc.save_artifact(
+                        file_bytes=content_bytes,
+                        file_name=file_name,
+                        mime_type="text/markdown",
+                        file_category="documents",
+                        origin=ORIGIN_SYSTEM,
+                        company_id=target_company_id,
+                        purpose=purpose,
+                        generated_by="scraper_tool",
+                        campaign_id=campaign_id,
+                        agent_id=agent_id,
+                        run_id=run_id,
+                        extra_metadata={"url": url, "char_count": len(markdown_content)}
+                    )
+                    
+                    return json.dumps({
+                        "status": "success",
+                        "url": url,
+                        "artifact_id": str(saved_artifact.id),
+                        "file_path": saved_artifact.file_path,
+                        "message": f"Successfully scraped {len(markdown_content)} characters and saved as document artifact.",
+                        # Return truncated text for immediate LLM context window safety
+                        "content": markdown_content[:8000]
+                    })
+                    
         except Exception as e:
             return json.dumps({"error": f"Scraper Tool Error: {str(e)}"})
-
-    async def _scrape_url(self, url: str) -> str:
-        if not BeautifulSoup:
-            return json.dumps({"error": "beautifulsoup4 not installed"})
-            
-        try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                }
-                response = await client.get(url, headers=headers)
-                response.raise_for_status()
-                
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Remove script and style elements
-                for script in soup(["script", "style", "nav", "footer", "header"]):
-                    script.decompose()
-                
-                # Get text
-                text = soup.get_text(separator='\n')
-                
-                # Clean up whitespace
-                lines = (line.strip() for line in text.splitlines())
-                chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-                text = '\n'.join(chunk for chunk in chunks if chunk)
-                
-                # Limit text length to avoid context overflow
-                return json.dumps({
-                    "status": "success",
-                    "url": url,
-                    "content": text[:10000], # First 10k chars
-                    "length": len(text)
-                })
-        except Exception as e:
-            return json.dumps({"error": f"Failed to scrape URL: {str(e)}"})
 
     def get_function_schema(self) -> Dict[str, Any]:
         return {
@@ -82,6 +141,10 @@ class ScraperTool(Tool):
                     "url": {
                         "type": "string",
                         "description": "The URL of the page to scrape"
+                    },
+                    "purpose": {
+                        "type": "string",
+                        "description": "Short description of why this url is being scraped. Defaults to 'Scraped content from {url}'."
                     }
                 },
                 "required": ["url"]

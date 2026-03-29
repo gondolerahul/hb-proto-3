@@ -75,45 +75,44 @@ class WebSearchTool(Tool):
     # ---------------------------------------------------------------------------
 
     async def _resolve_keys(self, context: Optional[Dict] = None) -> Dict[str, Optional[str]]:
-        """Look up available search API keys from env + integration registry."""
+        """Look up available search API keys from the Integration Registry."""
         keys = {
-            "google_cse_api_key": os.getenv("GOOGLE_CSE_API_KEY"),
-            "google_cse_id": os.getenv("GOOGLE_CSE_ID"),
-            "serp_api_key": os.getenv("SERP_API_KEY") or os.getenv("SERPAPI_KEY"),
+            "google_cse_api_key": None,
+            "google_cse_id": None,
+            "serp_api_key": None,
         }
-
-        # Nothing to look up if all already found from env
-        if all([keys["google_cse_api_key"], keys["google_cse_id"]]) or keys["serp_api_key"]:
-            return keys
 
         # Integration registry lookup
         if context and context.get("company_id"):
             try:
                 from uuid import UUID as _UUID
                 from src.common.database import AsyncSessionLocal
-                from sqlalchemy import select
-                from src.config.models import IntegrationRegistry
-                from src.common.security import decrypt_api_key
+                from src.config.service import ConfigService
 
                 async with AsyncSessionLocal() as db:
+                    config_service = ConfigService(db)
                     company_uuid = _UUID(str(context["company_id"]))
-                    result = await db.execute(
-                        select(IntegrationRegistry).where(
-                            IntegrationRegistry.company_id == company_uuid,
-                            IntegrationRegistry.status == "active",
-                            IntegrationRegistry.encrypted_api_key.isnot(None),
-                        )
-                    )
-                    entries = result.scalars().all()
-                    for entry in entries:
-                        name_lower = (entry.provider_name or "").lower()
-                        model_lower = (entry.model_name or "").lower()
-                        key_str = decrypt_api_key(entry.encrypted_api_key)
 
-                        if "serp" in name_lower or "serp" in model_lower:
-                            keys["serp_api_key"] = keys["serp_api_key"] or key_str
-                        elif "google" in name_lower and "cse" in model_lower:
-                            keys["google_cse_api_key"] = keys["google_cse_api_key"] or key_str
+                    # Google CSE Resolution
+                    if not keys["google_cse_api_key"] or not keys["google_cse_id"]:
+                        entry = await config_service.get_integration_by_sku(company_uuid, "google-cse-key") or \
+                                await config_service.get_integration_by_provider(company_uuid, "google")
+                        
+                        if entry:
+                            from src.common.security import decrypt_api_key
+                            if not keys["google_cse_api_key"]:
+                                keys["google_cse_api_key"] = decrypt_api_key(entry.encrypted_api_key)
+                            if not keys["google_cse_id"]:
+                                # Look in metadata or model_name
+                                keys["google_cse_id"] = (entry.service_metadata or {}).get("cse_id") or \
+                                                       (entry.service_metadata or {}).get("cx") or \
+                                                       entry.model_name
+                    
+                    # SerpAPI Resolution
+                    if not keys["serp_api_key"]:
+                        keys["serp_api_key"] = await config_service.get_api_key_by_sku(company_uuid, "serp-api-key") or \
+                                             await config_service.get_api_key_by_provider(company_uuid, "serpapi")
+
             except Exception as e:
                 logger.debug(f"[WebSearch] Registry lookup failed: {e}")
 

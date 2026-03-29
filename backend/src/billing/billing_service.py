@@ -87,9 +87,11 @@ class BillingService:
         image_gen_count: int = 0,
         video_gen_count: int = 0,
         other_ai_cost: Decimal = Decimal("0"),
+        event_category: str = "api",  # "telephony", "llm", "image", "video", "api"
     ) -> BillingEvent:
         """
         Calculate TB from formula, then upsert a BillingEvent for the current month.
+        Divides the final price into category charges based on event_category.
         """
         config = await self.get_billing_config(company_id)
         if not config:
@@ -100,6 +102,15 @@ class BillingService:
             pf = Decimal(str(config.platform_fee_pct))
             spf = Decimal(str(config.sales_partner_fee_pct))
             d = Decimal(str(config.discount_pct))
+            
+            # Use overrides if defined
+            if event_category == "telephony" and config.base_cost_telephony is not None:
+                base_cost = Decimal(str(config.base_cost_telephony)) * (telephony_in_minutes + telephony_out_minutes)
+            elif event_category == "llm" and config.base_cost_llm is not None:
+                # Assuming base cost provided is directly overridden. 
+                pass
+            elif event_category == "image" and config.base_cost_image_gen is not None:
+                base_cost = Decimal(str(config.base_cost_image_gen)) * Decimal(str(image_gen_count))
 
         tb = calculate_tb(base_cost, mf, pf, spf, d)
 
@@ -131,6 +142,19 @@ class BillingService:
             event.image_gen_count += image_gen_count
             event.video_gen_count += video_gen_count
             event.other_ai_cost += other_ai_cost
+            
+            # Increment breakdown charges
+            if event_category == "telephony":
+                event.telephony_charge += tb["total_billing"]
+            elif event_category == "llm":
+                event.llm_charge += tb["total_billing"]
+            elif event_category == "image":
+                event.image_charge += tb["total_billing"]
+            elif event_category == "video":
+                event.video_charge += tb["total_billing"]
+            else:
+                event.api_charge += tb["total_billing"]
+
             event.updated_at = datetime.utcnow()
         else:
             event = BillingEvent(
@@ -144,6 +168,11 @@ class BillingService:
                 image_gen_count=image_gen_count,
                 video_gen_count=video_gen_count,
                 other_ai_cost=other_ai_cost,
+                telephony_charge=tb["total_billing"] if event_category == "telephony" else Decimal("0"),
+                llm_charge=tb["total_billing"] if event_category == "llm" else Decimal("0"),
+                image_charge=tb["total_billing"] if event_category == "image" else Decimal("0"),
+                video_charge=tb["total_billing"] if event_category == "video" else Decimal("0"),
+                api_charge=tb["total_billing"] if event_category not in ["telephony", "llm", "image", "video"] else Decimal("0"),
             )
             self.db.add(event)
 
@@ -177,6 +206,10 @@ class BillingService:
         platform_fee_pct: Optional[Decimal] = None,
         sales_partner_fee_pct: Optional[Decimal] = None,
         discount_pct: Optional[Decimal] = None,
+        default_daily_credits: Optional[Decimal] = None,
+        base_cost_telephony: Optional[Decimal] = None,
+        base_cost_llm: Optional[Decimal] = None,
+        base_cost_image_gen: Optional[Decimal] = None,
     ) -> BillingConfig:
         """Create or update billing config for a company (or global)."""
         stmt = select(BillingConfig).where(
@@ -198,6 +231,15 @@ class BillingService:
             config.sales_partner_fee_pct = sales_partner_fee_pct
         if discount_pct is not None:
             config.discount_pct = discount_pct
+            
+        if default_daily_credits is not None:
+            config.default_daily_credits = default_daily_credits
+        if base_cost_telephony is not None:
+            config.base_cost_telephony = base_cost_telephony
+        if base_cost_llm is not None:
+            config.base_cost_llm = base_cost_llm
+        if base_cost_image_gen is not None:
+            config.base_cost_image_gen = base_cost_image_gen
 
         config.updated_at = datetime.utcnow()
         await self.db.commit()

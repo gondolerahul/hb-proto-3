@@ -21,17 +21,31 @@ const KnowledgeBase = lazy(() => import('@/pages/KnowledgeBase').then(m => ({ de
 const IntegrationsPage = lazy(() => import('@/pages/IntegrationsPage').then(m => ({ default: m.IntegrationsPage })));
 const UserSettings = lazy(() => import('@/pages/UserSettings').then(m => ({ default: m.UserSettings })));
 const PlatformManagement = lazy(() => import('@/pages/PlatformManagement').then(m => ({ default: m.PlatformManagement })));
+const AIModelConfigPage = lazy(() => import('@/pages/ai-config/AIModelConfigPage').then(m => ({ default: m.AIModelConfigPage })));
 
 // Streaming pages
 const PhoneNumbersPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.PhoneNumbersPage })));
 const StreamingSessionsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.StreamingSessionsPage })));
 const CampaignsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CampaignsPage })));
 
-// Assets & Billing pages
-const AssetLibrary = lazy(() => import('@/pages/assets/AssetLibrary').then(m => ({ default: m.AssetLibrary })));
+const Artifacts = lazy(() => import('@/pages/artifacts/Artifacts').then(m => ({ default: m.Artifacts })));
 const CostingReport = lazy(() => import('@/pages/reports/CostingReport').then(m => ({ default: m.CostingReport })));
 const BillingReport = lazy(() => import('@/pages/reports/BillingReport').then(m => ({ default: m.BillingReport })));
+const AppAdminReports = lazy(() => import('@/pages/reports/AppAdminReports').then(m => ({ default: m.AppAdminReports })));
+const AppUserReports = lazy(() => import('@/pages/reports/AppUserReports').then(m => ({ default: m.AppUserReports })));
+const PartnerAdminReports = lazy(() => import('@/pages/reports/PartnerAdminReports').then(m => ({ default: m.PartnerAdminReports })));
+const PartnerUserReports = lazy(() => import('@/pages/reports/PartnerUserReports').then(m => ({ default: m.PartnerUserReports })));
+const TenantAdminReports = lazy(() => import('@/pages/reports/TenantAdminReports').then(m => ({ default: m.TenantAdminReports })));
+const TenantUserReports = lazy(() => import('@/pages/reports/TenantUserReports').then(m => ({ default: m.TenantUserReports })));
 const WalletPage = lazy(() => import('@/pages/billing/WalletPage').then(m => ({ default: m.WalletPage })));
+const BillingSettings = lazy(() => import('@/pages/billing/BillingSettings').then(m => ({ default: m.BillingSettings })));
+
+// CORTEX Memory Architecture
+const CortexExplorer = lazy(() => import('@/pages/ai/CortexExplorer').then(m => ({ default: m.CortexExplorer })));
+const CortexTreeDetail = lazy(() => import('@/pages/ai/CortexTreeDetail').then(m => ({ default: m.CortexTreeDetail })));
+
+// Tool Registry Management
+const ToolManagement = lazy(() => import('@/pages/ai/ToolManagement').then(m => ({ default: m.ToolManagement })));
 
 
 // Loading Component for Suspense
@@ -204,6 +218,18 @@ export const AppRouter: React.FC = () => {
                         }
                     />
 
+                    {/* Tool Registry (App Admin) */}
+                    <Route
+                        path="/ai/tool-registry"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN]}>
+                                <MainLayout>
+                                    <ToolManagement />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
                     {/* Knowledge Base */}
                     <Route
                         path="/knowledge"
@@ -223,6 +249,18 @@ export const AppRouter: React.FC = () => {
                             <ProtectedRoute>
                                 <MainLayout>
                                     <IntegrationsPage />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* AI Configuration */}
+                    <Route
+                        path="/ai-config"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout>
+                                    <AIModelConfigPage />
                                 </MainLayout>
                             </ProtectedRoute>
                         }
@@ -289,17 +327,41 @@ export const AppRouter: React.FC = () => {
                     />
 
 
-                    {/* Asset Library */}
+                    {/* Artifacts (replaces Asset Library) */}
                     <Route
-                        path="/assets"
+                        path="/artifacts"
                         element={
                             <ProtectedRoute>
                                 <MainLayout>
-                                    <AssetLibrary />
+                                    <Artifacts />
                                 </MainLayout>
                             </ProtectedRoute>
                         }
                     />
+
+                    {/* CORTEX Memory Trees */}
+                    <Route
+                        path="/cortex"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <CortexExplorer />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/cortex/trees/:treeId"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <CortexTreeDetail />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    {/* Legacy redirect */}
+                    <Route path="/assets" element={<Navigate to="/artifacts" replace />} />
 
                     {/* Reports - Costing */}
                     <Route
@@ -325,6 +387,68 @@ export const AppRouter: React.FC = () => {
                         }
                     />
 
+                    {/* Analytics Reports — Role-gated */}
+                    <Route
+                        path="/reports/analytics/app-admin"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN]}>
+                                <MainLayout>
+                                    <AppAdminReports />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/reports/analytics/app-user"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.APP_USER]}>
+                                <MainLayout>
+                                    <AppUserReports />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/reports/analytics/partner-admin"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN]}>
+                                <MainLayout>
+                                    <PartnerAdminReports />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/reports/analytics/partner-user"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.PARTNER_USER]}>
+                                <MainLayout>
+                                    <PartnerUserReports />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/reports/analytics/tenant-admin"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout>
+                                    <TenantAdminReports />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/reports/analytics/tenant-user"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <TenantUserReports />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
                     {/* Wallet & Credits */}
                     <Route
                         path="/wallet"
@@ -332,6 +456,18 @@ export const AppRouter: React.FC = () => {
                             <ProtectedRoute>
                                 <MainLayout>
                                     <WalletPage />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Billing Settings */}
+                    <Route
+                        path="/settings/billing"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN]}>
+                                <MainLayout>
+                                    <BillingSettings />
                                 </MainLayout>
                             </ProtectedRoute>
                         }

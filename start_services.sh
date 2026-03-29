@@ -1,5 +1,5 @@
 #!/bin/bash
-# HireBuddha Platform v2.0 - Hierarchical AI Refactor
+# HireBuddha Platform v2.0 - Unified AI Gateway
 # This script starts all backend services and the frontend
 
 set -e  # Exit on error
@@ -21,7 +21,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  HireBuddha Hierarchical Platform v0.2${NC}"
+echo -e "${BLUE}  HireBuddha Unified AI Gateway v2.0   ${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -82,50 +82,38 @@ else
     echo -e "${GREEN}✓ Docker services started${NC}"
 fi
 
-# Step 2: Start Main Backend API
-echo -e "${BLUE}[2/5] Starting Main Backend API (Port 8001)...${NC}"
+# Step 2: Start Main Backend API (internal, port 8000)
+echo -e "${BLUE}[2/5] Starting Main Backend API (Port 8000)...${NC}"
 
-if check_port 8001; then
-    echo -e "${YELLOW}Port 8001 already in use. Skipping Backend API startup.${NC}"
+if check_port 8000; then
+    echo -e "${YELLOW}Port 8000 already in use. Skipping Backend API startup.${NC}"
 else
     cd "$BACKEND_DIR"
-    nohup "$BACKEND_DIR/.venv/bin/python" -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload > "$LOG_DIR/backend_api.log" 2>&1 &
+    nohup "$BACKEND_DIR/.venv/bin/python" -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload > "$LOG_DIR/backend_api.log" 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > "$LOG_DIR/backend_api.pid"
     echo -e "${GREEN}✓ Backend API process spawned (PID: $BACKEND_PID)${NC}"
-    wait_for_service "Backend API" 8001
+    wait_for_service "Backend API" 8000
 fi
 
-# Step 3: Start Streaming Service
-echo -e "${BLUE}[3/6] Starting Streaming Service (Port 8002)...${NC}"
+# Step 3: Start Unified AI Gateway (port 8001 — public-facing)
+# Includes all 5 interfaces:
+#   REST proxy, Webhook inbound, Internal events, Audio WS, Video WebRTC
+echo -e "${BLUE}[3/5] Starting Unified AI Gateway (Port 8001)...${NC}"
 
-if check_port 8002; then
-    echo -e "${YELLOW}Port 8002 already in use. Skipping Streaming Service startup.${NC}"
+if check_port 8001; then
+    echo -e "${YELLOW}Port 8001 already in use. Skipping Unified Gateway startup.${NC}"
 else
     cd "$BACKEND_DIR"
-    nohup "$BACKEND_DIR/.venv/bin/python" -m uvicorn src.streaming.main:app --host 0.0.0.0 --port 8002 --reload > "$LOG_DIR/streaming_service.log" 2>&1 &
-    STREAMING_PID=$!
-    echo $STREAMING_PID > "$LOG_DIR/streaming_service.pid"
-    echo -e "${GREEN}✓ Streaming Service process spawned (PID: $STREAMING_PID)${NC}"
-    wait_for_service "Streaming Service" 8002
-fi
-
-# Step 4: Start API Gateway
-echo -e "${BLUE}[4/6] Starting API Gateway (Port 8000)...${NC}"
-
-if check_port 8000; then
-    echo -e "${YELLOW}Port 8000 already in use. Skipping API Gateway startup.${NC}"
-else
-    cd "$BACKEND_DIR"
-    nohup "$BACKEND_DIR/.venv/bin/python" -m uvicorn src.gateway.main:app --host 0.0.0.0 --port 8000 --reload > "$LOG_DIR/api_gateway.log" 2>&1 &
+    nohup "$BACKEND_DIR/.venv/bin/python" -m uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001 --reload > "$LOG_DIR/unified_gateway.log" 2>&1 &
     GATEWAY_PID=$!
-    echo $GATEWAY_PID > "$LOG_DIR/api_gateway.pid"
-    echo -e "${GREEN}✓ API Gateway process spawned (PID: $GATEWAY_PID)${NC}"
-    wait_for_service "API Gateway" 8000
+    echo $GATEWAY_PID > "$LOG_DIR/unified_gateway.pid"
+    echo -e "${GREEN}✓ Unified AI Gateway process spawned (PID: $GATEWAY_PID)${NC}"
+    wait_for_service "Unified AI Gateway" 8001
 fi
 
-# Step 5: Start Arq Worker
-echo -e "${BLUE}[5/6] Starting Arq Worker...${NC}"
+# Step 4: Start Arq Worker
+echo -e "${BLUE}[4/5] Starting Arq Worker...${NC}"
 
 # Check if arq worker is already running by process name
 if pgrep -f "arq src.ai.worker.WorkerSettings" > /dev/null; then
@@ -139,8 +127,8 @@ else
     echo -e "${GREEN}✓ Arq Worker started (PID: $ARQ_PID)${NC}"
 fi
 
-# Step 6: Start Frontend
-echo -e "${BLUE}[6/6] Starting Frontend (Port 3000)...${NC}"
+# Step 5: Start Frontend
+echo -e "${BLUE}[5/5] Starting Frontend (Port 3000)...${NC}"
 
 if check_port 3000; then
     echo -e "${YELLOW}Port 3000 already in use. Skipping Frontend startup.${NC}"
@@ -159,12 +147,15 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${GREEN}✓ All services are running!${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "Access the application at: ${GREEN}https://dev.hirebuddha.com${NC}"
-echo -e "API Gateway:              ${GREEN}https://gateway.hirebuddha.com${NC}"
-echo -e "Backend API (Raw):        ${GREEN}https://api.hirebuddha.com${NC}"
-echo -e "Streaming Service:        ${GREEN}https://streaming.hirebuddha.com${NC}"
-echo -e "API Documentation:        ${GREEN}https://api.hirebuddha.com/docs${NC}"
-echo -e "Streaming Docs:           ${GREEN}https://streaming.hirebuddha.com/docs${NC}"
+echo -e "Access the application at:          ${GREEN}https://dev.hirebuddha.com${NC}"
+echo -e "Unified AI Gateway (Port 8001):    ${GREEN}https://gateway.hirebuddha.com${NC}"
+echo -e "  REST API proxy:                  ${GREEN}https://gateway.hirebuddha.com/api/v1/*${NC}"
+echo -e "  Webhook endpoint:                ${GREEN}https://gateway.hirebuddha.com/webhook/inbound${NC}"
+echo -e "  Internal event endpoint:         ${GREEN}https://gateway.hirebuddha.com/internal/event${NC}"
+echo -e "  Audio streaming (WS):            ${GREEN}wss://gateway.hirebuddha.com/stream/audio${NC}"
+echo -e "  Video streaming (WebRTC/WS):     ${GREEN}wss://gateway.hirebuddha.com/stream/video${NC}"
+echo -e "Backend API (internal, 8000):      ${GREEN}https://api.hirebuddha.com${NC}"
+echo -e "Gateway Docs:                      ${GREEN}https://gateway.hirebuddha.com/docs${NC}"
 echo ""
 echo -e "Logs available in:        ${YELLOW}$LOG_DIR/${NC}"
 echo -e "To stop services, run:    ${GREEN}./stop_services.sh${NC}"

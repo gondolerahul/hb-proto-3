@@ -211,7 +211,9 @@ export const KnowledgeBase: React.FC = () => {
             <div className="standard-grid">
                 {loading ? (
                     Array(3).fill(0).map((_, i) => (
-                        <GlassCard key={i} className="glass-card-item opacity-50 pulse" />
+                        <GlassCard key={i} className="glass-card-item opacity-50 pulse">
+                            <div className="w-full h-32"></div>
+                        </GlassCard>
                     ))
                 ) : documents.length === 0 ? (
                     <GlassCard className="empty-state">

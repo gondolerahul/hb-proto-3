@@ -5,7 +5,11 @@ import './ToolSelectionPanel.css';
 
 interface Tool {
     name: string;
+    display_name?: string;
     description: string;
+    category?: string;
+    tool_type?: string;
+    is_enabled?: boolean;
 }
 
 interface ToolSelectionPanelProps {
@@ -41,10 +45,13 @@ export const ToolSelectionPanel: React.FC<ToolSelectionPanelProps> = ({ selected
         }
     };
 
-    const filteredTools = tools.filter(tool =>
-        tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tool.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredTools = tools
+        .filter(tool => tool.is_enabled !== false)
+        .filter(tool =>
+            tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            tool.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (tool.display_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+        );
 
     if (loading) {
         return <div className="tool-selection-loading">Loading tools...</div>;
@@ -79,7 +86,10 @@ export const ToolSelectionPanel: React.FC<ToolSelectionPanelProps> = ({ selected
                                         {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
                                         <Wrench size={16} />
                                     </div>
-                                    <div className="tool-item-name">{tool.name}</div>
+                                    <div className="tool-item-name">{tool.display_name || tool.name}</div>
+                                    {tool.category && (
+                                        <span className="tool-item-category">{tool.category}</span>
+                                    )}
                                 </div>
                                 <div className="tool-item-description">{tool.description}</div>
                             </div>
@@ -94,3 +104,4 @@ export const ToolSelectionPanel: React.FC<ToolSelectionPanelProps> = ({ selected
         </div>
     );
 };
+

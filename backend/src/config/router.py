@@ -1,49 +1,55 @@
 from uuid import UUID
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 from src.common.database import get_db
 from src.config.schemas import (
-    IntegrationRegistryCreate, 
-    IntegrationRegistryUpdate, 
+    IntegrationRegistryCreate,
+    IntegrationRegistryUpdate,
     IntegrationRegistryResponse,
-    ModelResponse
+    ModelResponse,
+    ModelTaskDefaultCreate,
+    ModelTaskDefaultResponse,
 )
+from src.config.models import ModelTaskDefault, TASK_TYPES
 from src.config.service import ConfigService
 from src.auth.dependencies import get_current_user, RoleChecker
 from src.auth.models import User
 
 router = APIRouter(prefix="/config", tags=["Integrations"])
 
+
+# ============================================================================
+# Integration Registry CRUD
+# ============================================================================
+
 @router.get("/models", response_model=list[ModelResponse])
 async def list_models(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """List all LLM models registered in the integration registry."""
     service = ConfigService(db)
     integrations = await service.get_registry_entries(company_id=current_user.company_id)
-    
-    # Filter for LLM category and unique model names
+
     models = []
     seen_models = set()
-    
+
     for integration in integrations:
-        if integration.service_category == "LLM" and integration.model_name not in seen_models:
+        if integration.service_category in ("LLM", "LLM_LIVE") and integration.model_name not in seen_models:
             models.append({
                 "model_key": integration.model_name,
                 "model_name": integration.model_name,
                 "provider": integration.provider_name,
-                "model_type": "text", # Default for LLM category
+                "model_type": integration.service_category.lower(),
                 "is_active": integration.status == "active"
             })
             seen_models.add(integration.model_name)
-            
-    # If no integrations found, return a default list or empty
-    if not models:
-        # Optional: return some defaults if none configured? 
-        # But the user specifically said they should be related.
-        return []
-    
+
     return models
+
 
 @router.post("/integrations", response_model=IntegrationRegistryResponse)
 async def create_integration(
@@ -51,16 +57,15 @@ async def create_integration(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Only admins can create integrations
     if current_user.role not in ["app_admin", "partner_admin", "tenant_admin"]:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
-    # Ensure they are creating for their own company or are app_admin
+
     if current_user.role != "app_admin" and str(entry_in.company_id) != str(current_user.company_id):
         raise HTTPException(status_code=403, detail="Cannot create integration for another company")
-        
+
     service = ConfigService(db)
     return await service.create_registry_entry(entry_in)
+
 
 @router.get("/integrations", response_model=list[IntegrationRegistryResponse])
 async def list_integrations(
@@ -68,9 +73,25 @@ async def list_integrations(
     db: AsyncSession = Depends(get_db)
 ):
     service = ConfigService(db)
-    # App admins see everything, others see only leur own company
-    company_id = None if current_user.role == "app_admin" else current_user.company_id
-    return await service.get_registry_entries(company_id=company_id)
+
+    if current_user.role == "app_admin":
+        return await service.get_registry_entries(company_id=None)
+    else:
+        from src.auth.models import Company
+        app_company_result = await db.execute(select(Company.id).where(Company.type == "APP").limit(1))
+        app_company_id = app_company_result.scalar_one_or_none()
+
+        own_integrations = await service.get_registry_entries(company_id=current_user.company_id)
+
+        if app_company_id and app_company_id != current_user.company_id:
+            platform_integrations = await service.get_registry_entries(company_id=app_company_id)
+            own_skus = {i.service_sku for i in own_integrations}
+            for pi in platform_integrations:
+                if pi.service_sku not in own_skus:
+                    own_integrations.append(pi)
+
+        return own_integrations
+
 
 @router.get("/integrations/{entry_id}", response_model=IntegrationRegistryResponse)
 async def get_integration(
@@ -80,12 +101,12 @@ async def get_integration(
 ):
     service = ConfigService(db)
     entry = await service.get_registry_entry(entry_id)
-    
-    # Check access
+
     if current_user.role != "app_admin" and str(entry.company_id) != str(current_user.company_id):
         raise HTTPException(status_code=403, detail="Access denied")
-        
+
     return entry
+
 
 @router.patch("/integrations/{entry_id}", response_model=IntegrationRegistryResponse)
 async def update_integration(
@@ -95,12 +116,12 @@ async def update_integration(
     db: AsyncSession = Depends(get_db)
 ):
     service = ConfigService(db)
-    # Check access before update
     entry = await service.get_registry_entry(entry_id)
     if current_user.role != "app_admin" and str(entry.company_id) != str(current_user.company_id):
         raise HTTPException(status_code=403, detail="Access denied")
-        
+
     return await service.update_registry_entry(entry_id, entry_in)
+
 
 @router.delete("/integrations/{entry_id}", status_code=204)
 async def delete_integration(
@@ -109,10 +130,140 @@ async def delete_integration(
     db: AsyncSession = Depends(get_db)
 ):
     service = ConfigService(db)
-    # Check access before delete
     entry = await service.get_registry_entry(entry_id)
     if current_user.role != "app_admin" and str(entry.company_id) != str(current_user.company_id):
         raise HTTPException(status_code=403, detail="Access denied")
-        
+
     await service.delete_registry_entry(entry_id)
     return None
+
+
+# ============================================================================
+# Task Defaults — App Admin ONLY
+# ============================================================================
+
+def _require_app_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency: only app_admin can manage system task defaults."""
+    if current_user.role != "app_admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only App Administrators can configure AI task defaults"
+        )
+    return current_user
+
+
+@router.get("/task-defaults", response_model=list[ModelTaskDefaultResponse])
+async def list_task_defaults(
+    current_user: User = Depends(_require_app_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List all task-to-model defaults for the App Admin's company.
+    Returns own defaults merged with any inherited platform defaults.
+    """
+    service = ConfigService(db)
+    defaults = await service.get_all_task_defaults(current_user.company_id)
+
+    # Eager-load integrations for response
+    result = []
+    from src.config.models import IntegrationRegistry
+    for d in defaults:
+        integ_result = await db.execute(
+            select(IntegrationRegistry).where(IntegrationRegistry.id == d.integration_id)
+        )
+        integ = integ_result.scalar_one_or_none()
+        result.append({
+            "id": d.id,
+            "company_id": d.company_id,
+            "task_type": d.task_type,
+            "integration_id": d.integration_id,
+            "routing_mode": d.routing_mode,
+            "is_default": d.is_default,
+            "created_at": d.created_at,
+            "updated_at": d.updated_at,
+            "integration": integ,
+        })
+    return result
+
+
+@router.post("/task-defaults", response_model=ModelTaskDefaultResponse)
+async def set_task_default(
+    body: ModelTaskDefaultCreate,
+    current_user: User = Depends(_require_app_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Set (or update) the default model for a specific AI task type.
+    Only app_admin can call this endpoint.
+    """
+    from src.config.models import TASK_TYPES
+    if body.task_type not in TASK_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid task_type '{body.task_type}'. Must be one of: {TASK_TYPES}"
+        )
+
+    # Use the current user's company if not explicitly specified
+    company_id = body.company_id or current_user.company_id
+
+    service = ConfigService(db)
+    default = await service.set_task_default(
+        company_id=company_id,
+        task_type=body.task_type,
+        integration_id=body.integration_id,
+        routing_mode=body.routing_mode,
+    )
+
+    # Load integration for response
+    from src.config.models import IntegrationRegistry
+    integ_result = await db.execute(
+        select(IntegrationRegistry).where(IntegrationRegistry.id == default.integration_id)
+    )
+    integ = integ_result.scalar_one_or_none()
+
+    return {
+        "id": default.id,
+        "company_id": default.company_id,
+        "task_type": default.task_type,
+        "integration_id": default.integration_id,
+        "routing_mode": default.routing_mode,
+        "is_default": default.is_default,
+        "created_at": default.created_at,
+        "updated_at": default.updated_at,
+        "integration": integ,
+    }
+
+
+@router.delete("/task-defaults/{task_type}", status_code=204)
+async def delete_task_default(
+    task_type: str,
+    current_user: User = Depends(_require_app_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Remove a task default. Only app_admin can call this."""
+    service = ConfigService(db)
+    await service.delete_task_default(current_user.company_id, task_type)
+    return None
+
+
+@router.get("/task-types")
+async def list_task_types(
+    current_user: User = Depends(get_current_user),
+):
+    """List all supported AI task types."""
+    return {
+        "task_types": TASK_TYPES,
+        "descriptions": {
+            "text_generation": "Generate text, chat, Q&A, summarization",
+            "thinking": "Complex reasoning, planning, analysis",
+            "text_to_image": "Generate images from text prompts",
+            "image_to_image": "Transform or edit existing images",
+            "text_to_speech": "Convert text to audio speech",
+            "text_to_music": "Generate music or audio from text",
+            "text_to_video": "Generate video from text description",
+            "text_to_3d": "Generate 3D models from text",
+            "image_to_video": "Animate or transform images into video",
+            "audio_to_video": "Generate video synchronized with audio",
+            "speech_to_speech": "Real-time bidirectional voice conversation",
+        }
+    }

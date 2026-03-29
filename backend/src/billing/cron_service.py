@@ -25,7 +25,7 @@ from src.billing.credit_service import CreditService
 logger = logging.getLogger(__name__)
 
 # Subscription tier bonus percentages
-TIER_BONUS_MAP = {1: Decimal("20"), 2: Decimal("30"), 3: Decimal("40")}
+# Now stored directly on the Subscription object
 
 
 class CronService:
@@ -109,7 +109,7 @@ class CronService:
 
                 # 3. Flush old sub credits and inject new tier credits (on successful charge)
                 if payment_status == "success":
-                    bonus_pct = TIER_BONUS_MAP.get(sub.plan_tier, Decimal("20"))
+                    bonus_pct = sub.bonus_pct
                     await credit_svc.inject_subscription_credits(
                         company_id=sub.company_id,
                         base_amount=charged_amount,

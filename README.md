@@ -1,438 +1,227 @@
-# HireBuddha Platform v2.0
+# HireBuddha Platform
 
-## 📋 Project Overview
+> Enterprise multi-tenant AI orchestration platform with recursive multi-agent execution, real-time voice streaming, and a no-code entity builder.
 
-HireBuddha Platform v2.0 is a multi-tenant SaaS platform for building and executing AI agents with a "No-Code" builder interface. The platform features a sophisticated billing system, role-based access control, and a beautiful "Liquid Glass" UI design.
+---
 
-### Key Features
-
-- 🔐 **Multi-tenant Architecture** - Partner → Tenant → User hierarchy
-- 🧠 **Hierarchical AI Platform** - Unified, recursive engine for Actions, Skills, Agents, and Processes
-- 💰 **Financial Engine** - Real-time SKU-based costing and billing with AES-256 encryption
-- 🎨 **Liquid Glass UI** - Modern glassmorphism design with rose gold accents
-- ⚡ **Recursive Execution** - Deep hierarchical tracing of AI thoughts, tool calls, and sub-unit calls
-- 🛡️ **Guardian Oversight** - Human-In-The-Loop (HITL) checkpoints for autonomous guardrails
-
-### Architecture
+## Architecture
 
 ```
-┌─────────────────┐
-│   API Gateway   │ (Port 8000) - Rate limiting & request routing
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Backend API    │ (Port 8001) - FastAPI application
-│  ┌───────────┐  │
-│  │   Auth    │  │ - Authentication & IAM
-│  │  Tenant   │  │ - Partner & Tenant management
-│  │    AI     │  │ - Hierarchical entities & recursive execution
-│  │  Billing  │  │ - Rates, ledger, invoicing, usage tracking
-│  │  Config   │  │ - System configuration
-│  └───────────┘  │
-└────────┬────────┘
-         │
-    ┌────┴────┬──────────┐
-    │         │          │
-┌───▼───┐ ┌──▼──┐  ┌────▼────┐
-│ Redis │ │ DB  │  │ Frontend│ (Port 3000)
-│       │ │     │  │  React  │
-└───────┘ └─────┘  └─────────┘
+                          Internet
+                             │
+                     ┌───────▼───────┐
+                     │    Apache     │  SSL termination, reverse proxy
+                     │  (ports 80/443) │
+                     └──┬────┬────┬──┘
+                        │    │    │
+         ┌──────────────┘    │    └──────────────┐
+         ▼                   ▼                   ▼
+┌─────────────────┐ ┌────────────────┐ ┌─────────────────┐
+│ Unified Gateway │ │  Backend API   │ │    Frontend      │
+│  (Port 8001)    │ │  (Port 8000)   │ │   (Port 3000)   │
+│                 │ │                │ │                  │
+│ • REST proxy    │ │ • Auth & RBAC  │ │ • React 18 + TS  │
+│ • Webhooks      │ │ • AI Engine    │ │ • Entity Builder  │
+│ • Audio WS      │ │ • Billing      │ │ • Voice Campaigns │
+│ • Video WebRTC  │ │ • Tenant Mgmt  │ │ • Dashboard       │
+│ • Voice routing │ │ • Config       │ │ • 3D Animations   │
+└────────┬────────┘ └───────┬────────┘ └──────────────────┘
+         │                  │
+    ┌────┴──────────────────┴────┐
+    │                            │
+┌───▼────┐  ┌───────┐  ┌────────▼────────┐
+│ Redis  │  │  Arq  │  │  PostgreSQL     │
+│ (6379) │  │Worker │  │  + pgvector     │
+│ Cache  │  │ (bg)  │  │  (Port 5433)    │
+└────────┘  └───────┘  └─────────────────┘
 ```
 
-## 🚀 Quick Start
+### Subdomain Routing
 
-### Prerequisites
+| Subdomain | Target | Purpose |
+|-----------|--------|---------|
+| `app.hirebuddha.com` | localhost:3000 | Production frontend |
+| `dev.hirebuddha.com` | localhost:3000 | Development frontend |
+| `api.hirebuddha.com` | localhost:8001 | Unified AI Gateway |
+| `gateway.hirebuddha.com` | localhost:8000 | Backend API |
+| `streaming.hirebuddha.com` | localhost:8002 | Voice WebSocket streaming |
 
-- **Python 3.11+** with Poetry
-- **Node.js 18+** with npm
-- **PostgreSQL 15+**
-- **Redis 7+**
-- **Docker & Docker Compose** (optional, for containerized setup)
+---
 
-### Installation
+## Key Capabilities
 
-#### Option 1: Local Development Setup
+### AI Engine
+- **Hierarchical Entities** — Actions → Skills → Agents → Processes with recursive execution
+- **20+ Built-in Tools** — Web search, file generation (PDF, PPTX, XLSX), email, calculator, and more
+- **Multi-provider LLM** — Google Gemini, Anthropic Claude (via Vertex AI), Azure OpenAI (GPT-4o)
+- **CORTEX Memory** — Cognitive tree memory system for persistent agent knowledge
+- **RAG** — Document upload with vector search via pgvector + Gemini embeddings
+- **HITL Guardrails** — Human-in-the-loop approval checkpoints at any entity level
 
-1. **Clone the repository**
-   ```bash
-   cd /home/rahul/workspace/dev-hb-codebase/hb-proto-3
-   ```
+### Voice & Messaging
+- **Real-time voice** — Gemini Live Audio and GPT-4o Realtime for speech-to-speech
+- **Telephony** — Twilio (international) and Tata Tele (India) integration
+- **Campaign auto-dialer** — Bulk CSV upload, concurrent call throttling, real-time monitoring
+- **WhatsApp** — Inbound/outbound messaging via Twilio and Tata Tele
 
-2. **Set up environment variables**
-   ```bash
-   # .env file already exists in backend/ with:
-   # DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/hirebuddha
-   # REDIS_URL=redis://localhost:6379
-   # SECRET_KEY=dev_secret_key_change_in_production
-   # ALGORITHM=HS256
-   # ACCESS_TOKEN_EXPIRE_MINUTES=30
-   ```
+### Platform
+- **Multi-tenant RBAC** — App Admin → Partner → Tenant → User hierarchy
+- **Billing engine** — SKU-based costing with platform fee, partner fee, discounts
+- **Credit wallets** — Daily credits, PAYG top-ups (Razorpay), subscription credits
+- **55+ Social integrations** — OAuth connections for social media platforms
+- **Real-time observability** — SSE execution traces, cost tracking, token consumption
 
-3. **Install backend dependencies**
-   ```bash
-   cd backend
-   poetry install
-   cd ..
-   ```
+---
 
-4. **Install frontend dependencies**
-   ```bash
-   cd frontend
-   npm install
-   cd ..
-   ```
+## Tech Stack
 
-#### Option 2: Docker Compose Setup
+### Backend
 
-```bash
-cd backend
-docker-compose up -d
-```
-
-This will start:
-- PostgreSQL on port 5433
-- Redis on port 6379
-- Backend API on port 8001
-- API Gateway on port 8000
-
-## 🎯 Starting the Application
-
-### Backend Services
-
-You need to start **3 separate backend processes**:
-
-#### 1. Start PostgreSQL and Redis
-
-If using Docker:
-```bash
-cd backend
-docker-compose up -d db redis
-```
-
-If using local installations:
-```bash
-# PostgreSQL should be running on port 5433
-# Redis should be running on port 6379
-```
-
-#### 2. Start the Main Backend API
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Activate virtual environment
-poetry shell
-
-# Run the main FastAPI application
-uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-**Backend API will be available at:** `http://localhost:8001`
-
-#### 3. Start the API Gateway
-
-Open a new terminal:
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Activate virtual environment
-poetry shell
-
-# Run the API Gateway
-uvicorn src.gateway.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-**API Gateway will be available at:** `http://localhost:8000`
-
-#### 4. Start the Arq Worker (Background Tasks)
-
-Open another new terminal:
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Activate virtual environment
-poetry shell
-
-# Run the Arq worker for async task processing
-arq src.ai.worker.WorkerSettings
-```
-
-**Worker Status:** Check terminal for "Worker started" message
+| Category | Technology |
+|----------|-----------|
+| Framework | FastAPI (Python 3.11+) |
+| ORM | SQLAlchemy 2.0 (async) |
+| Database | PostgreSQL 15 + pgvector |
+| Cache / Queue | Redis 7 + Arq |
+| AI Providers | google-genai (Vertex AI), openai (Azure) |
+| Auth | JWT (python-jose) + Argon2 hashing |
+| Telephony | Twilio SDK, WebSockets |
+| Payments | Razorpay |
+| Observability | OpenTelemetry, Prometheus |
 
 ### Frontend
 
-Open a new terminal:
+| Category | Technology |
+|----------|-----------|
+| Framework | React 18 + TypeScript |
+| Build | Vite 5 |
+| Routing | React Router v6 |
+| UI | Liquid Glass design system, Framer Motion |
+| Charts | Recharts |
+| Entity Builder | ReactFlow |
+| 3D Graphics | Three.js + React Three Fiber |
+| Forms | React Hook Form + Zod validation |
 
-```bash
-cd frontend
-npm run dev
-```
+### Infrastructure
 
-**Frontend will be available at:** `http://localhost:3000`
+| Component | Image / Version | Port |
+|-----------|----------------|------|
+| PostgreSQL | pgvector/pgvector:pg15 | 5433 |
+| Redis | redis:7-alpine | 6379 |
+| Reverse Proxy | Apache 2.4 + mod_ssl | 80/443 |
+| SSL | Let's Encrypt (Certbot) | — |
 
-## 🛑 Stopping the Application
+---
 
-### Stop Backend Services
-
-1. **Stop the Main Backend API**: Press `Ctrl+C` in the terminal running `uvicorn src.main:app`
-2. **Stop the API Gateway**: Press `Ctrl+C` in the terminal running `uvicorn src.gateway.main:app`
-3. **Stop the Arq Worker**: Press `Ctrl+C` in the terminal running `arq`
-
-### Stop Frontend
-
-Press `Ctrl+C` in the terminal running `npm run dev` (Port 3000)
-
-### Stop Docker Services
-
-```bash
-cd backend
-docker-compose down
-```
-
-To stop and remove volumes (⚠️ this will delete all data):
-```bash
-cd backend
-docker-compose down -v
-```
-
-## 👥 Test User Credentials
-
-### Default Test Users
-
-The platform uses a hierarchical multi-tenant structure. Here are the test credentials:
-
-#### 1. App Admin (Platform Administrator)
-- **Email:** `admin@hb.com`
-- **Password:** `adminpass`
-- **Role:** `app_admin`
-- **Permissions:** Full platform access, can create partners
-
-#### 2. Partner Admin (Reseller)
-- **Email:** `partner@tech.com`
-- **Password:** `partnerpass`
-- **Role:** `partner_admin`
-- **Permissions:** Can create and manage tenants, view partner earnings
-
-#### 3. Tenant Admin (Client Organization)
-- **Email:** `client@corp.com`
-- **Password:** `clientpass`
-- **Role:** `tenant_admin`
-- **Permissions:** Can manage users within tenant, create agents and workflows
-
-### Creating Test Users
-
-You can create these users by running the test script:
-
-```bash
-cd backend
-poetry shell
-python tests/verify_tenant.py
-```
-
-This script will:
-1. Reset the database
-2. Create the App Admin user
-3. Create a Partner
-4. Create a Tenant under the Partner
-
-### Manual Registration
-
-You can also register new users via the frontend at `http://localhost:5173/register`
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 hb-proto-3/
 ├── backend/
 │   ├── src/
-│   │   ├── auth/          # Authentication & IAM service
-│   │   ├── tenant/        # Partner & Tenant management
-│   │   ├── ai/            # Hierarchical platform & recursive execution engine
-│   │   ├── billing/       # Rates, ledger, usage tracking, encryption
-│   │   ├── config/        # System configuration
-│   │   ├── gateway/       # API Gateway with rate limiting
-│   │   ├── common/        # Shared utilities, database, middleware
-│   │   └── main.py        # Main FastAPI application
-│   ├── tests/             # Test scripts
-│   ├── migrations/        # Database migrations
-│   ├── docker-compose.yml # Docker setup
-│   ├── pyproject.toml     # Python dependencies
-│   └── .env               # Environment variables
+│   │   ├── ai/            # Hierarchical entities, execution engine, LLM router
+│   │   ├── auth/          # Authentication, RBAC, OAuth
+│   │   ├── billing/       # Rates, ledger, credits, subscriptions
+│   │   ├── common/        # Shared utilities, middleware, security
+│   │   ├── config/        # Integration registry, task defaults
+│   │   ├── gateway/       # Unified AI Gateway (REST, WebSocket, webhooks)
+│   │   ├── voice/         # Voice streaming, campaign executor
+│   │   ├── main.py        # Backend FastAPI app
+│   │   └── database.py    # DB connection
+│   ├── migrations/        # Alembic DB migrations
+│   ├── db-scripts/        # seed_admin_user.py, clean_db.sql
+│   ├── docker-compose.yml # PostgreSQL + Redis
+│   ├── pyproject.toml     # All Python dependencies (Poetry)
+│   └── Dockerfile         # Container build
 ├── frontend/
 │   ├── src/
-│   │   ├── components/  # Reusable UI components
-│   │   ├── pages/       # Page components
-│   │   ├── services/    # API service layer
-│   │   └── styles/      # CSS design system
-│   └── package.json
-├── docs/              # Documentation
-└── README.md          # This file
+│   │   ├── components/    # Reusable UI components
+│   │   ├── pages/         # Page views
+│   │   ├── services/      # API client layer
+│   │   ├── hooks/         # Custom React hooks
+│   │   ├── router/        # Route definitions
+│   │   ├── styles/        # CSS design system
+│   │   └── types/         # TypeScript type definitions
+│   └── package.json       # Node dependencies
+├── deploy/
+│   └── apache/            # VirtualHost configs, security hardening, setup script
+├── docs/                  # Architecture & specification documents
+├── setup_production_vm.sh # Full VM setup (Python, Node, Docker, deps)
+├── start_services.sh      # Start all services
+├── stop_services.sh       # Stop all services
+└── AI_MODEL_CREDENTIALS_GUIDE.md  # AI provider setup guide
 ```
-
-## 🔧 Technology Stack
-
-### Backend
-- **FastAPI** - Modern Python web framework
-- **SQLAlchemy** - ORM with async support
-- **PostgreSQL** - Primary database
-- **Redis** - Caching and task queue
-- **Arq** - Async task processing
-- **Pydantic** - Data validation
-- **JWT** - Authentication tokens
-
-### Frontend
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **React Router** - Routing
-- **Axios** - HTTP client
-- **Framer Motion** - Animations
-- **React Hook Form** - Form handling
-
-## 🧪 Running Tests
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Run all tests
-poetry shell
-pytest
-
-# Run specific test files
-python tests/verify_tenant.py
-python tests/verify_iam.py
-python tests/test_phase3.py
-python tests/test_phase4.py
-```
-
-## 📊 API Documentation
-
-Once the backend is running, access the interactive API documentation:
-
-- **Swagger UI:** `http://localhost:8001/docs`
-- **ReDoc:** `http://localhost:8001/redoc`
-
-## 🔑 Key API Endpoints
-
-### Authentication
-- `POST /api/v1/auth/register` - Register new user
-- `POST /api/v1/auth/login` - Login and get JWT token
-- `GET /api/v1/auth/me` - Get current user info
-
-### Partners (App Admin only)
-- `POST /api/v1/partners` - Create partner
-- `GET /api/v1/partners` - List partners
-
-### Tenants
-- `POST /api/v1/partners/{partner_id}/tenants` - Create tenant
-- `GET /api/v1/tenants` - List tenants
-- `PUT /api/v1/tenants/{tenant_id}` - Update tenant (suspend/activate)
-
-### AI Platform (v2)
-- `GET /api/v1/ai/entities` - List all hierarchical entities
-- `POST /api/v1/ai/entities` - Create a new entity (Action/Skill/Agent/Process)
-- `GET /api/v1/ai/entities/{id}` - Get entity details and configuration
-- `POST /api/v1/ai/execute` - Trigger recursive execution
-- `GET /api/v1/ai/executions/{id}` - Get detailed hierarchical execution trace
-- `GET /api/v1/ai/approvals/pending` - List pending HITL approvals
-- `POST /api/v1/ai/approvals/{id}/respond` - Respond to a guardrail checkpoint
-
-### Billing & Usage
-- `GET /api/v1/billing/rates` - Get system rates for LLMs and Tools
-- `GET /api/v1/billing/usage` - Get real-time usage logs
-- `GET /api/v1/billing/partner-earnings` - Get partner earnings overview
-
-## 🐛 Troubleshooting
-
-### Database Connection Issues
-```bash
-# Check if PostgreSQL is running
-docker ps | grep postgres
-
-# Check connection
-psql -h localhost -p 5433 -U postgres -d hirebuddha
-```
-
-### Redis Connection Issues
-```bash
-# Check if Redis is running
-docker ps | grep redis
-
-# Test connection
-redis-cli -h localhost -p 6379 ping
-```
-
-### Port Already in Use
-```bash
-# Find process using port 8000/8001/5173
-lsof -i :8000
-lsof -i :8001
-lsof -i :5173
-
-# Kill the process
-kill -9 <PID>
-```
-
-### Frontend Build Issues
-```bash
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-```
-
-## 📝 Development Notes
-
-### Current Implementation Status
-
-The platform is approximately **85-90% production-ready**:
-
-- ✅ **Fully Implemented:** 
-    - Hierarchical AI Platform (Recursive execution, Unified entities)
-    - Real LLM Integration (OpenAI, Gemini)
-    - Detailed Observability (Hierarchical traces, Cost tracking)
-    - Multi-tenant RBAC (Partner/Tenant/User)
-    - Billing Engine (SKU-based costing, AES-256 encryption)
-    - Advanced UI (Liquid Glass, Tabbed Architect)
-    - HITL Guardrails (Guardian Oversight)
-- ⚠️ **Partially Implemented:** 
-    - RAG / Knowledge Base (Basic vector search active)
-    - API Key Encryption (Integrated with billing)
-- ❌ **Not Implemented:** 
-    - Email Verification service
-    - OAuth Social Login (Frontend only)
-    - Real-time Streaming (currently polled)
-
-### Known Limitations
-
-1. **Polling Execution** - Traces are currently updated via polling instead of WebSockets/SSE.
-2. **No Email Service** - Verification emails are not dispatched.
-3. **Draft States** - Complex state management for partially saved entities is simplified.
-
-## 🤝 Contributing
-
-This is a development prototype. For production deployment, please address the critical gaps identified in the Implementation Gap Analysis document.
-
-## 📄 License
-
-Proprietary - HireBuddha Platform v2.0
-
-## 📞 Support
-
-For issues or questions, please refer to the documentation in the `docs/` directory:
-- [Functional Specification](docs/Hirebuddha%20Functional%20Specification%20Document.md)
-- [Technical Architecture](docs/hire_buddha_technical_architecture_document.md)
-- [Implementation Gap Analysis](docs/Implementation_Gap_Analysis.md)
-- [Gap Analysis Report 2](docs/Gap%20Analysis%20Report%202.md)
-- [System Analysis Report](docs/System_Analysis_Report.md) - Comprehensive analysis of execution flow, database structure, and integration extension points
-- [Real-Time Voice & WhatsApp Streaming Architecture](docs/Real_Time_Voice_WhatsApp_Streaming_Architecture.md) - WebSocket-based bidirectional streaming design for Twilio, Tata Tele, and Gemini Live API integration
 
 ---
 
-**Version:** 0.2.0  
-**Last Updated:** December 2025
+## Dependency Management
+
+All Python dependencies are managed by **Poetry** via `backend/pyproject.toml`. There is no separate requirements file.
+
+```bash
+cd backend
+poetry install          # Install all dependencies
+poetry add <package>    # Add a new dependency
+poetry update           # Update to latest compatible versions
+```
+
+---
+
+## Environment Variables
+
+Only core application settings use environment variables (stored in `backend/.env`). All third-party service credentials (AI providers, Twilio, Razorpay, etc.) are stored encrypted in the database via the **Integration Registry**.
+
+See `backend/.env.example` for the complete list of core settings:
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string |
+| `SECRET_KEY` | JWT signing key |
+| `CORS_ORIGINS` | Allowed CORS origins |
+| `STREAMING_HOST` | Public hostname for WebSocket URLs |
+| `INTERNAL_TOKEN` | Microservice auth token |
+
+---
+
+## API Documentation
+
+With the backend running:
+
+- **Swagger UI** — `https://gateway.hirebuddha.com/docs`
+- **ReDoc** — `https://gateway.hirebuddha.com/redoc`
+
+### Key Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/auth/register` | Register user |
+| `POST /api/v1/auth/login` | Login → JWT |
+| `GET /api/v1/ai/entities` | List AI entities |
+| `POST /api/v1/ai/entities` | Create entity |
+| `POST /api/v1/ai/execute` | Trigger execution |
+| `GET /api/v1/ai/executions/{id}` | Execution trace |
+| `GET /api/v1/ai/approvals/pending` | HITL approvals |
+| `POST /api/config/integrations` | Register AI credentials |
+| `POST /api/config/task-defaults` | Set model routing |
+| `GET /api/v1/billing/usage` | Usage & costs |
+
+---
+
+## Guides
+
+| Document | Description |
+|----------|-------------|
+| [QUICK_START.md](QUICK_START.md) | Getting started — setup, run, verify |
+| [AI_MODEL_CREDENTIALS_GUIDE.md](AI_MODEL_CREDENTIALS_GUIDE.md) | GCP Vertex AI, Azure OpenAI, Integration Registry setup |
+| [Product Documentation](HireBuddha-Product-Documentation-2026-03-04.md) | Full product feature documentation |
+| [Requirements](Requirements.md) | Functional & business requirements |
+
+---
+
+## License
+
+Proprietary — HireBuddha Platform
+
+**Version:** 2.0.0  
+**Last Updated:** March 2026

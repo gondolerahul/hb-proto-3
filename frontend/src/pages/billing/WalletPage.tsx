@@ -103,12 +103,44 @@ export const WalletPage: React.FC = () => {
     };
 
     const handleSubscribe = async (tier: number, fee: number) => {
+        setError(null);
         try {
-            await creditsService.createSubscription({ plan_tier: tier, monthly_fee: fee });
-            setSuccess(`Subscribed to Tier ${tier}!`);
-            fetchData();
+            // Step 1: Create a Razorpay payment order for the subscription
+            const order = await creditsService.createSubscription({ plan_tier: tier, monthly_fee: fee });
+
+            // Step 2: Open Razorpay checkout
+            if ((window as any).Razorpay) {
+                const rzp = new (window as any).Razorpay({
+                    key: order.key_id,
+                    amount: fee * 100,
+                    currency: order.currency,
+                    name: 'HireBuddha',
+                    description: `Tier ${tier} Subscription — $${fee}/mo`,
+                    order_id: order.order_id,
+                    handler: async (response: any) => {
+                        try {
+                            // Step 3: Verify payment and activate subscription
+                            const result = await creditsService.verifySubscription({
+                                razorpay_order_id: order.order_id,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_signature: response.razorpay_signature,
+                                subscription_id: order.subscription_id,
+                            });
+                            setSuccess(`🎉 ${result.message} — ${result.bonus_credits_pct}% bonus credits activated!`);
+                            fetchData();
+                        } catch (e: any) {
+                            setError('Payment verification failed. Please contact support.');
+                        }
+                    },
+                    prefill: {},
+                    theme: { color: '#c9956c' },
+                });
+                rzp.open();
+            } else {
+                setError('Razorpay is not loaded. Please configure Razorpay keys in Integration Registry.');
+            }
         } catch (e: any) {
-            setError(e?.response?.data?.detail || 'Subscription failed');
+            setError(e?.response?.data?.detail || 'Subscription initiation failed');
         }
     };
 

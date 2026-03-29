@@ -56,6 +56,19 @@ async def _authenticate_user(token: Optional[str], db: AsyncSession):
 async def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     return await _authenticate_user(token, db)
 
+async def get_current_user_and_company(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return (user, company) tuple. Raises 403 if user has no company."""
+    user = await _authenticate_user(token, db)
+    if not user.company:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not associated with any company.",
+        )
+    return user, user.company
+
 async def get_current_user_from_query(token: str, db: AsyncSession = Depends(get_db)):
     return await _authenticate_user(token, db)
 

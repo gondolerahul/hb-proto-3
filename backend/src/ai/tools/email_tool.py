@@ -108,6 +108,43 @@ def _get_smtp_connection(smtp_host: str, smtp_port: int, email_address: str, pas
     return server
 
 
+async def _resolve_connection(company_id: Optional[str], email_address: Optional[str] = None) -> Dict[str, Any]:
+    """Look up email credentials from EmailConnection table for the company."""
+    if not company_id:
+        return {}
+        
+    try:
+        from uuid import UUID as _UUID
+        from src.common.database import AsyncSessionLocal
+        from sqlalchemy import select
+        from src.ai.email_models import EmailConnection
+        from src.common.security import decrypt_api_key
+
+        async with AsyncSessionLocal() as db:
+            company_uuid = _UUID(str(company_id))
+            query = select(EmailConnection).where(EmailConnection.company_id == company_uuid)
+            
+            if email_address:
+                query = query.where(EmailConnection.email_address == email_address)
+            
+            result = await db.execute(query)
+            conn = result.scalars().first()
+            
+            if conn:
+                return {
+                    "email_address": conn.email_address,
+                    "password": decrypt_api_key(conn.encrypted_app_password),
+                    "imap_host": conn.imap_host,
+                    "imap_port": conn.imap_port,
+                    "smtp_host": conn.smtp_host,
+                    "smtp_port": conn.smtp_port
+                }
+    except Exception as e:
+        logger.error(f"Failed to resolve email connection: {e}")
+    
+    return {}
+
+
 class EmailIngestTool(Tool):
     """
     Monitor and fetch new emails from an inbox via IMAP.
@@ -119,10 +156,7 @@ class EmailIngestTool(Tool):
     name = "email_ingest"
     description = (
         "Fetch and read the latest emails from an inbox. "
-        "Input should be a JSON string with: "
-        "'imap_host', 'imap_port' (default 993), 'email_address', 'password', "
-        "'folder' (default 'INBOX'), 'count' (number of emails to fetch, default 5), "
-        "and 'unread_only' (boolean, default true)."
+        "Will automatically use company credentials if not provided."
     )
 
     def get_function_schema(self) -> Dict[str, Any]:
@@ -132,34 +166,36 @@ class EmailIngestTool(Tool):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "imap_host": {"type": "string", "description": "IMAP server hostname (e.g. imap.gmail.com)"},
-                    "imap_port": {"type": "integer", "description": "IMAP port (default 993)"},
-                    "email_address": {"type": "string", "description": "Email address to connect to"},
-                    "password": {"type": "string", "description": "App password for authentication"},
-                    "folder": {"type": "string", "description": "IMAP folder to read from (default: INBOX)"},
+                    "email_address": {"type": "string", "description": "Optional email address (if none, uses company default)"},
                     "count": {"type": "integer", "description": "Number of emails to fetch (default: 5)"},
                     "unread_only": {"type": "boolean", "description": "Only fetch unread emails (default: true)"}
-                },
-                "required": ["imap_host", "email_address", "password"]
+                }
             }
         }
 
     async def run(self, input_data: str) -> str:
+        return await self.run_with_context(input_data, None)
+
+    async def run_with_context(self, input_data: str, context: Optional[Dict[str, Any]] = None) -> str:
         try:
             params = json.loads(input_data)
         except json.JSONDecodeError:
             return json.dumps({"error": "Invalid JSON input"})
 
-        imap_host = params.get("imap_host")
-        imap_port = params.get("imap_port", 993)
-        email_address = params.get("email_address")
-        password = params.get("password")
+        # Resolve credentials
+        company_id = context.get("company_id") if context else params.get("company_id")
+        resolved = await _resolve_connection(company_id, params.get("email_address"))
+        
+        imap_host = params.get("imap_host") or resolved.get("imap_host")
+        imap_port = params.get("imap_port") or resolved.get("imap_port") or 993
+        email_address = params.get("email_address") or resolved.get("email_address")
+        password = params.get("password") or resolved.get("password")
         folder = params.get("folder", "INBOX")
         count = params.get("count", 5)
         unread_only = params.get("unread_only", True)
         
         if not all([imap_host, email_address, password]):
-            return json.dumps({"error": "Missing required parameters: imap_host, email_address, password"})
+            return json.dumps({"error": "Missing email credentials. Please configure an Email Connection for this company first."})
 
         try:
             conn = _get_imap_connection(imap_host, imap_port, email_address, password)
@@ -236,10 +272,7 @@ class EmailClassifyTool(Tool):
     name = "email_classify"
     description = (
         "Classify an email by moving it to an AI-created folder. "
-        "Input should be a JSON string with: "
-        "'imap_host', 'imap_port', 'email_address', 'password', "
-        "'uid' (email UID to classify), 'category' (e.g. 'Refunds', 'Sales'), "
-        "and optionally 'source_folder' (default: 'INBOX')."
+        "Will automatically use company credentials if not provided. "
     )
 
     def get_function_schema(self) -> Dict[str, Any]:
@@ -249,34 +282,38 @@ class EmailClassifyTool(Tool):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "imap_host": {"type": "string"},
-                    "imap_port": {"type": "integer"},
                     "email_address": {"type": "string"},
-                    "password": {"type": "string"},
                     "uid": {"type": "string", "description": "Email UID to classify"},
                     "category": {"type": "string", "description": "Category name (e.g. 'Refunds', 'Sales')"},
                     "source_folder": {"type": "string", "description": "Source folder (default: INBOX)"}
                 },
-                "required": ["imap_host", "email_address", "password", "uid", "category"]
+                "required": ["uid", "category"]
             }
         }
 
     async def run(self, input_data: str) -> str:
+        return await self.run_with_context(input_data, None)
+
+    async def run_with_context(self, input_data: str, context: Optional[Dict[str, Any]] = None) -> str:
         try:
             params = json.loads(input_data)
         except json.JSONDecodeError:
             return json.dumps({"error": "Invalid JSON input"})
 
-        imap_host = params.get("imap_host")
-        imap_port = params.get("imap_port", 993)
-        email_address = params.get("email_address")
-        password = params.get("password")
+        # Resolve credentials
+        company_id = context.get("company_id") if context else params.get("company_id")
+        resolved = await _resolve_connection(company_id, params.get("email_address"))
+
+        imap_host = params.get("imap_host") or resolved.get("imap_host")
+        imap_port = params.get("imap_port") or resolved.get("imap_port") or 993
+        email_address = params.get("email_address") or resolved.get("email_address")
+        password = params.get("password") or resolved.get("password")
         uid = params.get("uid")
         category = params.get("category")
         source_folder = params.get("source_folder", "INBOX")
         
         if not all([imap_host, email_address, password, uid, category]):
-            return json.dumps({"error": "Missing required parameters"})
+            return json.dumps({"error": "Missing required parameters or email credentials."})
 
         try:
             conn = _get_imap_connection(imap_host, imap_port, email_address, password)
@@ -332,11 +369,7 @@ class EmailDraftTool(Tool):
     name = "email_draft"
     description = (
         "Create a draft reply to an email in the user's Drafts folder. "
-        "Input should be a JSON string with: "
-        "'imap_host', 'imap_port', 'email_address', 'password', "
-        "'original_message_id' (Message-ID of the email being replied to), "
-        "'draft_body' (the reply text), 'to' (recipient email), "
-        "and 'subject' (email subject, usually 'Re: ...')."
+        "Will automatically use company credentials if not provided."
     )
 
     def get_function_schema(self) -> Dict[str, Any]:
@@ -346,36 +379,40 @@ class EmailDraftTool(Tool):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "imap_host": {"type": "string"},
-                    "imap_port": {"type": "integer"},
                     "email_address": {"type": "string"},
-                    "password": {"type": "string"},
                     "original_message_id": {"type": "string", "description": "Message-ID of the email being replied to"},
                     "draft_body": {"type": "string", "description": "Body text for the draft reply"},
                     "to": {"type": "string", "description": "Recipient email address"},
                     "subject": {"type": "string", "description": "Email subject (usually 'Re: original subject')"}
                 },
-                "required": ["imap_host", "email_address", "password", "original_message_id", "draft_body", "to", "subject"]
+                "required": ["original_message_id", "draft_body", "to", "subject"]
             }
         }
 
     async def run(self, input_data: str) -> str:
+        return await self.run_with_context(input_data, None)
+
+    async def run_with_context(self, input_data: str, context: Optional[Dict[str, Any]] = None) -> str:
         try:
             params = json.loads(input_data)
         except json.JSONDecodeError:
             return json.dumps({"error": "Invalid JSON input"})
 
-        imap_host = params.get("imap_host")
-        imap_port = params.get("imap_port", 993)
-        email_address = params.get("email_address")
-        password = params.get("password")
+        # Resolve credentials
+        company_id = context.get("company_id") if context else params.get("company_id")
+        resolved = await _resolve_connection(company_id, params.get("email_address"))
+
+        imap_host = params.get("imap_host") or resolved.get("imap_host")
+        imap_port = params.get("imap_port") or resolved.get("imap_port") or 993
+        email_address = params.get("email_address") or resolved.get("email_address")
+        password = params.get("password") or resolved.get("password")
         original_message_id = params.get("original_message_id")
         draft_body = params.get("draft_body")
         to_addr = params.get("to")
         subject = params.get("subject")
         
         if not all([imap_host, email_address, password, original_message_id, draft_body, to_addr, subject]):
-            return json.dumps({"error": "Missing required parameters"})
+            return json.dumps({"error": "Missing required parameters or email credentials."})
 
         try:
             conn = _get_imap_connection(imap_host, imap_port, email_address, password)
@@ -444,10 +481,7 @@ class EmailSendTool(Tool):
     name = "email_send"
     description = (
         "Send an email via SMTP. "
-        "Input should be a JSON string with: "
-        "'smtp_host', 'smtp_port' (default 587), 'email_address', 'password', "
-        "'to' (recipient email), 'subject', and 'body'. "
-        "Optionally 'cc' and 'bcc' (comma-separated email addresses)."
+        "Will automatically use company credentials if not provided."
     )
 
     def get_function_schema(self) -> Dict[str, Any]:
@@ -457,30 +491,34 @@ class EmailSendTool(Tool):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "smtp_host": {"type": "string", "description": "SMTP server hostname (e.g. smtp.gmail.com)"},
-                    "smtp_port": {"type": "integer", "description": "SMTP port (default 587)"},
-                    "email_address": {"type": "string", "description": "Sender email address"},
-                    "password": {"type": "string", "description": "App password for SMTP authentication"},
+                    "email_address": {"type": "string"},
                     "to": {"type": "string", "description": "Recipient email address"},
                     "subject": {"type": "string", "description": "Email subject"},
                     "body": {"type": "string", "description": "Email body text"},
                     "cc": {"type": "string", "description": "CC recipients (comma-separated)"},
                     "bcc": {"type": "string", "description": "BCC recipients (comma-separated)"}
                 },
-                "required": ["smtp_host", "email_address", "password", "to", "subject", "body"]
+                "required": ["to", "subject", "body"]
             }
         }
 
     async def run(self, input_data: str) -> str:
+        return await self.run_with_context(input_data, None)
+
+    async def run_with_context(self, input_data: str, context: Optional[Dict[str, Any]] = None) -> str:
         try:
             params = json.loads(input_data)
         except json.JSONDecodeError:
             return json.dumps({"error": "Invalid JSON input"})
 
-        smtp_host = params.get("smtp_host")
-        smtp_port = params.get("smtp_port", 587)
-        email_address = params.get("email_address")
-        password = params.get("password")
+        # Resolve credentials
+        company_id = context.get("company_id") if context else params.get("company_id")
+        resolved = await _resolve_connection(company_id, params.get("email_address"))
+
+        smtp_host = params.get("smtp_host") or resolved.get("smtp_host")
+        smtp_port = params.get("smtp_port") or resolved.get("smtp_port") or 587
+        email_address = params.get("email_address") or resolved.get("email_address")
+        password = params.get("password") or resolved.get("password")
         to_addr = params.get("to")
         subject = params.get("subject")
         body = params.get("body")
@@ -488,7 +526,7 @@ class EmailSendTool(Tool):
         bcc = params.get("bcc", "")
         
         if not all([smtp_host, email_address, password, to_addr, subject, body]):
-            return json.dumps({"error": "Missing required parameters"})
+            return json.dumps({"error": "Missing required parameters or email credentials."})
 
         try:
             # Construct message

@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update
 
 from src.ai.campaign_models import Campaign, CampaignCall
-from src.streaming.models import VoiceSession
-from src.streaming.number_router import NumberRouter
+from src.voice.models import VoiceSession
+from src.voice.number_router import NumberRouter
 from src.config.service import ConfigService
 from src.config.models import IntegrationRegistry
 from src.common.security import decrypt_api_key
@@ -315,12 +315,7 @@ class CampaignExecutor:
         Returns:
             Call SID from Twilio
         """
-        import os
-        
-        # 1. Retrieve Twilio credentials from integration registry
-        config_service = ConfigService(self.db)
-        
-        # Try to get credentials from the integration registry
+        # 1. Retrieve Twilio credentials from Integration Registry
         result = await self.db.execute(
             select(IntegrationRegistry).where(
                 IntegrationRegistry.company_id == company_id,
@@ -330,7 +325,7 @@ class CampaignExecutor:
         )
         entry = result.scalars().first()
         
-        # Extract credentials
+        # Extract credentials from registry entry
         account_sid = None
         auth_token = None
         
@@ -340,15 +335,11 @@ class CampaignExecutor:
             if entry.service_metadata:
                 account_sid = entry.service_metadata.get("account_sid")
         
-        # Fall back to environment variables if not found in registry
-        account_sid = account_sid or os.getenv("TWILIO_ACCOUNT_SID")
-        auth_token = auth_token or os.getenv("TWILIO_AUTH_TOKEN")
-        
         if not account_sid or not auth_token:
             raise ValueError(
-                "Twilio credentials not found. Please ensure you have a 'twilio' "
-                "integration configured in the Integration Registry (with account_sid "
-                "in service_metadata and auth_token in api_key) or set environment variables."
+                "Twilio credentials not found. Please register a 'twilio' "
+                "integration in the Integration Registry with account_sid "
+                "in service_metadata and auth_token as the api_key."
             )
         
         # 2. Build the TwiML webhook URL

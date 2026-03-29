@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { JellyButton, GlassCard } from '@/components/ui';
-import { X, Upload, CheckCircle, AlertCircle, Brain } from 'lucide-react';
+import { JellyButton } from '@/components/ui';
+import { X, Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { HierarchicalEntity, EntityType } from '@/types';
 import './CampaignCreateModal.css';

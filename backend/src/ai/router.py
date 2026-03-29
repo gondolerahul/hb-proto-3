@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import List, Optional
 from src.common.database import get_db
-from src.auth.dependencies import get_current_user, get_current_user_from_query
+from src.auth.dependencies import get_current_user, get_current_user_from_query, RoleChecker
 from src.auth.models import User
 from src.ai.schemas import (
     HierarchicalEntityCreate, HierarchicalEntityUpdate, HierarchicalEntityResponse, 
@@ -22,7 +22,7 @@ async def create_entity(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.create_entity(entity_in, current_user.company_id)
+    return await service.create_entity(entity_in, current_user.company_id, current_user.id)
 
 @router.get("/entities", response_model=List[HierarchicalEntityResponse])
 async def list_entities(
@@ -31,7 +31,7 @@ async def list_entities(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.get_entities(current_user.company_id, type, current_user.role)
+    return await service.get_entities(current_user.company_id, type, current_user.role, is_template=False)
 
 @router.get("/entities/{entity_id}", response_model=HierarchicalEntityResponse)
 async def get_entity(
@@ -172,10 +172,18 @@ async def respond_to_approval(
 # --- Tools ---
 @router.get("/tools", response_model=list[dict])
 async def list_tools(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    from src.ai.tools import ToolRegistry
-    return ToolRegistry.list_tools()
+    """List all available tools with enriched metadata."""
+    try:
+        from src.ai.tool_management_service import ToolManagementService
+        service = ToolManagementService(db)
+        return await service.list_all_tools()
+    except Exception:
+        # Fallback to simple ToolRegistry list if DB is unavailable
+        from src.ai.tools import ToolRegistry
+        return ToolRegistry.list_tools()
 
 # --- Documents ---
 @router.post("/documents/upload", response_model=dict)
@@ -235,3 +243,65 @@ async def search_documents(
         }
         for r in results
     ]
+
+# --- Templates ---
+
+app_admin_only = RoleChecker(["app_admin"])
+
+@router.get("/templates", response_model=List[HierarchicalEntityResponse])
+async def list_templates(
+    type: Optional[EntityType] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AIService(db)
+    return await service.get_entities(current_user.company_id, type, current_user.role, is_template=True)
+
+@router.get("/templates/{template_id}", response_model=HierarchicalEntityResponse)
+async def get_template(
+    template_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AIService(db)
+    return await service.get_entity(template_id, current_user.company_id, current_user.role)
+
+@router.post("/templates", response_model=HierarchicalEntityResponse)
+async def create_template(
+    entity_in: HierarchicalEntityCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(app_admin_only)
+):
+    entity_in.is_template = True
+    service = AIService(db)
+    return await service.create_entity(entity_in, current_user.company_id, current_user.id)
+
+@router.put("/templates/{template_id}", response_model=HierarchicalEntityResponse)
+async def update_template(
+    template_id: UUID,
+    entity_in: HierarchicalEntityUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(app_admin_only)
+):
+    service = AIService(db)
+    return await service.update_entity(template_id, entity_in, current_user.company_id)
+
+@router.delete("/templates/{template_id}")
+async def delete_template(
+    template_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(app_admin_only)
+):
+    service = AIService(db)
+    await service.delete_entity(template_id, current_user.company_id)
+    return {"status": "success"}
+
+@router.post("/templates/{template_id}/clone", response_model=HierarchicalEntityResponse)
+async def clone_template(
+    template_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AIService(db)
+    return await service.clone_template(template_id, current_user.company_id, current_user.id)
+

@@ -134,3 +134,57 @@ async def test_twilio_voice_webhook_no_twilio_header(client: httpx.AsyncClient):
 async def test_twilio_whatsapp_webhook(client: httpx.AsyncClient):
     resp = await client.post("/webhooks/voice/whatsapp/incoming")
     assert resp.status_code in (400, 422, 401, 200)
+
+
+@pytest.mark.asyncio
+async def test_twilio_status_webhook(client: httpx.AsyncClient):
+    resp = await client.post("/webhooks/voice/twilio/status")
+    assert resp.status_code in (400, 422, 401, 200)
+
+
+@pytest.mark.asyncio
+async def test_tata_voice_webhook(client: httpx.AsyncClient):
+    resp = await client.post("/webhooks/voice/tata/incoming", json={})
+    assert resp.status_code in (400, 422, 401, 200)
+
+
+@pytest.mark.asyncio
+async def test_tata_whatsapp_webhook(client: httpx.AsyncClient):
+    resp = await client.post("/webhooks/voice/tata/whatsapp/incoming", json={})
+    assert resp.status_code in (400, 422, 401, 200)
+
+
+# ── Messaging ────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_send_whatsapp_message(client: httpx.AsyncClient, app_admin_token):
+    resp = await client.post(
+        "/api/v1/messaging/send",
+        headers=auth_headers(app_admin_token),
+        json={
+            "to": "+15551234567",
+            "message": "Hello from E2E test",
+            "provider": "twilio"
+        }
+    )
+    # If the provider is not configured, it will return 500
+    if resp.status_code == 500:
+        pytest.skip("Provider API not configured for messaging")
+    assert resp.status_code == 200
+    
+
+@pytest.mark.asyncio
+async def test_send_whatsapp_template(client: httpx.AsyncClient, app_admin_token):
+    resp = await client.post(
+        "/api/v1/messaging/send-template",
+        headers=auth_headers(app_admin_token),
+        json={
+            "to": "+15551234567",
+            "template_id": "hello_world",
+            "parameters": ["test parameter"],
+            "provider": "twilio"
+        }
+    )
+    if resp.status_code == 500:
+        pytest.skip("Provider API not configured for template messaging")
+    assert resp.status_code == 200

@@ -1,27 +1,38 @@
 version: '3.8'
 
 services:
+  # ── Unified AI Gateway (Port 8001 — user-facing) ──────────────────────────
+  # Replaces the old thin proxy gateway.
+  # Handles: REST proxy, Webhooks, Internal Events, Audio WebSocket, Video WebRTC
   gateway:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uvicorn src.gateway.main:app --host 0.0.0.0 --port 8000
-    container_name: hirebuddha-gateway
+    command: uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001
+    container_name: hirebuddha-unified-gateway
     ports:
-      - "8000:8000"
+      - "8001:8001"
     environment:
       - BACKEND_URL=http://app:8000
       - REDIS_URL=redis://redis:6379
-      - RATE_LIMIT=100/minute
+      - RATE_LIMIT=200/minute
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/hirebuddha
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-change-me-in-production}
+      - JWT_SECRET=${SECRET_KEY:-change-me-in-production}
+      - STREAMING_HOST=gateway.hirebuddha.com     # public hostname for WS URL generation
+      - STREAMING_PROTOCOL=wss
+      - VIDEO_STREAMING_ENABLED=true
+      - STUN_SERVERS=stun:stun.l.google.com:19302
     depends_on:
       - app
       - redis
 
+  # ── Main FastAPI Backend (Port 8000 — internal) ───────────────────────────
   app:
     build: .
     container_name: hirebuddha-backend
     ports:
-      - "8001:8000"
+      - "8000:8000"
     volumes:
       - .:/app
     environment:

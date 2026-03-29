@@ -42,11 +42,49 @@ class PDFGeneratorTool(Tool):
     description = (
         "Generate a professional PDF document from markdown content. "
         "Input should be a JSON object with 'content' (markdown text), "
-        "'title', and 'filename'. Optional: 'author', 'subject'."
+        "'title', and 'filename'. Optional: 'author', 'subject', 'image_paths' (array of image filenames to append)."
     )
     
-    # Base directory for artifacts
-    BASE_ARTIFACT_DIR = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/artifact")
+    # Base directory for artifacts — everything under system-generated
+    BASE_ARTIFACT_DIR = Path(__file__).resolve().parents[3] / "artifact" / "system-generated"
+
+    def get_function_schema(self) -> Dict[str, Any]:
+        """Return JSON schema for function calling with image parameter."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Markdown formatted text content for the PDF"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Document title"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Output filename (without .pdf extension)"
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "Document author name"
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Document subject or category"
+                    },
+                    "image_paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Array of image filenames or paths to automatically include at the end of the PDF (e.g., ['panel_1.png', 'panel_2.png'])"
+                    }
+                },
+                "required": ["content", "title", "filename"]
+            }
+        }
     
     def __init__(self):
         """Initialize PDF generator."""
@@ -54,16 +92,29 @@ class PDFGeneratorTool(Tool):
         pass
     
     async def run(self, input_data: str) -> str:
-        """Generate a PDF document from markdown content.
+        """Generate a PDF document from markdown content."""
+        return await self.run_with_context(input_data, context=None)
+
+    async def run_with_context(self, input_data: str, context=None) -> str:
+        """Generate a PDF document, enriching params with execution context (company_id/user_id).
         
         Args:
             input_data: JSON string with content, title, filename, etc.
+            context: Execution context dict (may contain 'company_id', 'user_id')
             
         Returns:
             JSON string with pdf_path and metadata
         """
         try:
             params = json.loads(input_data)
+
+            # Inject company_id / user_id from execution context so image resolution
+            # can search the correct tenant artifact directory
+            if context:
+                if context.get("company_id") and not params.get("company_id"):
+                    params["company_id"] = context["company_id"]
+                if context.get("user_id") and not params.get("user_id"):
+                    params["user_id"] = context["user_id"]
             
             # Validate required parameters
             content = params.get("content")
@@ -82,9 +133,40 @@ class PDFGeneratorTool(Tool):
             subject = params.get("subject", "Research Report")
             company_id = params.get("company_id", "default")
             user_id = params.get("user_id", "default")
+            image_paths = params.get("image_paths", [])
+            purpose = params.get("purpose", f"PDF document: {title}")
+            generated_by = params.get("generated_by", "pdf_generator")
             
-            # Resolve output directory
-            output_dir = self.BASE_ARTIFACT_DIR / str(company_id) / str(user_id)
+            # If image_paths were provided, append them to the content
+            if image_paths and isinstance(image_paths, list):
+                content += "\n\n## Generated Images\n\n"
+                for img in image_paths:
+                    content += f"![Generated Image]({img})\n\n"
+            else:
+                # Auto-append images from context if they exist and aren't referenced
+                import re
+                if not re.search(r'!\[.*?\]\(.*?\)', content) and context:
+                    # Scan context values for image paths
+                    found_images = []
+                    for k, v in context.items():
+                        if isinstance(v, str) and '"images"' in v:
+                            try:
+                                v_dict = json.loads(v)
+                                if "images" in v_dict and isinstance(v_dict["images"], list):
+                                    for img in v_dict["images"]:
+                                        if "filename" in img:
+                                            found_images.append(img["filename"])
+                            except Exception:
+                                pass
+                    if found_images:
+                        content += "\n\n## Related Images\n\n"
+                        for img in found_images:
+                            content += f"![Related Image]({img})\n\n"
+            
+            # Resolve output directory — under system-generated/{company_id}/{date}/
+            from datetime import datetime as _dt
+            date_str = _dt.utcnow().strftime("%Y-%m-%d")
+            output_dir = self.BASE_ARTIFACT_DIR / str(company_id) / date_str
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # Generate PDF
@@ -94,8 +176,36 @@ class PDFGeneratorTool(Tool):
                 filename=filename,
                 author=author,
                 subject=subject,
-                output_dir=output_dir
+                output_dir=output_dir,
+                company_id=company_id,
+                user_id=user_id,
             )
+
+            # Register the PDF in the artifacts DB
+            if company_id and company_id != "default":
+                try:
+                    from uuid import UUID as _UUID
+                    from src.common.database import AsyncSessionLocal
+                    from src.ai.artifact_service import ArtifactService, ORIGIN_SYSTEM
+
+                    with open(pdf_path, "rb") as _f:
+                        pdf_bytes = _f.read()
+
+                    async with AsyncSessionLocal() as _db:
+                        art_svc = ArtifactService(_db)
+                        await art_svc.save_artifact(
+                            file_bytes=pdf_bytes,
+                            file_name=pdf_path.name,
+                            mime_type="application/pdf",
+                            file_category="documents",
+                            origin=ORIGIN_SYSTEM,
+                            company_id=_UUID(str(company_id)),
+                            purpose=purpose,
+                            generated_by=generated_by,
+                            extra_metadata={"title": title, "author": author, "subject": subject},
+                        )
+                except Exception as _reg_err:
+                    pass  # Non-fatal — PDF is already saved to disk
             
             return json.dumps({
                 "status": "success",
@@ -117,7 +227,9 @@ class PDFGeneratorTool(Tool):
         filename: str,
         author: str,
         subject: str,
-        output_dir: Path
+        output_dir: Path,
+        company_id: str = "default",
+        user_id: str = "default",
     ) -> Path:
         """Generate PDF from markdown content using WeasyPrint.
         
@@ -140,22 +252,57 @@ class PDFGeneratorTool(Tool):
         # Pre-process markdown: convert image paths to file:// URIs so WeasyPrint
         # can locate and embed them. Handles:
         #   - absolute paths: /home/rahul/.../panel_1.png  → file:///home/...
-        #   - bare filenames with no path: leave as-is (will be unresolved, no crash)
+        #   - bare filenames: panel_XXX.png → searched under BASE_ARTIFACT_DIR
         import re as _re
+        import glob as _glob
+
+        def _resolve_bare_filename(filename_only: str) -> str:
+            """Search under BASE_ARTIFACT_DIR for a matching file by name."""
+            # First try the company+user subdirectory images folder
+            search_roots = [
+                self.BASE_ARTIFACT_DIR / str(company_id) / str(user_id) / "images",
+                self.BASE_ARTIFACT_DIR / str(company_id) / "images",
+                self.BASE_ARTIFACT_DIR / "generated_images",
+                self.BASE_ARTIFACT_DIR,
+            ]
+            for root in search_roots:
+                candidate = root / filename_only
+                if candidate.exists():
+                    return str(candidate)
+            # Recursive glob fallback
+            pattern = str(self.BASE_ARTIFACT_DIR / "**" / filename_only)
+            matches = _glob.glob(pattern, recursive=True)
+            if matches:
+                return matches[0]
+            return ""
+
         def _fix_img_path(m):
             alt = m.group(1)
             path = m.group(2)
-            # If it's already a URL (http/https/file), leave it
+            # Already a URL — leave as-is
             if path.startswith(('http://', 'https://', 'file://')):
                 return m.group(0)
-            # If it's an absolute filesystem path, convert to file:// URI
+            # Absolute filesystem path
             if path.startswith('/'):
-                # Ensure the file exists before embedding
                 if os.path.exists(path):
                     return f'![{alt}](file://{path})'
                 else:
-                    print(f"Warning: Comic panel image not found at path: {path}")
-                    return m.group(0)  # Keep as-is; image won't render but PDF won't crash
+                    print(f"Warning: Comic panel image not found at absolute path: {path}")
+                    return m.group(0)
+            # Bare filename (no directory component) — search artifact dirs
+            if os.sep not in path and '/' not in path:
+                resolved = _resolve_bare_filename(path)
+                if resolved:
+                    print(f"Resolved bare filename '{path}' → '{resolved}'")
+                    return f'![{alt}](file://{resolved})'
+                else:
+                    print(f"Warning: Could not resolve bare filename '{path}' in artifact dirs")
+                    return m.group(0)
+            # Relative path with directory components — try relative to BASE_ARTIFACT_DIR
+            candidate = self.BASE_ARTIFACT_DIR / path
+            if candidate.exists():
+                return f'![{alt}](file://{candidate})'
+            print(f"Warning: Relative image path not found: {path}")
             return m.group(0)
         
         processed_content = _re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', _fix_img_path, content)

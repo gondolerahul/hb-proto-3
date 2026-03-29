@@ -22,7 +22,9 @@ from src.ai.tools import (
     ExcelTool,
     ScraperTool,
     PDFGeneratorTool,
-    FileWriterTool
+    FileWriterTool,
+    TerminalTool,
+    HeadlessBrowserTool
 )
 
 __all__ = [
@@ -33,5 +35,8 @@ __all__ = [
     "ExcelTool",
     "ScraperTool",
     "PDFGeneratorTool",
-    "FileWriterTool"
+    "FileWriterTool",
+    "TerminalTool",
+    "HeadlessBrowserTool"
 ]
+

@@ -8,6 +8,10 @@ export interface BillingConfig {
     platform_fee_pct: number;
     sales_partner_fee_pct: number;
     discount_pct: number;
+    default_daily_credits: number;
+    base_cost_telephony?: number | null;
+    base_cost_llm?: number | null;
+    base_cost_image_gen?: number | null;
     is_active: boolean;
     updated_at: string;
 }
@@ -24,6 +28,11 @@ export interface BillingEvent {
     partner_fee_amount: number;
     discount_amount: number;
     total_billing: number;
+    telephony_charge: number;
+    llm_charge: number;
+    image_charge: number;
+    video_charge: number;
+    api_charge: number;
     telephony_in_minutes: number;
     telephony_out_minutes: number;
     image_gen_count: number;
@@ -43,6 +52,11 @@ export interface ReportTotals {
     total_platform_fees?: number;
     total_partner_fees?: number;
     total_discounts?: number;
+    total_telephony_charge?: number;
+    total_llm_charge?: number;
+    total_image_charge?: number;
+    total_video_charge?: number;
+    total_api_charge?: number;
 }
 
 export interface ReportResponse {
@@ -56,7 +70,35 @@ export interface BillingConfigUpdate {
     platform_fee_pct?: number;
     sales_partner_fee_pct?: number;
     discount_pct?: number;
+    default_daily_credits?: number;
+    base_cost_telephony?: number;
+    base_cost_llm?: number;
+    base_cost_image_gen?: number;
     company_id?: string;
+}
+
+export interface SubscriptionTier {
+    id: string;
+    name: string;
+    tier_level: number;
+    monthly_fee: number;
+    bonus_pct: number;
+    is_active: boolean;
+}
+
+export interface SubscriptionTierCreate {
+    name: string;
+    tier_level: number;
+    monthly_fee: number;
+    bonus_pct: number;
+    is_active?: boolean;
+}
+
+export interface SubscriptionTierUpdate {
+    name?: string;
+    monthly_fee?: number;
+    bonus_pct?: number;
+    is_active?: boolean;
 }
 
 export const billingService = {
@@ -95,4 +137,25 @@ export const billingService = {
         );
         return data;
     },
+
+    // Subscription Tiers
+    getSubscriptionTiers: async (): Promise<SubscriptionTier[]> => {
+        const { data } = await apiClient.get<SubscriptionTier[]>('/credits/subscription-tiers');
+        return data;
+    },
+
+    createSubscriptionTier: async (payload: SubscriptionTierCreate): Promise<{ id: string; message: string }> => {
+        const { data } = await apiClient.post('/credits/subscription-tiers', payload);
+        return data;
+    },
+
+    updateSubscriptionTier: async (tierId: string, payload: SubscriptionTierUpdate): Promise<{ id: string; message: string }> => {
+        const { data } = await apiClient.put(`/credits/subscription-tiers/${tierId}`, payload);
+        return data;
+    },
+
+    deleteSubscriptionTier: async (tierId: string): Promise<{ message: string }> => {
+        const { data } = await apiClient.delete(`/credits/subscription-tiers/${tierId}`);
+        return data;
+    }
 };

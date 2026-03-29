@@ -52,16 +52,96 @@ class StepType(str, Enum):
     ACTION = "ACTION"
     TOOL_CALL = "TOOL_CALL"
     CHILD_ENTITY_INVOCATION = "CHILD_ENTITY_INVOCATION"
+    # CORTEX step types
+    NAVIGATE = "NAVIGATE"
+    READ = "READ"
+    WRITE = "WRITE"
+    RECURSE = "RECURSE"
+    AWAIT_CHILDREN = "AWAIT_CHILDREN"
 
 class PersonaExample(BaseModel):
     scenario: str
     ideal_response: str
 
+
+# ---------------------------------------------------------------------------
+# P2.1 — Standardized Persona Schema Hierarchy
+# Replaces the loosely-typed JSON blob in HierarchicalEntity.identity.
+# ---------------------------------------------------------------------------
+
+class VoiceConfig(BaseModel):
+    """
+    Voice identity parameters for Gemini Live API.
+    Applied when the agent is used in a real-time voice/streaming session.
+    """
+    voice_name: str = "Aoede"
+    """
+    Prebuilt Gemini voice. Options:
+    Puck, Charon, Kore, Fenrir, Aoede, Orbit, Zephyr, Leda,
+    Orus, Rigel, Schedar, Pulcherrima, Achird, Zubenelgenubi,
+    Vindemiatrix, Sadachbia, Sadaltager, Sulafat
+    """
+    language_code: str = "en-US"   # BCP-47 language tag
+    speaking_rate: float = 1.0     # 0.25 – 4.0  (1.0 = normal)
+    pitch: float = 0.0             # -20.0 to +20.0 semitones
+    # Future: custom voice clone reference
+    custom_voice_id: Optional[str] = None
+
+
+class PersonalityMatrix(BaseModel):
+    """
+    Behavioral fingerprint injected into the system prompt at runtime.
+    Each dimension controls a specific tonal / stylistic aspect.
+    """
+    tone: str = "professional"        # e.g. friendly, formal, empathetic, assertive
+    verbosity: str = "concise"        # concise | moderate | verbose
+    empathy_level: float = 0.7        # 0.0 (robotic) → 1.0 (highly empathetic)
+    humor_level: float = 0.2          # 0.0 (none) → 1.0 (frequent humor)
+    formality: str = "semi-formal"    # formal | semi-formal | casual
+    decision_confidence: float = 0.8  # Confidence threshold before escalating to human
+
+
+class AgentPersona(BaseModel):
+    """
+    Canonical, standardized persona for HierarchicalEntity.identity.
+    This replaces the old free-form JSON with a typed, validated structure.
+
+    Usage:
+        entity.identity = AgentPersona(...).model_dump()
+    """
+    # Core identity
+    name: str = "AI Assistant"
+    role: str = "AI Assistant"
+    bio: Optional[str] = None
+
+    # Visual identity (for UI and future multi-modal interactions)
+    profile_image_url: Optional[str] = None
+    profile_image_thumbnail_url: Optional[str] = None
+
+    # Behavioral fingerprint
+    personality: PersonalityMatrix = PersonalityMatrix()
+
+    # Voice identity (for Gemini Live sessions)
+    voice: VoiceConfig = VoiceConfig()
+
+    # Prompt engineering
+    system_prompt: str = ""
+    behavioral_constraints: List[str] = []
+    few_shot_examples: List[PersonaExample] = []
+
+    # Dynamic injection hooks
+    greeting_template: Optional[str] = None    # First utterance template
+    escalation_message: Optional[str] = None   # What to say when escalating to human
+    closing_message: Optional[str] = None      # End-of-call closing statement
+
+
 class Persona(BaseModel):
+    """Legacy persona model — kept for backward compatibility. Prefer AgentPersona."""
     system_prompt: str
     examples: List[PersonaExample] = []
     behavioral_constraints: List[str] = []
-    few_shot_examples: List[Dict[str, str]] = []  # Explicit few-shot examples for prompt injection
+    few_shot_examples: List[Dict[str, str]] = []
+
 
 class HierarchyChildCondition(BaseModel):
     enabled: bool = False
@@ -81,8 +161,9 @@ class Hierarchy(BaseModel):
     composition_depth: int = 0
 
 class ReasoningConfig(BaseModel):
-    model_provider: str
-    model_name: str
+    task_type: str = "text_generation"
+    model_provider: Optional[str] = None
+    model_name: Optional[str] = None
     model_version: Optional[str] = None
     temperature: float = 0.7
     top_p: float = 1.0
@@ -113,6 +194,10 @@ class ContextPolicy(BaseModel):
     max_chars: Optional[int] = None  # For SLIDING_WINDOW: max characters
     summarize_threshold: Optional[int] = 8000  # Auto-summarize if context exceeds this
     explicit_keys: List[str] = []  # For EXPLICIT: specific context keys to include
+    # P2.6: Domain-specific keys to always preserve verbatim during summarization.
+    # Replaces hardcoded ["age_group", "style", "topic"] that were baked into worker.py.
+    preserve_keys: List[str] = []  # e.g. ["customer_name", "product_id", "language"]
+
 
 class LogicGate(BaseModel):
     reasoning_config: ReasoningConfig
@@ -185,28 +270,58 @@ class ToolDefinition(BaseModel):
     provider: Optional[str] = None
     authentication: Optional[ToolAuth] = None
     function_schema: Optional[Dict[str, Any]] = None
-    permissions: str = "READ" # READ | WRITE | EXECUTE
+    # P3.1 — Extended permission model (OpenCode-inspired)
+    access_level: str = "READ"   # READ | WRITE | EXECUTE (legacy single-string, kept for compat)
+    permissions: List[str] = []  # e.g. ["read", "write", "network", "storage", "execute"]
     sandbox_mode: bool = False
+    max_execution_seconds: int = 30      # Per-call timeout enforcement
+    rate_limit_per_run: Optional[int] = None  # Max calls per ExecutionRun (None = unlimited)
+
 
 # Simple tool reference (just tool_id)
 class ToolReference(BaseModel):
     tool_id: str
 
-class MemoryConfig(BaseModel):
-    enabled: bool = False
-    scope: str = "SESSION" # SESSION | ENTITY | GLOBAL
-    storage_backend: str = "POSTGRES_JSONB"
-    retention_policy: Dict[str, Any] = {}
-    access_pattern: str = "RECENT_N"
+class CortexMemoryConfig(BaseModel):
+    """Configuration for CORTEX cognitive tree memory mode."""
+    max_children: int = 12           # MAX_CHILDREN invariant per node
+    page_size_tokens: int = 8000     # Max tokens per content page
+    context_budget_pct: int = 40     # % of context window for root run budget
+    auto_checkpoint: bool = True     # Auto-checkpoint when budget exceeded
+    resume_enabled: bool = True      # Enable resume from cursor
 
-class ArtifactHandling(BaseModel):
-    store_large_objects: bool = True
-    artifact_reference_mode: str = "REFERENCE" # INLINE | REFERENCE | SUMMARY
+class MemoryConfig(BaseModel):
+    """Memory configuration aligned with CORTEX memory system."""
+    enabled: bool = False
+    mode: str = "STANDARD"  # STANDARD | CORTEX
+    # STANDARD mode: episodic + semantic memory
+    episodic_memory_count: int = 10  # How many past episodes to inject
+    semantic_search_enabled: bool = True  # pgvector document search
+    semantic_top_k: int = 5
+    # CORTEX mode: cognitive tree for unbounded context
+    cortex_config: Optional[CortexMemoryConfig] = None
+
+class ContextSourceType(str, Enum):
+    DOCUMENT = "DOCUMENT"              # Design-time uploaded document
+    KNOWLEDGE_BASE = "KNOWLEDGE_BASE"  # Existing tenant document collection
+    CORTEX_TREE = "CORTEX_TREE"        # Previous CORTEX tree from any entity
+    DB_RECORDS = "DB_RECORDS"          # Database records query
+
+class ContextSource(BaseModel):
+    """A design-time or runtime context source attached to an entity."""
+    source_type: ContextSourceType
+    reference_id: Optional[str] = None   # Document ID, tree ID, etc.
+    query: Optional[str] = None          # For KB/DB: semantic search query
+    description: Optional[str] = None    # Human-readable label
+    ingest_to_cortex: bool = True        # Auto-ingest into CORTEX tree
 
 class ContextEngineering(BaseModel):
-    max_context_tokens: int = 4096
-    context_priority: List[str] = ["SYSTEM_PROMPT", "STATIC_PLAN", "USER_INPUT"]
-    artifact_handling: ArtifactHandling = ArtifactHandling()
+    """Context engineering configuration — CORTEX-native."""
+    context_sources: List[ContextSource] = []   # Design-time context attachments
+    inject_episodic_memory: bool = True          # Include recent interaction history
+    inject_semantic_context: bool = True         # Include relevant doc chunks
+    inject_cortex_viewport: bool = True          # Include CORTEX tree viewport
+    no_truncation: bool = True                   # CORTEX handles unbounded contexts
 
 class Capabilities(BaseModel):
     tools: List[ToolReference] = []  # Accept simple tool references
@@ -238,6 +353,7 @@ class HierarchicalEntityBase(BaseModel):
     name: str
     display_name: Optional[str] = None
     description: Optional[str] = None
+    goal: Optional[str] = None  # Used in prompt generation as the entity's objective
     type: EntityType
     version: str = "1.0.0"
     status: EntityStatus = EntityStatus.ACTIVE
@@ -253,6 +369,10 @@ class HierarchicalEntityBase(BaseModel):
     observability: Optional[Observability] = None
     metadata_extensions: Optional[Dict[str, Any]] = None
 
+    # Template fields
+    is_template: bool = False  # True = blueprint entity, not executable
+    template_source_id: Optional[UUID] = None  # ID of template this was cloned from
+
     # Legacy fields
     static_plan: Optional[Dict[str, Any]] = None
     llm_config: Optional[Any] = None
@@ -265,6 +385,7 @@ class HierarchicalEntityUpdate(BaseModel):
     name: Optional[str] = None
     display_name: Optional[str] = None
     description: Optional[str] = None
+    goal: Optional[str] = None
     type: Optional[EntityType] = None  # Added to allow type updates
     status: Optional[EntityStatus] = None
     version: Optional[str] = None
@@ -279,12 +400,15 @@ class HierarchicalEntityUpdate(BaseModel):
     observability: Optional[Observability] = None
     metadata_extensions: Optional[Dict[str, Any]] = None
     parent_id: Optional[UUID] = None
+    is_template: Optional[bool] = None
+    template_source_id: Optional[UUID] = None
     is_active: Optional[bool] = None  # Added for legacy field support
 
 class HierarchicalEntityResponse(HierarchicalEntityBase):
     id: UUID
     company_id: UUID
     parent_id: Optional[UUID]
+    created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -437,3 +561,154 @@ class DocumentSearchResult(BaseModel):
     filename: str
     content: str
     similarity: float
+
+
+# ---------------------------------------------------------------------------
+# CORTEX Memory Architecture Schemas
+# ---------------------------------------------------------------------------
+
+class CortexTreeStatus(str, Enum):
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    COMPLETE = "complete"
+    ARCHIVED = "archived"
+
+class CortexNodeType(str, Enum):
+    ROOT = "root"
+    KNOWLEDGE = "knowledge"
+    FINDING = "finding"
+    TASK = "task"
+    OUTPUT = "output"
+    CHECKPOINT = "checkpoint"
+
+class CortexTreeCreate(BaseModel):
+    entity_id: UUID
+    task_description: str
+    max_children: int = 12
+    page_size_tokens: int = 8000
+    context_budget_pct: int = 40
+
+class CortexTreeResponse(BaseModel):
+    id: UUID
+    entity_id: UUID
+    task_description: Optional[str]
+    status: str
+    total_nodes: int = 0
+    root_node_id: Optional[str] = None
+    output_root_id: Optional[str] = None
+    resume_cursor_id: Optional[str] = None
+    max_children: int = 12
+    created_at: Optional[datetime] = None
+    last_active_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class CortexTreeListResponse(BaseModel):
+    id: UUID
+    entity_id: UUID
+    task_description: Optional[str]
+    status: str
+    total_nodes: int = 0
+    created_at: Optional[datetime] = None
+    last_active_at: Optional[datetime] = None
+
+class CortexNodeSummary(BaseModel):
+    id: str
+    title: str
+    summary: Optional[str]
+    status: str
+    node_type: str
+    sibling_order: int = 0
+    depth: int = 0
+    content_tokens: int = 0
+
+class CortexViewportResponse(BaseModel):
+    current_node: CortexNodeSummary
+    children: List[CortexNodeSummary]
+    parent: Optional[CortexNodeSummary] = None
+    breadcrumb: List[Dict[str, str]]
+
+class CortexNodeContentResponse(BaseModel):
+    node_id: str
+    title: str
+    content: str
+    page: int
+    total_pages: int
+    content_tokens: int
+
+class CortexNodeCreate(BaseModel):
+    parent_id: UUID
+    node_type: CortexNodeType
+    title: str
+    content: Optional[str] = None
+    summary: Optional[str] = None
+    status: str = "complete"
+    source_ref: Optional[Dict[str, Any]] = None
+    metadata_extra: Optional[Dict[str, Any]] = None
+
+class CortexCheckpointCreate(BaseModel):
+    progress_summary: str
+    key_facts: List[str] = []
+    next_steps: List[str] = []
+
+class CortexRecurseRequest(BaseModel):
+    node_id: UUID
+    task: str
+    result_slot: str
+
+class CortexNodeDetailResponse(BaseModel):
+    id: str
+    tree_id: str
+    parent_id: Optional[str] = None
+    node_type: str
+    title: str
+    summary: Optional[str]
+    content_tokens: int = 0
+    status: str
+    depth: int = 0
+    sibling_order: int = 0
+    source_ref: Optional[Dict[str, Any]] = None
+    metadata_extra: Optional[Dict[str, Any]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# Tool Registry Management Schemas
+# ---------------------------------------------------------------------------
+
+class ToolRegistryEntryCreate(BaseModel):
+    name: str
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    function_schema: Optional[Dict[str, Any]] = None
+    is_enabled: bool = True
+    configuration: Optional[Dict[str, Any]] = None
+
+class ToolRegistryEntryUpdate(BaseModel):
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    function_schema: Optional[Dict[str, Any]] = None
+    is_enabled: Optional[bool] = None
+    configuration: Optional[Dict[str, Any]] = None
+
+class ToolRegistryEntryResponse(BaseModel):
+    id: UUID
+    company_id: Optional[UUID] = None
+    name: str
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tool_type: str = "BUILT_IN"
+    function_schema: Optional[Dict[str, Any]] = None
+    is_enabled: bool = True
+    configuration: Optional[Dict[str, Any]] = None
+    created_by: Optional[UUID] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

@@ -18,7 +18,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://34.100.230.121:3000",
         "https://dev.hirebuddha.com",
-       
+        "https://app.hirebuddha.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],

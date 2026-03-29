@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { Brain, Zap, Wrench, Layers, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Brain, Zap, Layers, CheckCircle2 } from 'lucide-react';
 import { EntityType } from '@/types';
 import './nodes.css';
 

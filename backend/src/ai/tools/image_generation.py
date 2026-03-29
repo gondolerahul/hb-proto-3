@@ -4,7 +4,7 @@ Image Generation Tool using Google Gemini API.
 Supports:
 - Text-to-image generation
 - Image editing with reference images
-- API key resolution from IntegrationRegistry (primary) with env-var fallback
+- Vertex AI for all Google model access (no direct AI Studio calls)
 - Cost logging via IntegrationRegistry SKU
 """
 import logging
@@ -52,9 +52,9 @@ class ImageGenerationTool(Tool):
         "and optionally 'reference_image_path' (path to an existing image for editing)."
     )
 
-    # Output directory for generated images — saved under backend/artifact
-    BASE_ARTIFACT_DIR = Path(__file__).resolve().parents[3] / "artifact"
-    # Fallback legacy dir
+    # Output directory root — everything under artifact/system-generated/
+    BASE_ARTIFACT_DIR = Path(__file__).resolve().parents[3] / "artifact" / "system-generated"
+    # Fallback legacy dir (kept for safety, unused in new code)
     OUTPUT_DIR = str(BASE_ARTIFACT_DIR / "generated_images")
 
     def get_function_schema(self) -> Dict[str, Any]:
@@ -82,97 +82,55 @@ class ImageGenerationTool(Tool):
             }
         }
 
-    async def _resolve_api_key(self, model_name: str, company_id: Optional[str] = None) -> Optional[str]:
-        """Resolve the Gemini API key from the integration registry or environment.
-
-        Resolution order:
-          1. DB – exact model_name match in integration_registry
-          2. DB – any IMAGE_GENERATION entry for the company (any provider)
-          3. DB – any 'google' or 'gemini' provider entry (case-insensitive)
-          4. GOOGLE_API_KEY env var
-          5. GEMINI_API_KEY env var
-
-        Args:
-            model_name: The image generation model name being requested
-            company_id: Company UUID string from execution context, or None
-
-        Returns:
-            Decrypted API key string, or None if not found anywhere
-        """
+    async def _resolve_vertex_metadata(self, model_name: str, company_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Resolve the Vertex AI service_metadata from the integration registry."""
         if company_id:
             try:
                 from uuid import UUID as _UUID
                 from src.common.database import AsyncSessionLocal
-                from sqlalchemy import select, func
-                from src.config.models import IntegrationRegistry
-                from src.common.security import decrypt_api_key
+                from src.config.service import ConfigService
 
                 async with AsyncSessionLocal() as db:
+                    config_service = ConfigService(db)
                     company_uuid = _UUID(str(company_id))
 
-                    # Strategy 1: exact model name match
-                    result = await db.execute(
-                        select(IntegrationRegistry).where(
-                            IntegrationRegistry.company_id == company_uuid,
-                            IntegrationRegistry.model_name == model_name,
-                            IntegrationRegistry.status == "active",
-                            IntegrationRegistry.encrypted_api_key.isnot(None)
-                        )
-                    )
-                    entry = result.scalars().first()
-                    if entry and entry.encrypted_api_key:
-                        logger.info(f"[ImageGen] API key resolved via model_name='{model_name}' for company {company_id}")
-                        return decrypt_api_key(entry.encrypted_api_key)
-
-                    # Strategy 2: any IMAGE_GENERATION category entry for this company
+                    # Strategy 1: any IMAGE_GENERATION category entry for this company
+                    from src.config.models import IntegrationRegistry
+                    from sqlalchemy import select
                     result = await db.execute(
                         select(IntegrationRegistry).where(
                             IntegrationRegistry.company_id == company_uuid,
                             IntegrationRegistry.service_category == "IMAGE_GENERATION",
                             IntegrationRegistry.status == "active",
-                            IntegrationRegistry.encrypted_api_key.isnot(None)
                         )
                     )
                     entry = result.scalars().first()
-                    if entry and entry.encrypted_api_key:
-                        logger.info(f"[ImageGen] API key resolved via IMAGE_GENERATION category for company {company_id}")
-                        return decrypt_api_key(entry.encrypted_api_key)
+                    if entry and entry.service_metadata:
+                        return entry.service_metadata
 
-                    # Strategy 3: any 'google' or 'gemini' provider (case-insensitive)
-                    result = await db.execute(
-                        select(IntegrationRegistry).where(
-                            IntegrationRegistry.company_id == company_uuid,
-                            IntegrationRegistry.status == "active",
-                            IntegrationRegistry.encrypted_api_key.isnot(None),
-                            func.lower(IntegrationRegistry.provider_name).in_(["google", "gemini"])
-                        )
-                    )
-                    entry = result.scalars().first()
-                    if entry and entry.encrypted_api_key:
-                        logger.info(f"[ImageGen] API key resolved via google/gemini provider for company {company_id}")
-                        return decrypt_api_key(entry.encrypted_api_key)
+                    # Strategy 2: any 'google' or 'gemini' provider
+                    integration = await config_service.get_integration_by_provider(company_uuid, "google")
+                    if not integration:
+                        integration = await config_service.get_integration_by_provider(company_uuid, "gemini")
+                    if integration and integration.service_metadata:
+                        return integration.service_metadata
 
             except Exception as e:
-                logger.warning(f"[ImageGen] DB API key lookup failed (company={company_id}): {e}", exc_info=True)
+                logger.warning(f"[ImageGen] DB integration lookup failed (company={company_id}): {e}")
 
-        # Strategy 4 & 5: environment variables
-        env_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        if env_key:
-            logger.info("[ImageGen] API key resolved from environment variable")
-        return env_key
+        return None
 
-    def _get_output_dir(self, company_id: Optional[str] = None, user_id: Optional[str] = None) -> Path:
+    def _get_output_dir(self, company_id: Optional[str] = None) -> Path:
         """Resolve the output directory for saving generated images.
         
-        Saves to backend/artifact/<company_id>/<user_id>/images/ when context
-        is available; falls back to the legacy generated_images dir.
+        Saves to artifact/system-generated/{company_id}/{YYYY-MM-DD}/images/
         """
-        if company_id and user_id:
-            out = self.BASE_ARTIFACT_DIR / str(company_id) / str(user_id) / "images"
-        elif company_id:
-            out = self.BASE_ARTIFACT_DIR / str(company_id) / "images"
+        from datetime import datetime as _dt
+        date_str = _dt.utcnow().strftime("%Y-%m-%d")
+        if company_id:
+            out = self.BASE_ARTIFACT_DIR / str(company_id) / date_str / "images"
         else:
-            out = self.BASE_ARTIFACT_DIR / "generated_images"
+            out = self.BASE_ARTIFACT_DIR / "default" / date_str / "images"
         out.mkdir(parents=True, exist_ok=True)
         return out
 
@@ -212,20 +170,21 @@ class ImageGenerationTool(Tool):
         if not GENAI_AVAILABLE:
             return json.dumps({"error": "Google GenAI SDK not installed. Run: pip install google-genai"})
 
-        # Resolve API key from DB or env
-        api_key = await self._resolve_api_key(model_name, company_id)
-        if not api_key:
+        # Resolve Vertex AI service_metadata from DB
+        service_metadata = await self._resolve_vertex_metadata(model_name, company_id)
+        if not service_metadata or not service_metadata.get("project_id"):
             return json.dumps({
                 "error": (
-                    f"No API key found for image generation model '{model_name}'. "
-                    f"Please configure a 'google' integration in the Integration Registry "
+                    f"No Vertex AI configuration found for image generation model '{model_name}'. "
+                    f"Please configure a 'google' integration with project_id in service_metadata "
                     f"(service_category='IMAGE_GENERATION' or provider_name='google') "
                     f"for company {company_id}."
                 )
             })
 
         try:
-            client = genai.Client(api_key=api_key)
+            from src.common.genai_factory import build_vertex_genai_client_sync
+            client = build_vertex_genai_client_sync(service_metadata)
 
             # Build content parts
             contents = []
@@ -256,7 +215,7 @@ class ImageGenerationTool(Tool):
             )
 
             # Determine output directory
-            output_dir = self._get_output_dir(company_id, user_id)
+            output_dir = self._get_output_dir(company_id)
 
             result = {
                 "model": model_name,
@@ -300,6 +259,67 @@ class ImageGenerationTool(Tool):
                 })
 
             result["image_count"] = len(result["images"])
+
+            # ── Register each image in the artifacts DB ───────────────────────────
+            if company_id:
+                try:
+                    from uuid import UUID as _UUID
+                    from src.common.database import AsyncSessionLocal
+                    from src.ai.artifact_service import ArtifactService, ORIGIN_SYSTEM
+                    import mimetypes as _mime
+
+                    async with AsyncSessionLocal() as _db:
+                        art_svc = ArtifactService(_db)
+                        for img_info in result["images"]:
+                            img_path = Path(img_info["path"])
+                            with open(img_path, "rb") as _f:
+                                img_bytes = _f.read()
+                            await art_svc.save_artifact(
+                                file_bytes=img_bytes,
+                                file_name=img_info["filename"],
+                                mime_type="image/png",
+                                file_category="images",
+                                origin=ORIGIN_SYSTEM,
+                                company_id=_UUID(str(company_id)),
+                                purpose=f"AI-generated image: {prompt[:200]}",
+                                generated_by=f"image_generation:{model_name}",
+                                extra_metadata={"model": model_name, "prompt": prompt, "size_bytes": img_info["size_bytes"]},
+                            )
+                except Exception as _reg_err:
+                    logger.warning(f"[ImageGen] Artifact DB registration failed (non-fatal): {_reg_err}")
+            # ────────────────────────────────────────────────────────────────────────────
+
+            # ── Record billing event for image generation ─────────────────────────
+            if company_id:
+                try:
+                    from decimal import Decimal as _Decimal
+                    from uuid import UUID as _UUID
+                    from src.common.database import AsyncSessionLocal
+                    from src.billing.billing_service import BillingService
+                    from src.billing.credit_service import CreditService
+
+                    async with AsyncSessionLocal() as _db:
+                        _num_images = len(result["images"])
+                        _total_cost = image_cost * _num_images
+
+                        billing_svc = BillingService(_db)
+                        await billing_svc.record_billing_event(
+                            company_id=_UUID(str(company_id)),
+                            base_cost=_total_cost,
+                            grouping_type="tool",
+                            grouping_value="image_generation",
+                            image_gen_count=_num_images,
+                            other_ai_cost=_total_cost,
+                        )
+                        credit_svc = CreditService(_db)
+                        try:
+                            await credit_svc.consume(_UUID(str(company_id)), _total_cost)
+                        except Exception:
+                            pass  # Don't block the result if credit deduction fails
+                except Exception as _billing_err:
+                    logger.warning(f"[ImageGen] Billing event failed (non-fatal): {_billing_err}")
+            # ─────────────────────────────────────────────────────────────────────
+
             return json.dumps(result)
 
         except Exception as e:

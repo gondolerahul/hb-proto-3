@@ -16,6 +16,11 @@ interface VoiceSession {
     duration_seconds?: number;
     total_cost_usd: number;
     has_transcript: boolean;
+    transcript?: Array<{ turn_number: number; speaker: string; content: string; timestamp: string | null }>;
+    call_summary?: string | null;
+    conversation_log?: any[];
+    recording_url?: string | null;
+    recording_file_name?: string | null;
 }
 
 interface WhatsAppSession {
@@ -346,6 +351,18 @@ export const StreamingSessionsPage: React.FC = () => {
                                 <strong>{selectedSession.provider}</strong>
                             </div>
                             <div className="detail-row">
+                                <span>Direction:</span>
+                                <strong>{selectedSession.direction}</strong>
+                            </div>
+                            <div className="detail-row">
+                                <span>Duration:</span>
+                                <strong>{formatDuration(selectedSession.duration_seconds)}</strong>
+                            </div>
+                            <div className="detail-row">
+                                <span>Cost:</span>
+                                <strong>{formatCost(selectedSession.total_cost_usd || 0)}</strong>
+                            </div>
+                            <div className="detail-row">
                                 <span>Status:</span>
                                 <span className={`status-badge ${selectedSession.status}`}>
                                     {selectedSession.status}
@@ -353,17 +370,56 @@ export const StreamingSessionsPage: React.FC = () => {
                             </div>
                         </div>
 
-                        {selectedSession.conversation_log && selectedSession.conversation_log.length > 0 && (
+                        {/* AI Call Summary */}
+                        {selectedSession.call_summary && (
                             <div className="detail-section">
-                                <h3>Conversation</h3>
+                                <h3>✨ AI Call Summary</h3>
+                                <div style={{
+                                    background: 'rgba(99, 102, 241, 0.08)',
+                                    borderLeft: '3px solid #6366f1',
+                                    borderRadius: '6px',
+                                    padding: '12px 16px',
+                                    lineHeight: '1.6',
+                                    fontSize: '0.95rem',
+                                    color: 'var(--text-primary, #e2e8f0)'
+                                }}>
+                                    {selectedSession.call_summary}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Recording File */}
+                        {selectedSession.recording_url && (
+                            <div className="detail-section">
+                                <h3>🎙️ Recording</h3>
+                                <div className="detail-row">
+                                    <span>File:</span>
+                                    <a
+                                        href={`${import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '')}${selectedSession.recording_url}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        download={selectedSession.recording_file_name || 'recording'}
+                                    >
+                                        ⬇️ {selectedSession.recording_file_name || 'Download Recording'}
+                                    </a>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Transcript */}
+                        {selectedSession.transcript && selectedSession.transcript.length > 0 && (
+                            <div className="detail-section">
+                                <h3>📝 Transcript</h3>
                                 <div className="conversation-log">
-                                    {selectedSession.conversation_log.map((turn: any, idx: number) => (
+                                    {selectedSession.transcript.map((turn: any, idx: number) => (
                                         <div key={idx} className={`message ${turn.speaker}`}>
                                             <div className="message-header">
-                                                <strong>{turn.speaker}</strong>
-                                                <span className="timestamp">
-                                                    {new Date(turn.timestamp).toLocaleTimeString()}
-                                                </span>
+                                                <strong>{turn.speaker === 'agent' ? '🤖 Agent' : '👤 Customer'}</strong>
+                                                {turn.timestamp && (
+                                                    <span className="timestamp">
+                                                        {new Date(turn.timestamp).toLocaleTimeString()}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="message-content">{turn.content}</div>
                                         </div>
@@ -371,6 +427,38 @@ export const StreamingSessionsPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* Fallback: conversation_log if transcript is empty */}
+                        {(!selectedSession.transcript || selectedSession.transcript.length === 0) &&
+                            selectedSession.conversation_log && selectedSession.conversation_log.length > 0 && (
+                                <div className="detail-section">
+                                    <h3>📝 Conversation Log</h3>
+                                    <div className="conversation-log">
+                                        {selectedSession.conversation_log.map((turn: any, idx: number) => (
+                                            <div key={idx} className={`message ${turn.speaker}`}>
+                                                <div className="message-header">
+                                                    <strong>{turn.speaker}</strong>
+                                                    <span className="timestamp">
+                                                        {new Date(turn.timestamp).toLocaleTimeString()}
+                                                    </span>
+                                                </div>
+                                                <div className="message-content">{turn.content}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                        {/* No data message */}
+                        {(!selectedSession.transcript || selectedSession.transcript.length === 0) &&
+                            (!selectedSession.conversation_log || selectedSession.conversation_log.length === 0) &&
+                            !selectedSession.recording_url && (
+                                <div className="detail-section">
+                                    <p style={{ color: 'var(--text-muted, #888)', textAlign: 'center' }}>
+                                        No transcript or recording available for this session.
+                                    </p>
+                                </div>
+                            )}
 
                         <button className="btn-primary" onClick={() => setSelectedSession(null)}>
                             Close

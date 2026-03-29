@@ -14,6 +14,7 @@ import uuid
 import time
 import subprocess
 import asyncio
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from src.ai.tools.base import Tool
@@ -51,8 +52,9 @@ class VideoGenerationTool(Tool):
         "and optionally 'start_frame_path' and 'end_frame_path' (image paths)."
     )
 
-    # Output directory for generated videos
-    OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "artifact", "generated_videos")
+    # Output directory for generated videos — under artifact/system-generated/
+    _BASE_ARTIFACT_DIR = Path(__file__).resolve().parents[3] / "artifact" / "system-generated"
+    OUTPUT_DIR = str(_BASE_ARTIFACT_DIR / "generated_videos")
     
     # Maximum segment duration (Veo 3.1 supports 4, 5, 6, or 8 seconds)
     MAX_SEGMENT_SECONDS = 8
@@ -308,13 +310,55 @@ class VideoGenerationTool(Tool):
                 if os.path.exists(path) and path != output_path:
                     os.remove(path)
 
+    async def _resolve_vertex_metadata(self, company_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Resolve the Vertex AI service_metadata from the integration registry."""
+        if company_id:
+            try:
+                from uuid import UUID as _UUID
+                from src.common.database import AsyncSessionLocal
+                from src.config.service import ConfigService
+
+                async with AsyncSessionLocal() as db:
+                    config_service = ConfigService(db)
+                    company_uuid = _UUID(str(company_id))
+
+                    # Try VIDEO_GENERATION category first
+                    from src.config.models import IntegrationRegistry
+                    from sqlalchemy import select
+                    result = await db.execute(
+                        select(IntegrationRegistry).where(
+                            IntegrationRegistry.company_id == company_uuid,
+                            IntegrationRegistry.service_category == "VIDEO_GENERATION",
+                            IntegrationRegistry.status == "active",
+                        )
+                    )
+                    entry = result.scalars().first()
+                    if entry and entry.service_metadata:
+                        return entry.service_metadata
+
+                    # Fallback: any 'google' or 'gemini' provider
+                    integration = await config_service.get_integration_by_provider(company_uuid, "google")
+                    if not integration:
+                        integration = await config_service.get_integration_by_provider(company_uuid, "gemini")
+                    if integration and integration.service_metadata:
+                        return integration.service_metadata
+
+            except Exception as e:
+                logger.warning(f"[VideoGen] DB integration lookup failed (company={company_id}): {e}")
+
+        return None
+
     async def run(self, input_data: str) -> str:
+        """Execute video generation without extra context (env-var API key only)."""
+        return await self.run_with_context(input_data, context=None)
+
+    async def run_with_context(self, input_data: str, context: Optional[Dict[str, Any]] = None) -> str:
         """
-        Execute video generation.
+        Execute video generation with context for DB key lookup.
         
         Args:
-            input_data: JSON string with model_name, prompt, length_seconds,
-                       is_audio_required, start_frame_path, end_frame_path
+            input_data: JSON string with model_name, prompt, length_seconds, etc.
+            context: Execution context dict
             
         Returns:
             JSON string with generation result
@@ -331,6 +375,9 @@ class VideoGenerationTool(Tool):
         start_frame_path = params.get("start_frame_path")
         end_frame_path = params.get("end_frame_path")
         
+        # Pull company from context
+        company_id = context.get("company_id") if context else params.get("company_id")
+
         if not prompt:
             return json.dumps({"error": "Missing required parameter: 'prompt'"})
 
@@ -338,13 +385,25 @@ class VideoGenerationTool(Tool):
             return json.dumps({"error": "Google GenAI SDK not installed. Run: pip install google-genai"})
 
         try:
-            # Initialize client
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                return json.dumps({"error": "GOOGLE_API_KEY or GEMINI_API_KEY environment variable not set"})
-            
-            client = genai.Client(api_key=api_key)
-            os.makedirs(self.OUTPUT_DIR, exist_ok=True)
+            # Resolve Vertex AI service_metadata
+            service_metadata = await self._resolve_vertex_metadata(company_id)
+            if not service_metadata or not service_metadata.get("project_id"):
+                return json.dumps({
+                    "error": (
+                        "No Vertex AI configuration found for video generation. "
+                        "Please configure a 'google' integration with project_id in "
+                        "service_metadata for this company."
+                    )
+                })
+
+            from src.common.genai_factory import build_vertex_genai_client_sync
+            client = build_vertex_genai_client_sync(service_metadata)
+            # Use company-specific output directory
+            from pathlib import Path as _Path
+            from datetime import datetime as _dt
+            date_str = _dt.utcnow().strftime("%Y-%m-%d")
+            company_output_dir = str(self._BASE_ARTIFACT_DIR / str(company_id) / date_str / "videos")
+            os.makedirs(company_output_dir, exist_ok=True)
             
             # Calculate segments
             segments = self._calculate_segments(length_seconds)
@@ -358,7 +417,7 @@ class VideoGenerationTool(Tool):
             if total_segments == 1:
                 # Single segment - straightforward generation
                 video_id = str(uuid.uuid4())[:8]
-                output_path = os.path.join(self.OUTPUT_DIR, f"video_{video_id}.mp4")
+                output_path = os.path.join(company_output_dir, f"video_{video_id}.mp4")
                 
                 saved_path, _ = await self._generate_single_video(
                     client=client,
@@ -378,6 +437,9 @@ class VideoGenerationTool(Tool):
                     "segments": 1,
                     "has_audio": is_audio_required
                 }
+                await self._record_video_billing(company_id, 1, video_cost)
+                # Register in artifacts DB
+                await self._register_video_artifact(company_id, prompt, model_name, saved_path)
                 return json.dumps(result)
             
             else:
@@ -388,7 +450,7 @@ class VideoGenerationTool(Tool):
                 
                 for i, duration in enumerate(segments):
                     segment_id = str(uuid.uuid4())[:8]
-                    segment_path = os.path.join(self.OUTPUT_DIR, f"segment_{segment_id}.mp4")
+                    segment_path = os.path.join(company_output_dir, f"segment_{segment_id}.mp4")
                     
                     if i == 0:
                         # First segment: use reference images if provided
@@ -421,7 +483,7 @@ class VideoGenerationTool(Tool):
                 # For video extension, Veo returns the combined video in the last
                 # operation result, so we just use the last generated video
                 video_id = str(uuid.uuid4())[:8]
-                final_path = os.path.join(self.OUTPUT_DIR, f"video_{video_id}.mp4")
+                final_path = os.path.join(company_output_dir, f"video_{video_id}.mp4")
                 
                 # The last segment's video is already the extended video
                 # Just rename it to the final path
@@ -442,6 +504,9 @@ class VideoGenerationTool(Tool):
                     "segment_durations": segments,
                     "has_audio": is_audio_required
                 }
+                await self._record_video_billing(company_id, 1)
+                # Register in artifacts DB
+                await self._register_video_artifact(company_id, prompt, model_name, final_path)
                 return json.dumps(result)
 
         except TimeoutError as e:
@@ -450,3 +515,71 @@ class VideoGenerationTool(Tool):
         except Exception as e:
             logger.error(f"Video generation error: {e}", exc_info=True)
             return json.dumps({"error": f"Video generation failed: {str(e)}"})
+
+    async def _record_video_billing(self, company_id: Optional[str], video_count: int = 1, video_cost=None) -> None:
+        """Record a billing event and deduct credits for video generation."""
+        if not company_id or not video_cost:
+            return
+        try:
+            from uuid import UUID as _UUID
+            from src.common.database import AsyncSessionLocal
+            from src.billing.billing_service import BillingService
+            from src.billing.credit_service import CreditService
+
+            async with AsyncSessionLocal() as _db:
+                _total_cost = video_cost * video_count
+
+                billing_svc = BillingService(_db)
+                await billing_svc.record_billing_event(
+                    company_id=_UUID(str(company_id)),
+                    base_cost=_total_cost,
+                    grouping_type="tool",
+                    grouping_value="video_generation",
+                    video_gen_count=video_count,
+                    other_ai_cost=_total_cost,
+                )
+                credit_svc = CreditService(_db)
+                try:
+                    await credit_svc.consume(_UUID(str(company_id)), _total_cost)
+                except Exception:
+                    pass
+        except Exception as _billing_err:
+            logger.warning(f"[VideoGen] Billing event failed (non-fatal): {_billing_err}")
+
+    async def _register_video_artifact(
+        self,
+        company_id: Optional[str],
+        prompt: str,
+        model_name: str,
+        video_path: str,
+    ) -> None:
+        """Register a generated video in the artifacts DB table."""
+        if not company_id:
+            return
+        try:
+            from uuid import UUID as _UUID
+            from pathlib import Path as _Path
+            from src.common.database import AsyncSessionLocal
+            from src.ai.artifact_service import ArtifactService, ORIGIN_SYSTEM
+
+            video_file = _Path(video_path)
+            if not video_file.exists():
+                return
+            with open(video_file, "rb") as _f:
+                video_bytes = _f.read()
+
+            async with AsyncSessionLocal() as _db:
+                art_svc = ArtifactService(_db)
+                await art_svc.save_artifact(
+                    file_bytes=video_bytes,
+                    file_name=video_file.name,
+                    mime_type="video/mp4",
+                    file_category="videos",
+                    origin=ORIGIN_SYSTEM,
+                    company_id=_UUID(str(company_id)),
+                    purpose=f"AI-generated video: {prompt[:200]}",
+                    generated_by=f"video_generation:{model_name}",
+                    extra_metadata={"model": model_name, "prompt": prompt},
+                )
+        except Exception as _reg_err:
+            logger.warning(f"[VideoGen] Artifact DB registration failed (non-fatal): {_reg_err}")

@@ -1,138 +1,221 @@
-# HireBuddha Platform - Quick Start Guide
+# Quick Start Guide
 
-## 🚀 Starting All Services
+Get the HireBuddha platform running on a fresh machine in under 10 minutes.
 
-To start all backend and frontend services with a single command:
+---
+
+## Prerequisites
+
+| Tool | Version | Check |
+|------|---------|-------|
+| Python | 3.11+ | `python3 --version` |
+| Poetry | latest | `poetry --version` |
+| Node.js | 20 LTS | `node --version` |
+| Docker | 24+ | `docker --version` |
+| Git | any | `git --version` |
+
+> **New VM?** Run `./setup_production_vm.sh` first — it installs all prerequisites automatically.
+
+---
+
+## 1. Clone & Install
 
 ```bash
+git clone https://github.com/gondolerahul/hb-proto-3.git
+cd hb-proto-3
+
+# Backend dependencies (Poetry)
+cd backend
+poetry install
+cd ..
+
+# Frontend dependencies (npm)
+cd frontend
+npm install --legacy-peer-deps
+cd ..
+```
+
+## 2. Configure Environment
+
+```bash
+cp backend/.env.example backend/.env
+nano backend/.env
+```
+
+Set production values for `SECRET_KEY`, `DATABASE_URL`, and `CORS_ORIGINS`. See `backend/.env.example` for all options.
+
+## 3. Start Infrastructure
+
+```bash
+cd backend
+docker compose up -d db redis
+```
+
+Wait a few seconds, then verify:
+
+```bash
+docker ps
+# Should show hirebuddha-db (port 5433) and hirebuddha-redis (port 6379)
+```
+
+## 4. Initialize Database
+
+```bash
+cd backend
+
+# Run migrations
+.venv/bin/alembic upgrade head
+
+# Seed the admin user
+.venv/bin/python db-scripts/seed_admin_user.py
+```
+
+## 5. Start All Services
+
+```bash
+# From the project root
 ./start_services.sh
 ```
 
-This script will automatically start:
-1. **PostgreSQL** (Port 5433) - Database
-2. **Redis** (Port 6379) - Cache and task queue
-3. **Backend API** (Port 8001) - Main FastAPI application
-4. **API Gateway** (Port 8000) - Rate limiting and routing
-5. **Arq Worker** - Background task processing
-6. **Frontend** (Port 3000) - React application
+This starts 5 processes:
 
-## 🛑 Stopping All Services
+| # | Service | Port | Description |
+|---|---------|------|-------------|
+| 1 | PostgreSQL + Redis | 5433, 6379 | Database & cache (Docker) |
+| 2 | Backend API | 8000 | Main FastAPI application |
+| 3 | Unified Gateway | 8001 | REST proxy, webhooks, WebSocket |
+| 4 | Arq Worker | — | Background task processor |
+| 5 | Frontend | 3000 | React application (Vite) |
 
-To stop all services:
-
-```bash
-./stop_services.sh
-```
-
-## 🌐 Access URLs
-
-Once all services are running, you can access:
-
-- **Frontend Application**: http://localhost:3000
-- **API Gateway**: http://localhost:8000
-- **Backend API**: http://localhost:8001
-- **API Documentation (Swagger)**: http://localhost:8001/docs
-- **API Documentation (ReDoc)**: http://localhost:8001/redoc
-
-## 📋 Viewing Logs
-
-All service logs are stored in the `logs/` directory:
+## 6. Verify
 
 ```bash
-# View Backend API logs
-tail -f logs/backend_api.log
-
-# View API Gateway logs
-tail -f logs/api_gateway.log
-
-# View Arq Worker logs
-tail -f logs/arq_worker.log
-
-# View Frontend logs
-tail -f logs/frontend.log
-```
-
-## 🔍 Checking Service Status
-
-To check if services are running:
-
-```bash
-# Check all ports
-lsof -i :8001 -i :8000 -i :3000 -i :5433 -i :6379 | grep LISTEN
+# Check all ports are listening
+lsof -i :8000 -i :8001 -i :3000 -i :5433 -i :6379 | grep LISTEN
 
 # Check Docker containers
 docker ps
 
 # Check Python processes
 ps aux | grep -E "(uvicorn|arq)" | grep -v grep
-
-# Check Frontend
-ps aux | grep vite | grep -v grep
 ```
 
-## ⚙️ Manual Service Management
+Access the application:
 
-If you need to start services manually:
+| URL | Service |
+|-----|---------|
+| http://localhost:3000 | Frontend |
+| http://localhost:8000/docs | Backend API (Swagger) |
+| http://localhost:8001/docs | Gateway API (Swagger) |
 
-### Backend Services
+---
+
+## Stop All Services
+
+```bash
+./stop_services.sh
+```
+
+---
+
+## Apache Reverse Proxy (Production)
+
+For production with SSL and subdomain routing:
+
+```bash
+# After DNS A records point to your VM
+chmod +x deploy/apache/setup_apache.sh
+sudo ./deploy/apache/setup_apache.sh
+```
+
+This sets up Apache, configures 5 subdomains, obtains Let's Encrypt SSL, and applies security hardening. See [deploy/apache/](deploy/apache/) for details.
+
+---
+
+## AI Model Setup
+
+After the platform is running, configure AI providers:
+
+1. Read the [AI Model Credentials Guide](AI_MODEL_CREDENTIALS_GUIDE.md)
+2. Set up GCP Vertex AI (Gemini + Claude) and/or Azure OpenAI (GPT-4o)
+3. Register credentials in the Integration Registry via the API
+4. Configure task defaults for model routing
+
+---
+
+## Viewing Logs
+
+All service logs are in the `logs/` directory:
+
+```bash
+tail -f logs/backend_api.log       # Backend API
+tail -f logs/unified_gateway.log   # Unified Gateway
+tail -f logs/arq_worker.log        # Background worker
+tail -f logs/frontend.log          # Frontend dev server
+```
+
+---
+
+## Manual Service Management
+
+If you need to start services individually:
 
 ```bash
 cd backend
 
-# Start PostgreSQL and Redis
-docker compose up -d db redis
+# Backend API
+.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Start Backend API
-.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
+# Unified Gateway (separate terminal)
+.venv/bin/python -m uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001 --reload
 
-# Start API Gateway (in a new terminal)
-.venv/bin/python -m uvicorn src.gateway.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Start Arq Worker (in a new terminal)
-.venv/bin/python -m arq.cli src.ai.worker.WorkerSettings
+# Arq Worker (separate terminal)
+.venv/bin/python -m arq src.ai.worker.WorkerSettings
 ```
-
-### Frontend
 
 ```bash
 cd frontend
+npm run dev -- --host 0.0.0.0
+```
+
+---
+
+## Troubleshooting
+
+### Port already in use
+
+```bash
+lsof -i :PORT_NUMBER          # Find the process
+kill -9 PID                    # Kill it
+```
+
+### Database connection failed
+
+```bash
+docker ps                                              # Is PostgreSQL running?
+docker exec -it hirebuddha-db psql -U postgres -d hirebuddha   # Test connection
+docker compose up -d db                                # Restart if needed
+```
+
+### Redis connection failed
+
+```bash
+docker exec -it hirebuddha-redis redis-cli ping        # Should return PONG
+```
+
+### Backend won't start
+
+```bash
+ls -la backend/.venv/          # Does the venv exist?
+cd backend && poetry install   # Reinstall dependencies
+cat logs/backend_api.log       # Check error logs
+```
+
+### Frontend build errors
+
+```bash
+cd frontend
+rm -rf node_modules
+npm install --legacy-peer-deps
 npm run dev
 ```
-
-## 🐛 Troubleshooting
-
-### Port Already in Use
-
-If you get a "port already in use" error:
-
-```bash
-# Find process using the port
-lsof -i :PORT_NUMBER
-
-# Kill the process
-kill -9 PID
-```
-
-### Services Not Starting
-
-1. Check the logs in the `logs/` directory
-2. Ensure PostgreSQL and Redis are running: `docker ps`
-3. Verify virtual environment exists: `ls -la backend/.venv`
-4. Check for error messages in the terminal output
-
-### Database Connection Issues
-
-```bash
-# Test PostgreSQL connection
-docker exec -it hirebuddha-db psql -U postgres -d hirebuddha
-
-# Test Redis connection
-docker exec -it hirebuddha-redis redis-cli ping
-```
-
-## 📝 Notes
-
-- The startup script is idempotent - you can run it multiple times safely
-- Services that are already running will be skipped
-- All services run in the background with nohup
-- PID files are stored in `logs/` directory for process management

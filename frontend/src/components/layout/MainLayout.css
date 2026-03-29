@@ -158,6 +158,102 @@
     border: 1px solid rgba(197, 142, 127, 0.2);
 }
 
+/* Nav Group & Sub-menus */
+.nav-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 2px;
+}
+
+.nav-group-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    padding: var(--spacing-3) var(--spacing-4);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    transition: all var(--transition-base);
+    white-space: nowrap;
+    position: relative;
+    background: transparent;
+    border: 1px solid transparent;
+    width: 100%;
+    cursor: pointer;
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.sidebar.closed .nav-group-header {
+    justify-content: center;
+    padding: var(--spacing-3) 0;
+}
+
+.nav-group-header:hover {
+    color: var(--color-text-primary);
+    background: var(--color-glass-overlay);
+}
+
+.nav-group-header.expanded {
+    color: var(--color-text-primary);
+}
+
+.nav-group-header.active-collapsed {
+    color: var(--color-accent-primary);
+}
+
+.nav-group-chevron {
+    margin-left: auto;
+    transition: transform var(--transition-base);
+    opacity: 0.5;
+}
+
+.nav-group-chevron.rotated {
+    transform: rotate(180deg);
+}
+
+.nav-group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    margin-left: 28px;
+    padding-left: 12px;
+    border-left: 1px solid var(--color-glass-stroke);
+}
+
+.nav-group-items.expanded {
+    max-height: 400px;
+    opacity: 1;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+.nav-item.sub-item {
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: 0.9rem;
+}
+
+.nav-item.sub-item .nav-item-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.nav-section-label {
+    display: flex;
+    align-items: center;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.3);
+    padding: 0.75rem 0.75rem 0.2rem;
+    margin-top: 0.5rem;
+}
+
 /* Main Content Area */
 .main-content {
     flex: 1;

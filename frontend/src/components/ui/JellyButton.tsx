@@ -10,6 +10,7 @@ interface JellyButtonProps {
     size?: 'sm' | 'md' | 'lg';
     disabled?: boolean;
     className?: string;
+    style?: React.CSSProperties;
     roseGold?: boolean;
 }
 
@@ -21,6 +22,7 @@ export const JellyButton: React.FC<JellyButtonProps> = ({
     size = 'md',
     disabled = false,
     className = '',
+    style,
     roseGold = false
 }) => {
     return (
@@ -29,6 +31,7 @@ export const JellyButton: React.FC<JellyButtonProps> = ({
             onClick={onClick}
             disabled={disabled}
             className={`jelly-button jelly-button--${variant} jelly-button--${size} ${roseGold ? 'jelly-button--rose-gold' : ''} ${className}`}
+            style={style}
             whileHover={!disabled ? { scale: 1.02, y: -2 } : {}}
             whileTap={!disabled ? { scale: 0.98, y: 0 } : {}}
             transition={{ type: "spring", stiffness: 400, damping: 10 }}

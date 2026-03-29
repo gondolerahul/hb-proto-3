@@ -13,6 +13,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://34.100.230.121:3000",
         "https://dev.hirebuddha.com",
+        "https://app.hirebuddha.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "https://gateway.hirebuddha.com"
@@ -38,20 +39,25 @@ app.include_router(user_router, prefix="/api/v1")
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-# Ensure reports and artifact directories exist
+# Ensure reports directory exists
 reports_dir = Path("/tmp/research_reports")
 reports_dir.mkdir(parents=True, exist_ok=True)
+
+# ── Unified artifact directory ──────────────────────────────────────────────────
+# All platform-managed files live under backend/artifact/
+#   user-uploads/      — files uploaded by human users
+#   system-generated/  — files produced by AI agents / tools
 artifact_dir = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/artifact")
-artifact_dir.mkdir(parents=True, exist_ok=True)
+(artifact_dir / "user-uploads").mkdir(parents=True, exist_ok=True)
+(artifact_dir / "system-generated").mkdir(parents=True, exist_ok=True)
 
-# Ensure assets directory exists (hierarchical: assets/{tenant_id}/{campaign_id}/{asset_type}/{date})
-assets_dir = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/assets")
-assets_dir.mkdir(parents=True, exist_ok=True)
+# Legacy uploads dir (profile pictures stored here until migrated)
+uploads_dir = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/uploads")
+uploads_dir.mkdir(parents=True, exist_ok=True)
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 app.mount("/reports", StaticFiles(directory=str(reports_dir)), name="reports")
 app.mount("/artifact", StaticFiles(directory=str(artifact_dir)), name="artifact")
-app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 from src.config.router import router as config_router
 app.include_router(config_router, prefix="/api/v1")
@@ -60,9 +66,22 @@ app.include_router(ai_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")
 
-# Asset management
-from src.ai.asset_router import router as asset_router
-app.include_router(asset_router)
+# CORTEX Memory Architecture
+from src.ai.cortex_router import router as cortex_router
+app.include_router(cortex_router)
+
+# Artifact management (replaces legacy /assets routes)
+from src.ai.artifact_router import router as artifact_router
+app.include_router(artifact_router)
+
+# Legacy /assets → /artifacts redirect support (kept for backwards compatibility)
+from fastapi.responses import RedirectResponse
+@app.get("/api/v1/assets", include_in_schema=False)
+async def legacy_assets_list():
+    return RedirectResponse(url="/api/v1/artifacts")
+@app.get("/api/v1/assets/{path:path}", include_in_schema=False)
+async def legacy_assets_path(path: str):
+    return RedirectResponse(url=f"/api/v1/artifacts/{path}")
 
 # Billing, reports, credits, and cron jobs
 try:
@@ -76,6 +95,14 @@ except ImportError as e:
     import logging
     logging.getLogger(__name__).warning(f"Could not import billing routers: {e}")
 
+# Analytics & Reports
+try:
+    from src.ai.reports_router import router as reports_analytics_router
+    app.include_router(reports_analytics_router)
+except ImportError as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Could not import analytics reports router: {e}")
+
 # Email connection management
 try:
     from src.ai.email_router import router as email_router
@@ -84,24 +111,40 @@ except ImportError as e:
     import logging
     logging.getLogger(__name__).warning(f"Could not import email router: {e}")
 
-# Voice and WhatsApp streaming webhooks
+# Social media connection management
 try:
-    from src.streaming.webhook_router import router as webhook_router
+    from src.ai.social_router import router as social_router
+    app.include_router(social_router)
+except ImportError as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Could not import social router: {e}")
+
+# Tool Registry Management
+try:
+    from src.ai.tool_management_router import router as tool_mgmt_router
+    app.include_router(tool_mgmt_router)
+except ImportError as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Could not import tool management router: {e}")
+
+# Voice and WhatsApp webhook routers
+try:
+    from src.voice.webhook_router import router as webhook_router
     app.include_router(webhook_router)  # No prefix - webhooks are at /webhooks/voice/*
 except ImportError as e:
     import logging
-    logging.getLogger(__name__).warning(f"Could not import streaming webhook router: {e}")
+    logging.getLogger(__name__).warning(f"Could not import voice webhook router: {e}")
 
 try:
-    from src.streaming.phone_number_router import router as phone_number_router
+    from src.voice.phone_number_router import router as phone_number_router
     app.include_router(phone_number_router)
-    from src.streaming.sessions_router import router as sessions_router
+    from src.voice.sessions_router import router as sessions_router
     app.include_router(sessions_router)
-    from src.streaming.messaging_router import router as messaging_router
+    from src.voice.messaging_router import router as messaging_router
     app.include_router(messaging_router)
 except ImportError as e:
     import logging
-    logging.getLogger(__name__).warning(f"Could not import streaming routers: {e}")
+    logging.getLogger(__name__).warning(f"Could not import voice routers: {e}")
 
 
 

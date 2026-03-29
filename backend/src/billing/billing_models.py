@@ -29,6 +29,13 @@ class BillingConfig(Base):
     sales_partner_fee_pct = Column(Numeric(10, 4), nullable=False, default=0.0)  # spf
     discount_pct = Column(Numeric(10, 4), nullable=False, default=0.0)           # d
 
+    default_daily_credits = Column(Numeric(10, 4), nullable=False, default=5.0)
+
+    # Base cost overrides
+    base_cost_telephony = Column(Numeric(14, 6), nullable=True) 
+    base_cost_llm = Column(Numeric(14, 6), nullable=True)
+    base_cost_image_gen = Column(Numeric(14, 6), nullable=True)
+
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -69,6 +76,23 @@ class CreditWallet(Base):
         viewonly=True,
         overlaps="wallet",
     )
+
+
+class SubscriptionTier(Base):
+    """
+    App Admin configurable subscription tiers.
+    """
+    __tablename__ = "subscription_tiers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(50), nullable=False)
+    tier_level = Column(Integer, nullable=False, unique=True)
+    monthly_fee = Column(Numeric(10, 2), nullable=False)
+    bonus_pct = Column(Numeric(5, 2), nullable=False, default=0.0)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class Subscription(Base):
@@ -148,6 +172,13 @@ class BillingEvent(Base):
     partner_fee_amount = Column(Numeric(14, 6), nullable=False, default=0)
     discount_amount = Column(Numeric(14, 6), nullable=False, default=0)
     total_billing = Column(Numeric(14, 6), nullable=False, default=0)
+
+    # Category breakdowns for final billing amount (user-facing)
+    telephony_charge = Column(Numeric(14, 6), nullable=False, default=0)
+    llm_charge = Column(Numeric(14, 6), nullable=False, default=0)
+    image_charge = Column(Numeric(14, 6), nullable=False, default=0)
+    video_charge = Column(Numeric(14, 6), nullable=False, default=0)
+    api_charge = Column(Numeric(14, 6), nullable=False, default=0)
 
     # Usage breakdown
     telephony_in_minutes = Column(Numeric(10, 2), nullable=False, default=0)

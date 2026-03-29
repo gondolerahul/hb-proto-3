@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { GlassCard, GlassInput, JellyButton } from './ui';
-import { CompanyCreate } from '../services/company.service';
+
 import { Company } from '../types';
 
 interface CreateCompanyModalProps {

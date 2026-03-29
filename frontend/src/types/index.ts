@@ -77,18 +77,70 @@ export enum RunStatus {
     REPAIRING = 'REPAIRING',
 }
 
-// Nested Entity Interfaces
+// ---------------------------------------------------------------------------
+// Standardized Persona Schema (matches backend schemas.py AgentPersona)
+// ---------------------------------------------------------------------------
 
 export interface PersonaExample {
     scenario: string;
     ideal_response: string;
 }
 
+/** Voice identity for Gemini Live API sessions. */
+export interface VoiceConfig {
+    /** Prebuilt Gemini voice. 18 options: Puck, Charon, Kore, Fenrir, Aoede, Orbit, Zephyr, Leda,
+     *  Orus, Rigel, Schedar, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat */
+    voice_name: string;
+    language_code: string;      // BCP-47, e.g. "en-US"
+    speaking_rate: number;      // 0.25 – 4.0
+    pitch: number;              // -20.0 to +20.0 semitones
+    custom_voice_id?: string;   // Future: custom voice clone reference
+}
+
+/** Behavioral fingerprint injected into system prompt at runtime. */
+export interface PersonalityMatrix {
+    tone: string;               // professional | friendly | formal | empathetic | assertive | casual
+    verbosity: string;          // concise | moderate | verbose
+    empathy_level: number;      // 0.0 – 1.0
+    humor_level: number;        // 0.0 – 1.0
+    formality: string;          // formal | semi-formal | casual
+    decision_confidence: number; // 0.0 – 1.0 (confidence threshold before escalating)
+}
+
+/** Canonical, standardized persona for HierarchicalEntity.identity */
+export interface AgentPersona {
+    // Core identity
+    name: string;
+    role: string;
+    bio?: string;
+
+    // Visual identity
+    profile_image_url?: string;
+    profile_image_thumbnail_url?: string;
+
+    // Behavioral fingerprint
+    personality: PersonalityMatrix;
+
+    // Voice identity (for Gemini Live sessions)
+    voice: VoiceConfig;
+
+    // Prompt engineering
+    system_prompt: string;
+    behavioral_constraints: string[];
+    few_shot_examples?: { [key: string]: string }[];
+
+    // Dynamic injection hooks
+    greeting_template?: string;
+    escalation_message?: string;
+    closing_message?: string;
+}
+
+/** Legacy persona model — kept for backward compatibility. */
 export interface Persona {
     system_prompt: string;
     examples: PersonaExample[];
     behavioral_constraints: string[];
-    few_shot_examples?: { [key: string]: string }[]; // New strict few-shot examples
+    few_shot_examples?: { [key: string]: string }[];
 }
 
 export interface HierarchyChild {
@@ -115,12 +167,15 @@ export interface ContextPolicy {
     max_chars?: number;
     summarize_threshold?: number;
     explicit_keys?: string[];
+    /** Domain-specific keys to always preserve verbatim during context summarization */
+    preserve_keys?: string[];
 }
 
 export interface LogicGate {
     reasoning_config: {
-        model_provider: string;
-        model_name: string;
+        task_type?: string;
+        model_provider?: string;
+        model_name?: string;
         temperature: number;
         top_p?: number;
         max_tokens?: number;
@@ -145,7 +200,7 @@ export interface PlanStepTarget {
     entity_id?: string;
     tool_id?: string;
     prompt_template?: string;
-    input_dependencies?: string[]; // Explicit dependencies
+    input_dependencies?: string[];
 }
 
 export interface PlanStep {
@@ -183,26 +238,58 @@ export interface Planning {
     };
 }
 
-export interface capabilities {
-    tools: any[];
+export interface ToolDefinition {
+    tool_id: string;
+    name?: string;
+    description?: string;
+    provider?: string;
+    /** Permission declarations: read | write | execute | network | storage */
+    permissions?: string[];
+    sandbox_mode?: boolean;
+    max_execution_seconds?: number;
+    rate_limit_per_run?: number;
+    access_level?: 'READ' | 'WRITE' | 'EXECUTE';
+}
+
+export interface CortexMemoryConfig {
+    max_children?: number;
+    page_size_tokens?: number;
+    context_budget_pct?: number;
+    auto_checkpoint?: boolean;
+    resume_enabled?: boolean;
+}
+
+export interface ContextSource {
+    source_type: 'DOCUMENT' | 'KNOWLEDGE_BASE' | 'CORTEX_TREE' | 'DB_RECORDS';
+    reference_id: string;
+    description?: string;
+    ingest_to_cortex?: boolean;
+}
+
+export interface Capabilities {
+    tools: ToolDefinition[];
     memory: {
         enabled: boolean;
-        scope: string;
-        storage_backend?: string;
+        mode: 'STANDARD' | 'CORTEX';
+        episodic_memory_count?: number;
+        semantic_search_enabled?: boolean;
+        semantic_top_k?: number;
+        cortex_config?: CortexMemoryConfig;
     };
     context_engineering: {
-        max_context_tokens: number;
-        context_priority?: string[];
-        artifact_handling?: {
-            artifact_reference_mode: 'INLINE' | 'REFERENCE' | 'SUMMARY';
-            store_large_objects: boolean;
-        };
+        context_sources?: ContextSource[];
+        inject_episodic_memory?: boolean;
+        inject_semantic_context?: boolean;
+        inject_cortex_viewport?: boolean;
+        no_truncation?: boolean;
     };
 }
 
 export interface Governance {
     max_cost_usd?: number;
     timeout_ms: number;
+    max_recursion_depth?: number;
+    checkpoint_every_n_steps?: number;
     execution_limits?: {
         max_recursion_depth: number;
         max_tool_calls?: number;
@@ -228,16 +315,21 @@ export interface HierarchicalEntity {
     name: string;
     display_name?: string;
     description?: string;
+    goal?: string;
     type: EntityType;
     version: string;
     status: EntityStatus;
     tags: string[];
+    is_template?: boolean;
+    template_source_id?: string;
+    created_by?: string;
 
-    identity?: Persona;
+    /** AgentPersona (new standardized) or legacy Persona */
+    identity?: AgentPersona | Persona | any;
     hierarchy?: Hierarchy;
     logic_gate?: LogicGate;
     planning?: Planning;
-    capabilities?: capabilities;
+    capabilities?: Capabilities;
     governance?: Governance;
     io_contract?: IOContract;
     observability?: Observability;

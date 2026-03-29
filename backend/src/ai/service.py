@@ -19,12 +19,12 @@ class AIService:
         self.db = db
 
     # Entity CRUD
-    async def create_entity(self, entity_in: HierarchicalEntityCreate, company_id: UUID) -> HierarchicalEntity:
+    async def create_entity(self, entity_in: HierarchicalEntityCreate, company_id: UUID, user_id: UUID = None) -> HierarchicalEntity:
         # Prepare data, handling nested Pydantic models and ensuring JSON serializability (e.g. UUID -> str)
         entity_data = entity_in.model_dump(mode='json')
         
         # Flatten identity if provided as nested model to JSONB column
-        entity = HierarchicalEntity(**entity_data, company_id=company_id)
+        entity = HierarchicalEntity(**entity_data, company_id=company_id, created_by=user_id)
         self.db.add(entity)
         await self.db.commit()
         
@@ -39,7 +39,7 @@ class AIService:
         )
         return result.scalar_one()
 
-    async def get_entities(self, company_id: UUID, type: EntityType = None, user_role: str = None) -> list[HierarchicalEntity]:
+    async def get_entities(self, company_id: UUID, type: EntityType = None, user_role: str = None, is_template: bool = None) -> list[HierarchicalEntity]:
         from sqlalchemy.orm import selectinload
         query = select(HierarchicalEntity)
         
@@ -49,6 +49,10 @@ class AIService:
         
         if type:
             query = query.where(HierarchicalEntity.type == type)
+        
+        # Filter by template flag (None = show all, True = templates only, False = entities only)
+        if is_template is not None:
+            query = query.where(HierarchicalEntity.is_template == is_template)
         
         query = query.options(selectinload(HierarchicalEntity.execution_runs))
         result = await self.db.execute(query)
@@ -284,7 +288,26 @@ class AIService:
         await self.db.commit()
         await self.db.refresh(approval)
         
-        # TODO: Notify worker that approval is received (e.g. via Redis/Event)
+        # P0.3 — Notify waiting worker via Redis pub/sub so it can unblock immediately.
+        # The execution engine subscribes to "approval:{approval_id}" before gating
+        # on the HumanApproval record and awaits this event with a configurable timeout.
+        try:
+            from arq import create_pool
+            from arq.connections import RedisSettings
+            _redis = await create_pool(RedisSettings())
+            await _redis.publish(
+                f"approval:{approval_id}",
+                json.dumps({
+                    "approval_id": str(approval_id),
+                    "status": status,
+                    "notes": notes or "",
+                    "responded_at": approval.responded_at.isoformat(),
+                })
+            )
+            await _redis.close()
+        except Exception:
+            # Non-fatal: worker will time out gracefully if Redis is unavailable
+            pass
         
         return approval
 
@@ -359,40 +382,27 @@ class AIService:
     
     async def search_documents(self, query: str, company_id: UUID, entity_id: UUID = None, top_k: int = 5):
         from src.ai.models import DocumentChunk
-        from src.config.service import ConfigService
-        import httpx
         from sqlalchemy import text
         
-        # Get query embedding
-        config_service = ConfigService(self.db)
+        # Get query embedding via Vertex AI
         model_name = "gemini-embedding-004"
-        
-        # Strategy 1: Exact SKU match
-        gemini_api_key = await config_service.get_api_key_by_sku(company_id, model_name)
-        
-        # Strategy 2: Pattern match (finds -in/-out SKUs)
-        if not gemini_api_key:
-            gemini_api_key = await config_service.get_api_key_by_model(company_id, model_name)
-            
-        # Strategy 3: Provider generic key
-        if not gemini_api_key:
-            gemini_api_key = await config_service.get_api_key_by_sku(company_id, "google-api-key") or \
-                             await config_service.get_api_key_by_sku(company_id, "gemini-api-key")
         
         from google import genai
         from google.genai import types
+        from src.common.genai_factory import build_vertex_genai_client
 
-        # ... (rest of the key resolution logic remains same)
-        
-        # Strategy 4: Any key for google provider
-        if not gemini_api_key:
-            gemini_api_key = await config_service.get_api_key_by_provider(company_id, "google")
-            
-        if not gemini_api_key:
-            raise HTTPException(status_code=500, detail="Gemini API Key not found. Please ensure you have a 'google' integration configured.")
-        
         try:
-            client = genai.Client(api_key=gemini_api_key, http_options={'api_version': 'v1beta'})
+            client = await build_vertex_genai_client(
+                self.db, company_id,
+                http_options={'api_version': 'v1beta'}
+            )
+        except (RuntimeError, ValueError) as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Vertex AI not configured: {e}. Please add a Google Vertex AI integration."
+            )
+
+        try:
             response = client.models.embed_content(
                 model=model_name,
                 contents=query,
@@ -400,7 +410,7 @@ class AIService:
             )
             query_embedding = response.embeddings[0].values
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Gemini Embedding API Error (google-genai): {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Vertex AI Embedding API Error: {str(e)}")
         
         # Search using cosine similarity
         sql = text("""
@@ -437,3 +447,103 @@ class AIService:
         
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    # ── Template Management ────────────────────────────────────────────────
+
+    async def clone_template(self, template_id: UUID, company_id: UUID, user_id: UUID) -> HierarchicalEntity:
+        """
+        Deep-clone a template entity (and all its children) into executable
+        entities owned by the requesting company/user.
+        """
+        from sqlalchemy.orm import selectinload
+
+        # 1. Load the template
+        result = await self.db.execute(
+            select(HierarchicalEntity)
+            .options(selectinload(HierarchicalEntity.execution_runs))
+            .where(
+                HierarchicalEntity.id == template_id,
+                HierarchicalEntity.is_template == True,
+            )
+        )
+        template = result.scalar_one_or_none()
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        # 2. Collect all child entities that belong to this template hierarchy
+        async def _collect_children(parent_id: UUID) -> list[HierarchicalEntity]:
+            res = await self.db.execute(
+                select(HierarchicalEntity).where(
+                    HierarchicalEntity.parent_id == parent_id,
+                    HierarchicalEntity.is_template == True,
+                )
+            )
+            children = list(res.scalars().all())
+            grandchildren = []
+            for child in children:
+                grandchildren.extend(await _collect_children(child.id))
+            return children + grandchildren
+
+        all_children = await _collect_children(template.id)
+
+        # 3. Clone root template
+        old_to_new_id: dict[UUID, UUID] = {}
+
+        def _clone_fields(src: HierarchicalEntity) -> dict:
+            """Extract clonable fields from a template entity."""
+            return {
+                "name": src.name,
+                "display_name": src.display_name,
+                "description": src.description,
+                "goal": src.goal,
+                "type": src.type,
+                "version": src.version,
+                "status": src.status,
+                "tags": src.tags,
+                "identity": src.identity,
+                "hierarchy": src.hierarchy,
+                "logic_gate": src.logic_gate,
+                "planning": src.planning,
+                "capabilities": src.capabilities,
+                "governance": src.governance,
+                "io_contract": src.io_contract,
+                "observability": src.observability,
+                "metadata_extensions": src.metadata_extensions,
+            }
+
+        root_clone = HierarchicalEntity(
+            **_clone_fields(template),
+            company_id=company_id,
+            created_by=user_id,
+            is_template=False,
+            template_source_id=template.id,
+            parent_id=None,
+        )
+        self.db.add(root_clone)
+        await self.db.flush()  # get root_clone.id assigned
+        old_to_new_id[template.id] = root_clone.id
+
+        # 4. Clone children in topological order (parent before child)
+        for child in all_children:
+            new_parent_id = old_to_new_id.get(child.parent_id)
+            clone = HierarchicalEntity(
+                **_clone_fields(child),
+                company_id=company_id,
+                created_by=user_id,
+                is_template=False,
+                template_source_id=child.id,
+                parent_id=new_parent_id,
+            )
+            self.db.add(clone)
+            await self.db.flush()
+            old_to_new_id[child.id] = clone.id
+
+        await self.db.commit()
+
+        # 5. Reload with relationships
+        result = await self.db.execute(
+            select(HierarchicalEntity)
+            .options(selectinload(HierarchicalEntity.execution_runs))
+            .where(HierarchicalEntity.id == root_clone.id)
+        )
+        return result.scalar_one()
