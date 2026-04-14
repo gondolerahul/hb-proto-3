@@ -78,7 +78,7 @@ export const PhoneNumbersPage: React.FC = () => {
 
     const fetchAgents = async () => {
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/ai/entities?entity_type=AGENT`, {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/ai/entities?type=AGENT`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

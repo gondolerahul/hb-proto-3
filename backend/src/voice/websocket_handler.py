@@ -82,6 +82,7 @@ class BaseStreamHandler:
 
         # Conversation tracking
         self.turn_number = 0
+        self.outbound_chunk_counter = 0  # Required by Tata Tele spec: media.chunk counter
         self._agent_transcript_buffer = ""
         self._customer_transcript_buffer = ""
         self._last_transcript_time = 0.0
@@ -212,8 +213,11 @@ class BaseStreamHandler:
             self.gemini_session = azure_client
         else:
             gemini_client = live_client_or_tuple
-            await gemini_client.connect()
-            self.gemini_session = gemini_client
+            # connect() returns an async context manager; we must enter it
+            # to get the actual live session with .receive()/.send_realtime_input()
+            session_cm = await gemini_client.connect()
+            self._live_session_cm = session_cm
+            self.gemini_session = await session_cm.__aenter__()
 
         self.started_at = self.voice_session.started_at
             
@@ -224,17 +228,12 @@ class BaseStreamHandler:
             else "[Call connected. Greet the caller to begin the conversation.]"
         )
         try:
-            if hasattr(self.gemini_session, "send_client_content"):
-                await self.gemini_session.send_client_content(
-                    turns={"role": "user", "parts": [{"text": greeting}]},
-                    turn_complete=True,
-                )
-                logger.info(f"Sent greeting trigger for session {self.session_id}")
-            elif hasattr(self.gemini_session, "send_text"):
-                await self.gemini_session.send_text(greeting)
-                logger.info(f"Sent greeting trigger for session {self.session_id}")
+            # For gemini-3.1-flash-live-preview, send_client_content is only for
+            # seeding history. Must use send_realtime_input for live messages.
+            await self.gemini_session.send_realtime_input(text=greeting)
+            logger.info(f"Sent greeting trigger for session {self.session_id}")
         except Exception as _ge:
-            logger.warning(f"Greeting trigger failed: {_ge}")
+            logger.warning(f"Greeting trigger failed (non-fatal): {_ge}")
 
         tasks = [
             asyncio.create_task(self._receive_from_provider()),
@@ -253,6 +252,13 @@ class BaseStreamHandler:
             for t in tasks:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            # Close the Gemini Live session context manager
+            if hasattr(self, '_live_session_cm') and self._live_session_cm:
+                try:
+                    await self._live_session_cm.__aexit__(None, None, None)
+                except Exception:
+                    pass
 
     # Legacy Azure block removed - using generic BaseLiveClient flow
 
@@ -363,13 +369,14 @@ class BaseStreamHandler:
                     pcm16_chunk = self.audio_processor.mulaw_to_pcm16(mulaw_chunk)
                     if pcm16_chunk and self.gemini_session:
                         try:
-                            # Forward PCM chunk (typically 8kHz internally upsampled if needed by the provider wrapper)
-                            if hasattr(self.gemini_session, "send_audio"):
-                                await self.gemini_session.send_audio(pcm16_chunk)
-                            elif hasattr(self.gemini_session, "send_realtime_input"):
-                                await self.gemini_session.send_realtime_input(
-                                    audio={"data": pcm16_chunk, "mime_type": "audio/pcm;rate=16000"}
+                            # google-genai SDK v1.71.0+ — use send_realtime_input
+                            from google.genai import types as genai_types
+                            await self.gemini_session.send_realtime_input(
+                                audio=genai_types.Blob(
+                                    data=pcm16_chunk,
+                                    mime_type="audio/pcm;rate=16000",
                                 )
+                            )
                         except Exception as e:
                             logger.error(f"Error sending audio to upstream provider: {e}")
                             break
@@ -470,11 +477,15 @@ class BaseStreamHandler:
                 except asyncio.CancelledError:
                     break
 
+                self.outbound_chunk_counter += 1
                 payload = base64.b64encode(mulaw_chunk).decode("utf-8")
                 await self.websocket.send_text(json.dumps({
                     "event": "media",
                     "streamSid": self.stream_sid,
-                    "media": {"payload": payload},
+                    "media": {
+                        "payload": payload,
+                        "chunk": self.outbound_chunk_counter,
+                    },
                 }))
 
         except Exception as e:
@@ -582,14 +593,47 @@ class BaseStreamHandler:
 
                     if total_cost and total_cost > 0:
                         cost_decimal = Decimal(str(total_cost))
+
+                        # Fix #1: Apply TB formula before credit deduction
+                        # (matches the pattern in worker.py execute_run)
+                        try:
+                            from src.billing.billing_service import calculate_tb
+                            billing_svc = BillingService(session)
+                            config = await billing_svc.get_billing_config(
+                                self.voice_session.company_id
+                            )
+                            if not config:
+                                mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+                            else:
+                                mf = Decimal(str(config.multiplier_factor))
+                                pf = Decimal(str(config.platform_fee_pct))
+                                spf = Decimal(str(config.sales_partner_fee_pct))
+                                d = Decimal(str(config.discount_pct))
+
+                            tb_result = calculate_tb(cost_decimal, mf, pf, spf, d)
+                            billed_amount = tb_result["total_billing"]
+                            logger.info(
+                                f"Voice TB formula: raw=${cost_decimal} → billed=${billed_amount} "
+                                f"(mf={mf}, pf={pf}, spf={spf}, d={d})"
+                            )
+                        except Exception as tb_err:
+                            logger.warning(f"TB formula failed, falling back to raw cost: {tb_err}")
+                            billed_amount = cost_decimal
+
                         try:
                             await CreditService(session).consume(
                                 company_id=self.voice_session.company_id,
-                                amount=cost_decimal,
+                                amount=billed_amount,
+                            )
+                            logger.info(
+                                f"Voice credits deducted: ${billed_amount} "
+                                f"(raw: ${cost_decimal})"
                             )
                         except Exception as ce:
                             logger.warning(f"Credit deduction failed: {ce}")
 
+                        # Fix #7: Pass event_category="telephony" so charges
+                        # appear in the correct report column
                         try:
                             duration_minutes = Decimal(str(duration)) / Decimal("60")
                             await BillingService(session).record_billing_event(
@@ -607,6 +651,7 @@ class BaseStreamHandler:
                                     if self.voice_session.direction == "inbound"
                                     else Decimal("0")
                                 ),
+                                event_category="telephony",
                             )
                         except Exception as be:
                             logger.warning(f"Billing event recording failed: {be}")

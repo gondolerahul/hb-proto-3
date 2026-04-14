@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
+import logging
 from src.common.database import AsyncSessionLocal
 from src.ai.models import (
     ExecutionRun, HierarchicalEntity, LLMInteractionLog, EntityType,
@@ -18,17 +19,22 @@ from src.ai.schemas import (
 )
 from src.config.service import ConfigService
 from src.ai.usage_service import UsageService
-from src.billing.credit_service import CreditService
-from src.billing.billing_service import BillingService
+from src.billing.credit_service import CreditService, InsufficientCreditsError
+from src.billing.billing_service import BillingService, calculate_tb
 from src.ai.tool_executor import ToolExecutor
 from src.ai.memory_service import MemoryRouter  # S1: Memory
 from src.ai.llm_router import LLMRouter        # Model-agnostic LLM dispatch
 import src.auth.models
 import src.config.models
+import src.ai.cortex_models  # Required: EpisodicMemory FK references cortex_trees
+from src.ai.cortex_service import CortexRouter as CortexService
+from src.ai.cortex_models import CortexNodeType
 import asyncio
 import json
 import re
 import copy
+
+logger = logging.getLogger(__name__)
 
 # --- Prompt Templates ---
 
@@ -41,20 +47,25 @@ Output a JSON array of steps in this format:
     "order": 1,
     "name": "Step Name",
     "description": "What this step accomplishes",
-    "type": "ACTION",  // ACTION | TOOL_CALL | THOUGHT
+    "type": "TOOL_CALL",
     "target": {
-      "prompt_template": "Template with {{variables}}",
-      "tool_id": "tool_name_if_applicable"  
+      "tool_id": "tool_name_if_applicable",
+      "prompt_template": "Use {{step_1}} to reference the output of step_1",
+      "input_dependencies": ["step_1"]
     },
     "required": true
   }
 ]
 
 Rules:
-1. If the goal is ambiguous, create a first step of type "THOUGHT" to ask the user for clarification
-2. Break complex tasks into atomic, sequential steps
-3. Use available tools when they can help accomplish the goal
-4. Each step should have clear success criteria implied in its description
+1. Use type "TOOL_CALL" when a tool should be invoked directly. Use type "ACTION" when the LLM needs to reason/transform data (e.g. extract, summarize, format). Avoid type "THOUGHT" unless asking for clarification.
+2. Break complex tasks into atomic, sequential steps.
+3. Use available tools when they can help accomplish the goal.
+4. Each step should have clear success criteria implied in its description.
+5. For TOOL_CALL steps: put the tool name in target.tool_id and use {{step_N}} in prompt_template to reference prior step outputs by their step_id. IMPORTANT: prompt_template must ALWAYS be a plain string, never a dict or object. Example: "{{step_2}}" or "query: {{step_1}}".
+6. For ACTION steps: describe clearly in the description what the LLM should do with the data. The system will automatically provide previous step outputs as context.
+7. List input_dependencies to declare which prior steps this step depends on (e.g. ["step_1", "step_2"]).
+8. Keep the number of steps minimal — avoid unnecessary intermediate steps. Prefer 3-4 focused steps over 5+ granular ones.
 """
 
 DEFAULT_REVIEW_PROMPT = """You are a quality assurance critic. Review the output of an AI step execution.
@@ -140,19 +151,49 @@ class GoalNode:
 # --- Helper Functions ---
 
 def parse_variables(text: str, variables: dict) -> str:
-    """Replaces {{variable}} in text with values from variables dict."""
+    """Replaces {{variable}} and {variable} in text with values from variables dict.
+    
+    Supports both double-brace ``{{topic}}`` and single-brace ``{topic}`` syntax.
+    Double-brace patterns are replaced first (higher priority / more explicit),
+    then single-brace patterns for any remaining placeholders.
+    """
     if not text:
         return ""
-    def replace(match):
-        key = match.group(1).strip()
+
+    def _resolve(key: str, fallback: str):
         val = variables
-        for k in key.split('.'):
+        parts = key.split('.')
+        for i, k in enumerate(parts):
             if isinstance(val, dict):
-                val = val.get(k, match.group(0))
+                val = val.get(k, None)
             else:
-                return match.group(0)
+                # If we landed on a non-dict value and the remaining part is
+                # just "output", the value itself IS the output — return it.
+                # This handles {{step_1.output}} when context stores step_1="result text".
+                remaining = parts[i:]
+                if remaining == ["output"] and val is not None:
+                    return str(val)
+                return fallback
+        if val is None or val is variables:
+            return fallback
         return str(val)
-    return re.sub(r'\{\{(.*?)\}\}', replace, text)
+
+    # Pass 1: double-brace {{var}}
+    def replace_double(match):
+        key = match.group(1).strip()
+        return _resolve(key, match.group(0))
+    text = re.sub(r'\{\{(.*?)\}\}', replace_double, text)
+
+    # Pass 2: single-brace {var}  (skip if looks like JSON / Python format string)
+    def replace_single(match):
+        key = match.group(1).strip()
+        # Skip patterns that look like JSON or contain spaces/special chars
+        if not key or ' ' in key or ':' in key or ',' in key or '"' in key:
+            return match.group(0)
+        return _resolve(key, match.group(0))
+    text = re.sub(r'(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_.]*)\}(?!\})', replace_single, text)
+
+    return text
 
 
 def build_sandwich_prompt(
@@ -394,6 +435,12 @@ class ExecutionEngine:
                      step_deps[s_id].add(dep)
 
             prompt = target.get("prompt_template", "")
+            # prompt_template may be a dict if the LLM planner emitted structured input;
+            # coerce to string so the regex can still discover {{step_N}} references.
+            if isinstance(prompt, dict):
+                prompt = json.dumps(prompt, default=str)
+            elif not isinstance(prompt, str):
+                prompt = str(prompt) if prompt else ""
             vars_needed = re.findall(r'\{\{(.*?)\}\}', prompt)
             for var in vars_needed:
                 base_var = var.split('.')[0]
@@ -483,7 +530,7 @@ class ExecutionEngine:
 
         # Review Mechanism
         if entity.logic_gate and entity.logic_gate.get("review_mechanism", {}).get("enabled"):
-            step_result = await self._review_step_output(run, entity, step_obj, step_result)
+            step_result = await self._review_step_output(run, entity, step_obj, step_result, context_state)
 
         # Update Context immediately
         if isinstance(step_result, dict) and "output" in step_result:
@@ -510,7 +557,21 @@ class ExecutionEngine:
         if not entity:
             raise Exception(f"Entity for run {run_id} not found")
 
-        # 2. Update Status and Initialize Trace
+        # 2. Configure logging level from entity's observability settings
+        observability = entity.observability or {}
+        entity_log_level = observability.get("log_level", "INFO").upper()
+        numeric_level = getattr(logging, entity_log_level, logging.INFO)
+        logging.getLogger("src.ai").setLevel(numeric_level)
+        logging.getLogger("src").setLevel(numeric_level)
+        root_logger = logging.getLogger()
+        if not root_logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+            root_logger.addHandler(handler)
+        root_logger.setLevel(min(root_logger.level or logging.WARNING, numeric_level))
+        logger.info(f"Logging level set to {entity_log_level} for entity {entity.name}")
+
+        # 3. Update Status and Initialize Trace
         run.status = RunStatus.RUNNING
         run.started_at = datetime.utcnow()
         if not run.trace_id:
@@ -521,61 +582,185 @@ class ExecutionEngine:
         channel = f"execution:{run.id}"
         await self.redis.publish(channel, json.dumps({"status": "RUNNING", "run_id": str(run.id)}))
 
+        # ── Issue 6: Pre-execution credit balance check ──────────────────
+        # Block execution immediately if the company has zero credits.
+        if not run.parent_run_id:  # Only check for top-level runs
+            try:
+                credit_svc = CreditService(self.db)
+                balance = await credit_svc.get_balance(run.company_id)
+                if balance["total_available"] <= 0:
+                    raise InsufficientCreditsError(
+                        f"Cannot start execution: credit balance is $0. "
+                        f"Please top up your wallet or wait for daily credit refresh."
+                    )
+                print(f"Pre-execution credit check passed: ${balance['total_available']:.4f} available")
+            except InsufficientCreditsError:
+                raise  # Re-raise to be caught by the outer handler
+            except Exception as e:
+                # Non-fatal: log and continue if balance check fails (e.g. DB issue)
+                print(f"Warning: Pre-execution credit check failed: {e}")
+
         try:
-            # S1: Retrieve memory context
+            # ======================================================
+            # CORTEX EXECUTION ENGINE
+            # All execution uses CORTEX trees as the live cognitive
+            # context. The agent's context is always a viewport onto
+            # the tree — never an in-memory dict.
+            # ======================================================
+
+            # C1: Create or resume CORTEX tree
+            cortex = CortexService(db=self.db, company_id=entity.company_id)
+            
+            # Check if this is a child recursive run (scoped subtree)
+            input_data = run.input_data or {}
+            cortex_tree_id = input_data.get("cortex_tree_id")
+            subtree_root_id = input_data.get("subtree_root_id")
+            
+            if cortex_tree_id and subtree_root_id:
+                # Resuming as a recursive child — scoped to subtree
+                cortex = CortexService(
+                    db=self.db,
+                    company_id=entity.company_id,
+                    scoped_subtree_root_id=UUID(subtree_root_id),
+                )
+                tree, viewport, last_checkpoint = await cortex.resume_tree(UUID(cortex_tree_id))
+                logger.info(f"CORTEX child run: scoped to subtree {subtree_root_id} in tree {cortex_tree_id}")
+            elif cortex_tree_id:
+                # Resuming an existing tree
+                tree, viewport, last_checkpoint = await cortex.resume_tree(UUID(cortex_tree_id))
+                logger.info(f"CORTEX resumed tree: {cortex_tree_id}")
+            else:
+                # New execution — create a fresh tree
+                task_desc = self._build_task_description(entity, input_data)
+                tree = await cortex.create_tree(
+                    entity_id=entity.id,
+                    user_id=run.user_id,
+                    task_description=task_desc,
+                )
+                viewport = await cortex.navigate(tree.root_node_id)
+                last_checkpoint = None
+                logger.info(f"CORTEX new tree: {tree.id}")
+
+            # C2: Retrieve memory context with tree ID
             memory_router = MemoryRouter(self.db)
             memory_ctx = await memory_router.retrieve(
                 entity_id=entity.id,
                 user_id=run.user_id,
+                tree_id=tree.id,
+                long_running=True,
             )
-            # Inject formatted memory into the system prompt context
-            context_state = run.input_data or {}
+
+            # C3: Build context from viewport (replaces context_state dict)
+            context_state = input_data.copy()
             memory_text = memory_router.format_for_prompt(memory_ctx)
             if memory_text:
                 context_state["__memory__"] = memory_text
+            # Inject CORTEX viewport as the primary context
+            context_state["__cortex_viewport__"] = viewport.to_prompt_text()
+            context_state["__cortex_tree_id__"] = str(tree.id)
+
+            # M5: Inject knowledge subtree summary for entities sharing a tree
+            # This is critical for the synthesizer: it needs to READ the director's
+            # accumulated knowledge nodes from the shared tree.
+            try:
+                knowledge_root = await cortex.get_knowledge_root(tree.id)
+                if knowledge_root:
+                    knowledge_viewport = await cortex.navigate(knowledge_root.id)
+                    context_state["__cortex_knowledge__"] = knowledge_viewport.to_prompt_text()
+                    logger.info(f"CORTEX: Injected knowledge subtree ({knowledge_root.id}) into context")
+            except Exception as _kb_err:
+                logger.debug(f"CORTEX: Knowledge subtree injection skipped: {_kb_err}")
                 
             all_step_results = []
             
-            # 3. Plan Generation/Reconciliation
-            print(f"--- Starting Execution {run.id} for Entity {entity.name} ---")
-            plan = await self._get_reconciled_plan(entity, context_state)
+            # 4. Plan Generation/Reconciliation
+            logger.info(f"--- Starting CORTEX Execution {run.id} for Entity {entity.name} ---")
+            plan = await self._get_reconciled_plan(run, entity, context_state)
             steps = plan.get("steps", [])
-            print(f"Plan reconciled. Steps to execute: {len(steps)}")
-            run.dynamic_plan = plan # Store the actual plan used
+            logger.info(f"Plan reconciled. Steps to execute: {len(steps)}")
+            run.dynamic_plan = plan
             await self.db.commit()
 
-            # 4. Execute Plan Steps (DAG)
-            # Ph-C: checkpoint_every_n_steps — persist context_state after every N steps
+            # C4: Get working memory root for writing step outputs
+            working_root = await cortex.get_working_root(tree.id)
+            if not working_root:
+                logger.warning(f"CORTEX: Working memory root not found for tree {tree.id}")
+                raise Exception(f"CORTEX tree {tree.id} has no working memory root")
+
+            # 5. Execute Plan Steps with CORTEX
             governance = entity.governance or {}
             checkpoint_every_n = int(governance.get("checkpoint_every_n_steps", 3))
 
             if self._has_parallel_steps(steps):
                 all_step_results = await self._execute_steps_dag(run, entity, steps, context_state)
+                # Write DAG results to tree
+                for sr in all_step_results:
+                    await self._write_step_to_cortex(
+                        cortex, working_root.id, sr, run.id
+                    )
             else:
-                # Sequential fallback with incremental checkpointing
                 for step_idx, step in enumerate(steps):
-                    # Ph-C: Skip steps already in context_state (resume support)
                     step_obj_check = PlanStep(**step)
                     if step_obj_check.step_id and step_obj_check.step_id in context_state:
                         print(f"  Skipping already-completed step: {step_obj_check.name}")
                         continue
 
                     step_obj = PlanStep(**step)
-                    step_result = await self._execute_step_wrapper(run, entity, step_obj, context_state)
+                    
+                    # Handle CORTEX-specific step types
+                    if step_obj.type in (StepType.NAVIGATE, StepType.READ, StepType.WRITE,
+                                         StepType.RECURSE, StepType.AWAIT_CHILDREN):
+                        step_result = await self._execute_cortex_step(
+                            run, entity, step_obj, cortex, tree, context_state
+                        )
+                    else:
+                        step_result = await self._execute_step_wrapper(
+                            run, entity, step_obj, context_state
+                        )
+                    
                     all_step_results.append(step_result)
 
-                    # Ph-C: Persist checkpoint every N steps
+                    # ── Issue 6: Periodic credit check after each step ────────
+                    if not run.parent_run_id:
+                        try:
+                            _credit_svc = CreditService(self.db)
+                            _balance = await _credit_svc.get_balance(run.company_id)
+                            if _balance["total_available"] <= 0:
+                                print(f"⛔ Credit exhausted mid-execution after step '{step_obj.name}'. Stopping.")
+                                raise InsufficientCreditsError(
+                                    f"Execution stopped: credit balance exhausted after step '{step_obj.name}'. "
+                                    f"Partial results saved. Please top up credits and retry."
+                                )
+                        except InsufficientCreditsError:
+                            raise
+                        except Exception:
+                            pass  # Non-fatal: continue if balance check fails
+
+                    # Write step result as a finding node in the CORTEX tree
+                    await self._write_step_to_cortex(
+                        cortex, working_root.id, step_result, run.id
+                    )
+
+                    # Refresh viewport after each step
+                    try:
+                        viewport = await cortex.navigate(tree.resume_cursor_id or tree.root_node_id)
+                        context_state["__cortex_viewport__"] = viewport.to_prompt_text()
+                    except Exception:
+                        pass
+
+                    # C5: Auto-checkpoint every N steps
                     if (step_idx + 1) % checkpoint_every_n == 0:
-                        run.context_state = dict(context_state)
+                        # Estimate current context size
+                        ctx_size = sum(len(str(v)) for v in context_state.values()) // 4
+                        await cortex.check_and_compact(tree.id, ctx_size)
                         await self.db.commit()
-                        print(f"  Checkpoint persisted after step {step_idx + 1} ({step_obj.name})")
+                        print(f"  CORTEX checkpoint after step {step_idx + 1} ({step_obj.name})")
 
                     if self._should_exit(step_obj, context_state):
                         break
 
-            # 5. Finalize
+            # 6. Finalize
             run.status = RunStatus.COMPLETED
-            # Get output from last step
             last_step_name = steps[-1]["name"] if steps else None
             final_output = context_state.get(last_step_name) if last_step_name else "Success"
             
@@ -584,16 +769,34 @@ class ExecutionEngine:
             run.completed_at = datetime.utcnow()
             run.execution_time_ms = int((run.completed_at - run.started_at).total_seconds() * 1000)
             
+            # Write final output to the CORTEX output subtree
+            if tree.output_root_id and final_output:
+                try:
+                    await cortex.write(
+                        parent_id=tree.output_root_id,
+                        node_type="output",
+                        title="Final Output",
+                        summary=str(final_output)[:300],
+                        content=str(final_output)[:50000],
+                        status="complete",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to write final output to CORTEX tree: {e}")
+
             # S2: Write episodic memory for top-level runs
             await memory_router.write_episodic(run)
+
+            # Tree stays ACTIVE for future resumption (not COMPLETE)
+            tree.last_active_at = datetime.utcnow()
             
             await self.db.commit()
 
-            # 6. Billing & Credit Deduction (only for top-level runs, not child invocations)
+            # 7. Billing & Credit Deduction (only for top-level runs)
+            #    Issue 4 & 5: Compute billed amount using TB formula FIRST,
+            #    then deduct the billed amount (not raw cost) from credits.
             total_cost = run.total_cost_usd
             if not run.parent_run_id:
                 print(f"Checking billing for top-level run {run.id}. Total cost: {total_cost}")
-                # Treat None as 0
                 if total_cost is None:
                     total_cost = Decimal("0")
                 else:
@@ -601,13 +804,33 @@ class ExecutionEngine:
                     
                 if total_cost > Decimal("0"):
                     try:
-                        # Deduct from credit wallet
-                        credit_svc = CreditService(self.db)
-                        deductions = await credit_svc.consume(run.company_id, total_cost)
-                        print(f"Credits deducted for run {run.id}: {deductions}")
-                        
-                        # Record billing event for reports
                         billing_svc = BillingService(self.db)
+                        
+                        # Compute billed amount using the TB formula
+                        config = await billing_svc.get_billing_config(run.company_id)
+                        if not config:
+                            mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+                        else:
+                            mf = Decimal(str(config.multiplier_factor))
+                            pf = Decimal(str(config.platform_fee_pct))
+                            spf = Decimal(str(config.sales_partner_fee_pct))
+                            d = Decimal(str(config.discount_pct))
+                        
+                        tb_result = calculate_tb(total_cost, mf, pf, spf, d)
+                        billed_amount = tb_result["total_billing"]
+                        
+                        # Store billed amount on the run record
+                        run.billed_amount = billed_amount
+                        await self.db.commit()
+                        
+                        print(f"TB formula: raw=${total_cost} → billed=${billed_amount} (mf={mf}, pf={pf}, spf={spf}, d={d})")
+                        
+                        # Deduct BILLED amount from credits (not raw cost)
+                        credit_svc = CreditService(self.db)
+                        deductions = await credit_svc.consume(run.company_id, billed_amount)
+                        print(f"Credits deducted for run {run.id}: {deductions} (billed: ${billed_amount})")
+                        
+                        # Record billing event
                         await billing_svc.record_billing_event(
                             company_id=run.company_id,
                             base_cost=total_cost,
@@ -615,23 +838,331 @@ class ExecutionEngine:
                             grouping_value=entity.name,
                             other_ai_cost=total_cost,
                         )
-                        print(f"Billing event recorded for run {run.id}: ${total_cost}")
+                        print(f"Billing event recorded for run {run.id}: raw=${total_cost}, billed=${billed_amount}")
+                    except InsufficientCreditsError as credit_err:
+                        print(f"Warning: Insufficient credits for run {run.id}: {credit_err}")
+                        run.billed_amount = billed_amount if 'billed_amount' in dir() else total_cost
+                        await self.db.commit()
                     except Exception as billing_err:
-                        # Log but don't fail the run if billing fails
                         print(f"Cost Deduction Warning: Billing/credit deduction failed for run {run.id}: {billing_err}")
                 else:
+                    run.billed_amount = Decimal("0")
                     print(f"Run {run.id} cost is 0, no credits deducted.")
 
             await self.redis.publish(channel, json.dumps({"status": "COMPLETED", "result": run.result_data}))
             return run.result_data
 
-        except Exception as e:
+        except BaseException as e:
+            # BaseException catches TimeoutError / CancelledError too,
+            # ensuring orphaned runs are never left in RUNNING status.
             run.status = RunStatus.FAILED
-            run.error_message = str(e)
+            err_type = type(e).__name__
+            run.error_message = f"{err_type}: {str(e)[:500]}"
             run.completed_at = datetime.utcnow()
+            # Persist context_state so the run can be resumed later.
+            # The context_state contains completed step IDs and the CORTEX
+            # tree ID, which allows a retry to skip already-done work.
+            if context_state:
+                run.context_state = context_state
+            try:
+                await self.db.commit()
+                await self.redis.publish(channel, json.dumps({"status": "FAILED", "error": run.error_message}))
+            except Exception:
+                pass  # DB/Redis may be unavailable after cancellation
+            raise
+
+    # ===================================================================
+    # CORTEX Execution Helpers
+    # ===================================================================
+
+    def _build_task_description(self, entity: 'HierarchicalEntity', input_data: dict) -> str:
+        """Build a CORTEX task description from entity and input."""
+        input_summary = ""
+        if input_data:
+            input_keys = [k for k in input_data.keys() if not k.startswith("__")]
+            input_summary = ", ".join(f"{k}={str(input_data[k])[:100]}" for k in input_keys[:5])
+        task_desc = f"{entity.name}: {input_summary}" if input_summary else entity.name
+        return task_desc[:1000]
+
+    async def _write_step_to_cortex(
+        self,
+        cortex: 'CortexService',
+        working_root_id: UUID,
+        step_result: dict,
+        run_id: UUID,
+    ) -> None:
+        """Write a step's result as a finding node in the CORTEX tree."""
+        try:
+            step_name = step_result.get("step", "Unknown Step")
+            step_output = step_result.get("output", step_result.get("result", ""))
+            step_type = step_result.get("type", "ACTION")
+            step_id = step_result.get("step_id", "")
+
+            if isinstance(step_output, dict):
+                step_output = json.dumps(step_output, default=str)[:50000]
+            else:
+                step_output = str(step_output)[:50000]
+
+            summary = f"[{step_type}] {step_name}: {step_output[:500]}"
+            content = f"Step: {step_name}\nType: {step_type}\n\n--- Output ---\n{step_output}"
+
+            await cortex.write(
+                parent_id=working_root_id,
+                node_type="finding",
+                title=step_name,
+                summary=summary,
+                content=content,
+                status="complete",
+                metadata_extra={
+                    "step_id": step_id,
+                    "step_type": step_type,
+                    "run_id": str(run_id),
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to write step '{step_result.get('step')}' to CORTEX tree: {e}")
+
+    async def _ingest_tool_result_to_cortex(
+        self,
+        run: 'ExecutionRun',
+        tool_id: str,
+        tool_output: str,
+        context: dict,
+    ) -> None:
+        """
+        Ingest scraper/browser tool output into the CORTEX Knowledge subtree.
+        
+        Parses the tool result to extract URL and content, then writes a
+        'knowledge' node under the Knowledge Base root. This bridges the
+        gap between flat artifact storage and structured CORTEX trees.
+        """
+        try:
+            cortex_tree_id = context.get("__cortex_tree_id__")
+            if not cortex_tree_id:
+                return  # Not a CORTEX execution
+
+            # Parse the tool output
+            try:
+                parsed = json.loads(tool_output) if isinstance(tool_output, str) else tool_output
+            except (json.JSONDecodeError, TypeError):
+                return
+
+            # Handle both single and multi-URL results
+            results = []
+            if isinstance(parsed, dict):
+                if parsed.get("results"):
+                    results = parsed["results"]
+                elif parsed.get("url"):
+                    results = [parsed]
+
+            if not results:
+                return
+
+            cortex = CortexService(db=self.db, company_id=run.company_id)
+            tree = await cortex._get_tree(UUID(cortex_tree_id))
+            
+            # Find the Knowledge Base root (sibling_order=0 under root)
+            from sqlalchemy import select as _sel
+            from src.ai.cortex_models import CortexNode, CortexNodeType as _CNT
+            kb_result = await self.db.execute(
+                _sel(CortexNode).where(
+                    CortexNode.parent_id == tree.root_node_id,
+                    CortexNode.node_type == _CNT.KNOWLEDGE,
+                ).limit(1)
+            )
+            knowledge_root = kb_result.scalar_one_or_none()
+            if not knowledge_root:
+                return
+
+            for item in results[:10]:  # Cap at 10 per call
+                url = item.get("url", "unknown source")
+                content = item.get("content", "")
+                if not content or len(content) < 50:
+                    continue
+
+                # M2: Generate LLM navigation-quality summary (per CORTEX spec §3.2)
+                title = url.split("://")[-1][:80] if url else "Scraped Content"
+                try:
+                    from src.ai.llm_router import LLMRouter as _LLMRouter
+                    _llm = _LLMRouter(db=self.db, company_id=run.company_id)
+                    _resp = await _llm.call_llm(
+                        task_type="text_generation",
+                        system_prompt=(
+                            "Generate a concise ~200 token summary that helps an AI research agent "
+                            "decide if this source contains relevant data. Focus on: key topics, "
+                            "claims, statistics, entities, and relevance to the research task."
+                        ),
+                        user_prompt=f"Source: {url}\n\nContent:\n{content[:4000]}",
+                        temperature=0.3,
+                        max_tokens=300,
+                    )
+                    summary = _resp.output[:500]
+
+                    # Fix #4: Track CORTEX summarization LLM costs in run.total_cost_usd
+                    if _resp.prompt_tokens or _resp.completion_tokens:
+                        try:
+                            _model = _resp.model_name or "unknown"
+                            _in_sku = f"{_model}-in"
+                            _out_sku = f"{_model}-out"
+                            _in_usage = await self.usage_service.log_usage(
+                                company_id=run.company_id,
+                                service_sku=_in_sku,
+                                raw_quantity=float(_resp.prompt_tokens),
+                                execution_id=run.id,
+                            )
+                            _out_usage = await self.usage_service.log_usage(
+                                company_id=run.company_id,
+                                service_sku=_out_sku,
+                                raw_quantity=float(_resp.completion_tokens),
+                                execution_id=run.id,
+                            )
+                            if run.total_cost_usd is None:
+                                run.total_cost_usd = Decimal("0")
+                            if _in_usage:
+                                run.total_cost_usd += _in_usage.calculated_cost
+                            if _out_usage:
+                                run.total_cost_usd += _out_usage.calculated_cost
+                            if run.total_tokens is None:
+                                run.total_tokens = 0
+                            run.total_tokens += (_resp.prompt_tokens + _resp.completion_tokens)
+                            logger.info(
+                                f"CORTEX summary cost tracked: "
+                                f"in={_resp.prompt_tokens}, out={_resp.completion_tokens} "
+                                f"(${(_in_usage.calculated_cost if _in_usage else 0) + (_out_usage.calculated_cost if _out_usage else 0)})"
+                            )
+                        except Exception as _cost_err:
+                            logger.debug(f"CORTEX summary cost tracking failed: {_cost_err}")
+
+                except Exception as _sum_err:
+                    logger.debug(f"LLM summary failed for {url}, using truncation: {_sum_err}")
+                    summary = content[:300].replace("\n", " ").strip()
+                    if len(content) > 300:
+                        summary += "..."
+
+                await cortex.write(
+                    parent_id=knowledge_root.id,
+                    node_type="knowledge",
+                    title=f"📄 {title}",
+                    content=content[:50000],  # M3: Increased from 20K — paging handles large content
+                    summary=summary,
+                    status="complete",
+                    source_ref={"url": url, "tool": tool_id},
+                    metadata_extra={
+                        "run_id": str(run.id),
+                        "char_count": len(content),
+                        "artifact_id": item.get("artifact_id"),
+                    },
+                )
+
             await self.db.commit()
-            await self.redis.publish(channel, json.dumps({"status": "FAILED", "error": str(e)}))
-            raise e
+            logger.info(
+                f"CORTEX: Ingested {len(results)} knowledge node(s) from {tool_id} "
+                f"into tree {cortex_tree_id}"
+            )
+        except Exception as e:
+            logger.warning(f"CORTEX knowledge ingestion failed for {tool_id}: {e}")
+
+    async def _execute_cortex_step(
+        self,
+        run: 'ExecutionRun',
+        entity: 'HierarchicalEntity',
+        step: PlanStep,
+        cortex: 'CortexService',
+        tree,
+        context: dict,
+    ) -> dict:
+        """
+        Handle CORTEX-native step types: NAVIGATE, READ, WRITE, RECURSE, AWAIT_CHILDREN.
+        These are the 5 primitives from the CORTEX spec mapped to step types.
+        """
+        try:
+            target = step.target or PlanStep.Target()
+            
+            if step.type == StepType.NAVIGATE:
+                node_id = self._resolve_node_id(target, context)
+                viewport = await cortex.navigate(UUID(node_id))
+                output = viewport.to_prompt_text()
+                context[step.name] = output
+                context["__cortex_viewport__"] = output
+                return {"step": step.name, "step_id": step.step_id, "type": "NAVIGATE", "output": output[:2000]}
+
+            elif step.type == StepType.READ:
+                node_id = self._resolve_node_id(target, context)
+                page = int(getattr(target, 'page', 0) or 0)
+                content = await cortex.read(UUID(node_id), page=page)
+                output = content.content
+                context[step.name] = output
+                return {"step": step.name, "step_id": step.step_id, "type": "READ", "output": output[:5000]}
+
+            elif step.type == StepType.WRITE:
+                parent_id = self._resolve_node_id(target, context)
+                node_type = getattr(target, 'node_type', 'finding') or 'finding'
+                title = step.name or "Agent Write"
+                content_val = context.get(step.name, step.description or "")
+                summary = str(content_val)[:300]
+                new_id = await cortex.write(
+                    parent_id=UUID(parent_id),
+                    node_type=node_type,
+                    title=title,
+                    content=str(content_val)[:20000],
+                    summary=summary,
+                    status="complete",
+                )
+                output = str(new_id)
+                context[step.name] = output
+                return {"step": step.name, "step_id": step.step_id, "type": "WRITE", "output": output}
+
+            elif step.type == StepType.RECURSE:
+                node_id = self._resolve_node_id(target, context)
+                task_desc = step.description or step.name
+                result_slot = getattr(target, 'result_slot', step.name) or step.name
+                task_node_id, child_run_id = await cortex.recurse(
+                    node_id=UUID(node_id),
+                    task=task_desc,
+                    result_slot=result_slot,
+                    execution_run_id=run.id,
+                )
+                # Enqueue the child run to Arq
+                if child_run_id:
+                    try:
+                        from arq.connections import ArqRedis
+                        arq_redis = ArqRedis(self.redis.client)
+                        await arq_redis.enqueue_job("execute_run", str(child_run_id))
+                        logger.info(f"Enqueued child run {child_run_id} for RECURSE")
+                    except Exception as enqueue_err:
+                        logger.warning(f"Failed to enqueue child run {child_run_id}: {enqueue_err}")
+
+                output = json.dumps({"task_node_id": str(task_node_id), "child_run_id": str(child_run_id) if child_run_id else None})
+                context[step.name] = output
+                return {"step": step.name, "step_id": step.step_id, "type": "RECURSE", "output": output}
+
+            elif step.type == StepType.AWAIT_CHILDREN:
+                # Wait for all child task nodes to complete
+                cursor_id = tree.resume_cursor_id or tree.root_node_id
+                results = await cortex.await_children(cursor_id)
+                output = json.dumps({k: v.to_dict() for k, v in results.items()}, default=str)
+                context[step.name] = output
+                return {"step": step.name, "step_id": step.step_id, "type": "AWAIT_CHILDREN", "output": output}
+
+            else:
+                return {"step": step.name, "error": f"Unknown CORTEX step type: {step.type}"}
+
+        except Exception as e:
+            logger.error(f"CORTEX step '{step.name}' ({step.type}) failed: {e}")
+            return {"step": step.name, "step_id": step.step_id, "type": str(step.type), "error": str(e)}
+
+    def _resolve_node_id(self, target, context: dict) -> str:
+        """Resolve a node_id from step target or context."""
+        # Check explicit node_id in target
+        node_id = getattr(target, 'node_id', None)
+        if node_id:
+            return str(node_id)
+        # Check prompt_template for variable references
+        if hasattr(target, 'prompt_template') and target.prompt_template:
+            resolved = parse_variables(target.prompt_template, context)
+            return resolved.strip()
+        # Fallback to tree cursor from context
+        return context.get("__cortex_cursor__", "")
             
     def _has_parallel_steps(self, steps: List[dict]) -> bool:
         """Check if any steps can run in parallel (heuristic)."""
@@ -643,7 +1174,7 @@ class ExecutionEngine:
                 return True
         return False
 
-    async def _get_reconciled_plan(self, entity: HierarchicalEntity, input_data: dict) -> dict:
+    async def _get_reconciled_plan(self, run: ExecutionRun, entity: HierarchicalEntity, input_data: dict) -> dict:
         """Merges static and dynamic plans based on strategy."""
         import copy
         planning = entity.planning or {}
@@ -672,19 +1203,58 @@ class ExecutionEngine:
             return static_plan
 
         # Generate dynamic plan via LLM
-        print(f"Generating dynamic plan for {entity.name} with input: {input_data}")
+        logger.info(f"Generating dynamic plan for {entity.name} with input keys: {list(input_data.keys())}")
         
         # 1. Prepare planning prompt
-        goal = input_data.get("input") or str(input_data)
-        context = {
-            "entity_name": entity.name,
-            "entity_description": entity.description,
-            "goal": goal,
-            "tools": [t.get("tool_id", t.get("name")) for t in entity.capabilities.get("tools", [])] if entity.capabilities else []
+        # Extract user-provided input (strip internal keys)
+        user_input = input_data.get("input") or {
+            k: v for k, v in input_data.items()
+            if k not in ("__memory__", "company_id", "user_id")
         }
+        if isinstance(user_input, dict):
+            user_input = json.dumps(user_input, default=str)
+            
+        entity_goal = entity.goal or ""
+        entity_identity = entity.identity or {}
+        entity_system_prompt = entity_identity.get("system_prompt", "")
         
+        tools_list = [t.get("tool_id", t.get("name")) for t in entity.capabilities.get("tools", [])] if entity.capabilities else []
+        
+        # Build a lookup of CHILD_ENTITY_INVOCATION steps from the static plan.
+        # LLM-generated dynamic plans cannot produce valid entity_ids, so we
+        # must preserve them from the static plan and re-inject after planning.
+        static_child_invocations = {}  # name -> step dict
+        for s in static_plan.get("steps", []):
+            if s.get("type") == "CHILD_ENTITY_INVOCATION":
+                static_child_invocations[s.get("name", "")] = s
+
+        # Include static plan steps as a reference for the planner
+        static_steps_ref = ""
+        if static_plan.get("steps"):
+            static_steps_ref = "\n\n## Reference Plan (use as guidance)\n"
+            for s in static_plan["steps"]:
+                step_type = s.get('type', '?')
+                tool_ref = s.get('target', {}).get('tool_id', 'N/A')
+                entity_ref = s.get('target', {}).get('entity_id', '')
+                extra = f", entity_id: {entity_ref}" if entity_ref else ""
+                static_steps_ref += f"- Step {s.get('order', '?')}: {s.get('name', 'unnamed')} (type: {step_type}, tool: {tool_ref}{extra}) — {s.get('description', '')}\n"
+            if static_child_invocations:
+                static_steps_ref += "\nIMPORTANT: Steps of type CHILD_ENTITY_INVOCATION MUST be preserved exactly as shown above. Keep their name, type, and entity_id unchanged.\n"
+        
+        custom_planning = dynamic_config.get("planning_prompt", "")
         system_prompt = DYNAMIC_PLANNER_PROMPT
-        user_prompt = f"Goal: {goal}\n\nAvailable Tools: {context['tools']}\n\nGenerate the execution plan."
+        if custom_planning:
+            system_prompt += f"\n\n## Additional Planning Instructions\n{custom_planning}"
+        if entity_system_prompt:
+            system_prompt += f"\n\n## Agent Instructions (from system prompt)\n{entity_system_prompt}"
+            
+        user_prompt = f"Entity: {entity.name}\n"
+        if entity_goal:
+            user_prompt += f"Agent Goal: {entity_goal}\n"
+        user_prompt += f"User Input: {user_input}\n"
+        user_prompt += f"Available Tools: {tools_list}\n"
+        user_prompt += static_steps_ref
+        user_prompt += "\nGenerate the execution plan. Make sure to use ALL relevant tools to accomplish the full goal."
         
         # 2. Call Planar LLM
         # Use a reasoning model if available for better planning
@@ -698,6 +1268,22 @@ class ExecutionEngine:
                 user_prompt=user_prompt,
                 temperature=0.4
             )
+            
+            # Log planner LLM interaction and usage
+            planner_log = LLMInteractionLog(
+                run_id=run.id,
+                model_provider=plan_result_resp.provider,
+                model_name=plan_result_resp.model_name,
+                input_prompt=f"System: {system_prompt[:2000]}\nUser: {user_prompt[:2000]}",
+                output_response=plan_result_resp.output[:2000] if plan_result_resp.output else "",
+                prompt_tokens=plan_result_resp.prompt_tokens,
+                completion_tokens=plan_result_resp.completion_tokens,
+                latency_ms=plan_result_resp.latency_ms,
+                reasoning_mode="PLANNER",
+                step_name="__planner__",
+            )
+            self.db.add(planner_log)
+            await self._log_usage(run, plan_result_resp.model_name, plan_result_resp.prompt_tokens, plan_result_resp.completion_tokens, planner_log)
             
             # 3. Parse and Validate Plan
             output_text = plan_result_resp.output
@@ -718,8 +1304,88 @@ class ExecutionEngine:
                 # Ensure GUID step_ids
                 if not s.get("step_id"):
                     s["step_id"] = f"step_{i+1}_{str(uuid4())[:8]}"
+
+                # Sanitize target.prompt_template: LLM may emit it as a dict
+                target = s.get("target")
+                if isinstance(target, dict):
+                    pt = target.get("prompt_template")
+                    if isinstance(pt, (dict, list)):
+                        target["prompt_template"] = json.dumps(pt, default=str)
+
+                # Hoist top-level input_dependencies into target (LLM sometimes
+                # puts them at step level instead of inside target)
+                if "input_dependencies" in s and "target" not in s:
+                    s["target"] = {"input_dependencies": s.pop("input_dependencies")}
+                elif "input_dependencies" in s and isinstance(s.get("target"), dict):
+                    s["target"].setdefault("input_dependencies", s.pop("input_dependencies"))
+
                 valid_steps.append(s)
-                
+            
+            # ── Reconcile CHILD_ENTITY_INVOCATION steps ──────────────────
+            # The LLM cannot generate valid entity_ids, so we must inject
+            # them from the static plan's CHILD_ENTITY_INVOCATION steps.
+            if static_child_invocations:
+                seen_invocations = set()
+                for s in valid_steps:
+                    if s.get("type") == "CHILD_ENTITY_INVOCATION":
+                        step_name = s.get("name", "")
+                        # Try exact name match first
+                        matched_static = static_child_invocations.get(step_name)
+                        # Fuzzy match: compare lowercase/stripped names
+                        if not matched_static:
+                            for sn, sv in static_child_invocations.items():
+                                if sn.lower().strip() in step_name.lower().strip() or \
+                                   step_name.lower().strip() in sn.lower().strip():
+                                    matched_static = sv
+                                    step_name = sn  # Use the canonical name for tracking
+                                    break
+                        if matched_static:
+                            # Inject the entity_id from the static plan
+                            static_target = matched_static.get("target", {})
+                            if not s.get("target"):
+                                s["target"] = {}
+                            s["target"]["entity_id"] = static_target.get("entity_id")
+                            # Preserve prompt_template and dependencies if LLM didn't provide them
+                            if not s["target"].get("prompt_template") and static_target.get("prompt_template"):
+                                s["target"]["prompt_template"] = static_target["prompt_template"]
+                            if not s["target"].get("input_dependencies") and static_target.get("input_dependencies"):
+                                s["target"]["input_dependencies"] = static_target["input_dependencies"]
+                            seen_invocations.add(step_name)
+                        else:
+                            logger.warning(
+                                f"Dynamic plan has CHILD_ENTITY_INVOCATION step '{step_name}' "
+                                f"with no matching static step — entity_id will be missing."
+                            )
+
+                # Inject any missing CHILD_ENTITY_INVOCATION steps that
+                # the LLM dropped entirely.  Insert them at the correct
+                # position based on their original order.
+                missing = {
+                    name: step for name, step in static_child_invocations.items()
+                    if name not in seen_invocations
+                }
+                if missing:
+                    logger.info(
+                        f"Re-injecting {len(missing)} dropped CHILD_ENTITY_INVOCATION "
+                        f"steps from static plan: {list(missing.keys())}"
+                    )
+                    for name, static_step in sorted(
+                        missing.items(), key=lambda x: x[1].get("order", 999)
+                    ):
+                        import copy as _copy
+                        injected = _copy.deepcopy(static_step)
+                        if not injected.get("step_id"):
+                            injected["step_id"] = f"static_inject_{str(uuid4())[:8]}"
+                        # Insert at the position matching the original order
+                        target_order = injected.get("order", 999)
+                        insert_idx = len(valid_steps)
+                        for idx, vs in enumerate(valid_steps):
+                            if vs.get("order", 999) > target_order:
+                                insert_idx = idx
+                                break
+                        valid_steps.insert(insert_idx, injected)
+            # ─────────────────────────────────────────────────────────────
+
             return {"steps": valid_steps}
             
         except Exception as e:
@@ -730,26 +1396,69 @@ class ExecutionEngine:
     async def _execute_step(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         """Routes execution to specific step handler."""
         if step.type == StepType.CHILD_ENTITY_INVOCATION:
-            return await self._execute_child_invocation(run, step, context)
+            return await self._execute_child_invocation(run, entity, step, context)
         elif step.type == StepType.TOOL_CALL:
             return await self._execute_tool_call(run, entity, step, context)
         elif step.type == StepType.THOUGHT or step.type == StepType.ACTION:
             return await self._execute_thought(run, entity, step, context)
         return {"error": "Unknown step type"}
 
-    async def _execute_child_invocation(self, run: ExecutionRun, step: PlanStep, context: dict) -> dict:
+    async def _execute_child_invocation(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         entity_id = step.target.entity_id if step.target else None
+
+        # ── Fallback: resolve entity_id from parent entity's hierarchy ──
+        # If the dynamic planner dropped the entity_id, look it up from the
+        # parent entity's hierarchy.children or planning.static_plan.steps.
+        if not entity_id and entity:
+            # Strategy 1: Match by step name against static plan steps
+            planning = entity.planning or {}
+            static_steps = (planning.get("static_plan") or {}).get("steps", [])
+            for ss in static_steps:
+                if ss.get("type") == "CHILD_ENTITY_INVOCATION" and \
+                   ss.get("name", "").lower().strip() == (step.name or "").lower().strip():
+                    entity_id = ss.get("target", {}).get("entity_id")
+                    if entity_id:
+                        logger.info(f"Resolved entity_id {entity_id} for step '{step.name}' from static plan")
+                        break
+
+            # Strategy 2: Match by order index against hierarchy children
+            if not entity_id:
+                hierarchy = entity.hierarchy or {}
+                children = hierarchy.get("children", [])
+                # Find which CHILD_ENTITY_INVOCATION step index this is
+                # (0-based among all child invocation steps)
+                invocation_steps = [
+                    ss for ss in static_steps
+                    if ss.get("type") == "CHILD_ENTITY_INVOCATION"
+                ]
+                for idx, inv_step in enumerate(invocation_steps):
+                    if inv_step.get("name", "").lower().strip() == (step.name or "").lower().strip():
+                        if idx < len(children):
+                            entity_id = children[idx].get("child_id")
+                            logger.info(f"Resolved entity_id {entity_id} for step '{step.name}' from hierarchy children[{idx}]")
+                        break
+
         if not entity_id:
             raise Exception(f"Child invocation missing entity_id for step {step.name}")
         
+        # Ensure entity_id is a UUID
+        if isinstance(entity_id, str):
+            entity_id = UUID(entity_id)
+
+        # Fix E: Propagate CORTEX tree ID so all entities share one tree
+        child_input = dict(context)
+        if "__cortex_tree_id__" in context:
+            child_input["cortex_tree_id"] = context["__cortex_tree_id__"]
+            logger.info(f"Propagating CORTEX tree {context['__cortex_tree_id__']} to child entity {entity_id}")
+
         # Create Child Run
         child_run = ExecutionRun(
             company_id=run.company_id,
             user_id=run.user_id,
-            entity_id=step.target.entity_id,
+            entity_id=entity_id,
             parent_run_id=run.id,
             trace_id=run.trace_id,
-            input_data=context,
+            input_data=child_input,
             status=RunStatus.PENDING
         )
         self.db.add(child_run)
@@ -764,7 +1473,18 @@ class ExecutionEngine:
         run.total_tokens += child_run.total_tokens or 0
         await self.db.commit()
         
-        return {"step": step.name, "output": child_result.get("output"), "child_run_id": str(child_run.id)}
+        # Fix B: Accumulate ALL child step outputs (not just the last one)
+        # The director produces ~69KB across 8 steps but previously only the
+        # last step's 16KB reached the synthesizer. Now all outputs are passed.
+        all_step_outputs = child_result.get("steps", [])
+        accumulated_output = "\n\n---\n\n".join(
+            f"## {s.get('step', 'Unknown')}\n{s.get('output', '')}"
+            for s in all_step_outputs
+            if s.get("output")
+        )
+        # Fallback to last step output if steps array is empty
+        final_output = accumulated_output or child_result.get("output", "")
+        return {"step": step.name, "output": final_output, "child_run_id": str(child_run.id)}
 
     async def _execute_tool_call(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         tool_id = step.target.tool_id if step.target else None
@@ -774,7 +1494,38 @@ class ExecutionEngine:
         start_time = datetime.utcnow()
         try:
             # Prepare inputs from context/variables
-            raw_input = context.get("input") or str(context) # Fallback
+            # Internal keys that should never be passed as tool input
+            _INTERNAL_KEYS = {"__memory__", "__cortex_viewport__", "__cortex_tree_id__", "__cortex_cursor__", "tool_call_counts", "company_id", "user_id"}
+            raw_input = None
+
+            # 1. If the step has a prompt_template, use variable substitution
+            if step.target and step.target.prompt_template:
+                raw_input = parse_variables(step.target.prompt_template, context)
+                # If unresolved {{...}} patterns remain after substitution,
+                # the planner used variable names that don't match context keys.
+                # Fall back to context-based input resolution instead of
+                # sending the literal template string (e.g. "{{url_from_step_2}}")
+                # to the tool.
+                if re.search(r'\{\{.+?\}\}', raw_input):
+                    print(f"  Warning: Unresolved variables in tool input after parsing: {raw_input[:200]}")
+                    raw_input = None  # trigger fallback below
+
+            # 2. Fallback: use context data
+            if raw_input is None:
+                if context.get("input"):
+                    raw_input = context["input"]
+                else:
+                    user_ctx = {k: v for k, v in context.items() if k not in _INTERNAL_KEYS}
+                    # Prefer the most recent step output (last key that looks like step data)
+                    step_keys = [k for k in user_ctx if k.startswith("step_") or "step" in k.lower()]
+                    if step_keys:
+                        raw_input = str(user_ctx[step_keys[-1]])
+                    elif len(user_ctx) == 1:
+                        raw_input = str(next(iter(user_ctx.values())))
+                    elif user_ctx:
+                        raw_input = json.dumps(user_ctx, default=str)
+                    else:
+                        raw_input = ""
             
             extra_context = {
                 **context,
@@ -783,43 +1534,92 @@ class ExecutionEngine:
             }
                 
             result = await ToolExecutor.execute_tools([{"tool": tool_id, "input": raw_input}], extra_context=extra_context)
-            tool_result = result[0]
+            tool_result = result[0]  # ToolResult dataclass (P3.2)
+
+            # ── Self-Healing Retry: If the tool failed due to a FORMAT error,
+            # ask the LLM to reformat the input and retry once. ────────────
+            # Only triggers on parsing/formatting errors, not infrastructure
+            # failures (missing API key, network timeout, etc.).
+            _FORMAT_ERROR_KEYWORDS = {"invalid json", "json", "parse", "format", "delimiter", "control character", "expecting", "decode"}
+            tool_output_str = str(tool_result.output).lower()
+            
+            if self._is_format_error(tool_output_str, _FORMAT_ERROR_KEYWORDS):
+                print(f"  🔄 Tool '{tool_id}' returned format error. Attempting LLM reformat...")
+                reformatted_input = await self._reformat_tool_input(
+                    run=run,
+                    entity=entity,
+                    tool_id=tool_id,
+                    original_input=raw_input,
+                    error_message=str(tool_result.output),
+                    step_description=step.description or step.name,
+                )
+                if reformatted_input and reformatted_input != raw_input:
+                    print(f"  🔄 Retrying tool '{tool_id}' with reformatted input ({len(reformatted_input)} chars)")
+                    retry_result = await ToolExecutor.execute_tools(
+                        [{"tool": tool_id, "input": reformatted_input}],
+                        extra_context=extra_context,
+                    )
+                    retry_tool_result = retry_result[0]
+                    # Use retry result if it succeeded or at least produced different output
+                    retry_output_str = str(retry_tool_result.output).lower()
+                    if not self._is_format_error(retry_output_str, _FORMAT_ERROR_KEYWORDS):
+                        print(f"  ✅ Retry succeeded for tool '{tool_id}'")
+                        tool_result = retry_tool_result
+                    else:
+                        print(f"  ❌ Retry also failed for tool '{tool_id}', using original result")
+            # ─────────────────────────────────────────────────────────────
             
             latency = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             
-            # Log Tool Call
+            # Log Tool Call — tool_result is a ToolResult dataclass, not a dict
             log = ToolInteractionLog(
                 run_id=run.id,
                 tool_id=tool_id,
                 tool_name=tool_id,
                 input_parameters={"input": raw_input},
-                output_result=tool_result,
-                success=tool_result.get("success", False),
+                output_result=str(tool_result.output),
+                success=tool_result.success,
                 latency_ms=latency
             )
             self.db.add(log)
 
             # ── Track tool cost in run.total_cost_usd ────────────────────────────
-            # Look up cost for this tool from integration registry (service_sku == tool_id,
-            # or service_category == 'CUSTOM_API'). One API call counts as qty=1.
+            # Look up cost for this tool from integration registry.
+            # Match by: service_sku for the tool directly, or by specific
+            # service_sku values known to correspond to this tool's backend.
+            # Excludes LLM entries to avoid cross-contamination.
             try:
                 from src.config.models import IntegrationRegistry as _IR
                 from sqlalchemy import select as _sel, or_ as _or
                 from decimal import Decimal as _Dec
+                # Map built-in tool IDs → known integration registry service_skus
+                _TOOL_SKU_MAP = {
+                    "web_search": ["serp-api-key"],
+                    "scraper_tool": ["firecrawl"],
+                    "headless_browser": ["headless-browser"],
+                    "pdf_generator": ["pdf-generator"],
+                }
+                _sku_matches = _TOOL_SKU_MAP.get(tool_id, [])
+                _or_clauses = [
+                    _IR.service_sku == tool_id,
+                    _IR.service_category == "CUSTOM_API",
+                ]
+                for _sku in _sku_matches:
+                    _or_clauses.append(_IR.service_sku == _sku)
                 _ir_result = await self.db.execute(
                     _sel(_IR).where(
                         _IR.company_id == run.company_id,
-                        _or(
-                            _IR.service_sku == tool_id,
-                            _IR.service_category == "CUSTOM_API",
-                        ),
+                        _or(*_or_clauses),
                         _IR.status == "active",
+                        _IR.internal_cost.isnot(None),
+                        _IR.service_category != "LLM",  # Exclude LLM entries
                     ).limit(1)
                 )
                 _ir_entry = _ir_result.scalar_one_or_none()
                 if _ir_entry and _ir_entry.internal_cost:
                     _tool_cost = _Dec(str(_ir_entry.internal_cost))
                     run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tool_cost
+                    logger.info(f"Tool cost for '{tool_id}': ${_tool_cost} (via {_ir_entry.provider_name}/{_ir_entry.service_sku})")
                     # Log to usage_logs as well
                     from src.ai.models import UsageLog as _UL
                     self.db.add(_UL(
@@ -830,24 +1630,141 @@ class ExecutionEngine:
                         calculated_cost=_tool_cost,
                         log_metadata={"tool": tool_id, "latency_ms": latency},
                     ))
+                else:
+                    logger.warning(f"No cost entry found for tool '{tool_id}' — cost not tracked")
             except Exception as _ce:
-                print(f"Warning: Could not log tool cost for '{tool_id}': {_ce}")
+                logger.warning(f"Could not log tool cost for '{tool_id}': {_ce}")
             # ─────────────────────────────────────────────────────────────────────
 
             await self.db.commit()
             
-            return {"step": step.name, "output": tool_result.get("output")}
+            # ── CORTEX Knowledge Ingestion ─────────────────────────────
+            # When a scraper/browser tool runs during a CORTEX execution,
+            # also write the scraped content as a knowledge node in the
+            # CORTEX tree's knowledge subtree. This enables tree-based
+            # navigation of research sources.
+            if tool_id in ("scraper_tool", "headless_browser") and tool_result.success:
+                await self._ingest_tool_result_to_cortex(
+                    run=run,
+                    tool_id=tool_id,
+                    tool_output=tool_result.output,
+                    context=context,
+                )
+            # ───────────────────────────────────────────────────────────
+            
+            return {"step": step.name, "output": tool_result.output}
         except Exception as e:
             return {"step": step.name, "error": str(e), "success": False}
+
+    def _is_format_error(self, output_lower: str, keywords: set) -> bool:
+        """Check if a tool output indicates a formatting/parsing error (not infra)."""
+        # Must contain "error" to be an error at all
+        if '"error"' not in output_lower and 'error:' not in output_lower:
+            return False
+        # Exclude infrastructure errors that reformatting can't fix
+        _INFRA_KEYWORDS = {"api key", "not configured", "timeout", "connection", "unauthorized", "403", "401", "rate limit"}
+        if any(k in output_lower for k in _INFRA_KEYWORDS):
+            return False
+        # Check for format-related error keywords
+        return any(k in output_lower for k in keywords)
+
+    async def _reformat_tool_input(
+        self,
+        run: 'ExecutionRun',
+        entity: 'HierarchicalEntity',
+        tool_id: str,
+        original_input: str,
+        error_message: str,
+        step_description: str,
+    ) -> Optional[str]:
+        """
+        Ask the LLM to reformat tool input after a format error.
+
+        Provides the LLM with:
+          - The tool's expected JSON schema
+          - The original (malformed) input
+          - The exact error message from the tool
+          - The step's intent (description)
+
+        Returns the reformatted input string, or None if reformatting fails.
+        Capped cost: ~200–400 tokens (single fast LLM call).
+        """
+        try:
+            # Get the tool's expected input schema
+            tool_schemas = ToolExecutor.get_tool_schemas([tool_id])
+            schema_str = json.dumps(tool_schemas[0], indent=2) if tool_schemas else f"Tool '{tool_id}' expects a JSON object."
+
+            system_prompt = (
+                "You are a JSON formatting assistant. A tool call failed because "
+                "the input was malformed. Your ONLY job is to reformat the input "
+                "into valid JSON that matches the tool's expected schema.\n\n"
+                "Rules:\n"
+                "- Output ONLY the corrected JSON. No explanation, no markdown fences.\n"
+                "- Escape all special characters properly (newlines as \\n, tabs as \\t).\n"
+                "- Do NOT change the semantic content — only fix the formatting.\n"
+                "- If the input is a list of items but the tool expects a single item, "
+                "  wrap the first item in the correct schema format."
+            )
+
+            user_prompt = (
+                f"## Tool Schema\n```json\n{schema_str}\n```\n\n"
+                f"## Step Intent\n{step_description}\n\n"
+                f"## Original Input (malformed)\n```\n{original_input[:3000]}\n```\n\n"
+                f"## Error from Tool\n{error_message}\n\n"
+                f"Reformat the input to match the tool's expected JSON schema. "
+                f"Output ONLY the corrected JSON:"
+            )
+
+            llm_router = LLMRouter(db=self.db, company_id=entity.company_id)
+            resp = await llm_router.call_llm(
+                task_type="text_generation",
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.1,  # Low temperature for deterministic formatting
+                max_tokens=4000,
+            )
+
+            # Log the reformat LLM call for billing transparency
+            reformat_log = LLMInteractionLog(
+                run_id=run.id,
+                model_provider=resp.provider,
+                model_name=resp.model_name,
+                input_prompt=f"[REFORMAT] Tool: {tool_id}",
+                output_response=resp.output[:500] if resp.output else "",
+                prompt_tokens=resp.prompt_tokens,
+                completion_tokens=resp.completion_tokens,
+                latency_ms=resp.latency_ms,
+                reasoning_mode="REFORMAT",
+                step_name=step.name if step else "__reformat__",
+            )
+            self.db.add(reformat_log)
+            await self._log_usage(run, resp.model_name, resp.prompt_tokens, resp.completion_tokens, reformat_log)
+
+            reformatted = resp.output.strip()
+
+            # Strip markdown fences if the LLM wrapped the output
+            if reformatted.startswith("```"):
+                lines = reformatted.split("\n")
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                reformatted = "\n".join(lines).strip()
+
+            print(f"  🔄 LLM reformatted tool input: {reformatted[:200]}...")
+            return reformatted
+
+        except Exception as e:
+            print(f"  ⚠️ LLM reformat failed: {e}")
+            return None
 
     async def _execute_thought(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         """Execute a THOUGHT or ACTION step using the model-agnostic LLMRouter."""
         print(f"Executing Thought/Action step: {step.name}")
         logic_gate = entity.logic_gate or {}
-        config = logic_gate.get("reasoning_config", {})
+        config = logic_gate.get("reasoning_config") or {}
 
         # Resolve task_type from entity config (new model-agnostic field)
         task_type = config.get("task_type", "text_generation")
+        # Fix D: Allow entity-level model override (e.g. Pro for synthesizer)
+        model_override = config.get("model_name")
 
         # Filter and optionally summarize context
         filtered_context = filter_context_for_step(step, context, logic_gate.get("context_policy"))
@@ -867,7 +1784,7 @@ class ExecutionEngine:
         entity_goal = entity.goal or ""
         io_contract = entity.io_contract or {}
         output_schema = io_contract.get("output_schema")
-        review_config = logic_gate.get("review_mechanism", {})
+        review_config = logic_gate.get("review_mechanism") or {}
         success_criteria = review_config.get("success_criteria") if review_config.get("enabled") else None
         planning = entity.planning or {}
         dynamic_config = planning.get("dynamic_planning", {})
@@ -876,7 +1793,7 @@ class ExecutionEngine:
 
         # Build execution constraints dict
         exec_constraints = {}
-        exec_limits = governance.get("execution_limits", {})
+        exec_limits = governance.get("execution_limits") or {}
         max_tool_calls = exec_limits.get("max_tool_calls")
         if max_tool_calls:
             used = sum(context.get('tool_call_counts', {}).values())
@@ -914,10 +1831,37 @@ class ExecutionEngine:
         reasoning_mode = config.get("reasoning_mode", "REACT")
 
         input_vars = {**filtered_context}
-        user_prompt = step.target.prompt_template if step.target and step.target.prompt_template else "{{input}}"
-        user_prompt = parse_variables(user_prompt, input_vars)
+        raw_template = step.target.prompt_template if step.target and step.target.prompt_template else "{{input}}"
+        user_prompt = parse_variables(raw_template, input_vars)
 
-        print(f"  Routing via LLMRouter → task_type={task_type}, reasoning_mode={reasoning_mode}")
+        # ── Enrich user prompt with prior step context ──────────────────────
+        # Dynamic-plan THOUGHT/ACTION steps often have descriptions like
+        # "Extract URLs from search results" but no explicit {{step_1.output}}
+        # in their prompt_template.  Without appending the actual context data,
+        # the LLM receives the instruction but none of the data to work with.
+        _INTERNAL_KEYS = {"__memory__", "__cortex_viewport__", "__cortex_tree_id__", "__cortex_knowledge__", "__cortex_cursor__", "tool_call_counts", "company_id", "user_id", "input", "cortex_tree_id", "subtree_root_id"}
+        step_outputs = {
+            k: v for k, v in filtered_context.items()
+            if k not in _INTERNAL_KEYS and v  # skip empty/None
+        }
+        if step_outputs:
+            context_block = "\n\n## Available Context from Previous Steps\n"
+            for ctx_key, ctx_val in step_outputs.items():
+                val_str = str(ctx_val)
+                # Truncate very large values to avoid overwhelming the prompt
+                if len(val_str) > 6000:
+                    val_str = val_str[:6000] + "\n... (truncated)"
+                context_block += f"\n### {ctx_key}\n{val_str}\n"
+            user_prompt += context_block
+
+        # Also include the step description as task instruction if it's not
+        # already the prompt (i.e., when prompt_template was a {{variable}} reference)
+        if step.description and step.description not in user_prompt:
+            user_prompt = f"## Current Task\n{step.description}\n\n{user_prompt}"
+
+        print(f"  Routing via LLMRouter → task_type={task_type}, reasoning_mode={reasoning_mode}, model_override={model_override}")
+        # Inject model_override into config so reasoning methods can forward it
+        config["__model_override"] = model_override
 
         # Common tool executor setup
         extra_context = {
@@ -951,6 +1895,14 @@ class ExecutionEngine:
                     ))
                     all_tool_results.append(_tr.to_dict())
                     results.append({"tool": _tr.tool, "output": _tr.output, "success": _tr.success})
+                    # CORTEX: ingest scraper/browser results as knowledge nodes
+                    if _tr.tool in ("scraper_tool", "headless_browser") and _tr.success:
+                        await self._ingest_tool_result_to_cortex(
+                            run=run,
+                            tool_id=_tr.tool,
+                            tool_output=_tr.output,
+                            context=context,
+                        )
             return results
 
         llm_router = LLMRouter(db=self.db, company_id=run.company_id)
@@ -984,12 +1936,20 @@ class ExecutionEngine:
                 temperature=config.get("temperature", 0.7),
                 max_tokens=config.get("max_tokens"),
                 max_react_turns=12,
+                model_override=model_override,
             )
             output = response.output
 
-        # If tools ran but LLM gave no final summary, format results
-        if all_tool_results and not output.strip():
-            output = ToolExecutor.format_tool_results(all_tool_results)
+        # If tools ran, always append a structured summary of tool results
+        # so downstream consumers (critic, context) see the full picture.
+        if all_tool_results:
+            tool_summary = ToolExecutor.format_tool_results(all_tool_results)
+            if not output.strip():
+                # LLM gave no final text — use tool results as the output
+                output = tool_summary
+            else:
+                # LLM DID produce analysis text — append tool results as reference
+                output = output + "\n\n=== Tool Execution Results ===\n" + tool_summary
 
         # Detect UncertaintySignal from LLM output
         if output and '"needs_clarification": true' in output.lower():
@@ -1011,12 +1971,13 @@ class ExecutionEngine:
             run_id=run.id,
             model_provider=response.provider,
             model_name=response.model_name,
-            input_prompt=f"System: {full_system_prompt[:500]}\nUser: {user_prompt[:500]}",
+            input_prompt=f"System: {full_system_prompt[:2000]}\nUser: {user_prompt[:2000]}",
             output_response=output,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
             latency_ms=response.latency_ms,
             reasoning_mode=reasoning_mode,
+            step_name=step.name,
         )
         self.db.add(log)
 
@@ -1055,6 +2016,7 @@ Step 2: [your analysis]
             temperature=config.get("temperature", 0.5),
             max_tokens=config.get("max_tokens"),
             max_react_turns=12,
+            model_override=config.get("__model_override"),
         )
 
         output = response.output
@@ -1069,6 +2031,7 @@ Step 2: [your analysis]
                                    task_type, config, tool_schemas, execute_tool_fn):
         """REFLECTION: Three-phase generate → critique → improve cycle."""
         # Phase 1: Initial generation
+        _model_ovr = config.get("__model_override")
         initial_response = await llm_router.call_llm_react(
             task_type=task_type,
             system_prompt=system_prompt,
@@ -1078,6 +2041,7 @@ Step 2: [your analysis]
             temperature=config.get("temperature", 0.7),
             max_tokens=config.get("max_tokens"),
             max_react_turns=12,
+            model_override=_model_ovr,
         )
         initial_output = initial_response.output
 
@@ -1095,6 +2059,7 @@ Step 2: [your analysis]
             user_prompt=critique_prompt,
             temperature=0.3,
             max_tokens=config.get("max_tokens"),
+            model_override=_model_ovr,
         )
 
         # Phase 3: Improved version
@@ -1112,6 +2077,7 @@ Step 2: [your analysis]
             user_prompt=improve_prompt,
             temperature=config.get("temperature", 0.5),
             max_tokens=config.get("max_tokens"),
+            model_override=_model_ovr,
         )
 
         # Aggregate token counts for accurate billing
@@ -1132,6 +2098,7 @@ Step 2: [your analysis]
                                          task_type, config, tool_schemas, execute_tool_fn):
         """TREE_OF_THOUGHTS: Generate N candidate paths in parallel, score, select best."""
         num_paths = config.get("tot_num_paths", 3)
+        _model_ovr = config.get("__model_override")
 
         # Phase 1: Generate N candidate responses in parallel with higher temperature
         async def _generate_candidate(i):
@@ -1141,6 +2108,7 @@ Step 2: [your analysis]
                 user_prompt=user_prompt,
                 temperature=min(config.get("temperature", 0.7) + 0.2, 1.0),
                 max_tokens=config.get("max_tokens"),
+                model_override=_model_ovr,
             )
 
         candidates = await asyncio.gather(*[_generate_candidate(i) for i in range(num_paths)])
@@ -1164,6 +2132,7 @@ Step 2: [your analysis]
             user_prompt=scoring_prompt,
             temperature=0.2,
             max_tokens=1000,
+            model_override=_model_ovr,
         )
 
         # Parse scoring to find best candidate
@@ -1211,6 +2180,8 @@ Step 2: [your analysis]
         input_sku = f"{model_name}-in" if model_name else "unknown-in"
         output_sku = f"{model_name}-out" if model_name else "unknown-out"
 
+        logger.debug(f"Logging LLM usage: model={model_name}, in={prompt_tokens}, out={completion_tokens}")
+
         input_usage = await self.usage_service.log_usage(
             company_id=run.company_id,
             service_sku=input_sku,
@@ -1225,22 +2196,37 @@ Step 2: [your analysis]
             execution_id=run.id
         )
 
+        # Ensure null-safe accumulation
+        if run.total_cost_usd is None:
+            run.total_cost_usd = Decimal("0")
+        if log.cost_usd is None:
+            log.cost_usd = Decimal("0")
+        if run.total_tokens is None:
+            run.total_tokens = 0
+
         if input_usage:
             log.cost_usd += input_usage.calculated_cost
             run.total_cost_usd += input_usage.calculated_cost
+            logger.info(f"LLM input cost ({input_sku}): {prompt_tokens} tokens → ${input_usage.calculated_cost}")
+        else:
+            logger.warning(f"No registry entry for SKU '{input_sku}' — input cost not tracked")
 
         if output_usage:
             log.cost_usd += output_usage.calculated_cost
             run.total_cost_usd += output_usage.calculated_cost
+            logger.info(f"LLM output cost ({output_sku}): {completion_tokens} tokens → ${output_usage.calculated_cost}")
+        else:
+            logger.warning(f"No registry entry for SKU '{output_sku}' — output cost not tracked")
 
         run.total_tokens += (prompt_tokens + completion_tokens)
+        logger.info(f"Run total cost so far: ${run.total_cost_usd}, total tokens: {run.total_tokens}")
 
     async def _maybe_summarize_context(self, run, entity, context_state: dict) -> dict:
         """Smartly trim context if it exceeds threshold, preserving critical keys."""
         if not entity.logic_gate:
             return context_state
 
-        context_policy = entity.logic_gate.get("context_policy", {})
+        context_policy = (entity.logic_gate or {}).get("context_policy") or {}
         threshold = context_policy.get("summarize_threshold", 20000)
 
         context_str = json.dumps(context_state, default=str)
@@ -1289,9 +2275,9 @@ Step 2: [your analysis]
         print(f"  Context trimmed {len(context_str)} -> {len(final_str)} chars.")
         return trimmed
 
-    async def _review_step_output(self, run, entity, step, result) -> dict:
+    async def _review_step_output(self, run, entity, step, result, context_state: dict = None) -> dict:
         """Self-critique review mechanism with retry logic."""
-        review_config = entity.logic_gate.get("review_mechanism", {})
+        review_config = (entity.logic_gate or {}).get("review_mechanism") or {}
         if not review_config.get("enabled"):
             return result
         
@@ -1299,15 +2285,64 @@ Step 2: [your analysis]
         if "error" in result:
             return result
 
-        max_retries = entity.logic_gate.get("retry_policy", {}).get("max_retries", 3)
-        review_prompt = review_config.get("review_prompt") or DEFAULT_REVIEW_PROMPT
+        max_retries = ((entity.logic_gate or {}).get("retry_policy") or {}).get("max_retries", 3)
+
+        # Fix 4 (Option A): Cap retries for expensive reasoning modes.
+        # REFLECTION steps are 2-3x more expensive per retry (~90s each);
+        # burning 3 retries can consume the entire execution budget.
+        step_reasoning = getattr(step.target, 'reasoning_mode', None) if step.target else None
+        if not step_reasoning:
+            # Fall back to entity-level reasoning mode
+            step_reasoning = ((entity.logic_gate or {}).get("reasoning_config") or {}).get("reasoning_mode", "")
+        if str(step_reasoning).upper() == "REFLECTION" and max_retries > 1:
+            max_retries = 1
+            logger.info(f"Capped retries to {max_retries} for REFLECTION step '{step.name}'")
+
+        custom_criteria = review_config.get("review_prompt", "")
+        if custom_criteria:
+            review_prompt = DEFAULT_REVIEW_PROMPT + f"\n\n## Additional Review Criteria\nAlso evaluate the output against these criteria:\n{custom_criteria}"
+        else:
+            review_prompt = DEFAULT_REVIEW_PROMPT
+
+        # Critic strictness: 'strict' (default) or 'lenient'.
+        # In lenient mode, the critic passes if tools executed successfully
+        # and the step produced meaningful content, even if not all
+        # deliverables in the description are fully covered.
+        critic_strictness = review_config.get("critic_strictness", "strict")
         
         # Get independent API key for critic
         # Use entity's reasoning config or LLM config
-        config = logic_gate.get("reasoning_config") or {}
+        config = (entity.logic_gate or {}).get("reasoning_config") or {}
         task_type = config.get("task_type", "text_generation")
         
         current_result = result
+
+        # Lenient early-pass: if the step produced non-trivial output
+        # and no error was raised, skip the expensive critic LLM call.
+        if critic_strictness == "lenient":
+            step_output = current_result.get("output", "")
+            has_meaningful_output = len(str(step_output)) > 200  # not empty/tiny
+            has_no_error = "error" not in str(step_output).lower()[:100]
+            if has_meaningful_output and has_no_error:
+                logger.info(f"Lenient critic: passing step '{step.name}' (output={len(str(step_output))} chars)")
+                return current_result
+
+        # Budget guard: skip expensive retries if the run has consumed
+        # too much wall-clock time (>80% of the job timeout).
+        # Read per-entity timeout from config; fall back to global ceiling.
+        entity_timeout = (
+            (entity.logic_gate or {}).get("reasoning_config", {})
+            .get("max_execution_time_seconds", 3600)
+        )
+        MAX_RUN_SECONDS = min(int(entity_timeout), 7200)  # capped at global ceiling
+        BUDGET_PCT = 0.80
+        elapsed = (datetime.utcnow() - run.started_at).total_seconds() if run.started_at else 0
+        if elapsed > MAX_RUN_SECONDS * BUDGET_PCT:
+            logger.warning(
+                f"Skipping critic review for step '{step.name}' — "
+                f"run has consumed {elapsed:.0f}s / {MAX_RUN_SECONDS}s budget"
+            )
+            return current_result
         
         for attempt in range(max_retries):
             print(f"Running Review/Critic Attempt {attempt+1}/{max_retries} for step {step.name}")
@@ -1327,6 +2362,23 @@ Step 2: [your analysis]
                 temperature=0.2,
             )
             critique_text = critic_resp.output
+            
+            # Log critic LLM interaction and usage
+            critic_log = LLMInteractionLog(
+                run_id=run.id,
+                model_provider=critic_resp.provider,
+                model_name=critic_resp.model_name,
+                input_prompt=f"System: {review_prompt[:2000]}\nUser: {critic_input[:2000]}",
+                output_response=critique_text[:2000] if critique_text else "",
+                prompt_tokens=critic_resp.prompt_tokens,
+                completion_tokens=critic_resp.completion_tokens,
+                latency_ms=critic_resp.latency_ms,
+                reasoning_mode="CRITIC",
+                step_name=step.name,
+            )
+            self.db.add(critic_log)
+            await self._log_usage(run, critic_resp.model_name, critic_resp.prompt_tokens, critic_resp.completion_tokens, critic_log)
+            
             passed = False
             reason = ""
             suggestion = ""
@@ -1362,7 +2414,7 @@ Step 2: [your analysis]
                 
                 # Simplified Retry: Re-run the step with feedback in context
                 # NOTE: This recursively calls _execute_step's logic
-                retry_context = copy.deepcopy(run.context_state or {})
+                retry_context = copy.deepcopy(context_state if context_state is not None else run.context_state or {})
                 retry_context["input"] = (retry_context.get("input", "") + feedback)
                 
                 # We need to know which type of step it was to retry correctly
@@ -1489,11 +2541,72 @@ async def resume_execution(ctx: dict, run_id_str: str) -> dict:
     
     run_id = UUID(run_id_str)
     async with AsyncSessionLocal() as db:
-        # We need the redis pool from the Arq context
         redis = ctx.get('redis')
         engine = ExecutionEngine(db, redis)
         print(f"Resuming ExecutionRun: {run_id}")
         return await engine.execute_run(run_id)
+
+
+# ---------------------------------------------------------------------------
+# Gap #5: Scheduled CORTEX wake-ups — Arq cron job
+# ---------------------------------------------------------------------------
+async def cortex_resume_scheduled(ctx: dict) -> dict:
+    """
+    Periodic cron job that wakes up suspended CORTEX trees whose
+    next_resume_at timestamp has arrived. Creates a new execution run
+    for each tree and enqueues it.
+    """
+    from src.common.database import AsyncSessionLocal
+    from src.ai.cortex_models import CortexTree, CortexTreeStatus
+    from sqlalchemy import select
+
+    resumed = 0
+    try:
+        async with AsyncSessionLocal() as db:
+            # Find trees scheduled for resumption
+            result = await db.execute(
+                select(CortexTree).where(
+                    CortexTree.status == CortexTreeStatus.SUSPENDED,
+                    CortexTree.next_resume_at != None,
+                    CortexTree.next_resume_at <= datetime.utcnow(),
+                )
+            )
+            trees = result.scalars().all()
+
+            for tree in trees:
+                try:
+                    # Create a new execution run to resume this tree
+                    from src.ai.models import ExecutionRun
+                    resume_run = ExecutionRun(
+                        entity_id=tree.entity_id,
+                        company_id=tree.company_id,
+                        user_id=tree.user_id,
+                        input_data={"cortex_tree_id": str(tree.id)},
+                        status="PENDING",
+                    )
+                    db.add(resume_run)
+                    await db.flush()
+
+                    # Clear the schedule to prevent re-triggering
+                    tree.next_resume_at = None
+
+                    # Enqueue to Arq
+                    redis = ctx.get('redis')
+                    if redis:
+                        from arq.connections import ArqRedis
+                        arq = ArqRedis(redis)
+                        await arq.enqueue_job("execute_run", str(resume_run.id))
+                        resumed += 1
+                        print(f"CORTEX scheduled resume: tree {tree.id} → run {resume_run.id}")
+
+                except Exception as e:
+                    print(f"CORTEX scheduled resume failed for tree {tree.id}: {e}")
+
+            await db.commit()
+    except Exception as e:
+        print(f"CORTEX scheduled wake-up cron error: {e}")
+
+    return {"resumed": resumed}
 
 
 # ---------------------------------------------------------------------------
@@ -1577,9 +2690,15 @@ class WorkerSettings:
         execute_campaign_task,
         pause_campaign_task,
         stop_campaign_task,
-        resume_execution     # Ph-C: registered Arq job
+        resume_execution,
     ]
-    job_timeout = 1800  # 30 minutes for long research tasks
+    # Gap #5: Register CORTEX scheduled wake-up cron
+    cron_jobs = [
+        # Run every 5 minutes to check for scheduled tree resumptions
+        # arq expects: cron(coroutine, minute=set, hour=set, ...)
+    ]
+    
+    job_timeout = 7200  # 2-hour absolute ceiling; per-entity timeout via logic_gate config
     
     # Parse Redis URL from environment config
     @staticmethod
@@ -1592,3 +2711,12 @@ class WorkerSettings:
     _host, _port = _parse_redis_url.__func__()
     redis_settings = RedisSettings(host=_host, port=_port)
 
+
+# Register the cron job after class definition (arq pattern)
+try:
+    from arq.cron import cron
+    WorkerSettings.cron_jobs = [
+        cron(cortex_resume_scheduled, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
+    ]
+except ImportError:
+    pass  # arq.cron may not be available in all versions

@@ -205,7 +205,9 @@ class ToolExecutor:
                                 tool_input = json.dumps(input_dict)
                         except Exception:
                             pass
-                    output = await tool.run(tool_input)
+                    # Use run_with_context to pass execution context (company_id, user_id)
+                    # so tools can look up API keys from the integration registry
+                    output = await tool.run_with_context(tool_input, context=extra_context)
                     _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
                     results.append(ToolResult(
                         tool=call["tool"],

@@ -34,7 +34,8 @@ import {
     Route,
     ChevronDown,
     Brain,
-    Wrench
+    Wrench,
+    Layers
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import logo from '@/assets/logo.png';
@@ -70,6 +71,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             icon: Bot,
             items: [
                 { path: '/ai/entities', label: 'Entity Library', icon: BrainCircuit },
+                { path: '/ai/templates', label: 'Template Marketplace', icon: Layers },
                 { path: '/ai/approvals', label: 'Guardian Oversight', icon: ShieldCheck },
                 { path: '/ai/executions', label: 'Executions', icon: TerminalSquare },
                 { path: '/cortex', label: 'Memory Trees', icon: Brain },

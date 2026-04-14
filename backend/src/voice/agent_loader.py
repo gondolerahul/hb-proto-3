@@ -123,6 +123,14 @@ class AgentContextLoader:
         if not api_key:
             logger.warning(f"No API key found for agent {agent_id} (provider={provider}, model={model_name})")
         
+        # 8. Resolve Live model name for real-time audio
+        #    Check llm_config → capabilities → default
+        live_model = (
+            llm_config.get("live_model")
+            or llm_config.get("model")
+            or "gemini-3.1-flash-live-preview"
+        )
+        
         return AgentContext(
             agent_id=agent_id,
             system_instruction=system_instruction,

@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field, asdict
 
-from sqlalchemy import select, update, func, delete
+from sqlalchemy import select, update, func, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -39,6 +39,19 @@ from src.ai.cortex_models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Prompt text appended to every viewport so the LLM knows its operations
+# ---------------------------------------------------------------------------
+CORTEX_OPERATIONS_PROMPT = """## Available CORTEX Operations
+You can perform the following operations on the cognitive tree:
+  NAVIGATE(node_id) — Move your viewport to a node; see its title, summary, and children
+  READ(node_id, page=0) — Read the full content of a node (paged if large)
+  WRITE(parent_id, node_type, title, content, summary) — Create a new child node (finding, output, task)
+  RECURSE(node_id, task, result_slot) — Spawn a child execution scoped to a subtree
+  AWAIT_CHILDREN() — Wait for all child executions to complete and collect results
+  CHECKPOINT(progress_summary, key_facts, next_steps) — Save progress and compress context"""
+
 
 # ---------------------------------------------------------------------------
 # Data Transfer Objects
@@ -104,6 +117,9 @@ class Viewport:
         else:
             parts.append("## Children\n  (leaf node — no children)")
 
+        # Available operations (Gap #19)
+        parts.append(CORTEX_OPERATIONS_PROMPT)
+
         return "\n\n".join(parts)
 
 
@@ -153,9 +169,17 @@ class CortexRouter:
     DEFAULT_CONTEXT_BUDGET_PCT = 40
     CHARS_PER_TOKEN = 4  # rough approximation
 
-    def __init__(self, db: AsyncSession, company_id: UUID):
+    def __init__(
+        self,
+        db: AsyncSession,
+        company_id: UUID,
+        scoped_subtree_root_id: Optional[UUID] = None,
+    ):
         self.db = db
         self.company_id = company_id
+        # Gap #18: Subtree isolation — when set, all node access is restricted
+        # to descendants of this root. Used by child recursive executions.
+        self.scoped_subtree_root_id = scoped_subtree_root_id
 
     # ===================================================================
     # 1. TREE LIFECYCLE
@@ -405,10 +429,23 @@ class CortexRouter:
         Write a new child node. This is how the agent externalises ALL its outputs:
         findings, task plans, output sections, checkpoints.
         
+        Enforces tree invariants:
+          - Invariant 1: Parent must have a summary before it can have children
+          - Invariant 2: MAX_CHILDREN limit (triggers async re-clustering warning)
+          - Invariant 4: Content is write-once (enforced at data model level)
+        
         Returns new node's UUID.
         """
         parent = await self._get_node(parent_id)
         tree = await self._get_tree(parent.tree_id)
+
+        # ── Invariant 1: Summary Always Exists ────────────────────────
+        # Every node must have a summary before it can be a parent.
+        if not parent.summary:
+            raise ValueError(
+                f"Cannot write child under node {parent_id}: parent has no summary. "
+                f"Invariant 1 requires a summary before a node can have children."
+            )
 
         # Determine sibling order
         if sibling_order is None:
@@ -418,7 +455,7 @@ class CortexRouter:
             )
             sibling_order = result.scalar() + 1
 
-        # Enforce MAX_CHILDREN invariant
+        # ── Invariant 2: No Unbounded Viewports ──────────────────────
         child_count_result = await self.db.execute(
             select(func.count(CortexNode.id))
             .where(CortexNode.parent_id == parent_id)
@@ -427,10 +464,10 @@ class CortexRouter:
         if child_count >= tree.max_children:
             logger.warning(
                 f"Parent {parent_id} has {child_count} children (max {tree.max_children}). "
-                f"Re-clustering recommended."
+                f"Triggering async re-clustering."
             )
-            # For now we allow exceeding but log the warning.
-            # Future: trigger automatic re-clustering.
+            # Schedule async re-clustering (non-blocking)
+            await self._schedule_reclustering(parent_id, tree)
 
         # Map string to enum
         node_type_enum = CortexNodeType(node_type)
@@ -471,17 +508,22 @@ class CortexRouter:
         node_id: UUID,
         task: str,
         result_slot: str,
+        model_override: Optional[str] = None,
+        priority: int = 0,
         execution_run_id: Optional[UUID] = None,
-    ) -> UUID:
+    ) -> Tuple[UUID, Optional[UUID]]:
         """
         Spawn a child execution run scoped to a specific subtree.
         
         Creates a task node under the target subtree root, marking
         the child run's scope and task description.
         
-        Returns the task node ID that the child run should work on.
+        Returns tuple of (task_node_id, child_run_id or None).
+        The caller (worker.py) is responsible for actually enqueuing
+        the child run to Arq.
         """
         node = await self._get_node(node_id)
+        tree = await self._get_tree(node.tree_id)
 
         task_node_id = await self.write(
             parent_id=node_id,
@@ -496,11 +538,38 @@ class CortexRouter:
             status="pending",
             metadata_extra={
                 "result_slot": result_slot,
+                "model_override": model_override,
+                "priority": priority,
                 "execution_run_id": str(execution_run_id) if execution_run_id else None,
             },
         )
 
-        return task_node_id
+        # Create a child ExecutionRun if we have the models available
+        child_run_id = None
+        try:
+            from src.ai.models import ExecutionRun
+            child_run = ExecutionRun(
+                entity_id=tree.entity_id,
+                company_id=self.company_id,
+                parent_run_id=execution_run_id,
+                user_id=tree.user_id,
+                input_data={
+                    "cortex_tree_id": str(tree.id),
+                    "subtree_root_id": str(node_id),
+                    "task": task,
+                    "task_node_id": str(task_node_id),
+                    "result_slot": result_slot,
+                },
+                status="PENDING",
+            )
+            self.db.add(child_run)
+            await self.db.flush()
+            child_run_id = child_run.id
+            logger.info(f"Child ExecutionRun {child_run_id} created for recurse on node {node_id}")
+        except Exception as e:
+            logger.warning(f"Could not create child ExecutionRun for recurse: {e}")
+
+        return task_node_id, child_run_id
 
     async def await_children(
         self,
@@ -547,10 +616,19 @@ class CortexRouter:
         tree = await self._get_tree(tree_id)
         cursor_id = tree.resume_cursor_id or tree.root_node_id
 
+        # Gap #12: Calculate time elapsed and nodes written
+        time_elapsed = 0.0
+        if tree.created_at:
+            time_elapsed = (datetime.utcnow() - tree.created_at).total_seconds() / 3600
+
+        nodes_written = await self._get_recent_node_ids(tree_id, cursor_id)
+
         checkpoint_content = CheckpointData(
             progress_summary=progress_summary,
             key_facts=key_facts,
             next_steps=next_steps,
+            nodes_written=nodes_written,
+            time_elapsed_hours=round(time_elapsed, 2),
         )
 
         checkpoint_id = await self.write(
@@ -563,20 +641,52 @@ class CortexRouter:
             metadata_extra={
                 "checkpoint_at": datetime.utcnow().isoformat(),
                 "key_facts_count": len(key_facts),
+                "nodes_written_count": len(nodes_written),
+                "time_elapsed_hours": round(time_elapsed, 2),
             },
         )
 
         logger.info(f"Checkpoint written: {checkpoint_id} for tree {tree_id}")
         return checkpoint_id
 
+    async def check_and_compact(
+        self,
+        tree_id: UUID,
+        current_token_count: int,
+        model_context_window: int = 200000,
+    ) -> Optional[UUID]:
+        """
+        Gap #3: Check if current context exceeds budget. If so, auto-checkpoint
+        and return checkpoint node ID. Returns None if within budget.
+        
+        Called after each step during CORTEX execution.
+        """
+        tree = await self._get_tree(tree_id)
+        budget_tokens = int(model_context_window * tree.context_budget_pct / 100)
+
+        if current_token_count >= budget_tokens:
+            logger.info(
+                f"Context budget exceeded: {current_token_count} >= {budget_tokens} tokens. "
+                f"Auto-compacting tree {tree_id}."
+            )
+            checkpoint_id = await self.checkpoint(
+                tree_id=tree_id,
+                progress_summary=f"Auto-compaction at {current_token_count} tokens (budget: {budget_tokens})",
+                key_facts=[],
+                next_steps=["Continue from viewport after context reset"],
+            )
+            return checkpoint_id
+        return None
+
     # ===================================================================
     # 6. ASSEMBLY
     # ===================================================================
 
-    async def assemble_output(self, tree_id: UUID) -> str:
+    async def assemble_output(self, tree_id: UUID, coherence_pass: bool = True) -> str:
         """
         Depth-first traversal of Output Subtree.
         Concatenate all 'complete' output nodes in order.
+        Optionally run a coherence pass to generate bridge paragraphs.
         Returns assembled full output as string.
         """
         tree = await self._get_tree(tree_id)
@@ -585,6 +695,24 @@ class CortexRouter:
 
         sections = []
         await self._dfs_collect(tree.output_root_id, sections)
+
+        if not sections:
+            return ""
+
+        # Gap #7: Coherence pass — generate bridge paragraphs between sections
+        if coherence_pass and len(sections) > 1:
+            try:
+                bridges = await self._generate_bridge_paragraphs(tree_id, sections)
+                if bridges and len(bridges) >= len(sections) - 1:
+                    assembled = []
+                    for i, section in enumerate(sections):
+                        assembled.append(section)
+                        if i < len(bridges):
+                            assembled.append(bridges[i])
+                    return "\n\n".join(assembled)
+            except Exception as e:
+                logger.warning(f"Coherence pass failed, using raw assembly: {e}")
+
         return "\n\n".join(sections)
 
     # ===================================================================
@@ -660,6 +788,38 @@ class CortexRouter:
         }
 
     # ===================================================================
+    # Helper: Get Working Memory Root
+    # ===================================================================
+
+    async def get_working_root(self, tree_id: UUID) -> Optional[CortexNode]:
+        """Get the working memory root node (sibling_order=1 under root)."""
+        tree = await self._get_tree(tree_id)
+        if not tree.root_node_id:
+            return None
+        result = await self.db.execute(
+            select(CortexNode).where(
+                CortexNode.tree_id == tree_id,
+                CortexNode.parent_id == tree.root_node_id,
+                CortexNode.sibling_order == 1,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_knowledge_root(self, tree_id: UUID) -> Optional[CortexNode]:
+        """Get the knowledge root node (sibling_order=0 under root)."""
+        tree = await self._get_tree(tree_id)
+        if not tree.root_node_id:
+            return None
+        result = await self.db.execute(
+            select(CortexNode).where(
+                CortexNode.tree_id == tree_id,
+                CortexNode.parent_id == tree.root_node_id,
+                CortexNode.sibling_order == 0,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    # ===================================================================
     # INTERNAL HELPERS
     # ===================================================================
 
@@ -678,7 +838,13 @@ class CortexRouter:
         metadata_extra: Optional[Dict] = None,
         content_tokens: int = 0,
     ) -> CortexNode:
-        """Create and flush a new CortexNode."""
+        """
+        Create and flush a new CortexNode.
+        
+        Invariant 4 (Write-Once Content): Content is set at creation time
+        and should never be modified afterward. Revisions are expressed by
+        adding a child 'finding' node with a title like 'Revision: [original]'.
+        """
         if content and content_tokens == 0:
             content_tokens = len(content) // self.CHARS_PER_TOKEN
 
@@ -712,13 +878,23 @@ class CortexRouter:
         return tree
 
     async def _get_node(self, node_id: UUID) -> CortexNode:
-        """Load a CortexNode by ID."""
+        """Load a CortexNode by ID. Enforces subtree isolation if scoped."""
         result = await self.db.execute(
             select(CortexNode).where(CortexNode.id == node_id)
         )
         node = result.scalar_one_or_none()
         if not node:
             raise ValueError(f"CortexNode {node_id} not found")
+
+        # Gap #18: Subtree isolation enforcement
+        if self.scoped_subtree_root_id and node_id != self.scoped_subtree_root_id:
+            is_descendant = await self._is_descendant_of(node_id, self.scoped_subtree_root_id)
+            if not is_descendant:
+                raise ValueError(
+                    f"Node {node_id} is outside scoped subtree {self.scoped_subtree_root_id}. "
+                    f"Child runs cannot access nodes outside their designated subtree."
+                )
+
         return node
 
     def _node_to_dto(self, node: CortexNode) -> NodeSummaryDTO:
@@ -787,3 +963,127 @@ class CortexRouter:
         children = result.scalars().all()
         for child in children:
             await self._dfs_collect(child.id, sections)
+
+    async def _is_descendant_of(self, node_id: UUID, ancestor_id: UUID) -> bool:
+        """Check if node_id is a descendant of ancestor_id by walking up."""
+        current_id = node_id
+        visited = set()
+        while current_id and current_id not in visited:
+            if current_id == ancestor_id:
+                return True
+            visited.add(current_id)
+            result = await self.db.execute(
+                select(CortexNode.parent_id).where(CortexNode.id == current_id)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return False
+            current_id = row
+        return False
+
+    async def _get_recent_node_ids(self, tree_id: UUID, cursor_id: UUID, limit: int = 20) -> List[str]:
+        """Get IDs of recently written nodes for checkpoint metadata."""
+        result = await self.db.execute(
+            select(CortexNode.id)
+            .where(
+                CortexNode.tree_id == tree_id,
+                CortexNode.node_type != CortexNodeType.CHECKPOINT,
+            )
+            .order_by(CortexNode.created_at.desc())
+            .limit(limit)
+        )
+        return [str(r[0]) for r in result.fetchall()]
+
+    async def _schedule_reclustering(self, parent_id: UUID, tree: CortexTree) -> None:
+        """
+        Gap #9: Async re-clustering when MAX_CHILDREN is exceeded.
+        Creates an intermediate grouping node and moves half the oldest
+        children under it. Runs as part of the current transaction
+        but does not block the write() caller excessively.
+        """
+        try:
+            # Get all children ordered by sibling_order
+            result = await self.db.execute(
+                select(CortexNode)
+                .where(CortexNode.parent_id == parent_id)
+                .order_by(CortexNode.sibling_order)
+            )
+            children = result.scalars().all()
+
+            if len(children) < tree.max_children:
+                return
+
+            # Move the first half of children under a new grouping node
+            half = len(children) // 2
+            children_to_move = children[:half]
+
+            # Create grouping node
+            group_summary = f"Grouped {half} nodes for viewport efficiency"
+            parent_node = await self._get_node(parent_id)
+            group_node = await self._create_node(
+                tree_id=tree.id,
+                parent_id=parent_id,
+                node_type=children_to_move[0].node_type,  # inherit type from children
+                title=f"📂 Group ({half} items)",
+                summary=group_summary,
+                content=None,
+                status=CortexNodeStatus.COMPLETE,
+                depth=parent_node.depth + 1,
+                sibling_order=0,  # First position
+            )
+
+            # Re-parent children to the group node
+            for i, child in enumerate(children_to_move):
+                child.parent_id = group_node.id
+                child.sibling_order = i
+
+            # Reorder remaining direct children
+            for i, child in enumerate(children[half:]):
+                child.sibling_order = i + 1  # After the group node
+
+            tree.total_nodes = (tree.total_nodes or 0) + 1
+            await self.db.flush()
+            logger.info(f"Re-clustered {half} children under group node {group_node.id}")
+
+        except Exception as e:
+            logger.warning(f"Re-clustering failed for parent {parent_id}: {e}")
+
+    async def _generate_bridge_paragraphs(
+        self, tree_id: UUID, sections: List[str]
+    ) -> List[str]:
+        """
+        Gap #7: Generate bridge paragraphs between output sections
+        using LLM for coherence.
+        """
+        try:
+            from src.ai.llm_router import LLMRouter
+            llm = LLMRouter(db=self.db, company_id=self.company_id)
+
+            # Build a summary of each section (first 200 chars)
+            section_summaries = []
+            for i, s in enumerate(sections):
+                section_summaries.append(f"Section {i+1}: {s[:200]}...")
+
+            prompt = (
+                "You are writing bridge paragraphs to connect sections of a document "
+                "for smooth flow. For each pair of consecutive sections below, write a "
+                "1-2 sentence transition paragraph.\n\n"
+                "Sections:\n" + "\n".join(section_summaries) +
+                "\n\nOutput one transition per line, each on a new line. "
+                f"You need exactly {len(sections) - 1} transitions."
+            )
+
+            resp = await llm.call_llm(
+                task_type="text_generation",
+                system_prompt="You are a document coherence editor.",
+                user_prompt=prompt,
+                temperature=0.5,
+                max_tokens=1000,
+            )
+
+            bridges = [line.strip() for line in resp.output.strip().split("\n") if line.strip()]
+            return bridges
+
+        except Exception as e:
+            logger.warning(f"Bridge paragraph generation failed: {e}")
+            return []

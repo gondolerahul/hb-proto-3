@@ -17,6 +17,8 @@ export interface CortexTree {
     output_root_id: string | null;
     resume_cursor_id: string | null;
     max_children: number;
+    resume_schedule: string | null;
+    next_resume_at: string | null;
     created_at: string | null;
     last_active_at: string | null;
 }
@@ -128,6 +130,17 @@ export const cortexService = {
         return data;
     },
 
+    // Document Ingestion (Gap #6)
+    async ingestDocument(treeId: string, documentId: string, content: string, filename: string, knowledgeRootId?: string): Promise<{ nodes_created: number }> {
+        const { data } = await apiClient.post(`/cortex/trees/${treeId}/ingest`, {
+            document_id: documentId,
+            content,
+            filename,
+            knowledge_root_id: knowledgeRootId,
+        });
+        return data;
+    },
+
     // Checkpointing
     async checkpoint(treeId: string, progressSummary: string, keyFacts: string[] = [], nextSteps: string[] = []): Promise<{ id: string }> {
         const { data } = await apiClient.post(`/cortex/trees/${treeId}/checkpoint`, {
@@ -139,8 +152,9 @@ export const cortexService = {
     },
 
     // Assembly
-    async assembleOutput(treeId: string): Promise<{ output: string }> {
-        const { data } = await apiClient.get(`/cortex/trees/${treeId}/output`);
+    async assembleOutput(treeId: string, coherencePass = true): Promise<{ output: string }> {
+        const { data } = await apiClient.get(`/cortex/trees/${treeId}/output?coherence_pass=${coherencePass}`);
         return data;
     },
 };
+

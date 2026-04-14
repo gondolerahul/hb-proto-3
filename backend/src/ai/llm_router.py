@@ -128,14 +128,14 @@ class GeminiAdapter(BaseLLMAdapter):
             raw_required = schema.get("parameters", {}).get("required", [])
             for prop_name, prop_def in raw_props.items():
                 type_map = {
-                    "string": types.Type.STRING,
-                    "integer": types.Type.INTEGER,
-                    "number": types.Type.NUMBER,
-                    "boolean": types.Type.BOOLEAN,
-                    "array": types.Type.ARRAY,
-                    "object": types.Type.OBJECT,
+                    "string": "STRING",
+                    "integer": "INTEGER",
+                    "number": "NUMBER",
+                    "boolean": "BOOLEAN",
+                    "array": "ARRAY",
+                    "object": "OBJECT",
                 }
-                prop_type = type_map.get(prop_def.get("type", "string"), types.Type.STRING)
+                prop_type = type_map.get(prop_def.get("type", "string"), "STRING")
                 props[prop_name] = types.Schema(type=prop_type, description=prop_def.get("description", ""))
             if raw_required:
                 required = raw_required
@@ -145,7 +145,7 @@ class GeminiAdapter(BaseLLMAdapter):
                     name=schema["name"],
                     description=schema.get("description", ""),
                     parameters=types.Schema(
-                        type=types.Type.OBJECT,
+                        type="OBJECT",
                         properties=props,
                         required=required,
                     ),
@@ -760,11 +760,33 @@ class AzureOpenAIAdapter(BaseLLMAdapter):
 # Provider factory
 # ---------------------------------------------------------------------------
 
+def _sanitize_model_name(model_name: str) -> str:
+    """
+    Strip Vertex AI resource-path prefixes if present.
+
+    The google-genai SDK automatically builds the full resource URL, so
+    the model_name must be the *short* form (e.g. 'gemini-2.5-flash').
+    If someone stores 'publishers/google/models/gemini-2.5-flash' in the
+    DB, this helper strips the prefix to avoid a doubled path that returns 404.
+    """
+    _PREFIXES = (
+        "publishers/google/models/",
+        "publishers/anthropic/models/",
+        "models/",
+    )
+    for prefix in _PREFIXES:
+        if model_name.startswith(prefix):
+            model_name = model_name[len(prefix):]
+            break
+    return model_name
+
+
 def _get_adapter(provider_name: str, api_key: str, model_name: str, service_metadata: Dict) -> BaseLLMAdapter:
     """
     Instantiate the correct adapter given a provider name.
     provider_name (from IntegrationRegistry) → adapter class mapping.
     """
+    model_name = _sanitize_model_name(model_name)
     pn = (provider_name or "").lower()
     if pn in ("google", "gemini", "google_vertex"):
         return GeminiAdapter(api_key=api_key, model_name=model_name, service_metadata=service_metadata)
@@ -796,8 +818,15 @@ class LLMRouter:
         self.db = db
         self.company_id = company_id
 
-    async def _resolve_adapter(self, task_type: str) -> BaseLLMAdapter:
-        """Resolve the correct adapter based on task defaults."""
+    async def _resolve_adapter(self, task_type: str, model_override: Optional[str] = None) -> BaseLLMAdapter:
+        """Resolve the correct adapter based on task defaults.
+        
+        Args:
+            task_type: The task type to resolve the model for.
+            model_override: Optional model name override from entity config.
+                           When set, the adapter uses this model instead of the
+                           integration's default (e.g. "gemini-3.1-pro-preview").
+        """
         from src.config.service import ConfigService
         config_svc = ConfigService(self.db)
         integration, api_key = await config_svc.resolve_model_for_task(
@@ -815,10 +844,18 @@ class LLMRouter:
                 f"No API key found for integration '{integration.provider_name}/{integration.model_name}'. "
                 f"Please check the Service Integration configuration."
             )
+        # Fix D: Entity-level model override takes priority over company defaults
+        effective_model = model_override or integration.model_name or ""
+        if model_override:
+            import logging as _log
+            _log.getLogger(__name__).info(
+                f"LLMRouter: Model override '{model_override}' "
+                f"(default was '{integration.model_name}')"
+            )
         return _get_adapter(
             provider_name=integration.provider_name,
             api_key=api_key,
-            model_name=integration.model_name or "",
+            model_name=effective_model,
             service_metadata=integration.service_metadata or {},
         )
 
@@ -832,13 +869,14 @@ class LLMRouter:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         top_p: float = 1.0,
+        model_override: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """
         Single-turn (or last-turn) LLM call.
         Constructs messages from history + current user_prompt.
         """
-        adapter = await self._resolve_adapter(task_type)
+        adapter = await self._resolve_adapter(task_type, model_override=model_override)
         messages = list(history or [])
         messages.append({"role": "user", "parts": [{"text": user_prompt}]})
 
@@ -863,13 +901,14 @@ class LLMRouter:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         max_react_turns: int = 10,
+        model_override: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
         """
         Full REACT loop for agentic tasks.
         execute_tool_fn: async(function_calls: list) -> list of {tool, output, success}
         """
-        adapter = await self._resolve_adapter(task_type)
+        adapter = await self._resolve_adapter(task_type, model_override=model_override)
         messages = list(history or [])
         messages.append({"role": "user", "parts": [{"text": user_prompt}]})
 
@@ -887,3 +926,4 @@ class LLMRouter:
     async def get_adapter_for_task(self, task_type: str) -> BaseLLMAdapter:
         """Expose the resolved adapter (useful for streaming modules)."""
         return await self._resolve_adapter(task_type)
+

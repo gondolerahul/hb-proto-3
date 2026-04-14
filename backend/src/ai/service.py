@@ -99,7 +99,7 @@ class AIService:
     async def update_entity(self, entity_id: UUID, entity_in: HierarchicalEntityUpdate, company_id: UUID) -> HierarchicalEntity:
         entity = await self.get_entity(entity_id, company_id)
         
-        update_data = entity_in.model_dump(exclude_unset=True)
+        update_data = entity_in.model_dump(mode='json', exclude_unset=True)
         for field, value in update_data.items():
             setattr(entity, field, value)
             
@@ -263,6 +263,74 @@ class AIService:
         
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    async def retry_execution(self, execution_id: UUID, company_id: UUID, user_id: UUID) -> ExecutionRun:
+        """
+        Create a new execution run that resumes from a FAILED run's state.
+        
+        The new run inherits:
+          - entity_id and input_data from the failed run
+          - context_state with completed step IDs (so they are skipped)
+          - cortex_tree_id from context_state (so the CORTEX tree is resumed)
+          - parent_run_id pointing to the failed run for traceability
+        """
+        from sqlalchemy.orm import selectinload
+
+        # 1. Load the failed run
+        result = await self.db.execute(
+            select(ExecutionRun).where(
+                ExecutionRun.id == execution_id,
+                ExecutionRun.company_id == company_id,
+            )
+        )
+        failed_run = result.scalar_one_or_none()
+        if not failed_run:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        if failed_run.status not in ("FAILED", "COMPLETED"):
+            raise HTTPException(status_code=400, detail=f"Only FAILED or COMPLETED runs can be retried (current: {failed_run.status})")
+
+        # 2. Build input_data for the retry run.
+        #    If the failed run had a CORTEX tree, pass its ID so the engine
+        #    resumes the tree rather than creating a new one.
+        retry_input = dict(failed_run.input_data or {})
+        ctx = failed_run.context_state or {}
+        if "__cortex_tree_id__" in ctx:
+            retry_input["cortex_tree_id"] = ctx["__cortex_tree_id__"]
+
+        # 3. Create the retry run
+        retry_run = ExecutionRun(
+            company_id=company_id,
+            user_id=user_id,
+            entity_id=failed_run.entity_id,
+            input_data=retry_input,
+            context_state=ctx,  # Carry forward completed step markers
+            parent_run_id=failed_run.id,  # Link for traceability
+            status="PENDING",
+            trace_id=uuid4(),
+        )
+        self.db.add(retry_run)
+        await self.db.commit()
+
+        # 4. Reload with relationships for response
+        result = await self.db.execute(
+            select(ExecutionRun)
+            .options(
+                selectinload(ExecutionRun.entity),
+                selectinload(ExecutionRun.child_runs),
+                selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.tool_logs),
+                selectinload(ExecutionRun.human_approvals),
+            )
+            .where(ExecutionRun.id == retry_run.id)
+        )
+        retry_run = result.scalar_one()
+
+        # 5. Enqueue to arq
+        redis = await create_pool(RedisSettings())
+        await redis.enqueue_job("run_execution_recursive", str(retry_run.id))
+        await redis.close()
+
+        return retry_run
 
     # HITL Management
     async def get_pending_approvals(self, company_id: UUID) -> list[HumanApproval]:
@@ -450,6 +518,191 @@ class AIService:
 
     # ── Template Management ────────────────────────────────────────────────
 
+    async def convert_to_template(self, entity_id: UUID, company_id: UUID, user_id: UUID) -> HierarchicalEntity:
+        """
+        Deep-clone an existing entity (and all its children) into a parallel
+        template hierarchy (is_template=True).  The originals are left untouched.
+        """
+        from sqlalchemy.orm import selectinload
+
+        # 1. Load the source entity
+        result = await self.db.execute(
+            select(HierarchicalEntity)
+            .options(selectinload(HierarchicalEntity.execution_runs))
+            .where(
+                HierarchicalEntity.id == entity_id,
+                HierarchicalEntity.company_id == company_id,
+            )
+        )
+        source = result.scalar_one_or_none()
+        if not source:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        if source.is_template:
+            raise HTTPException(status_code=400, detail="Entity is already a template")
+
+        # 2. Collect all children recursively (follows BOTH parent_id FK and hierarchy.children JSON)
+        async def _collect_children(entity: HierarchicalEntity, visited: set[UUID] | None = None) -> list[HierarchicalEntity]:
+            if visited is None:
+                visited = set()
+            visited.add(entity.id)
+            children: list[HierarchicalEntity] = []
+
+            # Path A: entities whose parent_id points to this entity
+            res = await self.db.execute(
+                select(HierarchicalEntity).where(
+                    HierarchicalEntity.parent_id == entity.id,
+                    HierarchicalEntity.company_id == company_id,
+                )
+            )
+            for child in res.scalars().all():
+                if child.id not in visited:
+                    children.append(child)
+
+            # Path B: entity IDs referenced in hierarchy.children JSON
+            hierarchy = entity.hierarchy
+            if hierarchy and isinstance(hierarchy, dict):
+                for child_ref in hierarchy.get("children", []):
+                    if isinstance(child_ref, dict):
+                        child_id_str = child_ref.get("child_id")
+                        if child_id_str:
+                            try:
+                                child_uuid = UUID(str(child_id_str))
+                            except (ValueError, AttributeError):
+                                continue
+                            if child_uuid not in visited:
+                                cres = await self.db.execute(
+                                    select(HierarchicalEntity).where(
+                                        HierarchicalEntity.id == child_uuid,
+                                    )
+                                )
+                                child_entity = cres.scalar_one_or_none()
+                                if child_entity:
+                                    children.append(child_entity)
+
+            # Recurse into each child
+            grandchildren = []
+            for child in children:
+                grandchildren.extend(await _collect_children(child, visited))
+            return children + grandchildren
+
+        all_children = await _collect_children(source)
+
+        # 3. Clone fields helper
+        old_to_new_id: dict[UUID, UUID] = {}
+
+        def _clone_fields(src: HierarchicalEntity) -> dict:
+            return {
+                "name": src.name,
+                "display_name": src.display_name,
+                "description": src.description,
+                "goal": src.goal,
+                "type": src.type,
+                "version": src.version,
+                "status": src.status,
+                "tags": src.tags,
+                "identity": src.identity,
+                "hierarchy": src.hierarchy,
+                "logic_gate": src.logic_gate,
+                "planning": src.planning,
+                "capabilities": src.capabilities,
+                "governance": src.governance,
+                "io_contract": src.io_contract,
+                "observability": src.observability,
+                "metadata_extensions": src.metadata_extensions,
+            }
+
+        # 4. Clone root as template
+        root_template = HierarchicalEntity(
+            **_clone_fields(source),
+            company_id=company_id,
+            created_by=user_id,
+            is_template=True,
+            template_source_id=source.id,
+            parent_id=None,
+        )
+        self.db.add(root_template)
+        await self.db.flush()
+        old_to_new_id[source.id] = root_template.id
+
+        # 5. Clone children in topological order
+        for child in all_children:
+            new_parent_id = old_to_new_id.get(child.parent_id)
+            clone = HierarchicalEntity(
+                **_clone_fields(child),
+                company_id=company_id,
+                created_by=user_id,
+                is_template=True,
+                template_source_id=child.id,
+                parent_id=new_parent_id,
+            )
+            self.db.add(clone)
+            await self.db.flush()
+            old_to_new_id[child.id] = clone.id
+
+        # 6. Remap internal entity_id references (same logic as clone_template)
+        def _remap_uuid(val: str | None) -> str | None:
+            if not val:
+                return val
+            try:
+                old_uuid = UUID(str(val))
+            except (ValueError, AttributeError):
+                return val
+            new_uuid = old_to_new_id.get(old_uuid)
+            return str(new_uuid) if new_uuid else val
+
+        def _remap_entity_refs(entity: HierarchicalEntity) -> bool:
+            modified = False
+            planning = entity.planning
+            if planning and isinstance(planning, dict):
+                static_plan = planning.get("static_plan")
+                if static_plan and isinstance(static_plan, dict):
+                    for step in static_plan.get("steps", []):
+                        target = step.get("target") if isinstance(step, dict) else None
+                        if target and isinstance(target, dict):
+                            old_eid = target.get("entity_id")
+                            if old_eid:
+                                new_eid = _remap_uuid(old_eid)
+                                if new_eid != old_eid:
+                                    target["entity_id"] = new_eid
+                                    modified = True
+                    if modified:
+                        entity.planning = {**planning}
+            hierarchy = entity.hierarchy
+            if hierarchy and isinstance(hierarchy, dict):
+                hierarchy_modified = False
+                for child_ref in hierarchy.get("children", []):
+                    if isinstance(child_ref, dict):
+                        old_cid = child_ref.get("child_id")
+                        if old_cid:
+                            new_cid = _remap_uuid(old_cid)
+                            if new_cid != old_cid:
+                                child_ref["child_id"] = new_cid
+                                hierarchy_modified = True
+                if hierarchy_modified:
+                    entity.hierarchy = {**hierarchy}
+                    modified = True
+            return modified
+
+        all_cloned = [root_template] + [
+            (await self.db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.id == new_id)
+            )).scalar_one()
+            for new_id in list(old_to_new_id.values())[1:]
+        ]
+        for cloned_entity in all_cloned:
+            if _remap_entity_refs(cloned_entity):
+                self.db.add(cloned_entity)
+
+        await self.db.commit()
+
+        # 7. Reload with relationships
+        result = await self.db.execute(
+            select(HierarchicalEntity)
+            .options(selectinload(HierarchicalEntity.execution_runs))
+            .where(HierarchicalEntity.id == root_template.id)
+        )
+        return result.scalar_one()
+
     async def clone_template(self, template_id: UUID, company_id: UUID, user_id: UUID) -> HierarchicalEntity:
         """
         Deep-clone a template entity (and all its children) into executable
@@ -470,21 +723,53 @@ class AIService:
         if not template:
             raise HTTPException(status_code=404, detail="Template not found")
 
-        # 2. Collect all child entities that belong to this template hierarchy
-        async def _collect_children(parent_id: UUID) -> list[HierarchicalEntity]:
+        # 2. Collect all child entities (follows BOTH parent_id FK and hierarchy.children JSON)
+        async def _collect_children(entity: HierarchicalEntity, visited: set[UUID] | None = None) -> list[HierarchicalEntity]:
+            if visited is None:
+                visited = set()
+            visited.add(entity.id)
+            children: list[HierarchicalEntity] = []
+
+            # Path A: entities whose parent_id points to this entity
             res = await self.db.execute(
                 select(HierarchicalEntity).where(
-                    HierarchicalEntity.parent_id == parent_id,
+                    HierarchicalEntity.parent_id == entity.id,
                     HierarchicalEntity.is_template == True,
                 )
             )
-            children = list(res.scalars().all())
+            for child in res.scalars().all():
+                if child.id not in visited:
+                    children.append(child)
+
+            # Path B: entity IDs referenced in hierarchy.children JSON
+            hierarchy = entity.hierarchy
+            if hierarchy and isinstance(hierarchy, dict):
+                for child_ref in hierarchy.get("children", []):
+                    if isinstance(child_ref, dict):
+                        child_id_str = child_ref.get("child_id")
+                        if child_id_str:
+                            try:
+                                child_uuid = UUID(str(child_id_str))
+                            except (ValueError, AttributeError):
+                                continue
+                            if child_uuid not in visited:
+                                cres = await self.db.execute(
+                                    select(HierarchicalEntity).where(
+                                        HierarchicalEntity.id == child_uuid,
+                                        HierarchicalEntity.is_template == True,
+                                    )
+                                )
+                                child_entity = cres.scalar_one_or_none()
+                                if child_entity:
+                                    children.append(child_entity)
+
+            # Recurse into each child
             grandchildren = []
             for child in children:
-                grandchildren.extend(await _collect_children(child.id))
+                grandchildren.extend(await _collect_children(child, visited))
             return children + grandchildren
 
-        all_children = await _collect_children(template.id)
+        all_children = await _collect_children(template)
 
         # 3. Clone root template
         old_to_new_id: dict[UUID, UUID] = {}
@@ -538,9 +823,74 @@ class AIService:
             await self.db.flush()
             old_to_new_id[child.id] = clone.id
 
+        # 5. Post-clone: remap internal entity_id references using old_to_new_id
+        def _remap_uuid(val: str | None) -> str | None:
+            """If val is a UUID string that exists in old_to_new_id, return the new UUID."""
+            if not val:
+                return val
+            try:
+                old_uuid = UUID(str(val))
+            except (ValueError, AttributeError):
+                return val
+            new_uuid = old_to_new_id.get(old_uuid)
+            return str(new_uuid) if new_uuid else val
+
+        def _remap_entity_refs(entity: HierarchicalEntity) -> bool:
+            """Remap entity_id references inside planning and hierarchy JSON. Returns True if modified."""
+            modified = False
+
+            # Remap planning.static_plan.steps[].target.entity_id
+            planning = entity.planning
+            if planning and isinstance(planning, dict):
+                static_plan = planning.get("static_plan")
+                if static_plan and isinstance(static_plan, dict):
+                    steps = static_plan.get("steps", [])
+                    for step in steps:
+                        target = step.get("target") if isinstance(step, dict) else None
+                        if target and isinstance(target, dict):
+                            old_eid = target.get("entity_id")
+                            if old_eid:
+                                new_eid = _remap_uuid(old_eid)
+                                if new_eid != old_eid:
+                                    target["entity_id"] = new_eid
+                                    modified = True
+                    if modified:
+                        # Force SQLAlchemy to detect the JSON mutation
+                        entity.planning = {**planning}
+
+            # Remap hierarchy.children[].child_id
+            hierarchy = entity.hierarchy
+            if hierarchy and isinstance(hierarchy, dict):
+                children = hierarchy.get("children", [])
+                hierarchy_modified = False
+                for child_ref in children:
+                    if isinstance(child_ref, dict):
+                        old_cid = child_ref.get("child_id")
+                        if old_cid:
+                            new_cid = _remap_uuid(old_cid)
+                            if new_cid != old_cid:
+                                child_ref["child_id"] = new_cid
+                                hierarchy_modified = True
+                if hierarchy_modified:
+                    entity.hierarchy = {**hierarchy}
+                    modified = True
+
+            return modified
+
+        # Apply remapping to every cloned entity
+        all_cloned = [root_clone] + [
+            (await self.db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.id == new_id)
+            )).scalar_one()
+            for new_id in list(old_to_new_id.values())[1:]  # skip root_clone, already have it
+        ]
+        for cloned_entity in all_cloned:
+            if _remap_entity_refs(cloned_entity):
+                self.db.add(cloned_entity)
+
         await self.db.commit()
 
-        # 5. Reload with relationships
+        # 6. Reload with relationships
         result = await self.db.execute(
             select(HierarchicalEntity)
             .options(selectinload(HierarchicalEntity.execution_runs))

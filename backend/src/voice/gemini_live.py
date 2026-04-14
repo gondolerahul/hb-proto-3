@@ -1,9 +1,11 @@
 """
-Real Gemini Live API Client for production use (Vertex AI only).
+Real Gemini Live API Client for production use.
 
-Integrates with google.genai SDK (Vertex AI mode) for real-time
-bidirectional audio streaming. All Google model access goes through
-Vertex AI on GCP — no direct AI Studio calls.
+Integrates with google.genai SDK for real-time bidirectional audio
+streaming. Supports two backends:
+  - Vertex AI (default) — for standard models
+  - AI Studio / Gemini Developer API — for Live/Native Audio models
+    not yet available on Vertex AI (uses ADC, no API key)
 """
 import logging
 from typing import Dict, Any, Optional, List
@@ -22,9 +24,14 @@ except ImportError:
 
 class GeminiLiveClient:
     """
-    Real Gemini Live API client for production streaming (Vertex AI only).
+    Real Gemini Live API client for production streaming.
 
-    Supports both Gemini 2.0 Flash Exp and Gemini 2.5 Flash Native Audio.
+    Supports two backends:
+      - Vertex AI (default) — uses project_id + region from service_metadata
+      - AI Studio (use_ai_studio=True) — uses ADC, no API key needed
+
+    Supports Gemini 2.0 Flash, Gemini 2.5 Flash Native Audio, and
+    Gemini 3.1 Flash Live models.
     Voice name, speaking rate, and pitch are sourced from VoiceConfig
     (typically loaded from the agent's AgentPersona by AgentContextLoader).
     """
@@ -43,6 +50,15 @@ class GeminiLiveClient:
             "native_audio": True,
             "supports_thinking": False,
         },
+        # AI Studio-only models (not available on Vertex AI)
+        "gemini-3.1-flash-live-preview": {
+            "native_audio": True,
+            "supports_thinking": True,
+        },
+        "gemini-2.5-flash-native-audio-preview-12-2025": {
+            "native_audio": True,
+            "supports_thinking": True,
+        },
     }
 
     def __init__(
@@ -53,11 +69,14 @@ class GeminiLiveClient:
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         voice_config: Optional[Any] = None,   # VoiceConfig or dict
         model_name: Optional[str] = None,     # Resolved dynamically from task defaults
+        use_ai_studio: bool = False,          # Use AI Studio (Gemini Developer API) instead of Vertex AI
+        api_key: Optional[str] = None,        # API key for AI Studio mode
     ):
         self.system_instruction = system_instruction
         self.service_metadata = service_metadata
         self.generation_config = generation_config or {}
         self.conversation_history = conversation_history or []
+        self.use_ai_studio = use_ai_studio
         # model_name resolved externally by LiveClientFactory; stored for connect()
         self._resolved_model = model_name
 
@@ -78,12 +97,23 @@ class GeminiLiveClient:
                 self._speaking_rate = voice_config.get("speaking_rate", 1.0)
                 self._pitch = voice_config.get("pitch", 0.0)
 
-        if GENAI_AVAILABLE:
+        if not GENAI_AVAILABLE:
+            raise RuntimeError("google.genai SDK not available. Install with: pip install google-genai")
+
+        if self.use_ai_studio:
+            from src.common.genai_factory import build_ai_studio_genai_client_sync
+            self.client = build_ai_studio_genai_client_sync(api_key=api_key)
+            logger.info(
+                f"Gemini Live client initialized via AI Studio/ADC "
+                f"(voice={self._voice_name}, model={self._resolved_model})"
+            )
+        else:
             from src.common.genai_factory import build_vertex_genai_client_sync
             self.client = build_vertex_genai_client_sync(self.service_metadata)
-            logger.info(f"Gemini Live client initialized via Vertex AI (voice={self._voice_name}, model={self._resolved_model})")
-        else:
-            raise RuntimeError("google.genai SDK not available. Install with: pip install google-genai")
+            logger.info(
+                f"Gemini Live client initialized via Vertex AI "
+                f"(voice={self._voice_name}, model={self._resolved_model})"
+            )
 
     def _is_native_audio(self, model: str) -> bool:
         return self.MODEL_CAPABILITIES.get(model, {}).get("native_audio", False)
@@ -107,69 +137,37 @@ class GeminiLiveClient:
         return self._create_standard_config()
 
     def _create_standard_config(self) -> Dict[str, Any]:
-        """Gemini 2.0 Flash Exp config."""
-        generation_config: Dict[str, Any] = {
+        """Gemini 2.0 Flash standard config — SDK v1.71.0 top-level fields."""
+        config: Dict[str, Any] = {
             "response_modalities": ["AUDIO"],
             "speech_config": {
                 "voice_config": {
                     "prebuilt_voice_config": {"voice_name": self._voice_name}
                 }
             },
+            "output_audio_transcription": {},
+            "input_audio_transcription": {},
         }
-        _protected = {"response_modalities", "speech_config", "thinking_config"}
-        for key, value in self.generation_config.items():
-            if key not in _protected:
-                generation_config[key] = value
-
-        config: Dict[str, Any] = {"generation_config": generation_config}
         if self.system_instruction:
             config["system_instruction"] = self.system_instruction
-        config["output_audio_transcription"] = {}
-        config["input_audio_transcription"] = {}
         return config
 
     def _create_native_audio_config(self) -> Dict[str, Any]:
         """
-        Gemini 2.5 Flash Native Audio config.
+        Gemini 2.5+ / 3.1 Flash Native Audio config.
 
-        P2.3: Includes per-agent prosody (speaking_rate, pitch),
-        VAD tuning, and proactivity (agent can re-prompt after silence).
+        SDK v1.71.0 LiveConnectConfig accepts response_modalities,
+        speech_config, system_instruction etc. at the top level.
         """
-        generation_config: Dict[str, Any] = {
+        config: Dict[str, Any] = {
             "response_modalities": ["AUDIO"],
             "speech_config": {
                 "voice_config": {
                     "prebuilt_voice_config": {"voice_name": self._voice_name}
                 }
             },
-            # Prosody control — sourced from AgentPersona.voice
-            "audio_speech_config": {
-                "language_code": self._language_code,
-                "speaking_rate": self._speaking_rate,
-                "pitch": self._pitch,
-            },
-        }
-        _protected = {"response_modalities", "speech_config", "thinking_config", "audio_speech_config"}
-        for key, value in self.generation_config.items():
-            if key not in _protected:
-                generation_config[key] = value
-
-        config: Dict[str, Any] = {
-            "generation_config": generation_config,
             "output_audio_transcription": {},
             "input_audio_transcription": {},
-            # VAD — less aggressive barge-in + faster end-of-speech detection
-            "realtime_input_config": {
-                "automatic_activity_detection": {
-                    "disabled": False,
-                    "start_of_speech_sensitivity": "START_SENSITIVITY_LOW",
-                    "end_of_speech_sensitivity": "END_SENSITIVITY_HIGH",
-                    "prefix_padding_ms": 100,
-                    "silence_duration_ms": 800,
-                }
-            },
-            # Proactivity: agent can re-prompt if the caller goes silent
-            "proactivity": {"proactive_audio": True},
         }
         if self.system_instruction:
             config["system_instruction"] = self.system_instruction
@@ -273,10 +271,14 @@ def get_gemini_client(
     generation_config: Optional[Dict[str, Any]] = None,
     conversation_history: Optional[List[Dict[str, Any]]] = None,
     model_name: Optional[str] = None,
+    use_ai_studio: bool = False,
 ) -> GeminiLiveClient:
     """
-    Create a GeminiLiveClient configured for Vertex AI.
-    All Google model access goes through Vertex AI — no direct API key calls.
+    Create a GeminiLiveClient.
+
+    Supports two backends:
+      - Vertex AI (default): requires service_metadata with project_id
+      - AI Studio (use_ai_studio=True): uses ADC, no API key or project_id needed
 
     Args:
         service_metadata: Dict with project_id and region from IntegrationRegistry
@@ -284,25 +286,28 @@ def get_gemini_client(
         generation_config: Generation parameters
         conversation_history: Conversation history for context
         model_name: Model name resolved from task defaults
+        use_ai_studio: If True, use AI Studio (Gemini Developer API) via ADC
 
     Returns:
         GeminiLiveClient instance
 
     Raises:
-        ValueError: If service_metadata missing project_id
+        ValueError: If Vertex AI mode and service_metadata missing project_id
         RuntimeError: If google.genai SDK not available
     """
-    if not service_metadata or not service_metadata.get("project_id"):
-        raise ValueError(
-            "service_metadata with project_id is required. "
-            "All Google models must be accessed via Vertex AI."
-        )
+    if not use_ai_studio:
+        if not service_metadata or not service_metadata.get("project_id"):
+            raise ValueError(
+                "service_metadata with project_id is required for Vertex AI mode. "
+                "Set use_ai_studio=True for AI Studio mode or configure project_id."
+            )
 
     return GeminiLiveClient(
-        service_metadata=service_metadata,
+        service_metadata=service_metadata or {},
         system_instruction=system_instruction,
         generation_config=generation_config,
         conversation_history=conversation_history,
         model_name=model_name,
+        use_ai_studio=use_ai_studio,
     )
 

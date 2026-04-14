@@ -351,6 +351,7 @@ export interface LLMInteractionLog {
     latency_ms?: number;
     cost_usd: number;
     reasoning_mode?: string;
+    step_name?: string;
     created_at: string;
 }
 
@@ -387,6 +388,7 @@ export interface ExecutionRun {
     error_message?: string;
 
     total_cost_usd: number;
+    billed_amount?: number;  // TB formula result — the user-facing charge
     total_tokens: number;
     execution_time_ms?: number;
     trace_id?: string;

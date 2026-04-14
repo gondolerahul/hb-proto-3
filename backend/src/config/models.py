@@ -43,7 +43,10 @@ class IntegrationRegistry(Base):
     cost_unit = Column(String, nullable=False)
     service_metadata = Column(JSON, nullable=True)
     # service_metadata fields by provider:
-    #   google/gemini (Vertex AI REQUIRED): {"project_id": "...", "region": "us-central1"}
+    #   google/gemini (Vertex AI — default): {"project_id": "...", "region": "us-central1"}
+    #   google/gemini (AI Studio — Live models): {"use_ai_studio": true}
+    #     Uses ADC (service account), no API key needed.
+    #     Requires: generativelanguage.googleapis.com enabled in GCP project.
     #   anthropic (Vertex AI REQUIRED): {"project_id": "...", "region": "us-east5"}
     #   azure_openai: {"azure_endpoint": "https://...", "api_version": "2025-01-01-preview", "deployment_name": "..."}
     status = Column(String, default="active")

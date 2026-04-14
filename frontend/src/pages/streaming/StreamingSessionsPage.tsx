@@ -15,6 +15,7 @@ interface VoiceSession {
     ended_at?: string;
     duration_seconds?: number;
     total_cost_usd: number;
+    billed_amount: number;
     has_transcript: boolean;
     transcript?: Array<{ turn_number: number; speaker: string; content: string; timestamp: string | null }>;
     call_summary?: string | null;
@@ -34,6 +35,7 @@ interface WhatsAppSession {
     last_message_at?: string;
     message_count: number;
     total_cost_usd: number;
+    billed_amount: number;
 }
 
 interface Stats {
@@ -42,12 +44,14 @@ interface Stats {
         completed_calls: number;
         total_duration_minutes: number;
         total_cost_usd: number;
+        total_billed: number;
     };
     whatsapp: {
         total_sessions: number;
         active_sessions: number;
         total_messages: number;
         total_cost_usd: number;
+        total_billed: number;
     };
 }
 
@@ -186,7 +190,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                     <th>Status</th>
                                     <th>Started</th>
                                     <th>Duration</th>
-                                    <th>Cost</th>
+                                    <th>Billed</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -214,7 +218,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                             </td>
                                             <td>{new Date(session.started_at).toLocaleString()}</td>
                                             <td>{formatDuration(session.duration_seconds)}</td>
-                                            <td>{formatCost(session.total_cost_usd)}</td>
+                                            <td>{formatCost(session.billed_amount)}</td>
                                             <td>
                                                 <button
                                                     className="btn-view"
@@ -240,7 +244,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                     <th>Started</th>
                                     <th>Last Message</th>
                                     <th>Messages</th>
-                                    <th>Cost</th>
+                                    <th>Billed</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -272,7 +276,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                                     : 'N/A'}
                                             </td>
                                             <td>{session.message_count}</td>
-                                            <td>{formatCost(session.total_cost_usd)}</td>
+                                            <td>{formatCost(session.billed_amount)}</td>
                                             <td>
                                                 <button
                                                     className="btn-view"
@@ -304,8 +308,8 @@ export const StreamingSessionsPage: React.FC = () => {
                                 <strong>{stats.voice.total_duration_minutes.toFixed(1)} min</strong>
                             </div>
                             <div className="stat-row">
-                                <span>Total Cost:</span>
-                                <strong>{formatCost(stats.voice.total_cost_usd)}</strong>
+                                <span>Total Billed:</span>
+                                <strong>{formatCost(stats.voice.total_billed)}</strong>
                             </div>
                         </div>
 
@@ -324,8 +328,8 @@ export const StreamingSessionsPage: React.FC = () => {
                                 <strong>{stats.whatsapp.total_messages}</strong>
                             </div>
                             <div className="stat-row">
-                                <span>Total Cost:</span>
-                                <strong>{formatCost(stats.whatsapp.total_cost_usd)}</strong>
+                                <span>Total Billed:</span>
+                                <strong>{formatCost(stats.whatsapp.total_billed)}</strong>
                             </div>
                         </div>
                     </div>
@@ -359,8 +363,8 @@ export const StreamingSessionsPage: React.FC = () => {
                                 <strong>{formatDuration(selectedSession.duration_seconds)}</strong>
                             </div>
                             <div className="detail-row">
-                                <span>Cost:</span>
-                                <strong>{formatCost(selectedSession.total_cost_usd || 0)}</strong>
+                                <span>Billed Amount:</span>
+                                <strong>{formatCost(selectedSession.billed_amount || selectedSession.total_cost_usd || 0)}</strong>
                             </div>
                             <div className="detail-row">
                                 <span>Status:</span>

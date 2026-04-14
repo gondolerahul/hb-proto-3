@@ -88,8 +88,9 @@ class LiveClientFactory:
                 voice_config=voice_config,
             ), "azure_openai"
         else:
-            # Default: Gemini Live (Vertex AI)
+            # Default: Gemini Live (Vertex AI or AI Studio)
             return await self._create_gemini_client(
+                api_key=api_key,
                 model_name=model_name,
                 meta=meta,
                 system_instruction=system_instruction,
@@ -100,6 +101,7 @@ class LiveClientFactory:
 
     async def _create_gemini_client(
         self,
+        api_key: str,
         model_name: str,
         meta: Dict,
         system_instruction: str,
@@ -107,15 +109,31 @@ class LiveClientFactory:
         generation_config: Optional[Dict],
         conversation_history: Optional[list],
     ):
-        """Instantiate the Gemini Live client using Vertex AI configuration."""
+        """
+        Instantiate the Gemini Live client.
+
+        Reads 'use_ai_studio' from service_metadata to determine the backend:
+          - True: AI Studio / Gemini Developer API (uses API key from integration)
+          - False (default): Vertex AI (project_id + region from service_metadata)
+        """
         from src.voice.gemini_live import GeminiLiveClient
+
+        use_ai_studio = meta.get("use_ai_studio", False)
+
+        if use_ai_studio:
+            logger.info(
+                f"[LiveClientFactory] Using AI Studio for model={model_name}"
+            )
+
         return GeminiLiveClient(
             service_metadata=meta,
             system_instruction=system_instruction,
             generation_config=generation_config or {},
             conversation_history=conversation_history or [],
             voice_config=voice_config,
-            model_name=model_name,  # Pass resolved model name
+            model_name=model_name,
+            use_ai_studio=use_ai_studio,
+            api_key=api_key,
         )
 
     async def _create_azure_client(

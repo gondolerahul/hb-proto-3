@@ -7,6 +7,7 @@ Provides endpoints for:
 - Viewing conversation history
 """
 import logging
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,7 @@ from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.voice.models import VoiceSession, WhatsAppSession, ConversationHistory
 from src.ai.artifact_models import Artifact
+from src.billing.billing_service import BillingService, calculate_tb
 
 # google-genai used for LLM call summaries (best-effort — silently skipped if unavailable)
 try:
@@ -71,7 +73,22 @@ async def list_voice_sessions(
         
         result = await db.execute(query)
         sessions = result.scalars().all()
-        
+
+        # Fix #2: Compute billed_amount via TB formula for each session
+        billing_svc = BillingService(db)
+        config = await billing_svc.get_billing_config(current_user.company_id)
+        if config:
+            mf = Decimal(str(config.multiplier_factor))
+            pf = Decimal(str(config.platform_fee_pct))
+            spf = Decimal(str(config.sales_partner_fee_pct))
+            d = Decimal(str(config.discount_pct))
+        else:
+            mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+
+        def _billed(raw_cost):
+            c = Decimal(str(raw_cost)) if raw_cost else Decimal("0")
+            return float(calculate_tb(c, mf, pf, spf, d)["total_billing"])
+
         return {
             "total": len(sessions),
             "sessions": [
@@ -88,6 +105,7 @@ async def list_voice_sessions(
                     "ended_at": s.ended_at.isoformat() if s.ended_at else None,
                     "duration_seconds": s.duration_seconds,
                     "total_cost_usd": float(s.total_cost_usd) if s.total_cost_usd else 0,
+                    "billed_amount": _billed(s.total_cost_usd),
                     "has_transcript": bool(s.conversation_log)
                 }
                 for s in sessions
@@ -235,6 +253,19 @@ async def get_voice_session(
             logger.warning(f"Recording lookup failed: {_re}")
             recording_artifact = None
         
+        # Fix #2: Compute billed_amount for session detail view
+        raw_cost = Decimal(str(session.total_cost_usd)) if session.total_cost_usd else Decimal("0")
+        billing_svc = BillingService(db)
+        config = await billing_svc.get_billing_config(current_user.company_id)
+        if config:
+            mf = Decimal(str(config.multiplier_factor))
+            pf = Decimal(str(config.platform_fee_pct))
+            spf = Decimal(str(config.sales_partner_fee_pct))
+            d_val = Decimal(str(config.discount_pct))
+        else:
+            mf, pf, spf, d_val = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+        billed = float(calculate_tb(raw_cost, mf, pf, spf, d_val)["total_billing"])
+
         return {
             "id": str(session.id),
             "customer_id": str(session.customer_id),
@@ -249,6 +280,7 @@ async def get_voice_session(
             "ended_at": session.ended_at.isoformat() if session.ended_at else None,
             "duration_seconds": session.duration_seconds,
             "total_cost_usd": float(session.total_cost_usd) if session.total_cost_usd else 0,
+            "billed_amount": billed,
             "transcript": transcript,
             "call_summary": call_summary,
             "conversation_log": session.conversation_log or [],
@@ -292,6 +324,21 @@ async def list_whatsapp_sessions(
         result = await db.execute(query)
         sessions = result.scalars().all()
         
+        # Fix #2: Compute billed_amount for WhatsApp sessions
+        billing_svc = BillingService(db)
+        config = await billing_svc.get_billing_config(current_user.company_id)
+        if config:
+            mf = Decimal(str(config.multiplier_factor))
+            pf = Decimal(str(config.platform_fee_pct))
+            spf = Decimal(str(config.sales_partner_fee_pct))
+            d = Decimal(str(config.discount_pct))
+        else:
+            mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+
+        def _billed(raw_cost):
+            c = Decimal(str(raw_cost)) if raw_cost else Decimal("0")
+            return float(calculate_tb(c, mf, pf, spf, d)["total_billing"])
+
         return {
             "total": len(sessions),
             "sessions": [
@@ -307,6 +354,7 @@ async def list_whatsapp_sessions(
                     "last_message_at": s.last_message_at.isoformat() if s.last_message_at else None,
                     "message_count": s.message_count,
                     "total_cost_usd": float(s.total_cost_usd) if s.total_cost_usd else 0,
+                    "billed_amount": _billed(s.total_cost_usd),
                     "session_window_expires": s.session_window_expires.isoformat() if s.session_window_expires else None
                 }
                 for s in sessions
@@ -339,6 +387,19 @@ async def get_whatsapp_session(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
+        # Fix #2: Compute billed_amount for WhatsApp session detail
+        raw_cost = Decimal(str(session.total_cost_usd)) if session.total_cost_usd else Decimal("0")
+        billing_svc = BillingService(db)
+        config = await billing_svc.get_billing_config(current_user.company_id)
+        if config:
+            mf = Decimal(str(config.multiplier_factor))
+            pf = Decimal(str(config.platform_fee_pct))
+            spf = Decimal(str(config.sales_partner_fee_pct))
+            d_val = Decimal(str(config.discount_pct))
+        else:
+            mf, pf, spf, d_val = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+        billed = float(calculate_tb(raw_cost, mf, pf, spf, d_val)["total_billing"])
+
         return {
             "id": str(session.id),
             "customer_id": str(session.customer_id),
@@ -351,6 +412,7 @@ async def get_whatsapp_session(
             "last_message_at": session.last_message_at.isoformat() if session.last_message_at else None,
             "message_count": session.message_count,
             "total_cost_usd": float(session.total_cost_usd) if session.total_cost_usd else 0,
+            "billed_amount": billed,
             "session_window_expires": session.session_window_expires.isoformat() if session.session_window_expires else None,
             "conversation_log": session.conversation_log or [],
             "session_metadata": session.session_metadata or {}
@@ -453,13 +515,30 @@ async def get_streaming_stats(
         )
         whatsapp_sessions = whatsapp_result.scalars().all()
         
+        # Fix #2: Compute billed totals via TB formula for stats
+        billing_svc = BillingService(db)
+        config = await billing_svc.get_billing_config(company_id)
+        if config:
+            mf = Decimal(str(config.multiplier_factor))
+            pf = Decimal(str(config.platform_fee_pct))
+            spf = Decimal(str(config.sales_partner_fee_pct))
+            d = Decimal(str(config.discount_pct))
+        else:
+            mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+
+        voice_raw = sum(float(s.total_cost_usd or 0) for s in voice_sessions)
+        whatsapp_raw = sum(float(s.total_cost_usd or 0) for s in whatsapp_sessions)
+        voice_billed = float(calculate_tb(Decimal(str(voice_raw)), mf, pf, spf, d)["total_billing"])
+        whatsapp_billed = float(calculate_tb(Decimal(str(whatsapp_raw)), mf, pf, spf, d)["total_billing"])
+
         return {
             "period_days": days,
             "voice": {
                 "total_calls": len(voice_sessions),
                 "completed_calls": len([s for s in voice_sessions if s.status == "ended"]),
                 "total_duration_minutes": sum(s.duration_seconds or 0 for s in voice_sessions) / 60,
-                "total_cost_usd": sum(float(s.total_cost_usd or 0) for s in voice_sessions),
+                "total_cost_usd": voice_raw,
+                "total_billed": voice_billed,
                 "by_provider": {
                     "twilio": len([s for s in voice_sessions if s.provider == "twilio"]),
                     "tata_tele": len([s for s in voice_sessions if s.provider == "tata_tele"])
@@ -469,7 +548,8 @@ async def get_streaming_stats(
                 "total_sessions": len(whatsapp_sessions),
                 "active_sessions": len([s for s in whatsapp_sessions if s.status == "active"]),
                 "total_messages": sum(s.message_count for s in whatsapp_sessions),
-                "total_cost_usd": sum(float(s.total_cost_usd or 0) for s in whatsapp_sessions),
+                "total_cost_usd": whatsapp_raw,
+                "total_billed": whatsapp_billed,
                 "by_provider": {
                     "twilio": len([s for s in whatsapp_sessions if s.provider == "twilio"]),
                     "tata_tele": len([s for s in whatsapp_sessions if s.provider == "tata_tele"])

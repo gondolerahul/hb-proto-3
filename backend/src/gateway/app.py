@@ -192,6 +192,42 @@ async def gateway_metrics():
 
 
 # ---------------------------------------------------------------------------
+# Tata Tele WebSocket — Direct audio streaming endpoint
+# ---------------------------------------------------------------------------
+# Tata Tele connects via WebSocket to this path after click-to-call initiates.
+# Their protocol: connected → start → media (loop) → stop
+
+@app.websocket("/webhooks/voice/tata/incoming")
+async def tata_websocket_incoming(websocket: WebSocket):
+    """
+    WebSocket endpoint for Tata Tele bidirectional audio streaming.
+    
+    After click-to-call-support places a call and the customer answers,
+    Tata Tele opens a WebSocket connection here to stream audio.
+    """
+    from src.database import get_db
+    from src.voice.websocket_handler import TataStreamHandler
+
+    await websocket.accept()
+    logger.info("[Gateway] Tata Tele WebSocket connection accepted")
+
+    try:
+        async for db in get_db():
+            handler = TataStreamHandler(
+                websocket=websocket,
+                db=db
+            )
+            await handler.handle_direct()
+            break
+    except Exception as e:
+        logger.error(f"[Gateway] Tata Tele WebSocket error: {e}", exc_info=True)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Interface 1: REST API Passthrough Proxy (catch-all — MUST be last)
 # ---------------------------------------------------------------------------
 

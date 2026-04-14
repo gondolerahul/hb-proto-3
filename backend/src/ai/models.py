@@ -106,6 +106,7 @@ class ExecutionRun(Base):
     
     # Metrics and Tracing
     total_cost_usd = Column(Numeric(10, 4), default=0)
+    billed_amount = Column(Numeric(14, 6), nullable=True)  # TB formula result — the user-facing charge
     total_tokens = Column(Integer, default=0)
     execution_time_ms = Column(Integer, nullable=True)
     trace_id = Column(UUID(as_uuid=True), nullable=True)
@@ -137,6 +138,7 @@ class LLMInteractionLog(Base):
     latency_ms = Column(Integer, nullable=True)
     cost_usd = Column(Numeric(10, 6), default=0)
     reasoning_mode = Column(String, nullable=True)
+    step_name = Column(String, nullable=True)  # Associates this log with a specific plan step
     log_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

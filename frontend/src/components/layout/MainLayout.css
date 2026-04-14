@@ -12,7 +12,7 @@
     left: 0;
     top: 0;
     bottom: 0;
-    width: 280px;
+    width: 300px;
     padding: var(--spacing-6);
     z-index: var(--z-nav);
     background: var(--color-glass-bg);
@@ -22,6 +22,7 @@
     transition: width var(--transition-base), transform var(--transition-base);
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
 }
 
 .sidebar.closed {
@@ -118,6 +119,7 @@
     gap: var(--spacing-2);
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .nav-item {
@@ -257,7 +259,7 @@
 /* Main Content Area */
 .main-content {
     flex: 1;
-    margin-left: 280px;
+    margin-left: 300px;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -272,7 +274,7 @@
 /* Main Content Area */
 .main-content {
     flex: 1;
-    margin-left: 280px;
+    margin-left: 300px;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -397,7 +399,7 @@ main {
 
     .sidebar.open {
         transform: translateX(0);
-        width: 280px;
+        width: 300px;
     }
 
     .main-content {

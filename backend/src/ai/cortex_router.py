@@ -2,17 +2,19 @@
 cortex_router.py — FastAPI REST Endpoints for CORTEX Memory System
 
 Provides endpoints under /api/v1/cortex/ to manage cognitive trees,
-navigate/read/write nodes, checkpoint, and assemble outputs.
+navigate/read/write nodes, checkpoint, ingest documents, and assemble outputs.
 """
 from uuid import UUID
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.database import get_db
 from src.auth.dependencies import get_current_user
 from src.ai.cortex_service import CortexRouter as CortexService
+from src.ai.cortex_ingestion import CortexIngestionPipeline
 from src.ai.schemas import (
     CortexTreeCreate, CortexTreeResponse, CortexTreeListResponse,
     CortexNodeCreate, CortexNodeSummary, CortexViewportResponse,
@@ -227,13 +229,14 @@ async def create_checkpoint(
 @router.get("/trees/{tree_id}/output")
 async def assemble_output(
     tree_id: UUID,
+    coherence_pass: bool = Query(True),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     """Assemble complete output from the output subtree."""
     svc = _cortex_service(db, current_user.company_id)
     try:
-        output = await svc.assemble_output(tree_id)
+        output = await svc.assemble_output(tree_id, coherence_pass=coherence_pass)
         return {"output": output}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -253,12 +256,58 @@ async def recurse_node(
     """Spawn a recursive child execution scoped to a subtree."""
     svc = _cortex_service(db, current_user.company_id)
     try:
-        task_node_id = await svc.recurse(
+        task_node_id, child_run_id = await svc.recurse(
             node_id=body.node_id,
             task=body.task,
             result_slot=body.result_slot,
+            model_override=getattr(body, 'model_override', None),
+            priority=getattr(body, 'priority', 0),
         )
         await db.commit()
-        return {"task_node_id": str(task_node_id)}
+        return {"task_node_id": str(task_node_id), "child_run_id": str(child_run_id) if child_run_id else None}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# ===================================================================
+# Document Ingestion (Gap #6)
+# ===================================================================
+
+class IngestDocumentRequest(BaseModel):
+    document_id: UUID
+    content: str
+    filename: str
+    knowledge_root_id: Optional[UUID] = None
+
+
+@router.post("/trees/{tree_id}/ingest", status_code=201)
+async def ingest_document(
+    tree_id: UUID,
+    body: IngestDocumentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Ingest a document into the CORTEX tree as hierarchical knowledge nodes."""
+    svc = _cortex_service(db, current_user.company_id)
+    try:
+        # Get knowledge root if not provided
+        if body.knowledge_root_id:
+            parent_id = body.knowledge_root_id
+        else:
+            kr = await svc.get_knowledge_root(tree_id)
+            if not kr:
+                raise ValueError(f"No knowledge root found for tree {tree_id}")
+            parent_id = kr.id
+
+        pipeline = CortexIngestionPipeline(db, current_user.company_id)
+        count = await pipeline.ingest_document(
+            tree_id=tree_id,
+            parent_node_id=parent_id,
+            document_id=body.document_id,
+            content=body.content,
+            filename=body.filename,
+        )
+        await db.commit()
+        return {"nodes_created": count}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

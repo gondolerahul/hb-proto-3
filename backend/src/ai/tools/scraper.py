@@ -22,11 +22,55 @@ class ScraperTool(Tool):
 
     async def run_with_context(self, input_data: str, context: dict = None) -> str:
         try:
-            params = json.loads(input_data)
-            url = params.get("url")
+            # Sanitize LLM-generated input: strip markdown fences, control chars
+            cleaned = input_data.strip()
+            if cleaned.startswith("```"):
+                # Remove ```json ... ``` wrapper
+                lines = cleaned.split("\n")
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                cleaned = "\n".join(lines).strip()
+
+            # Try parsing as JSON first (strict=False to allow control chars)
+            url = None
+            urls_list = None
+            try:
+                params = json.loads(cleaned, strict=False)
+                if isinstance(params, dict):
+                    url = params.get("url")
+                    urls_list = params.get("urls")  # Accept {"urls": [...]} format
+                elif isinstance(params, list):
+                    # LLM passed a JSON array of URLs (e.g. from a previous step)
+                    urls_list = [u for u in params if isinstance(u, str) and u.startswith("http")]
+                elif isinstance(params, str):
+                    url = params  # LLM sometimes passes just a URL string
+            except json.JSONDecodeError:
+                # Fallback: treat the whole input as a raw URL or newline-separated URLs
+                if cleaned.startswith("http://") or cleaned.startswith("https://"):
+                    # Could be multiple URLs separated by newlines
+                    found_urls = [l.strip() for l in cleaned.split("\n") if l.strip().startswith("http")]
+                    if len(found_urls) > 1:
+                        urls_list = found_urls
+                    else:
+                        url = found_urls[0] if found_urls else cleaned.split()[0]
+                    params = {"url": url}
+                else:
+                    return json.dumps({"error": f"Could not parse scraper input as JSON or URL: {cleaned[:200]}"})
+
+            # Handle multiple URLs: scrape each and return combined results
+            if urls_list and len(urls_list) > 0:
+                all_results = []
+                for i, u in enumerate(urls_list[:10]):  # Cap at 10 URLs
+                    single_input = json.dumps({"url": u.strip()})
+                    result = await self.run_with_context(single_input, context)
+                    try:
+                        r = json.loads(result)
+                        all_results.append({"url": u.strip(), **r})
+                    except json.JSONDecodeError:
+                        all_results.append({"url": u.strip(), "error": "Parse error"})
+                return json.dumps({"results": all_results, "total_scraped": len(all_results)})
             
             if not url:
-                return json.dumps({"error": "Missing 'url'"})
+                return json.dumps({"error": "Missing 'url' in scraper input"})
 
             # Retrieve execution context info
             context = context or {}
@@ -124,8 +168,8 @@ class ScraperTool(Tool):
                         "artifact_id": str(saved_artifact.id),
                         "file_path": saved_artifact.file_path,
                         "message": f"Successfully scraped {len(markdown_content)} characters and saved as document artifact.",
-                        # Return truncated text for immediate LLM context window safety
-                        "content": markdown_content[:8000]
+                        # Return content within LLM context budget (32K chars ≈ 8K tokens)
+                        "content": markdown_content[:32000]
                     })
                     
         except Exception as e:

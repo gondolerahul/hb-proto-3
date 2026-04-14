@@ -35,12 +35,14 @@ class VoiceUsageLogger:
     
     # SKU mappings for different providers
     TELEPHONY_SKU_MAP = {
-        "tata_tele": "tatatele-input-output",
+        "tata_tele": "tata-tele-voice-in-out",
         "twilio": "in-out"
     }
     
-    GEMINI_INPUT_SKU = "gemini-2.5-flash-native-audio-preview-12-2025-input"
-    GEMINI_OUTPUT_SKU = "gemini-2.5-flash-native-audio-preview-12-2025-out"
+    # These will be resolved dynamically from the speech_to_speech task default
+    # Fallbacks only used if dynamic resolution fails
+    GEMINI_INPUT_SKU = "gemini-3.1-flash-live-preview-in"
+    GEMINI_OUTPUT_SKU = "gemini-3.1-flash-live-preview-out"
     
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -63,8 +65,8 @@ class VoiceUsageLogger:
             company_id: Company UUID
             provider: 'twilio' or 'tata_tele'
             duration_seconds: Total call duration
-            audio_input_seconds: Audio sent to LLM (optional, defaults to duration/2)
-            audio_output_seconds: Audio received from LLM (optional, defaults to duration/2)
+            audio_input_seconds: Audio sent to LLM (optional, defaults to full duration)
+            audio_output_seconds: Audio received from LLM (optional, defaults to full duration)
             metadata: Additional metadata to log
             
         Returns:
@@ -72,11 +74,13 @@ class VoiceUsageLogger:
         """
         total_cost = Decimal("0.0")
         
-        # Default audio durations to half the call (rough estimate)
+        # Default audio durations to total call duration.
+        # Both input (user speech) and output (agent speech) span the
+        # entire call, so each is billed for the full duration.
         if audio_input_seconds is None:
-            audio_input_seconds = duration_seconds // 2
+            audio_input_seconds = duration_seconds
         if audio_output_seconds is None:
-            audio_output_seconds = duration_seconds // 2
+            audio_output_seconds = duration_seconds
         
         # 1. Log Telephony Cost
         try:
@@ -195,8 +199,9 @@ class VoiceUsageLogger:
         """
         Log LLM audio usage.
         
-        For Gemini Live API, we estimate tokens based on audio duration.
-        Rough estimate: ~167 tokens per second of audio (based on typical ASR/TTS rates)
+        Supports two billing modes based on the SKU's cost_unit:
+        - 'per_minute': Charges per minute (ceiling-rounded). E.g. 125s → 3 min.
+        - '1M Tokens' / '1K': Estimates tokens from audio duration (~167 tok/s).
         """
         # Get SKU from registry
         registry_entry = await self._get_sku(company_id, sku_name)
@@ -204,30 +209,43 @@ class VoiceUsageLogger:
             logger.warning(f"No active SKU found: {sku_name} for company {company_id}")
             return None
         
-        # Estimate tokens from audio duration
-        # Gemini audio models typically process ~167 tokens/second (rough estimate)
-        # This is an approximation - actual usage may vary
-        tokens_per_second = Decimal("167")
-        estimated_tokens = tokens_per_second * Decimal(str(audio_seconds))
+        cost_unit = (registry_entry.cost_unit or "").lower().strip()
         
-        # Calculate cost (rate is per 1M tokens)
-        cost_divisor = Decimal("1000000")
-        if registry_entry.cost_unit and "1K" in registry_entry.cost_unit:
-            cost_divisor = Decimal("1000")
-        
-        calculated_cost = (registry_entry.internal_cost * estimated_tokens) / cost_divisor
+        if "per_minute" in cost_unit or "per minute" in cost_unit:
+            # ── Per-minute billing (ceiling-rounded) ──────────────────
+            duration_minutes = Decimal(str(math.ceil(audio_seconds / 60.0)))
+            calculated_cost = registry_entry.internal_cost * duration_minutes
+            raw_quantity = duration_minutes
+            log_extra = {
+                "billing_mode": "per_minute",
+                "audio_seconds": audio_seconds,
+                "billed_minutes": float(duration_minutes),
+            }
+        else:
+            # ── Token-based billing (1M or 1K tokens) ─────────────────
+            tokens_per_second = Decimal("167")
+            estimated_tokens = tokens_per_second * Decimal(str(audio_seconds))
+            cost_divisor = Decimal("1000000")
+            if "1k" in cost_unit:
+                cost_divisor = Decimal("1000")
+            calculated_cost = (registry_entry.internal_cost * estimated_tokens) / cost_divisor
+            raw_quantity = estimated_tokens
+            log_extra = {
+                "billing_mode": "per_token",
+                "audio_seconds": audio_seconds,
+                "estimated_tokens": float(estimated_tokens),
+                "tokens_per_second": float(tokens_per_second),
+            }
         
         # Create usage log
         usage_log = UsageLog(
             company_id=company_id,
             sku_id=registry_entry.id,
-            raw_quantity=estimated_tokens,
+            raw_quantity=raw_quantity,
             calculated_cost=calculated_cost,
             log_metadata={
                 "usage_type": f"llm_audio_{usage_type}",
-                "audio_seconds": audio_seconds,
-                "estimated_tokens": float(estimated_tokens),
-                "tokens_per_second": float(tokens_per_second),
+                **log_extra,
                 **(metadata or {})
             }
         )

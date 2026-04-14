@@ -27,14 +27,17 @@ export const ExecutionPage: React.FC = () => {
             setEntity(data);
 
             const allVars = new Set<string>();
-            // Extract variables from IO Contract if available
+            // Extract variables from IO Contract if available (canonical source of user inputs)
             if (data.io_contract?.input_schema?.properties) {
                 Object.keys(data.io_contract.input_schema.properties).forEach(key => {
                     allVars.add(key);
                 });
             }
 
-            // Extract variables from all prompt templates in the plan
+            // Extract variables from all prompt templates in the plan,
+            // but EXCLUDE internal step references (step_1, step_2, etc.)
+            // which are resolved at runtime from previous step outputs.
+            const stepRefPattern = /^step_\d+$/;
             const steps = data.planning?.static_plan?.steps || [];
 
             steps.forEach(step => {
@@ -43,7 +46,10 @@ export const ExecutionPage: React.FC = () => {
                     const regex = /\{\{(\w+)\}\}/g;
                     const matches = promptTemplate.matchAll(regex);
                     for (const match of matches) {
-                        allVars.add(match[1]);
+                        // Only add user-facing variables, not internal step references
+                        if (!stepRefPattern.test(match[1])) {
+                            allVars.add(match[1]);
+                        }
                     }
                 }
             });

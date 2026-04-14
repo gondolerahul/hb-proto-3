@@ -36,4 +36,10 @@ export const templateService = {
         const { data } = await apiClient.post(`/ai/templates/${templateId}/clone`);
         return data;
     },
+
+    /** Convert an existing entity (+ children) into a template hierarchy. Requires app_admin. */
+    async convertToTemplate(entityId: string): Promise<HierarchicalEntity> {
+        const { data } = await apiClient.post(`/ai/entities/${entityId}/convert-to-template`);
+        return data;
+    },
 };

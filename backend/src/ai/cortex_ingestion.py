@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 class CortexIngestionPipeline:
     """
     Ingests documents into a CORTEX tree as hierarchical knowledge nodes.
+    
+    Gap #15: Uses LLM to generate navigation-quality summaries (~200 tokens)
+    instead of simple string truncation.
     """
 
     def __init__(self, db: AsyncSession, company_id: UUID):
@@ -67,19 +70,24 @@ class CortexIngestionPipeline:
 
         if not sections:
             # Single node for the entire document
+            summary = await self._generate_summary(content, filename)
             await self.cortex.write(
                 parent_id=parent_node_id,
                 node_type="knowledge",
                 title=f"📄 {filename}",
                 content=content,
-                summary=content[:500] + "..." if len(content) > 500 else content,
+                summary=summary,
                 status="complete",
                 source_ref={"document_id": str(document_id), "filename": filename},
             )
             return 1
 
         # Create document root node
-        doc_summary = f"Document: {filename} — {len(sections)} sections, ~{len(content)} chars"
+        doc_summary = await self._generate_summary(
+            content[:2000],
+            filename,
+            context=f"This document has {len(sections)} sections and ~{len(content)} characters."
+        )
         doc_node_id = await self.cortex.write(
             parent_id=parent_node_id,
             node_type="knowledge",
@@ -93,7 +101,7 @@ class CortexIngestionPipeline:
         # Create section nodes
         node_count = 1
         for i, (heading, section_content) in enumerate(sections):
-            section_summary = section_content[:400] + "..." if len(section_content) > 400 else section_content
+            section_summary = await self._generate_summary(section_content, heading)
             await self.cortex.write(
                 parent_id=doc_node_id,
                 node_type="knowledge",
@@ -114,6 +122,44 @@ class CortexIngestionPipeline:
         await self.db.flush()
         logger.info(f"Ingested document {filename} into tree {tree_id}: {node_count} nodes")
         return node_count
+
+    async def _generate_summary(
+        self, content: str, title: str, context: str = ""
+    ) -> str:
+        """
+        Gap #15: Generate LLM navigation-quality summary (~200 tokens).
+        
+        The summary is optimised for helping another LLM decide whether
+        this node/section contains information relevant to its current task.
+        Falls back to truncation if LLM is unavailable.
+        """
+        try:
+            from src.ai.llm_router import LLMRouter
+            llm = LLMRouter(db=self.db, company_id=self.company_id)
+
+            system_prompt = (
+                "Generate a concise ~200 token summary of this document section. "
+                "The summary should help an AI agent decide whether this section "
+                "contains information relevant to its current task. Focus on the "
+                "key topics, entities, and facts covered. Be specific, not generic."
+            )
+
+            user_prompt = f"Title: {title}\n"
+            if context:
+                user_prompt += f"Context: {context}\n"
+            user_prompt += f"\nContent:\n{content[:4000]}"
+
+            resp = await llm.call_llm(
+                task_type="text_generation",
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.3,
+                max_tokens=300,
+            )
+            return resp.output[:500]
+        except Exception as e:
+            logger.warning(f"LLM summary generation failed for '{title}', using truncation: {e}")
+            return content[:400] + "..." if len(content) > 400 else content
 
     def _parse_sections(
         self, content: str, filename: str

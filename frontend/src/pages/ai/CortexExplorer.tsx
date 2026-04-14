@@ -105,8 +105,8 @@ export const CortexExplorer: React.FC = () => {
                 <div className="cortex-empty">
                     <TreePine size={64} strokeWidth={1} />
                     <h2>No Memory Trees Yet</h2>
-                    <p>CORTEX trees are automatically created when entities run with <code>long_running = true</code>.</p>
-                    <p>You can also create them manually via the API.</p>
+                    <p>CORTEX trees are automatically created when entities execute. Each execution generates a persistent cognitive tree.</p>
+                    <p>Run an entity to see its memory tree appear here.</p>
                 </div>
             ) : (
                 <div className="cortex-tree-grid">

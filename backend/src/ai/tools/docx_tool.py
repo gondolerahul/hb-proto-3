@@ -16,9 +16,12 @@ from src.ai.tools.base import Tool
 try:
     from docx import Document
     from docx.shared import Inches, Pt
-    from docx.enum.text import PP_ALIGN
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 except ImportError:
     Document = None
+    Inches = None
+    Pt = None
+    WD_ALIGN_PARAGRAPH = None
 
 # Artifact root for system-generated files
 BASE_DIR = Path(__file__).resolve().parents[3] / "artifact" / "system-generated"
@@ -47,8 +50,17 @@ class DocxTool(Tool):
         return await self.run_with_context(input_data, context=None)
 
     async def run_with_context(self, input_data: str, context=None) -> str:
+        # Lazy re-import: picks up python-docx if installed after worker started
+        global Document, Inches, Pt, WD_ALIGN_PARAGRAPH
         if Document is None:
-            return json.dumps({"error": "python-docx is not installed"})
+            try:
+                from docx import Document
+                from docx.shared import Inches, Pt
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+            except ImportError:
+                raise RuntimeError(
+                    "python-docx is not installed. Install via: pip install python-docx"
+                )
 
         try:
             params = json.loads(input_data) if isinstance(input_data, str) else input_data

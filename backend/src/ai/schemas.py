@@ -1,4 +1,5 @@
 from pydantic import BaseModel, field_validator
+import json as _json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
@@ -214,6 +215,15 @@ class PlanStepTarget(BaseModel):
     tool_id: Optional[str] = None
     prompt_template: Optional[str] = None
     input_dependencies: List[str] = []  # Explicit step output dependencies (e.g., ["step_1", "step_2"])
+
+    @field_validator("prompt_template", mode="before")
+    @classmethod
+    def coerce_prompt_template(cls, v):
+        """LLM planners sometimes emit prompt_template as a dict/list instead of a string.
+        Auto-convert to a JSON string so downstream variable resolution still works."""
+        if isinstance(v, (dict, list)):
+            return _json.dumps(v, default=str)
+        return v
 
 class PlanStep(BaseModel):
     step_id: Optional[str] = None  # Accept string IDs from frontend
@@ -445,6 +455,7 @@ class LLMInteractionLogResponse(BaseModel):
     latency_ms: Optional[int]
     cost_usd: float = 0.0
     reasoning_mode: Optional[str] = None
+    step_name: Optional[str] = None
     log_metadata: Optional[Dict[str, Any]] = None
     created_at: datetime
 
@@ -488,6 +499,7 @@ class ExecutionRunSummary(BaseModel):
     status: RunStatus
     error_message: Optional[str]
     total_cost_usd: float = 0.0
+    billed_amount: Optional[float] = None  # TB formula result — user-facing charge
     total_tokens: int = 0
     execution_time_ms: Optional[int] = None
     trace_id: Optional[UUID] = None
@@ -505,6 +517,13 @@ class ExecutionRunSummary(BaseModel):
         if v is None:
             return 0.0
         return v
+
+    @field_validator("billed_amount", mode="before")
+    @classmethod
+    def parse_billed_amount(cls, v):
+        if v is None:
+            return None
+        return float(v)
 
     @field_validator("total_tokens", mode="before")
     @classmethod

@@ -3,11 +3,7 @@ import { Wallet, CreditCard, CheckCircle, AlertTriangle, RefreshCw, Star } from 
 import { creditsService, CreditBalance, Subscription } from '@/services/credits.service';
 import './WalletPage.css';
 
-const PLANS = [
-    { tier: 1, name: 'Starter', monthlyFee: 29, bonus: 20, features: ['20% Bonus Credits', 'Email Support', 'Up to 5 Agents'] },
-    { tier: 2, name: 'Growth', monthlyFee: 79, bonus: 30, features: ['30% Bonus Credits', 'Priority Support', 'Up to 20 Agents'] },
-    { tier: 3, name: 'Scale', monthlyFee: 199, bonus: 40, features: ['40% Bonus Credits', 'Dedicated Support', 'Unlimited Agents'] },
-];
+
 
 function CreditBucket({ label, amount, expiry, accent }: {
     label: string; amount: number; expiry?: string | null; accent?: boolean;
@@ -38,17 +34,31 @@ export const WalletPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [cancellingId, setCancellingId] = useState<string | null>(null);
+    const [subscriptionTiers, setSubscriptionTiers] = useState<Array<{
+        id: string; name: string; tier_level: number; monthly_fee: number; bonus_pct: number;
+    }>>([]);
+
+    // Fallback plans if API returns empty (initial seed)
+    const FALLBACK_PLANS = [
+        { tier_level: 1, name: 'Starter', monthly_fee: 29, bonus_pct: 20 },
+        { tier_level: 2, name: 'Growth', monthly_fee: 79, bonus_pct: 30 },
+        { tier_level: 3, name: 'Scale', monthly_fee: 199, bonus_pct: 40 },
+    ];
+
+    const plans = subscriptionTiers.length > 0 ? subscriptionTiers : FALLBACK_PLANS;
 
     const fetchData = async () => {
         setLoading(true);
         setError(null);
         try {
-            const [bal, sub] = await Promise.all([
+            const [bal, sub, tiers] = await Promise.all([
                 creditsService.getBalance(),
                 creditsService.getSubscription(),
+                creditsService.getSubscriptionTiers().catch(() => []),
             ]);
             setBalance(bal);
             setSubscription(sub.subscription);
+            setSubscriptionTiers(tiers);
         } catch (e: any) {
             setError(e?.response?.data?.detail || 'Failed to load wallet data');
         } finally {
@@ -284,22 +294,22 @@ export const WalletPage: React.FC = () => {
                         Daily $5 credits always apply first.
                     </p>
                     <div className="plans-grid">
-                        {PLANS.map((plan) => (
-                            <div key={plan.tier} className={`plan-card glass ${plan.tier === 2 ? 'popular' : ''}`}>
-                                {plan.tier === 2 && <div className="popular-badge">Most Popular</div>}
+                        {plans.map((plan: any) => (
+                            <div key={plan.tier_level} className={`plan-card glass ${plan.tier_level === 2 ? 'popular' : ''}`}>
+                                {plan.tier_level === 2 && <div className="popular-badge">Most Popular</div>}
                                 <h3 className="plan-name">{plan.name}</h3>
-                                <p className="plan-price">${plan.monthlyFee}<span>/mo</span></p>
-                                <p className="plan-bonus">+{plan.bonus}% Bonus Credits</p>
+                                <p className="plan-price">${plan.monthly_fee}<span>/mo</span></p>
+                                <p className="plan-bonus">+{plan.bonus_pct}% Bonus Credits</p>
                                 <ul className="plan-features">
-                                    {plan.features.map((f) => (
-                                        <li key={f}><CheckCircle size={14} />{f}</li>
-                                    ))}
+                                    <li><CheckCircle size={14} />{plan.bonus_pct}% Bonus Credits</li>
+                                    {plan.tier_level >= 2 && <li><CheckCircle size={14} />Priority Support</li>}
+                                    {plan.tier_level >= 3 && <li><CheckCircle size={14} />Unlimited Agents</li>}
                                 </ul>
                                 <button
                                     className="btn-primary full-width"
-                                    onClick={() => handleSubscribe(plan.tier, plan.monthlyFee)}
+                                    onClick={() => handleSubscribe(plan.tier_level, plan.monthly_fee)}
                                 >
-                                    Subscribe — ${plan.monthlyFee}/mo
+                                    Subscribe — ${plan.monthly_fee}/mo
                                 </button>
                             </div>
                         ))}

@@ -289,6 +289,18 @@ async def twilio_outbound_twiml(
         return Response(content=twiml, media_type="application/xml")
 
 
+@router.get("/tata/incoming")
+async def tata_incoming_verification(request: Request):
+    """
+    GET handler for Tata Tele webhook verification.
+
+    Tata Tele sends a GET request to verify the webhook URL is reachable
+    before sending actual call events via POST. Returns 200 OK.
+    """
+    logger.info(f"Tata Tele webhook verification GET from {request.client.host if request.client else 'unknown'}")
+    return {"status": "ok", "message": "Tata Tele webhook endpoint active"}
+
+
 @router.post("/tata/incoming")
 async def tata_incoming_call(
     request: Request,
@@ -305,13 +317,62 @@ async def tata_incoming_call(
     - toNumber: Called number
     - status: Call status
     """
-    data = await request.json()
+    # Parse body — handle both JSON and form-encoded data
+    content_type = request.headers.get("content-type", "")
+    raw_body = await request.body()
+    logger.info(f"Tata Tele incoming POST: content-type={content_type}, body_len={len(raw_body)}, raw={raw_body[:500]}")
     
-    call_id = data.get("callId")
-    from_number = data.get("fromNumber")
-    to_number = data.get("toNumber")
-    status = data.get("status")
-    custom_identifier = data.get("custom_identifier")
+    try:
+        if "json" in content_type:
+            data = await request.json()
+        elif "form" in content_type:
+            form = await request.form()
+            data = dict(form)
+        elif raw_body:
+            # Try JSON first, then form
+            import json as _json
+            try:
+                data = _json.loads(raw_body)
+            except Exception:
+                from urllib.parse import parse_qs
+                parsed = parse_qs(raw_body.decode("utf-8", errors="replace"))
+                data = {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
+        else:
+            data = {}
+    except Exception as e:
+        logger.error(f"Failed to parse Tata POST body: {e}")
+        data = {}
+    
+    # Log the parsed data
+    logger.info(f"Tata Tele incoming call PARSED data: {data}")
+    
+    # Extract fields — try multiple possible field names since Tata Tele's
+    # API may use different names than documented
+    call_id = (
+        data.get("callId")
+        or data.get("call_id")
+        or data.get("callSid")
+        or data.get("call_sid")
+        or data.get("id")
+    )
+    from_number = (
+        data.get("fromNumber")
+        or data.get("from_number")
+        or data.get("from")
+        or data.get("caller_id_number")
+        or data.get("caller_number")
+        or data.get("source")
+    )
+    to_number = (
+        data.get("toNumber")
+        or data.get("to_number")
+        or data.get("to")
+        or data.get("destination")
+        or data.get("did_number")
+        or data.get("called_number")
+    )
+    status = data.get("status") or data.get("call_status")
+    custom_identifier = data.get("custom_identifier") or data.get("customIdentifier")
     
     logger.info(f"Tata Tele incoming call: {call_id} from {from_number} to {to_number}, custom_id={custom_identifier}")
     

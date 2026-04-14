@@ -1,0 +1,17 @@
+{
+  "web_search_action": "02c1491e-9451-481b-8a75-08a7ba4db188",
+  "page_scrape_action": "04580d9a-1109-4d6e-925a-f077e6ab521c",
+  "content_extract_action": "edfde669-d3cc-4fd2-a36f-a88f143b629d",
+  "fact_check_action": "eecf0e3b-38cb-42ea-ac2e-0f89af719d51",
+  "section_writer_action": "b84af84e-eb9d-4048-8e95-b08989aa1ee9",
+  "outline_generator_action": "696742e1-92e7-4ac0-a69a-333afc78bdf0",
+  "pdf_export_action": "43adf400-9ce5-4ecf-a330-919600a2ce1a",
+  "query_decomposer_skill": "90995430-a3c8-43ad-87ae-664d7947cd41",
+  "source_discoverer_skill": "f91c4741-be80-41d6-9470-c3058a558696",
+  "source_analyzer_skill": "756a98f3-c04e-48c6-a815-3dabcb3c5c40",
+  "fact_verifier_skill": "ff408012-a67f-4bdb-bfd6-80a7d59ebe15",
+  "knowledge_synthesizer_skill": "dab606f2-e14e-43ab-9008-7c44b3167854",
+  "research_director_agent": "cb27c2ac-48dd-4643-98e0-61643e4a103b",
+  "report_synthesizer_agent": "572c5ef3-ab98-445e-a589-f1bab8d4052f",
+  "deep_research_process": "e23d07b3-83b5-4e7f-9dce-f1c5c2d6b168"
+}

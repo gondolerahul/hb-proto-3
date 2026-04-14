@@ -46,6 +46,7 @@ const CortexTreeDetail = lazy(() => import('@/pages/ai/CortexTreeDetail').then(m
 
 // Tool Registry Management
 const ToolManagement = lazy(() => import('@/pages/ai/ToolManagement').then(m => ({ default: m.ToolManagement })));
+const TemplateMarketplace = lazy(() => import('@/pages/ai/TemplateMarketplace').then(m => ({ default: m.TemplateMarketplace })));
 
 
 // Loading Component for Suspense
@@ -225,6 +226,18 @@ export const AppRouter: React.FC = () => {
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN]}>
                                 <MainLayout>
                                     <ToolManagement />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Template Marketplace */}
+                    <Route
+                        path="/ai/templates"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <TemplateMarketplace />
                                 </MainLayout>
                             </ProtectedRoute>
                         }

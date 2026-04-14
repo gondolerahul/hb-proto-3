@@ -2,10 +2,9 @@
 Web Search Tool for HireBuddha AI Platform.
 
 Provides real web search functionality using multiple backends:
-1. Google Custom Search API — preferred (GOOGLE_CSE_API_KEY + GOOGLE_CSE_ID env vars)
-2. SerpAPI — second choice (SERP_API_KEY or SERPAPI_KEY env var)
-3. duckduckgo-search library — free robust fallback (no API key needed)
-4. DuckDuckGo Instant Answers API — final minimal fallback
+1. SerpAPI — preferred (SERP_API_KEY via Integration Registry)
+2. duckduckgo-search library — free robust fallback (no API key needed)
+3. DuckDuckGo Instant Answers API — final minimal fallback
 
 Configure via Integration Registry or env vars.
 """
@@ -25,10 +24,9 @@ class WebSearchTool(Tool):
     """Web search tool with multiple backend support.
 
     Priority order:
-        1. Google Custom Search API (GOOGLE_CSE_API_KEY + GOOGLE_CSE_ID)
-        2. SerpAPI / Google Search (SERP_API_KEY or SERPAPI_KEY)
-        3. duckduckgo-search Python library (free, no key)
-        4. DuckDuckGo Instant Answers API (very limited, no key)
+        1. SerpAPI / Google Search (SERP_API_KEY via Integration Registry)
+        2. duckduckgo-search Python library (free, no key)
+        3. DuckDuckGo Instant Answers API (very limited, no key)
     """
 
     name = "web_search"
@@ -40,7 +38,6 @@ class WebSearchTool(Tool):
 
     _TIMEOUT = 15.0
     _DDG_API_URL = "https://api.duckduckgo.com/"
-    _GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
     _SERP_API_URL = "https://serpapi.com/search"
 
     # ---------------------------------------------------------------------------
@@ -77,8 +74,6 @@ class WebSearchTool(Tool):
     async def _resolve_keys(self, context: Optional[Dict] = None) -> Dict[str, Optional[str]]:
         """Look up available search API keys from the Integration Registry."""
         keys = {
-            "google_cse_api_key": None,
-            "google_cse_id": None,
             "serp_api_key": None,
         }
 
@@ -92,69 +87,32 @@ class WebSearchTool(Tool):
                 async with AsyncSessionLocal() as db:
                     config_service = ConfigService(db)
                     company_uuid = _UUID(str(context["company_id"]))
+                    logger.info(f"[WebSearch] Resolving API keys for company {company_uuid}")
 
-                    # Google CSE Resolution
-                    if not keys["google_cse_api_key"] or not keys["google_cse_id"]:
-                        entry = await config_service.get_integration_by_sku(company_uuid, "google-cse-key") or \
-                                await config_service.get_integration_by_provider(company_uuid, "google")
-                        
-                        if entry:
-                            from src.common.security import decrypt_api_key
-                            if not keys["google_cse_api_key"]:
-                                keys["google_cse_api_key"] = decrypt_api_key(entry.encrypted_api_key)
-                            if not keys["google_cse_id"]:
-                                # Look in metadata or model_name
-                                keys["google_cse_id"] = (entry.service_metadata or {}).get("cse_id") or \
-                                                       (entry.service_metadata or {}).get("cx") or \
-                                                       entry.model_name
-                    
                     # SerpAPI Resolution
                     if not keys["serp_api_key"]:
                         keys["serp_api_key"] = await config_service.get_api_key_by_sku(company_uuid, "serp-api-key") or \
                                              await config_service.get_api_key_by_provider(company_uuid, "serpapi")
 
+                    # Log resolution outcome
+                    resolved = [k for k, v in keys.items() if v]
+                    if resolved:
+                        logger.info(f"[WebSearch] Resolved keys: {resolved}")
+                    else:
+                        logger.warning(f"[WebSearch] No search API keys found for company {company_uuid}. "
+                                       f"Configure integration with provider_name='serpapi' or service_sku='serp-api-key'.")
+
             except Exception as e:
-                logger.debug(f"[WebSearch] Registry lookup failed: {e}")
+                logger.warning(f"[WebSearch] Registry lookup failed: {e}")
+        else:
+            logger.warning(f"[WebSearch] No company_id in context — cannot resolve API keys from registry")
 
         return keys
 
-    # ---------------------------------------------------------------------------
-    # Backend 1: Google Custom Search API
-    # ---------------------------------------------------------------------------
 
-    async def _search_google_cse(self, query: str, api_key: str, cse_id: str) -> Optional[List[Dict]]:
-        """Search using Google Custom Search JSON API."""
-        try:
-            async with httpx.AsyncClient(timeout=self._TIMEOUT) as client:
-                response = await client.get(
-                    self._GOOGLE_CSE_URL,
-                    params={
-                        "key": api_key,
-                        "cx": cse_id,
-                        "q": query,
-                        "num": 10,
-                    }
-                )
-                response.raise_for_status()
-                data = response.json()
-
-            results = []
-            for item in data.get("items", [])[:8]:
-                results.append({
-                    "title": item.get("title", ""),
-                    "url": item.get("link", ""),
-                    "snippet": item.get("snippet", ""),
-                })
-
-            logger.info(f"[WebSearch] Google CSE returned {len(results)} results for: {query[:60]}")
-            return results if results else None
-
-        except Exception as e:
-            logger.warning(f"[WebSearch] Google CSE failed: {e}")
-            return None
 
     # ---------------------------------------------------------------------------
-    # Backend 2: SerpAPI
+    # Backend 1: SerpAPI
     # ---------------------------------------------------------------------------
 
     async def _search_serpapi(self, query: str, api_key: str) -> Optional[List[Dict]]:
@@ -200,7 +158,7 @@ class WebSearchTool(Tool):
             return None
 
     # ---------------------------------------------------------------------------
-    # Backend 3: duckduckgo-search library (handles bot detection)
+    # Backend 2: duckduckgo-search library (handles bot detection)
     # ---------------------------------------------------------------------------
 
     async def _search_ddg_library(self, query: str) -> Optional[List[Dict]]:
@@ -240,7 +198,7 @@ class WebSearchTool(Tool):
             return None
 
     # ---------------------------------------------------------------------------
-    # Backend 4: DuckDuckGo Instant Answers API (minimal fallback)
+    # Backend 3: DuckDuckGo Instant Answers API (minimal fallback)
     # ---------------------------------------------------------------------------
 
     async def _search_ddg_api(self, query: str) -> List[Dict]:
@@ -316,29 +274,22 @@ class WebSearchTool(Tool):
 
         results: Optional[List[Dict]] = None
 
-        # Backend 1: Google Custom Search
-        if keys.get("google_cse_api_key") and keys.get("google_cse_id"):
-            results = await self._search_google_cse(
-                query, keys["google_cse_api_key"], keys["google_cse_id"]
-            )
-
-        # Backend 2: SerpAPI
-        if not results and keys.get("serp_api_key"):
+        # Backend 1: SerpAPI
+        if keys.get("serp_api_key"):
             results = await self._search_serpapi(query, keys["serp_api_key"])
 
-        # Backend 3: duckduckgo-search library
+        # Backend 2: duckduckgo-search library
         if not results:
             results = await self._search_ddg_library(query)
 
-        # Backend 4: DDG Instant Answers API
+        # Backend 3: DDG Instant Answers API
         if not results:
             results = await self._search_ddg_api(query)
 
         if not results:
             return (
                 f"No results found for: '{query}'. "
-                "For better results, configure GOOGLE_CSE_API_KEY + GOOGLE_CSE_ID "
-                "or SERP_API_KEY environment variables."
+                "For better results, configure SERP_API_KEY via Integration Registry."
             )
 
         return self._format_results(query, results)

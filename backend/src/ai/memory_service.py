@@ -35,6 +35,8 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 # ---------------------------------------------------------------------------
 from src.ai.models import EpisodicMemory
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # MemoryRouter
@@ -247,8 +249,54 @@ class MemoryRouter:
         """
         Render the retrieved memory dict as a text block for prompt injection.
 
-        Returns an empty string if both tiers are empty.
+        Gap #13: When CORTEX viewport is available, renders the spec §4.3 format:
+          [CORTEX VIEWPORT] — primary context (task + breadcrumb + children)
+          [EPISODIC MEMORY]  — brief recent interaction history
+          [LAST CHECKPOINT]  — compressed context from previous compaction
+
+        Returns an empty string if all tiers are empty.
         """
+        viewport = memory.get("cortex_viewport")
+
+        # ── CORTEX mode: structured spec-compliant prompt ──────────────
+        if viewport and self._cortex_viewport:
+            parts = []
+
+            # Task description (from tree)
+            task_desc = memory.get("task_description")
+            if task_desc:
+                parts.append(f"## Task\n{task_desc}")
+
+            # Episodic memory (brief, subordinated)
+            episodes = memory.get("episodic", [])
+            if episodes:
+                ep_lines = []
+                for ep in episodes[-5:]:  # Only last 5 in CORTEX mode
+                    inp = (ep.get("input") or "")[:200]
+                    out = (ep.get("output") or "")[:200]
+                    at = ep.get("at", "")
+                    ep_lines.append(f"  [{at}] {inp!r} → {out!r}")
+                parts.append("## Recent Episodes\n" + "\n".join(ep_lines))
+
+            # CORTEX viewport (primary context — includes available operations)
+            parts.append(self._cortex_viewport.to_prompt_text())
+
+            # Last checkpoint
+            checkpoint = memory.get("cortex_checkpoint")
+            if checkpoint:
+                ckpt_summary = checkpoint.get("progress_summary", "")
+                key_facts = checkpoint.get("key_facts", [])
+                next_steps = checkpoint.get("next_steps", [])
+                ckpt_lines = [f"## Last Checkpoint\n{ckpt_summary}"]
+                if key_facts:
+                    ckpt_lines.append("Key facts: " + "; ".join(key_facts))
+                if next_steps:
+                    ckpt_lines.append("Next steps: " + "; ".join(next_steps))
+                parts.append("\n".join(ckpt_lines))
+
+            return "\n\n".join(parts)
+
+        # ── Standard mode (non-CORTEX) ─────────────────────────────────
         parts = []
 
         episodes = memory.get("episodic", [])
@@ -265,29 +313,6 @@ class MemoryRouter:
         if chunks:
             chunk_lines = [f"  (score {c['score']:.2f}) {c['content'][:300]}" for c in chunks]
             parts.append("## Relevant Knowledge\n" + "\n".join(chunk_lines))
-
-        # CORTEX viewport context (takes priority over flat episodic/semantic)
-        viewport = memory.get("cortex_viewport")
-        if viewport:
-            # Render viewport as structured context for LLM
-            if self._cortex_viewport:
-                parts.insert(0, self._cortex_viewport.to_prompt_text())
-            else:
-                # Fallback: render from dict
-                cn = viewport.get("current_node", {})
-                parts.insert(0, f"## CORTEX Cognitive Tree\nCurrent Node: {cn.get('title', 'Unknown')}")
-
-        checkpoint = memory.get("cortex_checkpoint")
-        if checkpoint:
-            ckpt_summary = checkpoint.get("progress_summary", "")
-            key_facts = checkpoint.get("key_facts", [])
-            next_steps = checkpoint.get("next_steps", [])
-            ckpt_lines = [f"## Last Checkpoint\n{ckpt_summary}"]
-            if key_facts:
-                ckpt_lines.append("Key facts: " + "; ".join(key_facts))
-            if next_steps:
-                ckpt_lines.append("Next steps: " + "; ".join(next_steps))
-            parts.insert(1, "\n".join(ckpt_lines))
 
         return "\n\n".join(parts)
 

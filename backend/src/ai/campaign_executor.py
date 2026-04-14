@@ -491,9 +491,11 @@ class CampaignExecutor:
         
         if response.status_code in [200, 201]:
             # Extract call reference/SID from response
+            # When async=1, the API returns ref_id (call_id comes later via webhook)
             call_sid = (
                 response_data.get("call_id")
                 or response_data.get("callId")
+                or response_data.get("ref_id")
                 or response_data.get("id")
                 or f"TT_{voice_session_id}"
             )

@@ -1,19 +1,20 @@
 """
-Centralized Google GenAI Client Factory — Vertex AI Only
+Centralized Google GenAI Client Factory — Vertex AI + AI Studio
 
-All Google model access MUST go through Vertex AI on GCP.
-This factory creates google.genai.Client instances configured
-for Vertex AI using project_id and region from IntegrationRegistry
-service_metadata.
+This factory creates google.genai.Client instances configured for either:
+  1. Vertex AI (default) — using project_id and region from IntegrationRegistry
+  2. AI Studio / Gemini Developer API — using Application Default Credentials
+     (for models not yet available on Vertex AI, e.g. Live/Native Audio models)
 
 Usage:
     from src.common.genai_factory import build_vertex_genai_client
 
-    # From an async context with db and company_id:
+    # Vertex AI (standard path):
     client = await build_vertex_genai_client(db, company_id)
-
-    # With explicit service_metadata (when already resolved):
     client = build_vertex_genai_client_sync(service_metadata)
+
+    # AI Studio (for Live/Native Audio models — uses ADC, no API key):
+    client = build_ai_studio_genai_client_sync()
 """
 from __future__ import annotations
 
@@ -133,3 +134,43 @@ async def build_vertex_genai_client(
         )
 
     return build_vertex_genai_client_sync(meta, http_options=http_options)
+
+
+def build_ai_studio_genai_client_sync(
+    api_key: str | None = None,
+    http_options: Optional[Dict[str, Any]] = None,
+):
+    """
+    Build a google.genai.Client configured for the Gemini Developer API
+    (AI Studio).
+
+    When api_key is provided, it's passed directly to the client.
+    Otherwise falls back to GOOGLE_API_KEY env var or ADC.
+
+    Args:
+        api_key: Google AI API key (from IntegrationRegistry).
+        http_options: Optional HTTP options (e.g. {'api_version': 'v1beta'}).
+
+    Returns:
+        google.genai.Client configured for AI Studio (Gemini Developer API).
+
+    Raises:
+        RuntimeError: If google-genai not installed.
+    """
+    try:
+        from google import genai
+    except ImportError:
+        raise RuntimeError(
+            "google-genai package not installed. Run: pip install google-genai"
+        )
+
+    kwargs: Dict[str, Any] = {}
+    if api_key:
+        kwargs["api_key"] = api_key
+    if http_options:
+        kwargs["http_options"] = http_options
+
+    logger.debug(
+        f"Building AI Studio genai.Client (api_key={'set' if api_key else 'env/ADC'})"
+    )
+    return genai.Client(**kwargs)

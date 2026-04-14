@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { Plus, Brain, Workflow, Zap, Activity, Edit, Trash2, Play, Layers, Tag } from 'lucide-react';
+import { Plus, Brain, Workflow, Zap, Activity, Edit, Trash2, Play, Layers, Tag, BookCopy } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
-import { HierarchicalEntity, EntityType, EntityStatus } from '@/types';
+import { templateService } from '@/services/template.service';
+import { HierarchicalEntity, EntityType, EntityStatus, UserRole } from '@/types';
 import './EntityLibrary.css';
 
 export const EntityLibrary: React.FC = () => {
+    const { user } = useAuth();
     const [entities, setEntities] = useState<HierarchicalEntity[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<EntityType | 'ALL'>('ALL');
+    const [convertingId, setConvertingId] = useState<string | null>(null);
+
+    const isAdmin = user?.role === UserRole.APP_ADMIN;
 
     useEffect(() => {
         fetchEntities();
@@ -34,6 +40,20 @@ export const EntityLibrary: React.FC = () => {
             } catch (error) {
                 console.error('Failed to delete entity:', error);
             }
+        }
+    };
+
+    const handleConvertToTemplate = async (id: string, name: string) => {
+        if (!window.confirm(`Publish "${name}" (and all its children) as a reusable template?`)) return;
+        setConvertingId(id);
+        try {
+            await templateService.convertToTemplate(id);
+            alert(`✅ "${name}" has been published as a template! View it in the Template Marketplace.`);
+        } catch (error: any) {
+            const msg = error?.response?.data?.detail || 'Failed to convert to template.';
+            alert(`❌ ${msg}`);
+        } finally {
+            setConvertingId(null);
         }
     };
 
@@ -170,6 +190,16 @@ export const EntityLibrary: React.FC = () => {
                                         Edit
                                     </JellyButton>
                                 </Link>
+                                {isAdmin && (
+                                    <JellyButton
+                                        variant="secondary"
+                                        onClick={() => handleConvertToTemplate(entity.id, entity.name)}
+                                        disabled={convertingId === entity.id}
+                                    >
+                                        <BookCopy size={16} />
+                                        {convertingId === entity.id ? '…' : ''}
+                                    </JellyButton>
+                                )}
                                 <JellyButton
                                     variant="ghost"
                                     onClick={() => handleDelete(entity.id)}

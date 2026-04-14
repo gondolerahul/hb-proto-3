@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.ai.models import UsageLog
 from src.config.models import IntegrationRegistry
+import logging
+
+logger = logging.getLogger(__name__)
 
 class UsageService:
     def __init__(self, db: AsyncSession):
@@ -36,7 +39,7 @@ class UsageService:
         if not registry_entry:
             # Fallback to a global/default SKU if needed, or raise error
             # For now, we assume company-specific SKUs must exist
-            print(f"WARNING: No active registry entry found for SKU {service_sku} and company {company_id}")
+            logger.warning(f"No active registry entry found for SKU '{service_sku}' and company {company_id}")
             return None
 
         # Calculate cost
@@ -46,11 +49,12 @@ class UsageService:
         # Support unit-based costing (e.g., 1M Tokens)
         divisor = Decimal("1.0")
         if registry_entry.cost_unit:
-            if "1M Tokens" in registry_entry.cost_unit:
+            unit_lower = registry_entry.cost_unit.lower()
+            if "1m token" in unit_lower:
                 divisor = Decimal("1000000.0")
-            elif "1K Tokens" in registry_entry.cost_unit:
+            elif "1k token" in unit_lower:
                 divisor = Decimal("1000.0")
-            elif "1000 Characters" in registry_entry.cost_unit:
+            elif "1000 char" in unit_lower:
                 divisor = Decimal("1000.0")
         
         calculated_cost = (registry_entry.internal_cost * Decimal(str(raw_quantity))) / divisor

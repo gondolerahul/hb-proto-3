@@ -289,7 +289,7 @@ pre {
 .log-io {
     padding: var(--spacing-md);
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: var(--spacing-md);
 }
 
@@ -368,4 +368,528 @@ pre {
     background: rgba(239, 68, 68, 0.15);
     color: #f87171;
     border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* ─── Tab Switcher ─────────────────────────────────────────────────── */
+.tab-switcher {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 4px;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-tertiary);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+    letter-spacing: 0.02em;
+}
+
+.tab-btn:hover {
+    color: var(--color-text-primary);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-btn.active {
+    background: rgba(var(--color-primary-rgb), 0.12);
+    color: var(--color-primary);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.2);
+    box-shadow: 0 2px 8px rgba(var(--color-primary-rgb), 0.1);
+}
+
+/* ─── Step Timeline ────────────────────────────────────────────────── */
+.step-timeline-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-xl);
+}
+
+@media (max-width: 1024px) {
+    .step-timeline-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.timeline-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: var(--spacing-lg);
+}
+
+.timeline-header h3 {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--color-text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.timeline-track {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.timeline-step-wrapper {
+    position: relative;
+}
+
+.timeline-step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    cursor: pointer;
+    border-radius: var(--radius-lg);
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.timeline-step:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.timeline-step.active {
+    background: rgba(var(--color-primary-rgb), 0.06);
+    border-color: rgba(var(--color-primary-rgb), 0.2);
+    box-shadow: 0 2px 12px rgba(var(--color-primary-rgb), 0.08);
+}
+
+.timeline-step.error {
+    border-left: 3px solid #ef4444;
+}
+
+.step-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding-top: 2px;
+}
+
+.step-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+}
+
+.timeline-step.active .step-dot {
+    border-color: var(--color-primary);
+    background: rgba(var(--color-primary-rgb), 0.1);
+}
+
+.step-line {
+    width: 2px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 0;
+}
+
+.step-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.step-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.step-number {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
+}
+
+.step-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.step-type-badge {
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: rgba(var(--color-secondary-rgb), 0.1);
+    color: var(--color-secondary);
+    border: 1px solid rgba(var(--color-secondary-rgb), 0.2);
+}
+
+.step-stats {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.step-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
+}
+
+/* ─── Step Detail Panel ────────────────────────────────────────────── */
+.step-detail-panel {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-lg) var(--spacing-xl);
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.panel-header h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+.panel-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.close-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-full);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+.close-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.panel-section {
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.panel-section:last-child {
+    border-bottom: none;
+}
+
+.panel-section h4 {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: var(--spacing-md);
+}
+
+.output-preview {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.output-text {
+    max-height: 580px;
+    overflow-y: auto;
+    font-size: 0.8rem !important;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.output-error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    border-left: 3px solid #ef4444;
+}
+
+/* ─── LLM Log Cards ────────────────────────────────────────────────── */
+.llm-logs-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.llm-log-card {
+    background: #0d1117;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all 0.2s;
+}
+
+.llm-log-card:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.log-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.log-card-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.log-card-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.reasoning-badge {
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+}
+
+.reasoning-badge.react {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
+.reasoning-badge.reflection {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+}
+
+.reasoning-badge.chain_of_thought {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+}
+
+.reasoning-badge.critic {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fb923c;
+}
+
+.reasoning-badge.planner {
+    background: rgba(234, 179, 8, 0.15);
+    color: #fbbf24;
+}
+
+.log-model {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+}
+
+.log-card-stats {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    font-size: 0.7rem;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
+}
+
+.log-card-body {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 2000px;
+    }
+}
+
+.io-section {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.io-section:last-child {
+    border-bottom: none;
+}
+
+.io-label {
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+}
+
+.io-content {
+    max-height: 800px;
+    overflow-y: auto;
+    font-size: 0.8rem !important;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.io-content.prompt {
+    border-left: 3px solid #3b82f6 !important;
+}
+
+.io-content.response {
+    border-left: 3px solid #22c55e !important;
+}
+
+/* ─── Empty Steps ──────────────────────────────────────────────────── */
+.empty-steps {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-3xl);
+    color: var(--color-text-tertiary);
+    text-align: center;
+}
+
+.empty-steps p {
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* ─── Execution Error Banner ───────────────────────────────────────── */
+.execution-error-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    border-radius: var(--radius-lg);
+    border-left: 4px solid #ef4444;
+}
+
+.execution-error-banner strong {
+    display: block;
+    font-size: 0.85rem;
+    color: #fca5a5;
+    margin-bottom: 4px;
+}
+
+.execution-error-banner p {
+    font-size: 0.8rem;
+    color: #f87171;
+    font-family: var(--font-mono);
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+/* ─── CORTEX Link ──────────────────────────────────────────────────── */
+.cortex-link {
+    color: var(--color-secondary) !important;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.85rem !important;
+    transition: all 0.2s;
+}
+
+.cortex-link:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+}
+
+/* ─── Retry Spinner ────────────────────────────────────────────────── */
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ─── Step Badge (in log meta) ─────────────────────────────────────── */
+.badge-step {
+    background: rgba(59, 130, 246, 0.1) !important;
+    color: #60a5fa !important;
+    border-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* ─── Child Entity Steps in Timeline ───────────────────────────────── */
+.timeline-step .step-name {
+    max-width: 100%;
+}
+
+/* Child entity header rows */
+.timeline-step .step-type-badge.AGENT,
+.timeline-step .step-type-badge.SKILL,
+.timeline-step .step-type-badge.ACTION,
+.timeline-step .step-type-badge.PROCESS,
+.timeline-step .step-type-badge.CHILD_ENTITY {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border-color: rgba(168, 85, 247, 0.25);
 }

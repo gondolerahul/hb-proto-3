@@ -1,7 +1,7 @@
 """add_assets_billing_credits
 
 Revision ID: g1h2i3j4k5l6
-Revises: e1a2b3c4d5e6
+Revises: e1a2b3c4d5e6, b2c3d4e5f6a7
 Create Date: 2026-02-23 16:17:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'g1h2i3j4k5l6'
-down_revision: Union[str, Sequence[str], None] = 'e1a2b3c4d5e6'
+down_revision: Union[str, Sequence[str], None] = ('e1a2b3c4d5e6', 'b2c3d4e5f6a7')
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

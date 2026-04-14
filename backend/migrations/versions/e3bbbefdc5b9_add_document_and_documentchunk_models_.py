@@ -42,7 +42,7 @@ def upgrade() -> None:
     sa.Column('document_id', sa.UUID(), nullable=False),
     sa.Column('chunk_index', sa.String(), nullable=False),
     sa.Column('content', sa.Text(), nullable=False),
-    sa.Column('embedding', pgvector.sqlalchemy.vector.VECTOR(dim=768), nullable=True),
+    sa.Column('embedding', pgvector.sqlalchemy.Vector(768), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['document_id'], ['documents.id'], ),
     sa.PrimaryKeyConstraint('id')

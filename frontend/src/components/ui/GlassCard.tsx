@@ -7,19 +7,22 @@ interface GlassCardProps {
     className?: string;
     hover?: boolean;
     onClick?: () => void;
+    style?: React.CSSProperties;
 }
 
 export const GlassCard: React.FC<GlassCardProps> = ({
     children,
     className = '',
     hover = false,
-    onClick
+    onClick,
+    style
 }) => {
     return (
         <motion.div
             className={`glass-card ${hover ? 'glass-card--hover' : ''} ${className}`}
             whileHover={hover ? { y: -4, transition: { duration: 0.2 } } : {}}
             onClick={onClick}
+            style={style}
         >
             <div className="glass-card-content">
                 {children}

@@ -89,4 +89,15 @@ export const creditsService = {
     cancelSubscription: async (id: string): Promise<void> => {
         await apiClient.delete(`/credits/subscriptions/${id}`);
     },
+
+    getSubscriptionTiers: async (): Promise<Array<{
+        id: string;
+        name: string;
+        tier_level: number;
+        monthly_fee: number;
+        bonus_pct: number;
+    }>> => {
+        const { data } = await apiClient.get('/credits/subscription-tiers');
+        return data;
+    },
 };

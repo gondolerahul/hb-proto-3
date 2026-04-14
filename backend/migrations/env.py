@@ -14,6 +14,13 @@ from src.common.config import settings
 from src.auth import models as auth_models
 from src.ai import models as ai_models
 from src.config import models as config_models
+from src.billing import billing_models
+from src.ai import cortex_models
+from src.ai import email_models
+from src.ai import artifact_models
+from src.ai import campaign_models
+from src.ai import social_models
+from src.voice import models as voice_models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

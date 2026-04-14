@@ -106,7 +106,58 @@ class PDFGeneratorTool(Tool):
             JSON string with pdf_path and metadata
         """
         try:
-            params = json.loads(input_data)
+            # ── Sanitize LLM-generated JSON input ──────────────────────
+            cleaned = input_data.strip()
+
+            # Strip markdown code fences if present (```json ... ```)
+            if cleaned.startswith("```"):
+                lines = cleaned.split("\n")
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                cleaned = "\n".join(lines).strip()
+
+            # Remove trailing commas before } or ] (common LLM JSON error)
+            import re as _re
+            cleaned = _re.sub(r',\s*([}\]])', r'\1', cleaned)
+
+            # Try parsing with strict=False first (handles control chars)
+            try:
+                params = json.loads(cleaned, strict=False)
+            except json.JSONDecodeError:
+                # Last resort: escape all unescaped control characters inside
+                # string values by replacing literal newlines/tabs with \\n/\\t
+                # This handles the case where LLM puts raw multi-line markdown
+                # inside a JSON string value without escaping newlines.
+                sanitized = ""
+                in_string = False
+                escape_next = False
+                for ch in cleaned:
+                    if escape_next:
+                        sanitized += ch
+                        escape_next = False
+                        continue
+                    if ch == '\\':
+                        escape_next = True
+                        sanitized += ch
+                        continue
+                    if ch == '"' and not escape_next:
+                        in_string = not in_string
+                        sanitized += ch
+                        continue
+                    if in_string:
+                        if ch == '\n':
+                            sanitized += '\\n'
+                            continue
+                        elif ch == '\r':
+                            sanitized += '\\r'
+                            continue
+                        elif ch == '\t':
+                            sanitized += '\\t'
+                            continue
+                        elif ord(ch) < 32:
+                            sanitized += f'\\u{ord(ch):04x}'
+                            continue
+                    sanitized += ch
+                params = json.loads(sanitized, strict=False)
 
             # Inject company_id / user_id from execution context so image resolution
             # can search the correct tenant artifact directory

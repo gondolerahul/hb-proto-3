@@ -81,7 +81,8 @@ class CortexTree(Base):
 
     task_description = Column(Text, nullable=True)
     status = Column(
-        SAEnum(CortexTreeStatus, name="cortex_tree_status", create_constraint=True),
+        SAEnum(CortexTreeStatus, name="cortex_tree_status", create_constraint=True,
+               values_callable=lambda x: [e.value for e in x]),
         default=CortexTreeStatus.ACTIVE,
         nullable=False,
     )
@@ -95,6 +96,10 @@ class CortexTree(Base):
     max_children = Column(Integer, default=12)       # MAX_CHILDREN invariant
     page_size_tokens = Column(Integer, default=8000) # Max tokens per content page
     context_budget_pct = Column(Integer, default=40)  # Root run budget as % of window
+
+    # Scheduling (Gap #5: multi-day operation)
+    resume_schedule = Column(String(100), nullable=True)   # Cron expression for periodic wake-ups
+    next_resume_at = Column(DateTime, nullable=True)       # Next scheduled resume timestamp
 
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -135,7 +140,8 @@ class CortexNode(Base):
     parent_id = Column(UUID(as_uuid=True), ForeignKey("cortex_nodes.id", ondelete="SET NULL"), nullable=True)
 
     node_type = Column(
-        SAEnum(CortexNodeType, name="cortex_node_type", create_constraint=True),
+        SAEnum(CortexNodeType, name="cortex_node_type", create_constraint=True,
+               values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
     title = Column(String(500), nullable=False)
@@ -144,7 +150,8 @@ class CortexNode(Base):
     content_tokens = Column(Integer, default=0)  # Size of content in tokens
 
     status = Column(
-        SAEnum(CortexNodeStatus, name="cortex_node_status", create_constraint=True),
+        SAEnum(CortexNodeStatus, name="cortex_node_status", create_constraint=True,
+               values_callable=lambda x: [e.value for e in x]),
         default=CortexNodeStatus.PENDING,
         nullable=False,
     )

@@ -62,6 +62,20 @@ async def delete_entity(
     await service.delete_entity(entity_id, current_user.company_id)
     return {"status": "success"}
 
+@router.post("/entities/{entity_id}/convert-to-template", response_model=HierarchicalEntityResponse)
+async def convert_entity_to_template(
+    entity_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(RoleChecker(["app_admin"]))
+):
+    """
+    Deep-clone an existing entity (and all its children) into a parallel
+    template hierarchy.  The original entities are left untouched.
+    Requires app_admin role.
+    """
+    service = AIService(db)
+    return await service.convert_to_template(entity_id, current_user.company_id, current_user.id)
+
 # --- Dashboard ---
 @router.get("/stats", response_model=dict)
 async def get_dashboard_stats(
@@ -137,6 +151,21 @@ async def stream_execution(
             await r.close()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+# --- Retry / Resume ---
+@router.post("/executions/{execution_id}/retry", response_model=ExecutionRunResponse)
+async def retry_execution(
+    execution_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retry a FAILED execution by creating a new run that resumes from the
+    failed run's context_state. The CORTEX tree (if any) is resumed rather
+    than re-created, and already-completed steps are skipped.
+    """
+    service = AIService(db)
+    return await service.retry_execution(execution_id, current_user.company_id, current_user.id)
 
 # --- HITL (Human-In-The-Loop) ---
 @router.get("/approvals/pending", response_model=List[dict])
