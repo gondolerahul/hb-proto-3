@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 
 class UserCreate(BaseModel):
@@ -37,6 +37,8 @@ class CompanyBase(BaseModel):
 
 class CompanyCreate(CompanyBase):
     parent_id: Optional[UUID] = None
+    apply_default_daily_credits: bool = True  # whether to apply default daily credits
+    custom_daily_credits: Optional[float] = None  # custom daily credit amount override
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
@@ -45,9 +47,25 @@ class CompanyUpdate(BaseModel):
 class CompanyResponse(CompanyBase):
     id: UUID
     logo_url: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    onboarding_status: Optional[str] = "pending"
     
     class Config:
         from_attributes = True
+
+# --- Onboarding Schemas ---
+
+class OnboardingStatusResponse(BaseModel):
+    status: str  # pending, in_progress, completed
+    completed_steps: List[str] = []
+    total_steps: int = 5
+    current_step: Optional[str] = None
+    completion_pct: float = 0.0
+    metadata: Optional[Dict[str, Any]] = None
+
+class OnboardingStepRequest(BaseModel):
+    step_name: str  # company_profile, integrations, first_agent, phone_setup, billing
+    step_data: Optional[Dict[str, Any]] = None  # arbitrary data for this step
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None

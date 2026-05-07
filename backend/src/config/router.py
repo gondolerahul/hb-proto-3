@@ -51,6 +51,10 @@ async def list_models(
     return models
 
 
+# Categories that tenant users are allowed to manage
+TENANT_ALLOWED_CATEGORIES = {"EMAIL", "SOCIAL_MEDIA", "API_TOOL", "OTHER"}
+
+
 @router.post("/integrations", response_model=IntegrationRegistryResponse)
 async def create_integration(
     entry_in: IntegrationRegistryCreate,
@@ -62,6 +66,15 @@ async def create_integration(
 
     if current_user.role != "app_admin" and str(entry_in.company_id) != str(current_user.company_id):
         raise HTTPException(status_code=403, detail="Cannot create integration for another company")
+
+    # Tenant users can only add social media, email, and API tool integrations
+    if current_user.role in ("tenant_admin", "tenant_user"):
+        if entry_in.service_category not in TENANT_ALLOWED_CATEGORIES:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Tenant users can only add integrations for: {', '.join(sorted(TENANT_ALLOWED_CATEGORIES))}. "
+                       f"Contact your platform administrator for AI model or telephony integrations."
+            )
 
     service = ConfigService(db)
     return await service.create_registry_entry(entry_in)
@@ -75,22 +88,11 @@ async def list_integrations(
     service = ConfigService(db)
 
     if current_user.role == "app_admin":
+        # App admin sees all integrations across all companies
         return await service.get_registry_entries(company_id=None)
     else:
-        from src.auth.models import Company
-        app_company_result = await db.execute(select(Company.id).where(Company.type == "APP").limit(1))
-        app_company_id = app_company_result.scalar_one_or_none()
-
-        own_integrations = await service.get_registry_entries(company_id=current_user.company_id)
-
-        if app_company_id and app_company_id != current_user.company_id:
-            platform_integrations = await service.get_registry_entries(company_id=app_company_id)
-            own_skus = {i.service_sku for i in own_integrations}
-            for pi in platform_integrations:
-                if pi.service_sku not in own_skus:
-                    own_integrations.append(pi)
-
-        return own_integrations
+        # All other roles (partner, tenant) see only their own company's entries
+        return await service.get_registry_entries(company_id=current_user.company_id)
 
 
 @router.get("/integrations/{entry_id}", response_model=IntegrationRegistryResponse)
@@ -119,6 +121,15 @@ async def update_integration(
     entry = await service.get_registry_entry(entry_id)
     if current_user.role != "app_admin" and str(entry.company_id) != str(current_user.company_id):
         raise HTTPException(status_code=403, detail="Access denied")
+
+    # Tenant users cannot change category to a restricted one
+    if current_user.role in ("tenant_admin", "tenant_user"):
+        new_category = entry_in.service_category if entry_in.service_category else entry.service_category
+        if new_category not in TENANT_ALLOWED_CATEGORIES:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Tenant users can only manage integrations for: {', '.join(sorted(TENANT_ALLOWED_CATEGORIES))}"
+            )
 
     return await service.update_registry_entry(entry_id, entry_in)
 

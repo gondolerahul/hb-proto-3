@@ -40,13 +40,16 @@ def build_system_prompt_from_persona(persona: AgentPersona) -> str:
     personality = persona.personality
     parts: list[str] = []
 
-    # Core identity block
+    # Core identity block — always include both system_prompt and bio.
+    # The bio often contains important behavioral instructions (language switching,
+    # conversational style) that complement the system_prompt.
     if persona.system_prompt:
         parts.append(persona.system_prompt)
     else:
         parts.append(f"You are {persona.name}, a {persona.role}.")
-        if persona.bio:
-            parts.append(persona.bio)
+
+    if persona.bio:
+        parts.append(f"## Agent Bio & Behavioral Guidelines\n{persona.bio}")
 
     # Personality dimensions block
     empathy_desc = (

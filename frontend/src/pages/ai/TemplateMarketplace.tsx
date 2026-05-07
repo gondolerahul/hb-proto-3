@@ -89,12 +89,21 @@ export const TemplateMarketplace: React.FC = () => {
         setCloningId(templateId);
         try {
             const cloned = await templateService.cloneTemplate(templateId);
-            showToast(`"${templateName}" cloned successfully!`, 'success');
+            const entityType = (cloned.type || '').toLowerCase();
+            showToast(
+                `"${templateName}" cloned successfully as ${entityType}! All child entities included.`,
+                'success'
+            );
             // Navigate to the cloned entity's edit page after a brief pause
             setTimeout(() => navigate(`/ai/entities/edit/${cloned.id}`), 1200);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to clone template:', error);
-            showToast('Clone failed. Please try again.', 'error');
+            // Extract detailed error message from API response
+            const detail = error?.response?.data?.detail;
+            const message = typeof detail === 'string'
+                ? detail.split('\n')[0]   // Show first line of multi-line errors
+                : 'Clone failed. Please try again.';
+            showToast(message, 'error');
         } finally {
             setCloningId(null);
         }

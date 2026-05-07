@@ -79,13 +79,28 @@ class AgentContextLoader:
         else:
             # Legacy fallback: build from identity dict fields directly
             identity = entity.identity or {}
-            system_instruction = self._build_system_instruction(
-                role=identity.get("role", "AI Assistant"),
-                persona=identity.get("persona", ""),
-                instructions=identity.get("instructions", ""),
-                channel=channel
-            )
+            # Try system_prompt first (new format), then instructions (legacy)
+            raw_prompt = identity.get("system_prompt") or identity.get("instructions", "")
+            if raw_prompt:
+                # Use the system_prompt directly — it already contains the full prompt
+                system_instruction = raw_prompt
+            else:
+                system_instruction = self._build_system_instruction(
+                    role=identity.get("role", "AI Assistant"),
+                    persona=identity.get("persona", ""),
+                    instructions="",
+                    channel=channel
+                )
             voice_config = None
+        
+        # 2b. Inject entity.goal into system instruction.
+        # The goal field contains step-by-step operational instructions
+        # (e.g. "confirm email before sending") that are critical for
+        # correct agent behavior but were stored separately from identity.
+        if entity.goal:
+            goal_text = entity.goal if isinstance(entity.goal, str) else str(entity.goal)
+            system_instruction += f"\n\n## Goals & Operational Steps\n{goal_text}"
+            logger.info(f"Injected goal ({len(goal_text)} chars) into voice system instruction")
         
         # 3. Load conversation history (last 10 interactions)
         history = await self._load_conversation_history(
@@ -95,11 +110,30 @@ class AgentContextLoader:
             limit=10
         )
         
-        # 4. Extract LLM config
-        llm_config = entity.llm_config or {}
+        # 4. Extract LLM config (from unified JSON structure)
+        llm_config = (entity.logic_gate or {}).get("reasoning_config", {})
         
         # 5. Extract capabilities
         capabilities = entity.capabilities or {}
+        
+        # 5b. Load context sources and inject into system instruction
+        context_engineering = capabilities.get("context_engineering", {})
+        context_sources = context_engineering.get("context_sources", [])
+        if context_sources:
+            context_text = await self._load_context_sources(
+                context_sources=context_sources,
+                company_id=entity.company_id,
+            )
+            if context_text:
+                system_instruction += (
+                    "\n\n## Memory Context (Product Knowledge)\n"
+                    "Use the following information to answer customer questions accurately.\n"
+                    f"{context_text}"
+                )
+                logger.info(
+                    f"Injected {len(context_sources)} context source(s) "
+                    f"({len(context_text)} chars) into voice system instruction"
+                )
         
         # 6. Load tools if configured (future)
         tools = await self._load_agent_tools(entity)
@@ -220,24 +254,179 @@ Avoid repeating yourself or being overly formal."""
         logger.info(f"Loaded {len(history)} conversation turns for customer {customer_id}")
         return history
     
-    async def _load_agent_tools(self, entity: HierarchicalEntity) -> List:
+    async def _load_agent_tools(self, entity: HierarchicalEntity) -> List[Dict[str, Any]]:
         """
-        Load tools configured for the agent.
-        
-        Future: Integrate with tool registry.
-        For now, returns empty list.
-        
+        Load tool definitions for the voice agent.
+
+        Reads tool_ids from entity.capabilities.tools, resolves their
+        function schemas from the ToolRegistry, and returns Gemini-compatible
+        function declarations for use in the Live session config.
+
         Args:
             entity: HierarchicalEntity object
-            
+
         Returns:
-            List of tool definitions
+            List of tool function schemas (Gemini function_declarations format)
         """
-        # TODO: Implement tool loading when Gemini Live API supports function calling
         capabilities = entity.capabilities or {}
-        tool_ids = capabilities.get("tools", [])
-        
-        if tool_ids:
-            logger.info(f"Agent has {len(tool_ids)} tools configured (not yet supported in Live API)")
-        
-        return []
+
+        # Handle both dict and Capabilities model
+        if hasattr(capabilities, 'tools'):
+            tool_refs = capabilities.tools
+        elif isinstance(capabilities, dict):
+            tool_refs = capabilities.get("tools", [])
+        else:
+            tool_refs = []
+
+        # Extract tool_id strings from various formats
+        tool_ids = []
+        for ref in tool_refs:
+            if isinstance(ref, str):
+                tool_ids.append(ref)
+            elif isinstance(ref, dict):
+                tool_ids.append(ref.get("tool_id", ""))
+            elif hasattr(ref, 'tool_id'):
+                tool_ids.append(ref.tool_id)
+
+        tool_ids = [tid for tid in tool_ids if tid]
+
+        if not tool_ids:
+            logger.info("No tools configured for this voice agent")
+            return []
+
+        # Resolve function schemas from ToolRegistry
+        try:
+            from src.ai.tool_executor import ToolExecutor
+            schemas = ToolExecutor.get_tool_schemas(tool_ids)
+            logger.info(f"Loaded {len(schemas)} tool schema(s) for voice agent: {tool_ids}")
+            return schemas
+        except Exception as e:
+            logger.error(f"Failed to load tool schemas for {tool_ids}: {e}")
+            return []
+
+    async def _load_context_sources(
+        self,
+        context_sources: List[Dict[str, Any]],
+        company_id: UUID,
+    ) -> str:
+        """
+        Load text content from context sources (documents, artifacts, etc.)
+        for injection into the voice agent's system instruction.
+
+        Supports DOCUMENT and KNOWLEDGE_BASE source types by loading the
+        referenced artifact's file content and extracting text.
+
+        Returns:
+            Concatenated text from all loadable context sources,
+            truncated to ~30000 chars to stay within Gemini's context window.
+        """
+        loaded_parts: List[str] = []
+        MAX_TOTAL_CHARS = 30_000  # Voice sessions need concise context
+
+        for src in context_sources:
+            src_type = src.get("source_type", "DOCUMENT")
+            ref_id = src.get("reference_id", "")
+            desc = src.get("description", "")
+            file_name = src.get("file_name", "")
+
+            if not ref_id:
+                continue
+
+            try:
+                if src_type in ("DOCUMENT", "KNOWLEDGE_BASE"):
+                    from src.ai.artifact_service import ArtifactService
+                    art_svc = ArtifactService(self.db)
+                    artifact = await art_svc.get_artifact(UUID(ref_id), company_id)
+
+                    if not artifact:
+                        logger.warning(f"Context source artifact not found: {ref_id}")
+                        continue
+
+                    from pathlib import Path
+                    fpath = Path(artifact.file_path)
+                    mime = artifact.mime_type or ""
+                    label = desc or file_name or artifact.file_name
+
+                    # Skip binary media (images, audio, video)
+                    if mime.startswith(("image/", "audio/", "video/")):
+                        continue
+
+                    if fpath.exists():
+                        content = self._extract_text_from_file(fpath, mime)
+                        if content:
+                            loaded_parts.append(f"### {label}\n{content}")
+                        else:
+                            logger.warning(f"Could not extract text from {fpath}")
+                    else:
+                        logger.warning(f"Context source file not found on disk: {fpath}")
+
+            except Exception as e:
+                logger.warning(f"Failed to load context source {src_type}:{ref_id}: {e}")
+
+        if not loaded_parts:
+            return ""
+
+        combined = "\n\n".join(loaded_parts)
+        if len(combined) > MAX_TOTAL_CHARS:
+            combined = combined[:MAX_TOTAL_CHARS] + "\n...(truncated)"
+        return combined
+
+    @staticmethod
+    def _extract_text_from_file(file_path, mime_type: str = "") -> str:
+        """
+        Extract text from a file (TXT, CSV, DOCX, XLSX, PDF, etc.).
+        Returns empty string if extraction fails.
+        """
+        from pathlib import Path
+        ext = Path(file_path).suffix.lower()
+
+        try:
+            # Plain text
+            if ext in (".txt", ".md", ".csv", ".json", ".xml", ".html"):
+                return Path(file_path).read_text(encoding="utf-8", errors="replace")
+
+            # DOCX
+            if ext in (".docx", ".doc"):
+                try:
+                    import docx
+                    doc = docx.Document(str(file_path))
+                    return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+                except ImportError:
+                    logger.warning("python-docx not installed; cannot extract DOCX")
+                    return ""
+
+            # XLSX / XLS
+            if ext in (".xlsx", ".xls"):
+                try:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
+                    rows = []
+                    for ws in wb.worksheets:
+                        for row in ws.iter_rows(values_only=True):
+                            row_text = "\t".join(str(c) if c is not None else "" for c in row)
+                            if row_text.strip():
+                                rows.append(row_text)
+                    wb.close()
+                    return "\n".join(rows)
+                except ImportError:
+                    logger.warning("openpyxl not installed; cannot extract XLSX")
+                    return ""
+
+            # PDF
+            if ext == ".pdf":
+                try:
+                    import PyPDF2
+                    reader = PyPDF2.PdfReader(str(file_path))
+                    pages = [p.extract_text() or "" for p in reader.pages]
+                    return "\n".join(pages)
+                except ImportError:
+                    logger.warning("PyPDF2 not installed; cannot extract PDF")
+                    return ""
+
+            # Fallback: try reading as text
+            return Path(file_path).read_text(encoding="utf-8", errors="replace")
+
+        except Exception as e:
+            logger.warning(f"Text extraction failed for {file_path}: {e}")
+            return ""
+

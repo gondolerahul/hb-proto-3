@@ -71,12 +71,6 @@ class HierarchicalEntity(Base):
     io_contract = Column(JSON, nullable=True)
     observability = Column(JSON, nullable=True)
     metadata_extensions = Column(JSON, nullable=True)
-
-    # Legacy fields (kept for compatibility during transition)
-    static_plan = Column(JSON, nullable=True)
-    llm_config = Column(JSON, nullable=True)
-    toolkit = Column(JSON, nullable=True)
-    is_active = Column(Boolean, default=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

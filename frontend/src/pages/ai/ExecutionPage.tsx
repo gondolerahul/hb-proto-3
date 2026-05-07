@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GlassCard, GlassInput, JellyButton } from '@/components/ui';
-import { Play, ArrowLeft, Loader, Cpu, Zap, Activity, Info } from 'lucide-react';
+import { Play, ArrowLeft, Loader, Cpu, Zap, Activity, Info, AlertTriangle } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { HierarchicalEntity } from '@/types';
 import './ExecutionPage.css';
@@ -168,7 +168,21 @@ export const ExecutionPage: React.FC = () => {
                                 </>
                             )}
                         </JellyButton>
-                        {error && <div className="error-message">{error}</div>}
+                        {error && (
+                            <div className="execution-error-panel" id="execution-error">
+                                <div className="error-header">
+                                    <AlertTriangle size={18} />
+                                    <span>Execution Blocked</span>
+                                </div>
+                                <div className="error-body">
+                                    {error.split('\n').map((line, i) => (
+                                        <div key={i} className={line.trim().startsWith('•') ? 'error-bullet' : 'error-line'}>
+                                            {line}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </GlassCard>
 

@@ -477,11 +477,13 @@ class EmailDraftTool(Tool):
 class EmailSendTool(Tool):
     """
     Send emails via SMTP using stored credentials.
+    Supports optional file attachments via artifact ID.
     """
     name = "email_send"
     description = (
         "Send an email via SMTP. "
-        "Will automatically use company credentials if not provided."
+        "Will automatically use company credentials if not provided. "
+        "Can attach a file by providing its artifact_id."
     )
 
     def get_function_schema(self) -> Dict[str, Any]:
@@ -496,7 +498,11 @@ class EmailSendTool(Tool):
                     "subject": {"type": "string", "description": "Email subject"},
                     "body": {"type": "string", "description": "Email body text"},
                     "cc": {"type": "string", "description": "CC recipients (comma-separated)"},
-                    "bcc": {"type": "string", "description": "BCC recipients (comma-separated)"}
+                    "bcc": {"type": "string", "description": "BCC recipients (comma-separated)"},
+                    "attachment_artifact_id": {
+                        "type": "string",
+                        "description": "UUID of an artifact to attach to the email (e.g. a product catalog PDF)"
+                    }
                 },
                 "required": ["to", "subject", "body"]
             }
@@ -524,13 +530,71 @@ class EmailSendTool(Tool):
         body = params.get("body")
         cc = params.get("cc", "")
         bcc = params.get("bcc", "")
+        attachment_artifact_id = params.get("attachment_artifact_id")
         
         if not all([smtp_host, email_address, password, to_addr, subject, body]):
             return json.dumps({"error": "Missing required parameters or email credentials."})
 
         try:
-            # Construct message
-            msg = MIMEMultipart("alternative")
+            # Resolve attachment file path from artifact ID (if provided)
+            attachment_path = None
+            attachment_filename = None
+            if attachment_artifact_id and company_id:
+                attachment_path, attachment_filename = await self._resolve_artifact_file(
+                    attachment_artifact_id, company_id
+                )
+                if not attachment_path:
+                    logger.warning(f"Attachment artifact not found: {attachment_artifact_id}")
+
+            # Gmail's limit is 25MB, but base64 encoding adds ~33% overhead.
+            # Reject files over 18MB raw (~24MB after encoding) to be safe.
+            MAX_ATTACHMENT_BYTES = 18 * 1024 * 1024  # 18MB
+            if attachment_path:
+                file_size = os.path.getsize(attachment_path)
+                if file_size > MAX_ATTACHMENT_BYTES:
+                    size_mb = file_size / (1024 * 1024)
+                    logger.error(f"Attachment too large: {size_mb:.1f}MB (limit {MAX_ATTACHMENT_BYTES // 1024 // 1024}MB)")
+                    return json.dumps({
+                        "error": f"Attachment '{attachment_filename}' is {size_mb:.1f}MB which exceeds the 18MB email limit. "
+                                 f"Please use a smaller/compressed version."
+                    })
+
+            # Use 'mixed' when we have attachments so both body + file are included;
+            # 'alternative' when it's just text/html variants of the same content.
+            if attachment_path:
+                msg = MIMEMultipart("mixed")
+                # Create a sub-part for the body (text + html alternatives)
+                body_part = MIMEMultipart("alternative")
+                body_part.attach(MIMEText(body, "plain", "utf-8"))
+                html_body = body.replace("\n", "<br>")
+                body_part.attach(MIMEText(f"<html><body>{html_body}</body></html>", "html", "utf-8"))
+                msg.attach(body_part)
+
+                # Attach the file
+                from email.mime.base import MIMEBase
+                from email import encoders as email_encoders
+                import mimetypes
+
+                mime_type, _ = mimetypes.guess_type(attachment_path)
+                maintype, subtype = (mime_type or "application/octet-stream").split("/", 1)
+                with open(attachment_path, "rb") as f:
+                    file_part = MIMEBase(maintype, subtype)
+                    file_part.set_payload(f.read())
+                email_encoders.encode_base64(file_part)
+                file_part.add_header(
+                    "Content-Disposition", "attachment",
+                    filename=attachment_filename or os.path.basename(attachment_path)
+                )
+                msg.attach(file_part)
+                logger.info(f"Attached file: {attachment_filename or attachment_path}")
+            else:
+                msg = MIMEMultipart("alternative")
+                plain_part = MIMEText(body, "plain", "utf-8")
+                html_body = body.replace("\n", "<br>")
+                html_part = MIMEText(f"<html><body>{html_body}</body></html>", "html", "utf-8")
+                msg.attach(plain_part)
+                msg.attach(html_part)
+
             msg["From"] = email_address
             msg["To"] = to_addr
             msg["Subject"] = subject
@@ -539,13 +603,6 @@ class EmailSendTool(Tool):
             
             if cc:
                 msg["Cc"] = cc
-            
-            # Add body
-            plain_part = MIMEText(body, "plain", "utf-8")
-            html_body = body.replace("\n", "<br>")
-            html_part = MIMEText(f"<html><body>{html_body}</body></html>", "html", "utf-8")
-            msg.attach(plain_part)
-            msg.attach(html_part)
             
             # Build recipient list
             recipients = [to_addr]
@@ -559,7 +616,8 @@ class EmailSendTool(Tool):
             server.send_message(msg, from_addr=email_address, to_addrs=recipients)
             server.quit()
             
-            logger.info(f"Email sent: {email_address} -> {to_addr}, subject: {subject}")
+            logger.info(f"Email sent: {email_address} -> {to_addr}, subject: {subject}"
+                        f"{', with attachment' if attachment_path else ''}")
             
             return json.dumps({
                 "success": True,
@@ -567,7 +625,8 @@ class EmailSendTool(Tool):
                 "to": to_addr,
                 "subject": subject,
                 "cc": cc,
-                "message_id": msg["Message-ID"]
+                "message_id": msg["Message-ID"],
+                "attachment": attachment_filename or None
             })
 
         except smtplib.SMTPAuthenticationError as e:
@@ -576,3 +635,31 @@ class EmailSendTool(Tool):
         except Exception as e:
             logger.error(f"Email send error: {e}", exc_info=True)
             return json.dumps({"error": f"Email send failed: {str(e)}"})
+
+    @staticmethod
+    async def _resolve_artifact_file(artifact_id: str, company_id: str):
+        """Look up an artifact's file_path and file_name from the DB."""
+        try:
+            from uuid import UUID as _UUID
+            from src.common.database import AsyncSessionLocal
+            from sqlalchemy import select, text
+
+            async with AsyncSessionLocal() as db:
+                row = await db.execute(
+                    text(
+                        "SELECT file_path, file_name FROM artifacts "
+                        "WHERE id = :aid AND company_id = :cid"
+                    ),
+                    {"aid": str(artifact_id), "cid": str(company_id)},
+                )
+                result = row.first()
+                if result and result.file_path:
+                    path = result.file_path
+                    if os.path.exists(path):
+                        return path, result.file_name
+                    else:
+                        logger.error(f"Artifact file not on disk: {path}")
+        except Exception as e:
+            logger.error(f"Failed to resolve artifact {artifact_id}: {e}")
+        return None, None
+

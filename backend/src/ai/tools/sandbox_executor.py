@@ -103,6 +103,15 @@ class SandboxCodeTool(Tool):
 
         interpreter, ext = executor
 
+        # P3 — Tenant-scoped temp directory for filesystem isolation
+        company_id = context.get("company_id") if context else None
+        if company_id:
+            sandbox_dir = os.path.join(tempfile.gettempdir(), "sandbox", str(company_id))
+            os.makedirs(sandbox_dir, exist_ok=True)
+            logger.info(f"SandboxCodeTool: executing {language} for company {company_id}")
+        else:
+            sandbox_dir = None
+
         # 2. Write code to temp file and execute
         try:
             with tempfile.NamedTemporaryFile(
@@ -110,6 +119,7 @@ class SandboxCodeTool(Tool):
                 suffix=ext,
                 delete=False,
                 encoding="utf-8",
+                dir=sandbox_dir,
             ) as f:
                 f.write(code)
                 tmp_path = f.name
@@ -119,6 +129,7 @@ class SandboxCodeTool(Tool):
                     interpreter=interpreter,
                     script_path=tmp_path,
                     timeout_s=timeout_s,
+                    working_dir=sandbox_dir,
                 )
             finally:
                 try:
@@ -130,7 +141,7 @@ class SandboxCodeTool(Tool):
             logger.error(f"SandboxCodeTool unexpected error: {exc}", exc_info=True)
             return f"Error: unexpected sandbox failure — {exc}"
 
-    async def _run_subprocess(self, interpreter: str, script_path: str, timeout_s: int) -> str:
+    async def _run_subprocess(self, interpreter: str, script_path: str, timeout_s: int, working_dir: str = None) -> str:
         """Spawn subprocess, capture output, enforce timeout."""
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -138,11 +149,12 @@ class SandboxCodeTool(Tool):
                 script_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd=working_dir,
                 # Minimal env — no inherited secrets
                 env={
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
                     "HOME": "/tmp",
-                    "TMPDIR": "/tmp",
+                    "TMPDIR": working_dir or "/tmp",
                 },
             )
 

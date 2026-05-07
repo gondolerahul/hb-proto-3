@@ -5,6 +5,8 @@ export interface CompanyCreate {
     name: string;
     type: 'APP' | 'PARTNER' | 'TENANT';
     parent_id?: string;
+    apply_default_daily_credits?: boolean;
+    custom_daily_credits?: number;
 }
 
 export interface CompanyUpdate {

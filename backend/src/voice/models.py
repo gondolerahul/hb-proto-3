@@ -111,27 +111,17 @@ class ConversationHistory(Base):
     )
 
 
-class CustomerPhoneNumber(Base):
-    """Customer phone number assignments (1:1 mapping in Phase 1)."""
-    __tablename__ = "customer_phone_numbers"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
-    customer_id = Column(UUID(as_uuid=True), nullable=False)
-    customer_name = Column(String(255), nullable=True)
-    customer_metadata = Column(JSONB, nullable=True)  # Additional customer info
-    phone_number = Column(String(20), nullable=False, unique=True)
-    provider = Column(String(20), nullable=False)  # 'twilio' | 'tata_tele'
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=False)
-    assigned_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    is_active = Column(Boolean, nullable=False, default=True)
+# Backward-compatible re-export: CustomerPhoneNumber has been unified into
+# PhoneNumber in phone_pool_models.py.  Existing imports like
+#     from src.voice.models import CustomerPhoneNumber
+# will continue to work.
+from src.voice.phone_pool_models import PhoneNumber as CustomerPhoneNumber
 
-    # Relationships
-    company = relationship("Company")
-    agent = relationship("HierarchicalEntity")
+__all__ = [
+    "VoiceSession",
+    "WhatsAppSession",
+    "ConversationHistory",
+    "CustomerPhoneNumber",
+]
 
-    __table_args__ = (
-        Index('idx_customer_numbers_phone', 'phone_number'),
-        Index('idx_customer_numbers_customer', 'customer_id'),
-        Index('idx_customer_numbers_company', 'company_id'),
-    )

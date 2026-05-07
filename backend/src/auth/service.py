@@ -11,6 +11,43 @@ import secrets
 from sqlalchemy import or_
 
 from src.auth.schemas import UserCreate, UserLogin, UserCreateAdmin
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+async def _provision_new_tenant(db: AsyncSession, company: Company):
+    """Create CreditWallet for a newly-created tenant company.
+
+    IMPORTANT: This runs inside an active transaction (post-flush, pre-commit).
+    We must NOT execute queries to other tables (like BillingConfig) here because
+    asyncpg doesn't support concurrent operations on the same connection.
+
+    The caller is expected to set company.default_daily_credits before calling this.
+    """
+    try:
+        from src.billing.billing_models import CreditWallet
+        from decimal import Decimal
+
+        # Read default from company (set by caller from BillingConfig)
+        default_daily = Decimal("5.0")  # ultimate fallback only
+        if company.default_daily_credits:
+            try:
+                default_daily = Decimal(str(company.default_daily_credits))
+            except Exception:
+                pass
+
+        wallet = CreditWallet(
+            company_id=company.id,
+            daily_credits=default_daily,
+        )
+        db.add(wallet)
+        # Don't flush here — let the caller's commit handle it
+        logger.info(f"Queued CreditWallet for company {company.id} with {default_daily} daily credits")
+    except ImportError:
+        logger.warning("Billing module not available — skipping CreditWallet creation")
+    except Exception as e:
+        logger.warning(f"Failed to provision CreditWallet for company {company.id}: {e}")
 
 async def create_user_as_admin(db: AsyncSession, user_in: UserCreateAdmin, creator: User):
     # Permission Checks
@@ -68,8 +105,27 @@ async def create_user(db: AsyncSession, user: UserCreate, creator: User = None):
     new_company = Company(
         name=f"{user.full_name}'s Workspace",
         type="TENANT",
-        status="active"
+        status="active",
+        onboarding_status="pending",
+        onboarding_metadata={"completed_steps": [], "created_via": "self_registration"}
     )
+
+    # Read default_daily_credits from global BillingConfig BEFORE flush
+    try:
+        from src.billing.billing_models import BillingConfig
+        config_result = await db.execute(
+            select(BillingConfig).where(
+                BillingConfig.company_id.is_(None),
+                BillingConfig.is_active == True
+            ).limit(1)
+        )
+        global_config = config_result.scalar_one_or_none()
+        if global_config and global_config.default_daily_credits:
+            new_company.default_daily_credits = str(global_config.default_daily_credits)
+            logger.info(f"Using BillingConfig default_daily_credits: {global_config.default_daily_credits}")
+    except Exception as e:
+        logger.warning(f"Could not read BillingConfig for default credits: {e}")
+
     db.add(new_company)
     await db.flush()
 
@@ -83,17 +139,18 @@ async def create_user(db: AsyncSession, user: UserCreate, creator: User = None):
         role="tenant_admin"
     )
     db.add(new_user)
+    await db.flush()
+
+    # Auto-provision CreditWallet with default daily credits
+    await _provision_new_tenant(db, new_company)
+
     await db.commit()
     await db.refresh(new_user)
     
-    # Generate email verification token
-    verification_token = create_access_token(
-        data={"sub": new_user.email, "type": "email_verification"},
-        expires_delta=timedelta(hours=24)
-    )
-    
-    # Send verification email
-    email_service.send_verification_email(new_user.email, verification_token)
+    # NOTE: Verification emails are handled by the background worker (arq).
+    # Do NOT call email_service here — it opens a new DB session from 
+    # _load_credentials(), which deadlocks the asyncpg connection pool.
+    logger.info(f"New tenant registered: {new_user.email} (company: {new_company.id})")
     
     return new_user
 
@@ -172,8 +229,26 @@ async def get_or_create_oauth_user(db: AsyncSession, email: str, full_name: str)
     new_company = Company(
         name=f"{full_name}'s Workspace",
         type="TENANT",
-        status="active"
+        status="active",
+        onboarding_status="pending",
+        onboarding_metadata={"completed_steps": [], "created_via": "oauth"}
     )
+
+    # Read default_daily_credits from global BillingConfig BEFORE flush
+    try:
+        from src.billing.billing_models import BillingConfig
+        config_result = await db.execute(
+            select(BillingConfig).where(
+                BillingConfig.company_id.is_(None),
+                BillingConfig.is_active == True
+            ).limit(1)
+        )
+        global_config = config_result.scalar_one_or_none()
+        if global_config and global_config.default_daily_credits:
+            new_company.default_daily_credits = str(global_config.default_daily_credits)
+    except Exception:
+        pass  # Fall back to model default
+
     db.add(new_company)
     await db.flush()
     
@@ -187,9 +262,14 @@ async def get_or_create_oauth_user(db: AsyncSession, email: str, full_name: str)
         hashed_password=hashed_password,
         company_id=new_company.id,
         role="tenant_admin",
-        is_verified=True # OAuth users are verified by provide
+        is_verified=True # OAuth users are verified by provider
     )
     db.add(new_user)
+    await db.flush()
+
+    # Auto-provision CreditWallet
+    await _provision_new_tenant(db, new_company)
+
     await db.commit()
     await db.refresh(new_user)
     return new_user

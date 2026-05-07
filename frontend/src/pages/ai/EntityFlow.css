@@ -6,9 +6,10 @@
 .entity-flow-wrapper {
     display: flex;
     height: 100%;
-    min-height: 460px;
+    min-height: 600px;
     overflow: hidden;
     border-radius: var(--radius-lg);
+    flex: 1;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -417,4 +418,78 @@
 /* ── Utility ───────────────────────────────────────────────────────────────── */
 .w-full {
     width: 100%;
+}
+
+/* ── Layout Direction Select ──────────────────────────────────────────────── */
+.layout-direction-select {
+    padding: 6px 10px;
+    background: var(--color-glass-bg);
+    border: 1px solid var(--color-glass-stroke);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    backdrop-filter: blur(8px);
+}
+
+.layout-direction-select:focus {
+    border-color: var(--color-accent-primary);
+}
+
+/* ── Validation Issues in Config Panel ────────────────────────────────────── */
+.config-validation-issues {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.validation-issue {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: var(--radius-md);
+    font-size: 0.68rem;
+    line-height: 1.5;
+}
+
+.validation-issue.error {
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    color: #fca5a5;
+}
+
+.validation-issue.warning {
+    background: rgba(251, 191, 36, 0.06);
+    border: 1px solid rgba(251, 191, 36, 0.15);
+    color: #fcd34d;
+}
+
+.validation-issue svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+/* ── Validation Summary in Legend ─────────────────────────────────────────── */
+.validation-summary {
+    display: flex;
+    gap: 8px;
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid var(--color-glass-stroke);
+}
+
+.validation-error-count {
+    color: #f87171;
+    font-size: 0.62rem;
+    font-weight: 700;
+}
+
+.validation-warning-count {
+    color: #fbbf24;
+    font-size: 0.62rem;
+    font-weight: 700;
 }

@@ -61,12 +61,14 @@ class AudioProcessor:
         Convert PCM24 (24kHz, 16-bit) to mulaw (8kHz, 8-bit).
         
         Gemini outputs PCM24, Twilio/Tata expect mulaw.
+        Output is aligned to 20ms frame boundaries (160 bytes at 8kHz)
+        to prevent audible clicks and static at frame edges.
         
         Args:
             pcm24_bytes: Input PCM24 audio data
             
         Returns:
-            mulaw audio data at 8kHz
+            mulaw audio data at 8kHz, frame-aligned
         """
         try:
             # Resample 24kHz → 8kHz
@@ -81,7 +83,16 @@ class AudioProcessor:
             
             # Encode linear PCM to mulaw
             mulaw = audioop.lin2ulaw(pcm_8khz, AudioProcessor.SAMPLE_WIDTH)
-            
+
+            # Phase 2: Frame alignment — ensure output is a multiple of 160 bytes
+            # (20ms at 8kHz mulaw). Misaligned chunks cause audible clicks/static.
+            FRAME_SIZE = 160  # 20ms at 8kHz, 1 byte per mulaw sample
+            remainder = len(mulaw) % FRAME_SIZE
+            if remainder != 0:
+                # Pad with mulaw silence (0xFF = zero-level in mu-law encoding)
+                padding = FRAME_SIZE - remainder
+                mulaw = mulaw + b'\xff' * padding
+
             return mulaw
             
         except Exception as e:

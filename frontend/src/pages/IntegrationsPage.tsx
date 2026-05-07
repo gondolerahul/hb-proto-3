@@ -186,15 +186,14 @@ export const IntegrationsPage: React.FC = () => {
                                     <span className="type-badge" style={{ background: 'rgba(124, 58, 237, 0.2)', color: '#c4b5fd' }}>
                                         {item.component_type.replace('_', ' ')}
                                     </span>
-                                    {item.company_id !== currentUser?.company_id ? (
-                                        <span className="platform-badge" style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#93c5fd', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7em', padding: '2px 8px', borderRadius: '12px' }}>
-                                            <Globe size={10} /> System Global
-                                        </span>
-                                    ) : (
-                                        <span className="status-badge" style={{ color: 'var(--color-success)' }}>
-                                            <CheckCircle2 size={10} /> {item.status}
+                                    {item.service_category && (
+                                        <span className="type-badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#93c5fd', fontSize: '0.7em' }}>
+                                            {item.service_category}
                                         </span>
                                     )}
+                                    <span className="status-badge" style={{ color: 'var(--color-success)' }}>
+                                        <CheckCircle2 size={10} /> {item.status}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -320,6 +319,7 @@ export const IntegrationsPage: React.FC = () => {
                 onSubmit={handleSubmit}
                 currentUser={currentUser}
                 editingIntegration={editingIntegration}
+                userRole={currentUser?.role}
             />
 
             {currentUser?.company_id && (

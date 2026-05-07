@@ -48,6 +48,14 @@ class ValidationType(str, Enum):
     LLM_JUDGE = "LLM_JUDGE"
     FUNCTION = "FUNCTION"
 
+class HITLTriggerType(str, Enum):
+    """Trigger types for Human-in-the-Loop checkpoints."""
+    BEFORE_STEP = "BEFORE_STEP"          # Pause before a specific step executes
+    AFTER_STEP = "AFTER_STEP"            # Pause after a specific step completes
+    COST_THRESHOLD = "COST_THRESHOLD"    # Pause when execution cost exceeds threshold
+    TOOL_CALL = "TOOL_CALL"              # Pause before a specific tool is called
+    CUSTOM = "CUSTOM"                    # Custom expression-based trigger
+
 class StepType(str, Enum):
     THOUGHT = "THOUGHT"
     ACTION = "ACTION"
@@ -61,8 +69,29 @@ class StepType(str, Enum):
     AWAIT_CHILDREN = "AWAIT_CHILDREN"
 
 class PersonaExample(BaseModel):
-    scenario: str
-    ideal_response: str
+    scenario: str = ""
+    ideal_response: str = ""
+    # Legacy fields accepted from frontend (mapped to scenario/ideal_response)
+    input: Optional[str] = None
+    output: Optional[str] = None
+
+    @field_validator("scenario", mode="before")
+    @classmethod
+    def _scenario_from_input(cls, v, info):
+        """Accept legacy 'input' field as scenario when scenario is empty."""
+        if v:
+            return v
+        data = info.data if hasattr(info, "data") else {}
+        return data.get("input") or ""
+
+    @field_validator("ideal_response", mode="before")
+    @classmethod
+    def _ideal_from_output(cls, v, info):
+        """Accept legacy 'output' field as ideal_response when ideal_response is empty."""
+        if v:
+            return v
+        data = info.data if hasattr(info, "data") else {}
+        return data.get("output") or ""
 
 
 # ---------------------------------------------------------------------------
@@ -110,8 +139,7 @@ class AgentPersona(BaseModel):
     Usage:
         entity.identity = AgentPersona(...).model_dump()
     """
-    # Core identity
-    name: str = "AI Assistant"
+    # Core identity (name removed — use top-level entity.name instead)
     role: str = "AI Assistant"
     bio: Optional[str] = None
 
@@ -182,9 +210,24 @@ class SuccessCriterion(BaseModel):
     validation_type: ValidationType
     validator: str
 
+# Default review system prompt — previously hardcoded in worker.py
+DEFAULT_REVIEW_SYSTEM_PROMPT = """You are a quality assurance critic. Review the output of an AI step execution.
+
+Evaluate if the output meets the requirements described in the step description.
+
+Respond with a JSON object:
+{
+  "passed": true/false,
+  "reason": "Explanation of why it passed or failed",
+  "suggestion": "If failed, specific suggestion for improvement"
+}
+
+Be strict but fair. Minor formatting issues are acceptable if the core task is accomplished."""
+
 class ReviewMechanism(BaseModel):
     enabled: bool = False
-    review_prompt: Optional[str] = None
+    review_prompt: Optional[str] = None   # Additional review criteria (appended)
+    review_system_prompt: str = DEFAULT_REVIEW_SYSTEM_PROMPT  # Base review prompt (overridable)
     success_criteria: List[SuccessCriterion] = []
     on_failure: str = "RETRY" # RETRY | ESCALATE | ABORT
 
@@ -246,9 +289,41 @@ class AllowedDeviations(BaseModel):
     can_reorder_steps: bool = False
     can_change_tools: bool = False
 
+# Default planning system prompt — previously hardcoded in worker.py as DYNAMIC_PLANNER_PROMPT
+DEFAULT_PLANNING_SYSTEM_PROMPT = """You are an AI planning agent. Given a user goal and available capabilities, generate a structured execution plan.
+
+Output a JSON array of steps in this format:
+[
+  {
+    "step_id": "step_1",
+    "order": 1,
+    "name": "Step Name",
+    "description": "What this step accomplishes",
+    "type": "TOOL_CALL",
+    "target": {
+      "tool_id": "tool_name_if_applicable",
+      "prompt_template": "Use {{step_1}} to reference the output of step_1",
+      "input_dependencies": ["step_1"]
+    },
+    "required": true
+  }
+]
+
+Rules:
+1. Use type "TOOL_CALL" when a tool should be invoked directly. Use type "ACTION" when the LLM needs to reason/transform data (e.g. extract, summarize, format). Avoid type "THOUGHT" unless asking for clarification.
+2. Break complex tasks into atomic, sequential steps.
+3. Use available tools when they can help accomplish the goal.
+4. Each step should have clear success criteria implied in its description.
+5. For TOOL_CALL steps: put the tool name in target.tool_id and use {{step_N}} in prompt_template to reference prior step outputs by their step_id. IMPORTANT: prompt_template must ALWAYS be a plain string, never a dict or object. Example: "{{step_2}}" or "query: {{step_1}}".
+6. For ACTION steps: describe clearly in the description what the LLM should do with the data. The system will automatically provide previous step outputs as context.
+7. List input_dependencies to declare which prior steps this step depends on (e.g. ["step_1", "step_2"]).
+8. Keep the number of steps minimal — avoid unnecessary intermediate steps. Prefer 3-4 focused steps over 5+ granular ones.
+"""
+
 class DynamicPlanning(BaseModel):
     enabled: bool = False
-    planning_prompt: Optional[str] = None
+    planning_prompt: Optional[str] = None           # Additional planning instructions (appended)
+    planning_system_prompt: str = DEFAULT_PLANNING_SYSTEM_PROMPT  # Base planning prompt (overridable)
     constraints: List[str] = []
     reconciliation_strategy: str = "HYBRID" # STATIC_PRIORITY | DYNAMIC_PRIORITY | HYBRID
     allowed_deviations: AllowedDeviations = AllowedDeviations()
@@ -320,10 +395,15 @@ class ContextSourceType(str, Enum):
 class ContextSource(BaseModel):
     """A design-time or runtime context source attached to an entity."""
     source_type: ContextSourceType
-    reference_id: Optional[str] = None   # Document ID, tree ID, etc.
+    reference_id: Optional[str] = None   # Artifact ID, tree ID, etc.
     query: Optional[str] = None          # For KB/DB: semantic search query
     description: Optional[str] = None    # Human-readable label
-    ingest_to_cortex: bool = True        # Auto-ingest into CORTEX tree
+    # Display metadata (populated by frontend for UI display, not used by worker)
+    file_name: Optional[str] = None      # Original filename
+    file_type: Optional[str] = None      # MIME type or extension
+    file_size: Optional[int] = None      # Size in bytes
+    tree_status: Optional[str] = None    # For CORTEX trees: active/complete/etc
+    tree_node_count: Optional[int] = None  # For CORTEX trees: total nodes
 
 class ContextEngineering(BaseModel):
     """Context engineering configuration — CORTEX-native."""
@@ -342,12 +422,24 @@ class ExecutionLimits(BaseModel):
     max_recursion_depth: int = 5
     max_tool_calls: Optional[int] = None
 
+class HITLCheckpoint(BaseModel):
+    """A user-configured checkpoint that pauses execution for human approval."""
+    trigger_type: HITLTriggerType
+    step_ref: Optional[str] = None           # For BEFORE_STEP/AFTER_STEP: step name or step_id
+    tool_ref: Optional[str] = None           # For TOOL_CALL: tool_id to gate
+    threshold: Optional[float] = None        # For COST_THRESHOLD: USD amount that triggers pause
+    expression: Optional[str] = None         # For CUSTOM: a Python-like boolean expression
+    timeout_ms: int = 300000                 # How long to wait for approval (default 5 min)
+    notification_channels: List[str] = []    # e.g. ["email", "slack", "dashboard"]
+    message: Optional[str] = None            # Custom message shown to the reviewer
+    auto_approve_on_timeout: bool = False    # If True, auto-approve when timeout expires
+
 class Governance(BaseModel):
     max_cost_usd: Optional[float] = None
     timeout_ms: int = 60000
     max_recursion_depth: int = 5
     execution_limits: Optional[ExecutionLimits] = None
-    hitl_checkpoints: List[Dict[str, Any]] = []
+    hitl_checkpoints: List[HITLCheckpoint] = []
 
 class IOContract(BaseModel):
     input_schema: Dict[str, Any] = {"type": "object", "properties": {}}
@@ -383,11 +475,6 @@ class HierarchicalEntityBase(BaseModel):
     is_template: bool = False  # True = blueprint entity, not executable
     template_source_id: Optional[UUID] = None  # ID of template this was cloned from
 
-    # Legacy fields
-    static_plan: Optional[Dict[str, Any]] = None
-    llm_config: Optional[Any] = None
-    is_active: bool = True
-
 class HierarchicalEntityCreate(HierarchicalEntityBase):
     parent_id: Optional[UUID] = None
 
@@ -412,7 +499,7 @@ class HierarchicalEntityUpdate(BaseModel):
     parent_id: Optional[UUID] = None
     is_template: Optional[bool] = None
     template_source_id: Optional[UUID] = None
-    is_active: Optional[bool] = None  # Added for legacy field support
+    # is_active removed — use status field instead
 
 class HierarchicalEntityResponse(HierarchicalEntityBase):
     id: UUID

@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from src.common.database import Base
@@ -14,6 +15,9 @@ class Company(Base):
     parent_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
     logo_url = Column(String, nullable=True)
     status = Column(String, default="active")  # active, suspended
+    onboarding_status = Column(String, default="pending")  # pending, in_progress, completed
+    onboarding_metadata = Column(JSONB, nullable=True)  # tracks completed steps & config
+    default_daily_credits = Column(String, nullable=True)  # override daily credit amount for this tenant
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

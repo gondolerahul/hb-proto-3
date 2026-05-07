@@ -15,7 +15,9 @@ from src.ai.models import (
 )
 from src.ai.schemas import (
     RunStatus as RunStatusEnum, EntityStatus, RelationshipType,
-    ReasoningMode, StepType, PlanStep, Planning, LogicGate, ContextPolicy
+    ReasoningMode, StepType, PlanStep, Planning, LogicGate, ContextPolicy,
+    HITLCheckpoint, HITLTriggerType,
+    DEFAULT_PLANNING_SYSTEM_PROMPT, DEFAULT_REVIEW_SYSTEM_PROMPT,
 )
 from src.config.service import ConfigService
 from src.ai.usage_service import UsageService
@@ -37,50 +39,11 @@ import copy
 logger = logging.getLogger(__name__)
 
 # --- Prompt Templates ---
-
-DYNAMIC_PLANNER_PROMPT = """You are an AI planning agent. Given a user goal and available capabilities, generate a structured execution plan.
-
-Output a JSON array of steps in this format:
-[
-  {
-    "step_id": "step_1",
-    "order": 1,
-    "name": "Step Name",
-    "description": "What this step accomplishes",
-    "type": "TOOL_CALL",
-    "target": {
-      "tool_id": "tool_name_if_applicable",
-      "prompt_template": "Use {{step_1}} to reference the output of step_1",
-      "input_dependencies": ["step_1"]
-    },
-    "required": true
-  }
-]
-
-Rules:
-1. Use type "TOOL_CALL" when a tool should be invoked directly. Use type "ACTION" when the LLM needs to reason/transform data (e.g. extract, summarize, format). Avoid type "THOUGHT" unless asking for clarification.
-2. Break complex tasks into atomic, sequential steps.
-3. Use available tools when they can help accomplish the goal.
-4. Each step should have clear success criteria implied in its description.
-5. For TOOL_CALL steps: put the tool name in target.tool_id and use {{step_N}} in prompt_template to reference prior step outputs by their step_id. IMPORTANT: prompt_template must ALWAYS be a plain string, never a dict or object. Example: "{{step_2}}" or "query: {{step_1}}".
-6. For ACTION steps: describe clearly in the description what the LLM should do with the data. The system will automatically provide previous step outputs as context.
-7. List input_dependencies to declare which prior steps this step depends on (e.g. ["step_1", "step_2"]).
-8. Keep the number of steps minimal — avoid unnecessary intermediate steps. Prefer 3-4 focused steps over 5+ granular ones.
-"""
-
-DEFAULT_REVIEW_PROMPT = """You are a quality assurance critic. Review the output of an AI step execution.
-
-Evaluate if the output meets the requirements described in the step description.
-
-Respond with a JSON object:
-{
-  "passed": true/false,
-  "reason": "Explanation of why it passed or failed",
-  "suggestion": "If failed, specific suggestion for improvement"
-}
-
-Be strict but fair. Minor formatting issues are acceptable if the core task is accomplished.
-"""
+# These are now defined in schemas.py and stored on the entity.
+# The constants below are kept only as local aliases for backward compatibility
+# when an entity has no override configured.
+DYNAMIC_PLANNER_PROMPT = DEFAULT_PLANNING_SYSTEM_PROMPT
+DEFAULT_REVIEW_PROMPT = DEFAULT_REVIEW_SYSTEM_PROMPT
 
 # ---------------------------------------------------------------------------
 # Ph-B: UncertaintySignal — raised by _execute_thought when the LLM explicitly
@@ -429,7 +392,7 @@ class ExecutionEngine:
 
         for step in steps:
             s_id = step.get("step_id")
-            target = step.get("target", {})
+            target = step.get("target") or {}
             if target and "input_dependencies" in target:
                 for dep in target.get("input_dependencies", []):
                      step_deps[s_id].add(dep)
@@ -514,11 +477,40 @@ class ExecutionEngine:
 
         Ph-B: If the LLM raises UncertaintySignal, the step result is annotated
         with needs_clarification=True instead of crashing the run.
+
+        Includes:
+        - HITL checkpoint evaluation (BEFORE_STEP, COST_THRESHOLD, TOOL_CALL)
+        - Timeout enforcement via asyncio.wait_for
+        - Observability-gated logging
         """
+        observability = entity.observability or {}
+        log_thoughts = observability.get("log_thoughts", True)
+        governance = entity.governance or {}
+        timeout_ms = governance.get("timeout_ms", 60000)
+
+        # ── HITL: Evaluate BEFORE_STEP and COST_THRESHOLD checkpoints ───────
+        await self._evaluate_hitl_checkpoints(
+            run, entity, step_obj, context_state, phase="BEFORE"
+        )
+
+        # ── Execute with timeout enforcement ────────────────────────────────
         try:
-            step_result = await self._execute_step(run, entity, step_obj, context_state)
+            try:
+                step_result = await asyncio.wait_for(
+                    self._execute_step(run, entity, step_obj, context_state),
+                    timeout=timeout_ms / 1000.0,
+                )
+            except asyncio.TimeoutError:
+                step_result = {
+                    "step": step_obj.name,
+                    "step_id": step_obj.step_id,
+                    "output": f"[TIMEOUT] Step '{step_obj.name}' exceeded {timeout_ms}ms timeout.",
+                    "error": f"Timeout after {timeout_ms}ms",
+                }
+                logger.warning(f"Step '{step_obj.name}' timed out after {timeout_ms}ms")
         except UncertaintySignal as sig:
-            print(f"  UncertaintySignal from step '{step_obj.name}': {sig.question}")
+            if log_thoughts:
+                print(f"  UncertaintySignal from step '{step_obj.name}': {sig.question}")
             step_result = {
                 "step": step_obj.name,
                 "output": f"[Clarification needed] {sig.question}",
@@ -527,6 +519,11 @@ class ExecutionEngine:
                 "uncertainty_confidence": sig.confidence,
                 "uncertainty_alternatives": sig.alternatives,
             }
+
+        # ── HITL: Evaluate AFTER_STEP checkpoints ───────────────────────────
+        await self._evaluate_hitl_checkpoints(
+            run, entity, step_obj, context_state, phase="AFTER"
+        )
 
         # Review Mechanism
         if entity.logic_gate and entity.logic_gate.get("review_mechanism", {}).get("enabled"):
@@ -539,6 +536,194 @@ class ExecutionEngine:
                 context_state[step_obj.step_id] = step_result["output"]
 
         return step_result
+
+    async def _evaluate_hitl_checkpoints(
+        self,
+        run: 'ExecutionRun',
+        entity: 'HierarchicalEntity',
+        step_obj: PlanStep,
+        context_state: dict,
+        phase: str,  # "BEFORE" or "AFTER"
+    ) -> None:
+        """
+        Evaluate HITL checkpoints defined in entity.governance.hitl_checkpoints.
+
+        For each matching checkpoint:
+        1. Create a HumanApproval record with PENDING status
+        2. Publish HITL event to Redis for real-time notification
+        3. Wait for approval/rejection via Redis pub/sub (with timeout)
+        4. If rejected or timed out (without auto-approve), raise Exception
+        """
+        governance = entity.governance or {}
+        checkpoints_raw = governance.get("hitl_checkpoints", [])
+        if not checkpoints_raw:
+            return
+
+        for cp_data in checkpoints_raw:
+            try:
+                cp = HITLCheckpoint(**cp_data) if isinstance(cp_data, dict) else cp_data
+            except Exception:
+                continue
+
+            should_fire = False
+            trigger_desc = ""
+
+            if cp.trigger_type == HITLTriggerType.BEFORE_STEP and phase == "BEFORE":
+                if cp.step_ref and (cp.step_ref == step_obj.name or cp.step_ref == step_obj.step_id):
+                    should_fire = True
+                    trigger_desc = f"BEFORE_STEP: {step_obj.name}"
+
+            elif cp.trigger_type == HITLTriggerType.AFTER_STEP and phase == "AFTER":
+                if cp.step_ref and (cp.step_ref == step_obj.name or cp.step_ref == step_obj.step_id):
+                    should_fire = True
+                    trigger_desc = f"AFTER_STEP: {step_obj.name}"
+
+            elif cp.trigger_type == HITLTriggerType.COST_THRESHOLD and phase == "BEFORE":
+                current_cost = float(run.total_cost_usd or 0)
+                if cp.threshold and current_cost >= cp.threshold:
+                    should_fire = True
+                    trigger_desc = f"COST_THRESHOLD: ${current_cost:.4f} >= ${cp.threshold:.2f}"
+
+            elif cp.trigger_type == HITLTriggerType.TOOL_CALL and phase == "BEFORE":
+                if step_obj.type == StepType.TOOL_CALL and step_obj.target:
+                    if cp.tool_ref and step_obj.target.tool_id == cp.tool_ref:
+                        should_fire = True
+                        trigger_desc = f"TOOL_CALL: {cp.tool_ref}"
+
+            elif cp.trigger_type == HITLTriggerType.CUSTOM and phase == "BEFORE":
+                # Custom expression evaluation (limited safe eval)
+                if cp.expression:
+                    try:
+                        # Only allow simple comparisons against context values
+                        eval_result = self._safe_eval_hitl_expression(
+                            cp.expression, run, context_state
+                        )
+                        if eval_result:
+                            should_fire = True
+                            trigger_desc = f"CUSTOM: {cp.expression}"
+                    except Exception as e:
+                        logger.warning(f"HITL custom expression eval failed: {e}")
+
+            if not should_fire:
+                continue
+
+            # ── Fire the checkpoint ───────────────────────────────────────
+            logger.info(f"HITL checkpoint fired: {trigger_desc} (run={run.id})")
+
+            approval = HumanApproval(
+                run_id=run.id,
+                checkpoint_trigger=trigger_desc,
+                status="PENDING",
+                context_snapshot={
+                    "step_name": step_obj.name,
+                    "step_id": step_obj.step_id,
+                    "current_cost": str(run.total_cost_usd or 0),
+                    "message": cp.message or f"Approval required: {trigger_desc}",
+                },
+                notification_channels=cp.notification_channels,
+                timeout_ms=cp.timeout_ms,
+            )
+            self.db.add(approval)
+            await self.db.commit()
+            await self.db.refresh(approval)
+
+            # Publish HITL event for real-time dashboard notification
+            channel = f"execution:{run.id}"
+            await self.redis.publish(channel, json.dumps({
+                "status": "HITL_PENDING",
+                "approval_id": str(approval.id),
+                "trigger": trigger_desc,
+                "message": cp.message or f"Human approval required: {trigger_desc}",
+            }))
+
+            # ── Wait for approval via Redis pub/sub ───────────────────────
+            approval_channel = f"hitl:{approval.id}"
+            timeout_sec = cp.timeout_ms / 1000.0
+
+            try:
+                pubsub = self.redis.client.pubsub()
+                await pubsub.subscribe(approval_channel)
+
+                deadline = asyncio.get_event_loop().time() + timeout_sec
+                resolved = False
+
+                while asyncio.get_event_loop().time() < deadline:
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=1.0
+                    )
+                    if message and message.get("type") == "message":
+                        data = json.loads(message["data"])
+                        status = data.get("status", "").upper()
+                        if status == "APPROVED":
+                            logger.info(f"HITL approved: {trigger_desc}")
+                            resolved = True
+                            break
+                        elif status == "REJECTED":
+                            logger.info(f"HITL rejected: {trigger_desc}")
+                            approval.status = "REJECTED"
+                            await self.db.commit()
+                            raise Exception(
+                                f"Execution blocked by human reviewer: {trigger_desc}"
+                            )
+                    await asyncio.sleep(0.5)
+
+                await pubsub.unsubscribe(approval_channel)
+
+                if not resolved:
+                    if cp.auto_approve_on_timeout:
+                        logger.info(f"HITL auto-approved on timeout: {trigger_desc}")
+                        approval.status = "APPROVED"
+                        approval.reviewer_notes = "Auto-approved on timeout"
+                    else:
+                        logger.info(f"HITL timed out: {trigger_desc}")
+                        approval.status = "TIMEOUT"
+                        await self.db.commit()
+                        raise Exception(
+                            f"HITL checkpoint timed out after {cp.timeout_ms}ms: {trigger_desc}"
+                        )
+                    await self.db.commit()
+
+            except Exception as hitl_err:
+                if "Execution blocked" in str(hitl_err) or "timed out" in str(hitl_err):
+                    raise
+                logger.warning(f"HITL pub/sub error: {hitl_err}")
+                # Non-fatal: continue execution if pub/sub fails
+
+    def _safe_eval_hitl_expression(
+        self, expression: str, run: 'ExecutionRun', context_state: dict
+    ) -> bool:
+        """Safely evaluate a simple HITL custom expression.
+
+        Supports: step_count > N, cost > N, has_key('X')
+        Does NOT use eval() — parses manually for safety.
+        """
+        expression = expression.strip()
+        try:
+            if expression.startswith("step_count"):
+                op, val = expression.split("step_count")[1].strip().split(None, 1)
+                val = float(val)
+                step_count = len([k for k in context_state if not k.startswith("__")])
+                if op == ">" and step_count > val:
+                    return True
+                if op == ">=" and step_count >= val:
+                    return True
+
+            elif expression.startswith("cost"):
+                op, val = expression.split("cost")[1].strip().split(None, 1)
+                val = float(val)
+                current_cost = float(run.total_cost_usd or 0)
+                if op == ">" and current_cost > val:
+                    return True
+                if op == ">=" and current_cost >= val:
+                    return True
+
+            elif expression.startswith("has_key"):
+                key = expression.split("(")[1].split(")")[0].strip("'\"")
+                return key in context_state
+
+        except Exception:
+            pass
+        return False
 
     # --- Updated execute_run using DAG ---
 
@@ -582,23 +767,23 @@ class ExecutionEngine:
         channel = f"execution:{run.id}"
         await self.redis.publish(channel, json.dumps({"status": "RUNNING", "run_id": str(run.id)}))
 
-        # ── Issue 6: Pre-execution credit balance check ──────────────────
-        # Block execution immediately if the company has zero credits.
-        if not run.parent_run_id:  # Only check for top-level runs
-            try:
-                credit_svc = CreditService(self.db)
-                balance = await credit_svc.get_balance(run.company_id)
-                if balance["total_available"] <= 0:
-                    raise InsufficientCreditsError(
-                        f"Cannot start execution: credit balance is $0. "
-                        f"Please top up your wallet or wait for daily credit refresh."
-                    )
-                print(f"Pre-execution credit check passed: ${balance['total_available']:.4f} available")
-            except InsufficientCreditsError:
-                raise  # Re-raise to be caught by the outer handler
-            except Exception as e:
-                # Non-fatal: log and continue if balance check fails (e.g. DB issue)
-                print(f"Warning: Pre-execution credit check failed: {e}")
+        # ── Pre-execution credit balance gate ────────────────────────────
+        # Block execution if the company's credit balance is below the
+        # minimum threshold for this entity type.  Applies to ALL runs
+        # (top-level AND child) so child entities can't silently overspend.
+        try:
+            credit_svc = CreditService(self.db)
+            entity_type_str = entity.type.value if hasattr(entity.type, 'value') else str(entity.type)
+            balance = await credit_svc.check_sufficient_for_execution(
+                run.company_id, entity_type_str
+            )
+            print(f"Pre-execution credit check passed: ${balance['total_available']:.4f} available "
+                  f"(entity_type={entity_type_str}, is_child={bool(run.parent_run_id)})")
+        except InsufficientCreditsError:
+            raise  # Re-raise to be caught by the outer handler
+        except Exception as e:
+            # Non-fatal: log and continue if balance check fails (e.g. DB issue)
+            print(f"Warning: Pre-execution credit check failed: {e}")
 
         try:
             # ======================================================
@@ -672,6 +857,128 @@ class ExecutionEngine:
                 logger.debug(f"CORTEX: Knowledge subtree injection skipped: {_kb_err}")
                 
             all_step_results = []
+
+            # ── Phase 5: Load context_sources from entity config ─────────
+            context_engineering = (entity.capabilities or {}).get("context_engineering", {})
+            context_sources = context_engineering.get("context_sources", [])
+            if context_sources:
+                loaded_sources = []
+                for src in context_sources:
+                    src_type = src.get("source_type", "DOCUMENT")
+                    ref_id = src.get("reference_id", "")
+                    desc = src.get("description", "")
+                    file_name = src.get("file_name", "")
+                    if not ref_id:
+                        continue
+                    try:
+                        if src_type == "CORTEX_TREE":
+                            # Link to an existing CORTEX tree — inject its root viewport
+                            linked_tree = await cortex.get_tree(UUID(ref_id))
+                            if linked_tree:
+                                linked_viewport = await cortex.navigate(linked_tree.root_node_id)
+                                loaded_sources.append(
+                                    f"## Context Source: {desc or 'CORTEX Tree'}\n"
+                                    f"{linked_viewport.to_prompt_text()}"
+                                )
+                        elif src_type in ("KNOWLEDGE_BASE", "DOCUMENT"):
+                            # Load artifact file content from disk with proper text extraction
+                            try:
+                                from src.ai.artifact_service import ArtifactService as _ArtSvc
+                                _art_svc = _ArtSvc(self.db)
+                                _artifact = await _art_svc.get_artifact(UUID(ref_id), entity.company_id)
+                                if _artifact:
+                                    from pathlib import Path as _Path
+                                    _fpath = _Path(_artifact.file_path)
+                                    _mime = _artifact.mime_type or ""
+                                    _label = desc or file_name or _artifact.file_name
+
+                                    if _mime.startswith(("image/", "audio/", "video/")):
+                                        # Binary media: store reference only, no text extraction
+                                        loaded_sources.append(
+                                            f"## Context Source ({_artifact.file_category}): {_label}\n"
+                                            f"File: {_artifact.file_name} ({_mime}, "
+                                            f"{_artifact.file_size or 0} bytes)\n"
+                                            f"Reference ID: {ref_id}"
+                                        )
+                                    elif _fpath.exists():
+                                        _content = self._extract_text_from_file(_fpath, _mime)
+                                        if _content:
+                                            loaded_sources.append(
+                                                f"## Context Source: {_label}\n{_content[:50000]}"
+                                            )
+                                        else:
+                                            loaded_sources.append(
+                                                f"## Context Source: {_label}\n"
+                                                f"(Could not extract text from {_artifact.file_name})"
+                                            )
+                                    else:
+                                        logger.warning(f"Artifact file not found on disk: {_artifact.file_path}")
+                                        loaded_sources.append(
+                                            f"## Context Source: {_label}\n"
+                                            f"Reference: {ref_id} (file not found)"
+                                        )
+                                else:
+                                    # Fallback to semantic memory search for KB sources
+                                    if src_type == "KNOWLEDGE_BASE":
+                                        _memory_router = MemoryRouter(self.db)
+                                        _kb_ctx = await _memory_router.retrieve(
+                                            entity_id=entity.id,
+                                            query=desc or "knowledge base context",
+                                            top_k=10,
+                                        )
+                                        if _kb_ctx:
+                                            loaded_sources.append(
+                                                f"## Context Source: {desc or 'Knowledge Base'}\n"
+                                                f"{_memory_router.format_for_prompt(_kb_ctx)}"
+                                            )
+                                    else:
+                                        loaded_sources.append(
+                                            f"## Context Source: {desc or file_name or ref_id}\n"
+                                            f"Reference: {ref_id}"
+                                        )
+                            except Exception as _doc_err:
+                                logger.warning(f"{src_type} source load failed for {ref_id}: {_doc_err}")
+                                loaded_sources.append(
+                                    f"## Context Source: {desc or file_name or ref_id}\n"
+                                    f"Reference: {ref_id}"
+                                )
+                        elif src_type == "DB_RECORDS":
+                            # DB Records not yet implemented — skip with warning
+                            logger.info(f"DB_RECORDS context source skipped (not yet implemented): {ref_id}")
+                        else:
+                            loaded_sources.append(
+                                f"## Context Source ({src_type}): {desc or ref_id}\n"
+                                f"Reference: {ref_id}"
+                            )
+                    except Exception as src_err:
+                        logger.warning(f"Failed to load context source {src_type}:{ref_id}: {src_err}")
+
+                if loaded_sources:
+                    context_state["__context_sources__"] = "\n\n".join(loaded_sources)
+                    logger.info(f"Loaded {len(loaded_sources)} context source(s) into execution context")
+
+                    # Auto-ingest all loaded sources into CORTEX knowledge root
+                    try:
+                        _knowledge_root = await cortex.get_knowledge_root(tree.id)
+                        if _knowledge_root:
+                            for _src_text in loaded_sources:
+                                _title = _src_text.split("\n")[0][:100].replace("## Context Source: ", "").replace("## Context Source", "")
+                                # Sanitize: strip null bytes that PostgreSQL UTF-8 rejects
+                                _safe_content = _src_text[:50000].replace("\x00", "")
+                                _safe_summary = _src_text[:300].replace("\x00", "")
+                                _safe_title = f"📎 {_title}".replace("\x00", "")
+                                await cortex.write(
+                                    parent_id=_knowledge_root.id,
+                                    node_type="knowledge",
+                                    title=_safe_title,
+                                    content=_safe_content,
+                                    summary=_safe_summary,
+                                    status="complete",
+                                    source_ref={"type": "context_source"},
+                                )
+                            logger.info(f"Auto-ingested {len(loaded_sources)} context source(s) into CORTEX knowledge root")
+                    except Exception as _ingest_err:
+                        logger.warning(f"CORTEX auto-ingest of context sources failed: {_ingest_err}")
             
             # 4. Plan Generation/Reconciliation
             logger.info(f"--- Starting CORTEX Execution {run.id} for Entity {entity.name} ---")
@@ -720,21 +1027,42 @@ class ExecutionEngine:
                     
                     all_step_results.append(step_result)
 
-                    # ── Issue 6: Periodic credit check after each step ────────
-                    if not run.parent_run_id:
+                    # ── Incremental billing: deduct step cost immediately ─────
+                    step_cost = Decimal("0")
+                    if isinstance(step_result, dict):
+                        step_cost = Decimal(str(step_result.get("cost_usd", 0) or 0))
+                    if step_cost > 0:
                         try:
-                            _credit_svc = CreditService(self.db)
-                            _balance = await _credit_svc.get_balance(run.company_id)
-                            if _balance["total_available"] <= 0:
-                                print(f"⛔ Credit exhausted mid-execution after step '{step_obj.name}'. Stopping.")
-                                raise InsufficientCreditsError(
-                                    f"Execution stopped: credit balance exhausted after step '{step_obj.name}'. "
-                                    f"Partial results saved. Please top up credits and retry."
-                                )
-                        except InsufficientCreditsError:
-                            raise
-                        except Exception:
-                            pass  # Non-fatal: continue if balance check fails
+                            _inc_svc = CreditService(self.db)
+                            _inc_result = await _inc_svc.consume_incremental(run.company_id, step_cost)
+                            print(f"  💳 Step '{step_obj.name}' cost ${step_cost:.4f} deducted "
+                                  f"(shortfall: ${_inc_result['shortfall']:.4f})")
+                        except Exception as _inc_err:
+                            print(f"  ⚠️ Incremental deduction failed for step '{step_obj.name}': {_inc_err}")
+
+                    # ── Periodic credit circuit-breaker ────────────────────────
+                    # Compare effective balance (balance − accumulated cost so far)
+                    # to catch overspend even when incremental deduction isn't
+                    # covering 100% of costs (e.g. child run costs roll up later).
+                    try:
+                        _credit_svc = CreditService(self.db)
+                        _accumulated = Decimal(str(run.total_cost_usd or 0))
+                        _effective = await _credit_svc.get_effective_balance(
+                            run.company_id, _accumulated
+                        )
+                        if _effective <= 0:
+                            print(f"⛔ Credit exhausted mid-execution after step '{step_obj.name}'. "
+                                  f"Effective balance: ${_effective:.4f} "
+                                  f"(accumulated cost: ${_accumulated:.4f}). Stopping.")
+                            raise InsufficientCreditsError(
+                                f"Execution stopped: credit balance exhausted after step '{step_obj.name}'. "
+                                f"Accumulated cost: ${_accumulated:.4f}. "
+                                f"Partial results saved. Please top up credits and retry."
+                            )
+                    except InsufficientCreditsError:
+                        raise
+                    except Exception:
+                        pass  # Non-fatal: continue if balance check fails
 
                     # Write step result as a finding node in the CORTEX tree
                     await self._write_step_to_cortex(
@@ -791,12 +1119,14 @@ class ExecutionEngine:
             
             await self.db.commit()
 
-            # 7. Billing & Credit Deduction (only for top-level runs)
-            #    Issue 4 & 5: Compute billed amount using TB formula FIRST,
-            #    then deduct the billed amount (not raw cost) from credits.
+            # 7. Final Billing Settlement (only for top-level runs)
+            #    Compute billed amount using TB formula, then deduct whatever
+            #    remains after incremental deductions during execution.
+            #    Incremental deductions already reduced the wallet in real-time;
+            #    this is the final settlement for any remaining charges.
             total_cost = run.total_cost_usd
             if not run.parent_run_id:
-                print(f"Checking billing for top-level run {run.id}. Total cost: {total_cost}")
+                print(f"Final billing settlement for top-level run {run.id}. Total cost: {total_cost}")
                 if total_cost is None:
                     total_cost = Decimal("0")
                 else:
@@ -825,10 +1155,17 @@ class ExecutionEngine:
                         
                         print(f"TB formula: raw=${total_cost} → billed=${billed_amount} (mf={mf}, pf={pf}, spf={spf}, d={d})")
                         
-                        # Deduct BILLED amount from credits (not raw cost)
+                        # Final settlement: deduct whatever remains.
+                        # Use consume_incremental which won't raise on shortfall
+                        # but will drain the wallet to $0 and report the gap.
                         credit_svc = CreditService(self.db)
-                        deductions = await credit_svc.consume(run.company_id, billed_amount)
-                        print(f"Credits deducted for run {run.id}: {deductions} (billed: ${billed_amount})")
+                        settlement = await credit_svc.consume_incremental(run.company_id, billed_amount)
+                        if settlement["exhausted"]:
+                            print(f"⚠️ BILLING SHORTFALL for run {run.id}: "
+                                  f"billed=${billed_amount}, shortfall=${settlement['shortfall']:.4f}. "
+                                  f"Wallet drained to $0. Deducted: {settlement}")
+                        else:
+                            print(f"Credits deducted for run {run.id}: {settlement} (billed: ${billed_amount})")
                         
                         # Record billing event
                         await billing_svc.record_billing_event(
@@ -839,10 +1176,6 @@ class ExecutionEngine:
                             other_ai_cost=total_cost,
                         )
                         print(f"Billing event recorded for run {run.id}: raw=${total_cost}, billed=${billed_amount}")
-                    except InsufficientCreditsError as credit_err:
-                        print(f"Warning: Insufficient credits for run {run.id}: {credit_err}")
-                        run.billed_amount = billed_amount if 'billed_amount' in dir() else total_cost
-                        await self.db.commit()
                     except Exception as billing_err:
                         print(f"Cost Deduction Warning: Billing/credit deduction failed for run {run.id}: {billing_err}")
                 else:
@@ -1164,6 +1497,76 @@ class ExecutionEngine:
         # Fallback to tree cursor from context
         return context.get("__cortex_cursor__", "")
             
+    def _extract_text_from_file(self, file_path, mime_type: str = "") -> str:
+        """
+        Extract human-readable text from a file.
+        
+        Handles binary document formats (DOCX, PDF, XLSX) via their respective
+        libraries, and falls back to plain text reading for everything else.
+        Returns sanitized text with null bytes stripped.
+        """
+        import io
+        from pathlib import Path
+        _fpath = Path(file_path)
+        _ext = _fpath.suffix.lower()
+
+        try:
+            if _ext == ".docx":
+                import docx
+                doc = docx.Document(str(_fpath))
+                text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            elif _ext == ".pdf":
+                import PyPDF2
+                with open(_fpath, "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    text = "\n".join(
+                        page.extract_text() or "" for page in reader.pages
+                    )
+            elif _ext in (".xlsx", ".xls"):
+                try:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(str(_fpath), read_only=True, data_only=True)
+                    rows = []
+                    for sheet in wb.sheetnames:
+                        ws = wb[sheet]
+                        rows.append(f"--- Sheet: {sheet} ---")
+                        for row in ws.iter_rows(max_row=500, values_only=True):
+                            cells = [str(c) if c is not None else "" for c in row]
+                            rows.append(" | ".join(cells))
+                    wb.close()
+                    text = "\n".join(rows)
+                except ImportError:
+                    text = _fpath.read_text(errors="replace")
+            elif _ext in (".csv", ".tsv"):
+                text = _fpath.read_text(errors="replace")
+            elif _ext in (".pptx",):
+                try:
+                    from pptx import Presentation
+                    prs = Presentation(str(_fpath))
+                    slides_text = []
+                    for i, slide in enumerate(prs.slides, 1):
+                        slide_parts = [f"--- Slide {i} ---"]
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text") and shape.text.strip():
+                                slide_parts.append(shape.text)
+                        slides_text.append("\n".join(slide_parts))
+                    text = "\n\n".join(slides_text)
+                except ImportError:
+                    text = _fpath.read_text(errors="replace")
+            else:
+                # Plain text files (txt, md, json, xml, html, etc.)
+                text = _fpath.read_text(errors="replace")
+        except Exception as e:
+            logger.warning(f"Text extraction failed for {_fpath.name}: {e}")
+            try:
+                text = _fpath.read_text(errors="replace")
+            except Exception:
+                return ""
+
+        # Sanitize: remove null bytes that PostgreSQL UTF-8 encoding rejects
+        text = text.replace("\x00", "")
+        return text.strip()
+
     def _has_parallel_steps(self, steps: List[dict]) -> bool:
         """Check if any steps can run in parallel (heuristic)."""
         # If any step relies on a step that is NOT the immediately preceding one, 
@@ -1242,7 +1645,8 @@ class ExecutionEngine:
                 static_steps_ref += "\nIMPORTANT: Steps of type CHILD_ENTITY_INVOCATION MUST be preserved exactly as shown above. Keep their name, type, and entity_id unchanged.\n"
         
         custom_planning = dynamic_config.get("planning_prompt", "")
-        system_prompt = DYNAMIC_PLANNER_PROMPT
+        # Use entity-configured planning system prompt, falling back to the schema default
+        system_prompt = dynamic_config.get("planning_system_prompt") or DEFAULT_PLANNING_SYSTEM_PROMPT
         if custom_planning:
             system_prompt += f"\n\n## Additional Planning Instructions\n{custom_planning}"
         if entity_system_prompt:
@@ -1445,11 +1849,49 @@ class ExecutionEngine:
         if isinstance(entity_id, str):
             entity_id = UUID(entity_id)
 
+        # ── Runtime safety net: validate child entity belongs to this company ──
+        # This catches cases where the pre-flight check in trigger_execution()
+        # was bypassed, or entity references became stale after cloning.
+        child_entity_check = await self.db.execute(
+            select(HierarchicalEntity).where(
+                HierarchicalEntity.id == entity_id,
+                HierarchicalEntity.company_id == run.company_id,
+            )
+        )
+        if not child_entity_check.scalar_one_or_none():
+            raise Exception(
+                f"Child entity {entity_id} not found in company {run.company_id}. "
+                f"The process template was not fully cloned. "
+                f"Please re-clone the template to create all child entities."
+            )
+
         # Fix E: Propagate CORTEX tree ID so all entities share one tree
         child_input = dict(context)
         if "__cortex_tree_id__" in context:
             child_input["cortex_tree_id"] = context["__cortex_tree_id__"]
             logger.info(f"Propagating CORTEX tree {context['__cortex_tree_id__']} to child entity {entity_id}")
+
+        # ── Credit gate before spawning child run ─────────────────────────
+        # Check that the parent still has credits remaining before launching
+        # a potentially expensive child entity (e.g. Research Director).
+        try:
+            _child_credit_svc = CreditService(self.db)
+            _parent_accumulated = Decimal(str(run.total_cost_usd or 0))
+            _child_effective = await _child_credit_svc.get_effective_balance(
+                run.company_id, _parent_accumulated
+            )
+            if _child_effective <= 0:
+                raise InsufficientCreditsError(
+                    f"Cannot spawn child entity {entity_id}: parent run has accumulated "
+                    f"${_parent_accumulated:.4f} cost with no remaining credits. "
+                    f"Please top up credits and retry."
+                )
+            print(f"  Child run credit gate passed: ${_child_effective:.4f} remaining "
+                  f"(parent accumulated: ${_parent_accumulated:.4f})")
+        except InsufficientCreditsError:
+            raise
+        except Exception as _child_credit_err:
+            logger.warning(f"Child run credit gate check failed: {_child_credit_err}")
 
         # Create Child Run
         child_run = ExecutionRun(
@@ -1776,6 +2218,13 @@ class ExecutionEngine:
         if "persona" in identity:
             system_prompt = identity.get("persona", {}).get("system_prompt", system_prompt)
 
+        # Wire identity.role into the system prompt
+        entity_role = identity.get("role") or (identity.get("persona", {}) or {}).get("role", "")
+        if entity_role and entity_role != "AI Assistant":
+            role_prefix = f"You are {entity.name}, a {entity_role}."
+            if not system_prompt.startswith(role_prefix):
+                system_prompt = f"{role_prefix}\n\n{system_prompt}"
+
         few_shot_examples = identity.get("few_shot_examples", [])
         if "persona" in identity:
             few_shot_examples = identity.get("persona", {}).get("few_shot_examples", few_shot_examples)
@@ -1807,19 +2256,28 @@ class ExecutionEngine:
             exec_constraints["Max recursion depth"] = str(max_depth)
 
         # --- Build tools ---
+        # Only AUTONOMOUS and BOTH tools are injected into the LLM prompt.
+        # PLANNED-only tools are executed deterministically by the static plan executor.
         tool_ids = []
         tool_schemas = []
         if entity.capabilities and entity.capabilities.get("tools"):
-            tool_ids = [t.get("tool_id") for t in entity.capabilities.get("tools", [])]
+            all_tools = entity.capabilities.get("tools", [])
+            autonomous_tools = [
+                t for t in all_tools
+                if t.get("usage", "AUTONOMOUS") in ("AUTONOMOUS", "BOTH")
+            ]
+            tool_ids = [t.get("tool_id") for t in autonomous_tools]
             tool_schemas = ToolExecutor.get_tool_schemas(tool_ids)
 
         # --- Build sandwich system prompt with all architecture fields ---
+        # Inject context_sources if available
+        ctx_sources_text = filtered_context.get("__context_sources__")
         full_system_prompt = build_sandwich_prompt(
             identity=system_prompt,
             goal=entity_goal,
             tools=tool_schemas,
             few_shot_examples=few_shot_examples,
-            context=None,
+            context=ctx_sources_text,
             current_task="",
             output_schema=output_schema,
             success_criteria=success_criteria,
@@ -2299,10 +2757,12 @@ Step 2: [your analysis]
             logger.info(f"Capped retries to {max_retries} for REFLECTION step '{step.name}'")
 
         custom_criteria = review_config.get("review_prompt", "")
+        # Use entity-configured review system prompt, falling back to the schema default
+        base_review_prompt = review_config.get("review_system_prompt") or DEFAULT_REVIEW_SYSTEM_PROMPT
         if custom_criteria:
-            review_prompt = DEFAULT_REVIEW_PROMPT + f"\n\n## Additional Review Criteria\nAlso evaluate the output against these criteria:\n{custom_criteria}"
+            review_prompt = base_review_prompt + f"\n\n## Additional Review Criteria\nAlso evaluate the output against these criteria:\n{custom_criteria}"
         else:
-            review_prompt = DEFAULT_REVIEW_PROMPT
+            review_prompt = base_review_prompt
 
         # Critic strictness: 'strict' (default) or 'lenient'.
         # In lenient mode, the critic passes if tools executed successfully
@@ -2458,6 +2918,292 @@ async def run_execution_recursive(ctx, run_id_str: str):
         await engine.execute_run(run_id)
     
     await redis_pool.close()
+
+
+async def process_gateway_event(ctx, envelope_dict: dict):
+    """Process a gateway event (webhook/internal) by routing to the correct handler.
+
+    This is the arq job function invoked by the CentralDispatcher when a webhook
+    event arrives at the gateway.
+
+    Routing:
+      - sheet.row_inserted → Campaign-based outbound call pipeline
+      - other events        → ExecutionRun via ExecutionEngine (text agents)
+    """
+    import redis.asyncio as redis
+    from src.common.config import settings
+    from src.ai.models import HierarchicalEntity, ExecutionRun, RunStatus
+
+    client_id = envelope_dict.get("client_id", "")
+    if not client_id:
+        logger.warning("[process_gateway_event] No client_id in envelope — skipping")
+        return
+
+    raw_data = envelope_dict.get("raw_data", {})
+    event_type = envelope_dict.get("event_type", "generic_event")
+    source = envelope_dict.get("source", "unknown")
+    correlation_id = envelope_dict.get("id", "")
+
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # ── Entity resolution: prefer explicit entity_id from payload ────
+            entity = None
+            payload_entity_id = raw_data.get("raw", {}).get("entity_id") if isinstance(raw_data, dict) else None
+
+            if payload_entity_id:
+                try:
+                    result = await db.execute(
+                        select(HierarchicalEntity).where(
+                            HierarchicalEntity.id == UUID(payload_entity_id),
+                            HierarchicalEntity.company_id == UUID(client_id),
+                            HierarchicalEntity.status != 'ARCHIVED',
+                        )
+                    )
+                    entity = result.scalar_one_or_none()
+                except Exception as e:
+                    logger.warning(f"[process_gateway_event] entity_id lookup failed: {e}")
+
+            # Fallback: first active entity for the company
+            if not entity:
+                result = await db.execute(
+                    select(HierarchicalEntity).where(
+                        HierarchicalEntity.company_id == UUID(client_id),
+                        HierarchicalEntity.status != 'ARCHIVED',
+                    ).limit(1)
+                )
+                entity = result.scalar_one_or_none()
+
+            if not entity:
+                logger.warning(
+                    f"[process_gateway_event] No active entity for company {client_id}"
+                )
+                return
+
+            logger.info(
+                f"[process_gateway_event] Resolved entity '{entity.name}' "
+                f"({entity.id}) — event={event_type} source={source}"
+            )
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # APPROACH C: Sheet row → Campaign-based outbound voice call
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            if event_type == "sheet.row_inserted":
+                await _handle_sheet_row_campaign(
+                    db=db,
+                    entity=entity,
+                    client_id=client_id,
+                    raw_data=raw_data,
+                    correlation_id=correlation_id,
+                    redis_pool=redis_pool,
+                )
+                return
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Default: ExecutionRun path (text-based agents)
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            run = ExecutionRun(
+                company_id=UUID(client_id),
+                entity_id=entity.id,
+                input_data={
+                    "input": json.dumps(raw_data),
+                    "channel": envelope_dict.get("channel", "webhook"),
+                    "source": source,
+                    "event_type": event_type,
+                    "correlation_id": correlation_id,
+                },
+                status=RunStatus.PENDING,
+            )
+            db.add(run)
+            await db.commit()
+            await db.refresh(run)
+
+            logger.info(
+                f"[process_gateway_event] ExecutionRun {run.id} created — executing..."
+            )
+
+            engine = ExecutionEngine(db, redis_pool)
+            await engine.execute_run(run.id)
+
+            logger.info(
+                f"[process_gateway_event] ExecutionRun {run.id} finished "
+                f"(status={run.status})"
+            )
+    except Exception as exc:
+        logger.error(
+            f"[process_gateway_event] Failed for correlation={correlation_id}: {exc}",
+            exc_info=True,
+        )
+    finally:
+        await redis_pool.close()
+
+
+async def _handle_sheet_row_campaign(
+    db,
+    entity,
+    client_id: str,
+    raw_data: dict,
+    correlation_id: str,
+    redis_pool,
+):
+    """Create a single-contact Campaign from a Google Sheets row and trigger outbound call.
+
+    Pipeline: Campaign → CampaignExecutor._place_tata_call() → Tata Tele webhook
+    → TataStreamHandler → GeminiLiveClient (speech-to-speech conversation)
+    """
+    from src.ai.campaign_models import Campaign, CampaignCall
+    from arq.connections import RedisSettings, create_pool
+    from src.common.config import settings as app_settings
+    from src.auth.models import User
+
+    # ── 1. Extract lead data from the webhook payload ───────────────────
+    raw_payload = raw_data.get("raw", {}) if isinstance(raw_data, dict) else {}
+    row_data = raw_payload.get("data", {})
+
+    # Try common column names for phone number
+    phone = (
+        row_data.get("Phone")
+        or row_data.get("phone")
+        or row_data.get("Mobile")
+        or row_data.get("mobile")
+        or row_data.get("Phone Number")
+        or row_data.get("phone_number")
+        or row_data.get("Contact")
+        or row_data.get("contact")
+        or row_data.get("Number")
+        or row_data.get("number")
+    )
+
+    if not phone:
+        logger.warning(
+            f"[sheet_campaign] No phone number found in row data. "
+            f"Available columns: {list(row_data.keys())}. Skipping."
+        )
+        return
+
+    # Normalize phone to string
+    phone = str(phone).strip()
+    # Remove .0 suffix from numeric cells (e.g. 9876543210.0)
+    if phone.endswith(".0"):
+        phone = phone[:-2]
+
+    name = (
+        row_data.get("Name")
+        or row_data.get("name")
+        or row_data.get("Lead Name")
+        or row_data.get("Full Name")
+        or "Lead"
+    )
+
+    logger.info(
+        f"[sheet_campaign] Lead detected: name='{name}', phone='{phone}', "
+        f"entity='{entity.name}', correlation={correlation_id}"
+    )
+
+    # ── 2. Resolve created_by (Campaign.created_by is NOT NULL) ─────────
+    created_by_id = entity.created_by
+    if not created_by_id:
+        # Fallback: find any user in the company
+        user_result = await db.execute(
+            select(User.id).where(
+                User.company_id == UUID(client_id),
+            ).limit(1)
+        )
+        user_row = user_result.scalar_one_or_none()
+        if user_row:
+            created_by_id = user_row
+        else:
+            logger.error(
+                f"[sheet_campaign] No users found for company {client_id}. "
+                f"Cannot create campaign."
+            )
+            return
+
+    # ── 3. Determine telephony provider from entity config ──────────────
+    entity_meta = entity.metadata_extensions or {}
+    provider = entity_meta.get("telephony_provider", "tata_tele")
+
+    # ── 4. Create single-contact Campaign ───────────────────────────────
+    from datetime import datetime as _dt
+    campaign = Campaign(
+        company_id=UUID(client_id),
+        created_by=created_by_id,
+        agent_id=entity.id,
+        name=f"Auto: {name} ({_dt.utcnow().strftime('%Y-%m-%d %H:%M')})",
+        description=(
+            f"Auto-generated campaign from Google Sheets webhook. "
+            f"Lead: {name}, Phone: {phone}. "
+            f"Correlation: {correlation_id}"
+        ),
+        total_contacts=1,
+        contact_list=[{"phone": phone, "name": str(name), **{k: str(v) for k, v in row_data.items()}}],
+        provider=provider,
+        max_concurrent_calls=1,
+        status="draft",
+        campaign_metadata={
+            "source": "google_sheets_webhook",
+            "correlation_id": correlation_id,
+            "sheet_name": raw_payload.get("sheet_name"),
+            "spreadsheet_id": raw_payload.get("spreadsheet_id"),
+            "row_index": raw_payload.get("row_index"),
+        },
+    )
+    db.add(campaign)
+    await db.commit()
+    await db.refresh(campaign)
+
+    # ── 5. Create CampaignCall ──────────────────────────────────────────
+    campaign_call = CampaignCall(
+        campaign_id=campaign.id,
+        contact_data={"phone": phone, "name": str(name), **{k: str(v) for k, v in row_data.items()}},
+        status="pending",
+    )
+    db.add(campaign_call)
+    await db.commit()
+
+    logger.info(
+        f"[sheet_campaign] Campaign {campaign.id} created with 1 contact. "
+        f"Enqueuing execute_campaign_task..."
+    )
+
+    # ── 6. Enqueue campaign execution via arq ───────────────────────────
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(app_settings.REDIS_URL or "redis://localhost:6379")
+        redis_settings = RedisSettings(
+            host=parsed.hostname or "localhost",
+            port=parsed.port or 6379,
+        )
+        arq_pool = await create_pool(redis_settings)
+        job = await arq_pool.enqueue_job(
+            "execute_campaign_task",
+            str(campaign.id),
+        )
+        await arq_pool.aclose()
+
+        job_id = job.job_id if job else "queued"
+        logger.info(
+            f"[sheet_campaign] Campaign {campaign.id} enqueued as arq job {job_id}. "
+            f"Call will be placed to {phone} via {provider}."
+        )
+    except Exception as enq_err:
+        logger.error(
+            f"[sheet_campaign] Failed to enqueue campaign {campaign.id}: {enq_err}",
+            exc_info=True,
+        )
+        # Fallback: execute in-process
+        try:
+            from src.ai.campaign_executor import CampaignExecutor
+            executor = CampaignExecutor(db)
+            await executor.start_campaign(campaign.id)
+            logger.info(f"[sheet_campaign] In-process fallback completed for campaign {campaign.id}")
+        except Exception as exec_err:
+            logger.error(
+                f"[sheet_campaign] In-process fallback also failed: {exec_err}",
+                exc_info=True,
+            )
+
 
 async def process_document(ctx, document_id_str: str, file_content: bytes, file_type: str, filename: str):
     from src.ai.models import Document, DocumentChunk
@@ -2686,6 +3432,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
 class WorkerSettings:
     functions = [
         run_execution_recursive, 
+        process_gateway_event,
         process_document,
         execute_campaign_task,
         pause_campaign_task,

@@ -228,6 +228,86 @@ async def tata_websocket_incoming(websocket: WebSocket):
 
 
 # ---------------------------------------------------------------------------
+# Backward-compat: /stream/twilio/{session_id} and /stream/tata/{session_id}
+# ---------------------------------------------------------------------------
+# The webhook router returns these URLs to Twilio/Tata after the HTTP webhook.
+# The telephony provider then opens a WebSocket to stream bidirectional audio.
+# These endpoints previously lived on the retired port-8002 streaming service.
+
+@app.websocket("/stream/twilio/{session_id}")
+async def twilio_stream_websocket(websocket: WebSocket, session_id: str):
+    """
+    Backward-compatible Twilio Media Stream WebSocket endpoint.
+
+    Twilio connects here after the /webhooks/voice/twilio/incoming HTTP
+    webhook returns TwiML with <Connect><Stream url="wss://…/stream/twilio/…"/>.
+    """
+    from uuid import UUID
+    from src.database import get_db
+    from src.voice.websocket_handler import TwilioStreamHandler
+
+    await websocket.accept()
+    logger.info(f"[Gateway] Twilio WebSocket connected: session_id={session_id}")
+
+    try:
+        session_uuid = UUID(session_id)
+        async for db in get_db():
+            handler = TwilioStreamHandler(
+                websocket=websocket,
+                session_id=session_uuid,
+                db=db,
+            )
+            await handler.handle()
+            break
+    except ValueError:
+        logger.error(f"[Gateway] Invalid Twilio session ID: {session_id}")
+        await websocket.close()
+    except Exception as e:
+        logger.error(f"[Gateway] Twilio WebSocket error: {e}", exc_info=True)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+@app.websocket("/stream/tata/{session_id}")
+async def tata_stream_websocket(websocket: WebSocket, session_id: str):
+    """
+    Backward-compatible Tata Tele Media Stream WebSocket endpoint.
+
+    Tata Tele connects here after the /webhooks/voice/tata/incoming HTTP
+    webhook returns {"wss_url": "wss://…/stream/tata/…"}.
+    Uses TwilioStreamHandler since Tata's wire protocol is Twilio-compatible.
+    """
+    from uuid import UUID
+    from src.database import get_db
+    from src.voice.websocket_handler import TwilioStreamHandler
+
+    await websocket.accept()
+    logger.info(f"[Gateway] Tata Tele WebSocket connected: session_id={session_id}")
+
+    try:
+        session_uuid = UUID(session_id)
+        async for db in get_db():
+            handler = TwilioStreamHandler(
+                websocket=websocket,
+                session_id=session_uuid,
+                db=db,
+            )
+            await handler.handle()
+            break
+    except ValueError:
+        logger.error(f"[Gateway] Invalid Tata session ID: {session_id}")
+        await websocket.close()
+    except Exception as e:
+        logger.error(f"[Gateway] Tata Tele WebSocket error: {e}", exc_info=True)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Interface 1: REST API Passthrough Proxy (catch-all — MUST be last)
 # ---------------------------------------------------------------------------
 

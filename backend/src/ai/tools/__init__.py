@@ -24,6 +24,12 @@ from src.ai.tools.terminal_tool import TerminalTool
 from src.ai.tools.browser_tool import HeadlessBrowserTool
 from src.ai.tools.docx_tool import DocxTool
 from src.ai.tools.pptx_tool import PptxTool
+from src.ai.tools.crm_tools import (
+    GetCurrentDateTimeTool,
+    WhatsAppSendTenantTool,
+    GoogleCalendarCreateEventTool,
+    CRMUpdateLeadTool,
+)
 
 # Register all default tools
 ToolRegistry.register(CalculatorTool())
@@ -55,6 +61,12 @@ ToolRegistry.register(HeadlessBrowserTool())
 # Document CRUD tools
 ToolRegistry.register(DocxTool())
 ToolRegistry.register(PptxTool())
+
+# CRM integration tools (Real Estate tenant workflow)
+ToolRegistry.register(GetCurrentDateTimeTool())
+ToolRegistry.register(WhatsAppSendTenantTool())
+ToolRegistry.register(GoogleCalendarCreateEventTool())
+ToolRegistry.register(CRMUpdateLeadTool())
 
 # Social media platform tools — Phase 1
 from src.ai.tools.social import (
@@ -207,5 +219,8 @@ __all__ = [
     "XAdsReportTool", "XAdsManageAudiencesTool",
     "SnapchatAdsCreateCampaignTool", "SnapchatAdsManageAdSquadsTool",
     "SnapchatAdsReportTool", "SnapchatAdsManageAudiencesTool",
+    # CRM integration tools
+    "GetCurrentDateTimeTool", "WhatsAppSendTenantTool",
+    "GoogleCalendarCreateEventTool", "CRMUpdateLeadTool",
 ]
 

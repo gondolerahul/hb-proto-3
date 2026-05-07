@@ -1,8 +1,8 @@
 ---
 title: "HireBuddha — Product Documentation"
-subtitle: "The AI Workforce Platform by Buddha Cognitive Lab"
-date: "March 26, 2026"
-version: "3.0"
+subtitle: "The AI Workforce Platform for Solopreneurs & SMEs — by Buddha Cognitive Lab"
+date: "May 2, 2026"
+version: "4.0"
 ---
 
 <div align="center">
@@ -12,16 +12,17 @@ version: "3.0"
 
 **Designed & Developed by Buddha Cognitive Lab**
 
-*March 26, 2026 · Version 3.0*
+*May 2, 2026 · Version 4.0*
 
 ---
 
 ### ✦ The New Era of Work Has Arrived ✦
 
-> **"Stop hiring humans. Start hiring AI."**
+> **"Stop hiring. Start deploying."**
 >
-> *HireBuddha is the platform where you design your dream AI employee,*
-> *deploy it in minutes, and employ it 24/7 — with zero salary overhead.*
+> *HireBuddha is the platform where solopreneurs and growing businesses*
+> *deploy pre-built AI employees in minutes — and run entire departments*
+> *at a fraction of the cost of a single hire.*
 
 </div>
 
@@ -33,20 +34,22 @@ version: "3.0"
 2. [How HireBuddha Works: The 3-Step Formula](#how-it-works)
 3. [The AI Workforce Hierarchy](#the-ai-workforce-hierarchy)
 4. [Equip Your AI: The Built-In Talent Stack](#the-talent-stack)
-5. [Social Media & Advertising Command Center](#social-media)
-6. [The AI Mind: Memory & Intelligence](#the-ai-mind)
-7. [Omnichannel Presence: Voice, WhatsApp & Email](#omnichannel)
-8. [Outbound Campaigns: Bulk AI Operations](#outbound-campaigns)
-9. [Guardian Oversight: Safety by Design](#guardian-oversight)
-10. [The Economics of AI Employment](#economics)
-11. [Enterprise Features: Security, Multi-Tenancy & Governance](#enterprise)
-12. [The Unified AI Gateway](#unified-gateway)
-13. [Artifact Management & Call Intelligence](#artifact-management)
-14. [Analytics & Intelligence Reporting](#analytics)
-15. [Integrations Ecosystem](#integrations)
-16. [Who Is HireBuddha Built For?](#who-is-it-for)
-17. [Real-World Use Cases](#use-cases)
-18. [Getting Started](#getting-started)
+5. [🆕 AI Agent Marketplace: 42 Pre-Built RevOps Agents](#agent-marketplace)
+6. [🆕 Template Marketplace: Clone & Customize](#template-marketplace)
+7. [Social Media & Advertising Command Center](#social-media)
+8. [The AI Mind: Memory & Intelligence](#the-ai-mind)
+9. [Omnichannel Presence: Voice, WhatsApp & Email](#omnichannel)
+10. [Outbound Campaigns: Bulk AI Operations](#outbound-campaigns)
+11. [Guardian Oversight: Safety by Design](#guardian-oversight)
+12. [The Economics of AI Employment](#economics)
+13. [Enterprise Features: Security, Multi-Tenancy & Governance](#enterprise)
+14. [The Unified AI Gateway](#unified-gateway)
+15. [Artifact Management & Call Intelligence](#artifact-management)
+16. [Analytics & Intelligence Reporting](#analytics)
+17. [Integrations Ecosystem](#integrations)
+18. [Who Is HireBuddha Built For?](#who-is-it-for)
+19. [Real-World Use Cases](#use-cases)
+20. [Getting Started](#getting-started)
 
 ---
 
@@ -77,7 +80,13 @@ Rather than hiring a *person* who comes bundled with unpredictable human factors
 
 > **"We are taking a bold stand: Hire AI Employees instead of Human Employees."**
 >
-> HireBuddha is not just automation software. It is the world's first platform designed from the ground up to let you **build, deploy, and manage a complete digital workforce**—one that handles calls, replies to messages, processes emails, generates reports, and executes complex multi-step business processes, all without a single salary being paid.
+> HireBuddha is not just automation software. It is the world's first platform designed from the ground up to let you **build, deploy, and manage a complete digital workforce** — one that handles calls, replies to messages, processes emails, generates reports, and executes complex multi-step business processes, all without a single salary being paid.
+
+### Built for Solopreneurs & SMEs
+
+If you're a **solopreneur**, you know the pain: you're the CEO, the sales team, the marketing department, and the customer support desk — all rolled into one. If you're a **growing SME**, you face a different problem: every new revenue milestone requires hiring more people, faster than your margins can absorb.
+
+HireBuddha solves both. With **42 pre-built AI agents** covering the entire revenue operations lifecycle — from lead generation to customer expansion to churn prevention — you can deploy enterprise-grade capabilities without enterprise-grade headcount. Browse the **Agent Marketplace**, clone a pre-built agent, customize it with your business data, and activate it — all in under 10 minutes.
 
 ---
 
@@ -274,8 +283,197 @@ This ensures your AI employees are powerful *and* remain under your control.
 
 ---
 
+<a name="agent-marketplace"></a>
+## 5. 🆕 AI Agent Marketplace: 42 Pre-Built RevOps Agents
+
+### Why Build When You Can Deploy?
+
+Most AI platforms hand you a blank canvas and say "good luck." HireBuddha does the opposite. We've pre-designed **42 production-ready AI agents** that cover the entire **Revenue Operations** lifecycle — from lead generation to customer expansion to churn prevention. Each agent comes fully configured with the right tools, triggers, reasoning modes, and governance guardrails.
+
+**For solopreneurs**, this means you can run a sales team, marketing department, and customer success operation — all by yourself. **For growing SMEs**, this means you can scale revenue operations without hiring a single additional employee.
+
+> **"Don't hire a VP of Sales. Deploy one."**
+
+### The Five Revenue Pillars
+
+HireBuddha's agent marketplace is organized into **five revenue pillars**, mirroring the structure of a world-class RevOps organization:
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                    HIREBUDDHA AI AGENT MARKETPLACE              ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║   📊 Revenue Intelligence (7 Agents)                            ║
+║   → Planning, Forecasting, CRM, Attribution, Revenue Leaks      ║
+║                                                                  ║
+║   📣 Demand Generation (10 Agents)                              ║
+║   → Campaigns, Content, Lead Scoring, ABM, Paid Media, Events   ║
+║                                                                  ║
+║   💼 Revenue Acquisition (9 Agents)                             ║
+║   → Prospecting, Outbound, MEDDPICC, Proposals, Win/Loss        ║
+║                                                                  ║
+║   🤝 Customer Expansion (10 Agents)                             ║
+║   → Onboarding, Health, Churn, Renewals, Support, Advocacy      ║
+║                                                                  ║
+║   🔗 Cross-Pillar Operations (5 Agents)                         ║
+║   → Meeting Prep, Coaching, KPI Monitoring, Process, Tech Stack ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+### 📊 Pillar 1: Revenue Intelligence (7 Agents)
+
+*The strategic brain of your revenue engine. These agents replace the need for a dedicated RevOps analyst.*
+
+| Agent | What It Does For You | Why It Matters |
+|---|---|---|
+| **Revenue Planning Agent** | Ingests your prior-year revenue, models market opportunity, calculates pipeline coverage, and drafts your annual revenue plan with OKR recommendations | You get a CFO-grade revenue plan without a CFO |
+| **ICP Intelligence Agent** | Analyzes your closed-won, churned, and expanded accounts to automatically build and update your Ideal Customer Profile and lead scoring rules | Stop guessing who your best customer is — let data tell you |
+| **Forecasting Agent** | Runs weekly AI-powered forecasts with commit/best-case/pipeline ranges, pulling from CRM, historical close rates, and AI model scores | Monday morning forecast delivered before you wake up |
+| **CRM Data Governance Agent** | Daily CRM audit — finds missing fields, auto-populates data from call transcripts and emails, deduplicates contacts, and standardizes records | Your CRM stays clean without a single hour of manual data entry |
+| **Attribution & Analytics Agent** | Multi-touch attribution across all channels, automatic dashboard refresh, weekly stakeholder reports, and anomaly detection on conversion rates | Know exactly which marketing dollar generates revenue |
+| **Revenue Leak Detection Agent** | Audits full-funnel conversion rates, identifies abnormal drop-offs, quantifies revenue impact, and generates fix recommendations | Find and plug the holes in your revenue pipeline — every month |
+| **Meeting Intelligence Agent** | Auto-transcribes all sales and CS calls, extracts MEDDPICC fields, identifies competitor mentions, generates coaching tips per rep | Every call becomes actionable intelligence |
+
+---
+
+### 📣 Pillar 2: Demand Generation (10 Agents)
+
+*A complete digital marketing department in a box. These agents replace the need for dedicated marketing hires.*
+
+| Agent | What It Does For You | Why It Matters |
+|---|---|---|
+| **Campaign Planning Agent** | Reviews pipeline gaps, analyzes channel performance, calculates required MQL volume, and auto-drafts campaign briefs with budget recommendations | Marketing strategy on autopilot |
+| **Content Generation Agent** | Researches keywords, identifies content gaps, drafts SEO blog posts, LinkedIn posts, email copy, ad copy, landing pages, and nurture sequences | A content team that never has writer's block |
+| **Lead Scoring Agent** | Continuously scores leads using behavioral signals and firmographic fit, promotes to MQL at threshold, recalibrates quarterly using ML | Never miss a hot lead again |
+| **Lead Routing Agent** | Instantly routes MQLs to the right rep based on territory and rules, starts SLA clock, escalates if no action within 2 hours | Speed-to-lead drops from hours to seconds |
+| **Nurture Orchestration Agent** | Enrolls leads in persona-based nurture tracks, personalizes emails dynamically, pauses/switches tracks based on engagement, graduates to MQL | Nurture sequences that actually convert |
+| **ABM Orchestration Agent** | Scores target accounts with intent data, generates account briefs for SDRs with company news, stakeholder maps, and messaging recommendations | Enterprise-grade ABM for SME budgets |
+| **Paid Media Optimization Agent** | Daily monitoring of Google Ads and LinkedIn campaigns, auto-adjusts bids, pauses underperformers, allocates budget to winners, A/B tests copy | Your ad spend works harder while you sleep |
+| **Social Media Agent** | Generates platform-specific posts, schedules at optimal times, monitors mentions, drafts response suggestions, tracks engagement | Social media management without a social media manager |
+| **Event & Webinar Agent** | Sets up registration, triggers promotion sequences, sends reminders, uploads attendees to CRM, triggers post-event nurture, generates ROI reports | Run events end-to-end without an events coordinator |
+| **Website CRO Agent** | Monitors traffic and conversions, identifies low-converting pages, generates A/B test hypotheses, analyzes results, recommends winners | Your website optimizes itself |
+
+---
+
+### 💼 Pillar 3: Revenue Acquisition (9 Agents)
+
+*Your AI-powered sales floor. These agents handle everything from prospecting to close.*
+
+| Agent | What It Does For You | Why It Matters |
+|---|---|---|
+| **Prospecting Research Agent** | Pulls ICP-matched accounts, researches each on LinkedIn and news, identifies buyer contacts, enriches data, writes personalized account briefs | SDR-quality research at machine speed |
+| **Outbound Sequencing Agent** | Enrolls prospects in multi-channel sequences, generates hyper-personalized first emails, drafts LinkedIn messages, prepares call talk tracks | Personalized outbound at scale — no BDR required |
+| **MEDDPICC Scoring Agent** | After every deal call, extracts MEDDPICC fields from transcript, scores deal completeness (0-100), flags gaps, blocks proposals below 80 | Deal qualification on autopilot |
+| **Demo Preparation Agent** | Reads discovery notes, generates customized demo scripts mapped to prospect pains, suggests case studies, prepares checklists | Every demo is perfectly tailored |
+| **ROI & Proposal Agent** | Builds ROI models with 1-year and 3-year projections, generates tailored proposals, sends via e-signature, sets follow-up cadence | Professional proposals in minutes, not days |
+| **Deal Risk & Stale Pipeline Agent** | Daily scan for risk signals (no activity, stale stages, competitor mentions), generates risk scores, recommends interventions, cleans ghost pipeline | No deal falls through the cracks |
+| **Closed-Won Handoff Agent** | Auto-triggers handoff workflow on close, alerts AE, assigns CSM, schedules kickoff, sends welcome email, sets check-in reminders | Seamless handoff from sales to success |
+| **Win/Loss Analysis Agent** | Monthly aggregation of closed-won/lost data, identifies top loss themes, updates battlecard recommendations, distributes findings | Learn from every win and every loss |
+| **Competitive Battlecard Agent** | Daily monitoring of competitor websites, G2, LinkedIn, and news; updates battlecards; alerts when competitors target your deals or customers | Always know what your competitors are doing |
+
+---
+
+### 🤝 Pillar 4: Customer Expansion (10 Agents)
+
+*Turn customers into raving fans and expand revenue from your existing base.*
+
+| Agent | What It Does For You | Why It Matters |
+|---|---|---|
+| **Onboarding Orchestration Agent** | Triggers full onboarding workflow, tracks milestone completion, sends reminders, escalates misses, schedules Day-90 NPS | Every customer gets white-glove onboarding |
+| **Health Scoring Agent** | Multi-dimensional health scores (adoption, support, engagement, NPS, financial), auto-classifies Green/Yellow/Red, alerts on changes | Know which accounts need attention before they churn |
+| **Churn Prediction Agent** | Predictive churn model with 60-90 day window, identifies top risk factors, generates recovery plan recommendations per account | Predict churn before it happens |
+| **Expansion Opportunity Agent** | Monitors accounts for expansion signals (usage limits, new teams, NPS 9-10), flags opportunities, calculates ARR potential | Find upsell opportunities you'd otherwise miss |
+| **Renewal Management Agent** | Auto-triggers 120/90/60/30/14/7-day renewal workflows, drafts proposals, sends contracts via e-signature, escalates unsigned renewals | Never lose a renewal to missed follow-up |
+| **QBR Preparation Agent** | One week before each QBR, auto-generates the entire deck — value delivered, utilization, support review, ROI, expansion opportunities | QBR prep that used to take days, done in minutes |
+| **Support Ticket Triage Agent** | Classifies tickets by severity and category, auto-resolves simple how-tos, routes complex tickets, sends SLA acknowledgments, escalates P1/P2 | First-line support that never sleeps |
+| **Knowledge Base Agent** | Identifies top support topics lacking articles, auto-drafts new KB articles, flags outdated content, tracks deflection rate | Self-serve support that scales infinitely |
+| **Voice of Customer Agent** | Aggregates feedback from 8+ sources (NPS, CSAT, support, reviews, calls), clusters by theme, routes Detractors to CSM, routes gaps to Product | Every piece of customer feedback becomes actionable |
+| **Customer Advocacy Agent** | Identifies NPS Promoters, sends advocacy invitations, manages G2/Capterra review requests, coordinates case studies, matches references for Sales | Turn happy customers into your best marketing channel |
+
+---
+
+### 🔗 Pillar 5: Cross-Pillar Operations (5 Agents)
+
+*The connective tissue that keeps your entire revenue engine synchronized.*
+
+| Agent | What It Does For You | Why It Matters |
+|---|---|---|
+| **RevOps Meeting Prep Agent** | Before every recurring meeting, pulls data, generates pre-read reports, flags discussion items, drafts agendas, captures action items from transcript | Every meeting starts prepared and ends with clear actions |
+| **Enablement & Coaching Agent** | Delivers personalized coaching based on call analysis, identifies skill gaps per rep, recommends training, manages new hire onboarding | AI-powered coaching for every rep, every week |
+| **KPI Monitoring & Alerting Agent** | Real-time monitoring of all RevOps KPIs against targets, triggers alerts on threshold breaches, generates root cause hypotheses | Know the moment a KPI goes off-track |
+| **Process Improvement Agent** | Collects friction signals, identifies top bottlenecks, proposes improved processes, tracks adoption and KPI improvement | Continuous improvement without a consultant |
+| **Tech Stack Integration Monitor** | Monitors all API integrations, detects sync failures, tracks tool utilization, flags unused licenses for cost savings | Your tech stack stays healthy and cost-efficient |
+
+---
+
+### Why This Matters for Solopreneurs & SMEs
+
+> **A Fortune 500 company employs 50+ people to run revenue operations.**
+> **With HireBuddha, you deploy 42 AI agents and achieve the same coverage — for the cost of a single subscription.**
+
+These agents aren't theoretical. They are **pre-configured, production-ready templates** that you can clone into your workspace, customize with your company data, and activate — all in under 10 minutes.
+
+---
+
+<a name="template-marketplace"></a>
+## 6. 🆕 Template Marketplace: Clone & Customize
+
+### One-Click Deployment of Pre-Built AI Teams
+
+The **Template Marketplace** is where the 42 pre-built RevOps agents (and any custom templates your team creates) live. It's the fastest way to go from zero to a fully operational AI workforce.
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║              TEMPLATE MARKETPLACE WORKFLOW                       ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║   1. BROWSE        →  Filter by type (Agent, Process, Skill)    ║
+║   2. PREVIEW       →  See configuration, tools, and plan steps  ║
+║   3. CLONE         →  One-click deep copy into your workspace   ║
+║   4. CUSTOMIZE     →  Add your data, tweak the persona          ║
+║   5. ACTIVATE      →  Your AI employee goes live                ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+### What Gets Cloned?
+
+When you click **Clone**, HireBuddha performs a **deep recursive clone** of the entire entity hierarchy:
+
+- ✅ The root entity (Agent or Process) with all configuration
+- ✅ Every child entity in the hierarchy (Skills, Actions)
+- ✅ All plan steps with their execution logic
+- ✅ Tool assignments and permission models
+- ✅ Governance guardrails and HITL checkpoints
+- ✅ Internal entity references are automatically remapped
+
+The clone becomes **your own fully editable copy** — completely independent from the original template.
+
+### Build Your Own Templates
+
+Templates aren't just for pre-built agents. Any entity you create can be **converted to a template** with one click. This is powerful for:
+
+- **Solopreneurs**: Create a winning agent configuration once, then replicate it across multiple client accounts
+- **Agencies**: Build a library of proven AI workflows and deploy them for new clients in minutes
+- **Growing teams**: Standardize your best-performing agents into templates that new team members can instantly deploy
+
+### Marketplace Features
+
+| Feature | How It Works |
+|---|---|
+| **Search & Filter** | Find templates by type (Action, Skill, Agent, Process), name, description, or tags |
+| **Type Badges** | Visual indicators showing entity type and status at a glance |
+| **Version Tracking** | Every template carries a version number for change management |
+| **One-Click Clone** | Deep-clone with automatic redirect to the editor for customization |
+| **Admin Controls** | App Admins can manage, update, and remove templates from the marketplace |
+
+---
+
 <a name="social-media"></a>
-## 5. Social Media & Advertising Command Center
+## 7. Social Media & Advertising Command Center
 
 HireBuddha includes **55+ social media and advertising tools** that transform your AI employees into a full-service digital marketing department. These tools are organized into three capability tiers:
 
@@ -323,7 +521,7 @@ Your AI employees can autonomously create content, engage with audiences, manage
 ---
 
 <a name="the-ai-mind"></a>
-## 6. The AI Mind: Memory & Intelligence
+## 8. The AI Mind: Memory & Intelligence
 
 ### The Four-Tier Memory System
 
@@ -451,7 +649,7 @@ Admins configure which model handles each task type per organization via the **A
 ---
 
 <a name="omnichannel"></a>
-## 7. Omnichannel Presence: Voice, WhatsApp & Email
+## 9. Omnichannel Presence: Voice, WhatsApp & Email
 
 Your AI employees aren't confined to a chat window. They exist wherever your customers are.
 
@@ -520,7 +718,7 @@ For the first time, you can have a fully staffed email support team—with zero 
 ---
 
 <a name="outbound-campaigns"></a>
-## 8. Outbound Campaigns: Bulk AI Operations
+## 10. Outbound Campaigns: Bulk AI Operations
 
 HireBuddha's **Campaign Engine** turns your AI employees into a powerful outbound sales and engagement machine.
 
@@ -553,7 +751,7 @@ After every campaign:
 ---
 
 <a name="guardian-oversight"></a>
-## 9. Guardian Oversight: Safety by Design
+## 11. Guardian Oversight: Safety by Design
 
 We believe autonomous AI must have human guardrails. HireBuddha's **Guardian Oversight System** (Human-In-The-Loop, or HITL) ensures your AI employees never make a high-stakes decision without your approval.
 
@@ -590,7 +788,7 @@ Every pending approval across your entire digital workforce is visible in one pl
 ---
 
 <a name="economics"></a>
-## 10. The Economics of AI Employment
+## 12. The Economics of AI Employment
 
 ### From Salaries to Credits
 
@@ -651,7 +849,7 @@ Adding your 100th AI employee costs the same per-task as your 1st. There are no 
 ---
 
 <a name="enterprise"></a>
-## 11. Enterprise Features: Security, Multi-Tenancy & Governance
+## 13. Enterprise Features: Security, Multi-Tenancy & Governance
 
 ### Multi-Tenant Architecture: Built for Organizations
 
@@ -721,7 +919,7 @@ Every external API key your organization uses is stored in the **Integration Reg
 ---
 
 <a name="unified-gateway"></a>
-## 12. The Unified AI Gateway
+## 14. The Unified AI Gateway
 
 HireBuddha's **Unified AI Gateway** is a multi-protocol gateway that serves as the single entry point for all external and internal communications. It replaces traditional microservice sprawl with a consolidated, intelligent routing layer.
 
@@ -749,7 +947,7 @@ The gateway merges what would traditionally be 3–4 separate services into one,
 ---
 
 <a name="artifact-management"></a>
-## 13. Artifact Management & Call Intelligence
+## 15. Artifact Management & Call Intelligence
 
 ### The Artifact Library
 
@@ -785,7 +983,7 @@ All call intelligence data is queryable and filterable from the **Streaming Sess
 ---
 
 <a name="analytics"></a>
-## 14. Analytics & Intelligence Reporting
+## 16. Analytics & Intelligence Reporting
 
 HireBuddha surfaces deep operational intelligence for every role in your organization.
 
@@ -829,7 +1027,7 @@ This is not a black box. This is **total transparency** into your AI workforce.
 ---
 
 <a name="integrations"></a>
-## 15. Integrations Ecosystem
+## 17. Integrations Ecosystem
 
 HireBuddha connects with the tools and platforms your business already runs on.
 
@@ -874,7 +1072,20 @@ HireBuddha connects with the tools and platforms your business already runs on.
 ---
 
 <a name="who-is-it-for"></a>
-## 16. Who Is HireBuddha Built For?
+## 18. Who Is HireBuddha Built For?
+
+### 🧑‍💻 Solopreneurs & Freelancers (Primary ICP)
+You wear every hat — CEO, sales, marketing, support. HireBuddha gives you a **full AI workforce** that handles the functions you can't afford to hire for. Deploy the pre-built **Prospecting Research Agent** to find leads, the **Outbound Sequencing Agent** to reach them, the **Content Generation Agent** to fuel your marketing, and the **Support Ticket Triage Agent** to handle customer queries — all while you focus on what you do best.
+
+> *"I'm a one-person company with a 42-person AI team."*
+
+### 🏪 Small & Medium Enterprises (Primary ICP)
+Scaling revenue shouldn't require scaling headcount at the same rate. HireBuddha's **42 pre-built RevOps agents** let your SME run a Fortune 500-caliber revenue operation. Deploy the **Forecasting Agent** for weekly pipeline intelligence, the **Lead Scoring Agent** for automated MQL promotion, the **Churn Prediction Agent** to protect existing revenue, and the **Renewal Management Agent** to automate your retention workflow.
+
+> *"We grew from $500K to $5M ARR without adding a single RevOps hire."*
+
+### 📈 Agencies & Consultancies
+Build AI agents once, deploy across every client. Use the **Template Marketplace** to create reusable agent configurations, then clone them into each client workspace. Scale your service delivery without scaling your team.
 
 ### 🏢 Enterprise Sales Teams
 Replace outbound SDRs with AI callers that work through contact lists 24/7. Get consistent messaging, perfect call-handling, and post-call intelligence on every single interaction.
@@ -886,22 +1097,49 @@ Deploy AI support agents on phone, WhatsApp, and email simultaneously. Handle th
 Point an AI researcher at the web and your internal document library. Get comprehensive, cited research reports generated in minutes instead of days.
 
 ### 📊 Finance & Operations
-Automate repetitive data processing: reading emails, updating spreadsheets, generating reports, and triggering downstream approvals—with full audit trails.
+Automate repetitive data processing: reading emails, updating spreadsheets, generating reports, and triggering downstream approvals — with full audit trails.
 
 ### 🏥 Healthcare, BFSI & Legal
 Deploy context-aware AI agents with strict behavioral constraints, Human-in-the-Loop checkpoints for compliance, and AES-256-encrypted data handling.
 
-### 🚀 Startups Scaling Fast
-Get enterprise-grade AI capability without enterprise-grade headcount. Launch new lines of business with AI teams at a fraction of traditional hiring costs.
-
 ---
 
 <a name="use-cases"></a>
-## 17. Real-World Use Cases
+## 19. Real-World Use Cases
 
 ---
 
-### Use Case 1: The AI Sales Caller
+### Use Case 1: The Solopreneur RevOps Machine
+
+**Scenario**: A SaaS solopreneur runs a $200K ARR product with no sales, marketing, or support team. Growth has stalled because she can't do everything alone.
+
+**With HireBuddha:**
+- Clone the **ICP Intelligence Agent** from the marketplace → it analyzes her closed-won customers and builds an ICP
+- Clone the **Content Generation Agent** → it drafts weekly LinkedIn posts, blog articles, and nurture email sequences
+- Clone the **Prospecting Research Agent** + **Outbound Sequencing Agent** → they find ICP-matched leads and run personalized outbound
+- Clone the **Support Ticket Triage Agent** → it handles 80% of customer support queries automatically
+- Clone the **Churn Prediction Agent** → it flags at-risk accounts 60 days before renewal
+
+**Result**: Within one week, she has a fully operational sales, marketing, and customer success engine. Pipeline grows 3x. Churn drops. Revenue doubles in 6 months — with zero hires.
+
+---
+
+### Use Case 2: The SME Revenue Operations Team
+
+**Scenario**: A 25-person B2B company just closed their Series A. They need to scale from $1M to $5M ARR but can't afford to hire the 8-person RevOps team their investors recommend.
+
+**With HireBuddha:**
+- Deploy the **Revenue Intelligence pillar** (7 agents) → automated forecasting, CRM hygiene, and attribution
+- Deploy the **Demand Generation pillar** (10 agents) → campaign planning, lead scoring, ABM, content, and paid media
+- Deploy the **Revenue Acquisition pillar** (9 agents) → prospecting, outbound, MEDDPICC, proposals
+- Deploy the **Customer Expansion pillar** (10 agents) → onboarding, health scores, churn prediction, renewals
+- Assign one human RevOps manager to oversee the AI agents via the Guardian Dashboard
+
+**Result**: A complete RevOps function that would cost $800K+ in salaries is running for a fraction of that cost. The team scales to $5M ARR with just one RevOps hire managing 42 AI agents.
+
+---
+
+### Use Case 3: The AI Sales Caller
 
 **Scenario**: A fintech startup needs to reach 5,000 warm leads every week to pitch their new loan product.
 
@@ -915,7 +1153,7 @@ Get enterprise-grade AI capability without enterprise-grade headcount. Launch ne
 
 ---
 
-### Use Case 2: The AI Customer Support Floor
+### Use Case 4: The AI Customer Support Floor
 
 **Scenario**: An e-commerce brand receives 1,200 WhatsApp messages per day asking about orders, returns, and refunds.
 
@@ -928,7 +1166,7 @@ Get enterprise-grade AI capability without enterprise-grade headcount. Launch ne
 
 ---
 
-### Use Case 3: The Autonomous Research Analyst
+### Use Case 5: The Autonomous Research Analyst
 
 **Scenario**: A consulting firm needs weekly competitive intelligence reports on 20 clients' industries.
 
@@ -943,7 +1181,7 @@ Get enterprise-grade AI capability without enterprise-grade headcount. Launch ne
 
 ---
 
-### Use Case 4: The Email Triage Department
+### Use Case 6: The Email Triage Department
 
 **Scenario**: A legal firm receives 300 emails per day across three shared inboxes.
 
@@ -957,20 +1195,26 @@ Get enterprise-grade AI capability without enterprise-grade headcount. Launch ne
 ---
 
 <a name="getting-started"></a>
-## 18. Getting Started
+## 20. Getting Started
 
-### Create Your First AI Employee in Under 10 Minutes
+### Deploy Your First AI Employee in Under 5 Minutes
+
+> **The fastest path**: Browse the Template Marketplace → Clone a pre-built agent → Customize → Activate. Done.
 
 1. **Register your organization** at the HireBuddha platform (or sign in via Google / Microsoft OAuth)
 2. **Set up your integrations** — connect your AI provider (Gemini, OpenAI, Anthropic, or Azure OpenAI) and communication channels
-3. **Configure model routing** — set default models for each AI task type (text, image, video, voice)
-4. **Open the AI Architect** and create your first entity (Action, Skill, Agent, or Process)
-5. **Define the personality** — name, role, tone, verbosity, system prompt, voice identity
-6. **Assign tools** — choose from 20+ built-in tools and 55+ social media tools
-7. **Upload documents** — train your AI on your company knowledge (PDF, DOCX, TXT, PPTX)
-8. **Connect social accounts** — link LinkedIn, Twitter, Facebook, Instagram via OAuth
-9. **Deploy** — assign a phone number, WhatsApp line, or email account
-10. **Employ** — your AI employee is live
+3. **Browse the Agent Marketplace** — choose from 42 pre-built RevOps agents across 5 revenue pillars
+4. **Clone with one click** — the entire agent hierarchy is deep-cloned into your workspace
+5. **Customize** — add your company knowledge base, tweak the persona and system prompt
+6. **Deploy** — assign a phone number, WhatsApp line, email account, or social media channels
+7. **Employ** — your AI employee is live and working
+
+**Want to build from scratch?** Use the No-Code AI Architect:
+8. **Open the AI Architect** and create your entity (Action, Skill, Agent, or Process)
+9. **Define the personality** — name, role, tone, verbosity, system prompt, voice identity
+10. **Assign tools** — choose from 20+ built-in tools and 55+ social media tools
+11. **Upload documents** — train your AI on your company knowledge (PDF, DOCX, TXT, PPTX)
+12. **Connect social accounts** — link LinkedIn, Twitter, Facebook, Instagram via OAuth
 
 ### Platform Requirements & Deployment
 
@@ -991,9 +1235,9 @@ Full Docker Compose support included for one-command infrastructure deployment.
 
 ## A Note From Buddha Cognitive Lab
 
-> The name HireBuddha comes from a simple insight: the wisest organizations don't just work harder—they work smarter. Buddha, as a symbol of enlightened intelligence, represents the potential of AI not to replace human creativity and judgment, but to free humans from the mechanical, repetitive burdens that consume their days.
+> The name HireBuddha comes from a simple insight: the wisest organizations don't just work harder — they work smarter. Buddha, as a symbol of enlightened intelligence, represents the potential of AI not to replace human creativity and judgment, but to free humans from the mechanical, repetitive burdens that consume their days.
 >
-> We built HireBuddha because we believe the future of work is a collaboration between human wisdom and artificial intelligence—where humans set the strategy, and AI handles the execution.
+> We built HireBuddha because we believe **solopreneurs and small businesses deserve the same operational firepower as Fortune 500 companies**. With 42 pre-built AI agents, a one-click Template Marketplace, and enterprise-grade infrastructure — anyone can build their dream workforce.
 >
 > **Welcome to the future of your workforce.**
 
@@ -1003,16 +1247,16 @@ Full Docker Compose support included for one-command infrastructure deployment.
 
 ---
 
-**HireBuddha Platform v3.0**
+**HireBuddha Platform v4.0**
 *Developed by Buddha Cognitive Lab*
 
 Website: [hirebuddha.com](https://hirebuddha.com) | App: [app.hirebuddha.com](https://app.hirebuddha.com)
 
-*"Design your dream AI employee. Deploy it in minutes. Employ it forever."*
+*"42 AI agents. One platform. Zero salaries."*
 
 ---
 
 *© 2026 Buddha Cognitive Lab. All rights reserved. Proprietary and Confidential.*
-*Document Version: 3.0 | Last Updated: March 26, 2026*
+*Document Version: 4.0 | Last Updated: May 2, 2026*
 
 </div>

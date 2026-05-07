@@ -49,9 +49,35 @@ async def create_company(
         name=company.name,
         type=company.type,
         parent_id=company.parent_id,
-        status="active"
+        status="active",
+        onboarding_status="pending",
+        onboarding_metadata={
+            "completed_steps": [],
+            "created_via": "admin",
+            "created_by": str(current_user.id),
+        },
     )
     db.add(new_company)
+    await db.flush()
+
+    # Auto-provision CreditWallet if applicable
+    if company.type == "TENANT" and company.apply_default_daily_credits:
+        from src.auth.service import _provision_new_tenant
+        await _provision_new_tenant(db, new_company)
+        # Apply custom daily credits override if specified
+        if company.custom_daily_credits is not None:
+            try:
+                from src.billing.billing_models import CreditWallet
+                from decimal import Decimal
+                result = await db.execute(
+                    select(CreditWallet).where(CreditWallet.company_id == new_company.id)
+                )
+                wallet = result.scalar_one_or_none()
+                if wallet:
+                    wallet.daily_credits = Decimal(str(company.custom_daily_credits))
+            except Exception:
+                pass
+
     await db.commit()
     await db.refresh(new_company)
     return new_company

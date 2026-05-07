@@ -42,20 +42,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const login = async (email: string, password: string) => {
         const response = await authService.login({ email, password });
-        setUser(response.user);
         setToken(localStorage.getItem('access_token'));
+
+        // Fetch the full user profile (login only returns tokens)
+        try {
+            const currentUser = await authService.getCurrentUser();
+            setUser(currentUser);
+
+            // Only check onboarding for tenant roles — admins/partners skip
+            if (currentUser.role === 'tenant_admin' || currentUser.role === 'tenant_user') {
+                try {
+                    const { onboardingService } = await import('@/services/platform.service');
+                    const status = await onboardingService.getStatus();
+                    if (status.status !== 'completed') {
+                        window.location.href = '/onboarding';
+                        return;
+                    }
+                } catch {
+                    // Onboarding check failed — proceed to dashboard
+                }
+            }
+        } catch {
+            // getCurrentUser failed — proceed to dashboard anyway
+        }
+
         window.location.href = '/dashboard';
     };
 
     const register = async (email: string, password: string, fullName: string) => {
+        // Register now returns Token response (same as login)
         const response = await authService.register({
             email,
             password,
             full_name: fullName,
         });
-        setUser(response.user);
         setToken(localStorage.getItem('access_token'));
-        window.location.href = '/dashboard';
+
+        // Fetch the full user profile
+        try {
+            const currentUser = await authService.getCurrentUser();
+            setUser(currentUser);
+        } catch {
+            // Profile fetch failed — proceed to onboarding anyway
+        }
+
+        // New registrations always need onboarding
+        window.location.href = '/onboarding';
     };
 
     const logout = () => {

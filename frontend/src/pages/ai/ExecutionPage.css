@@ -169,3 +169,51 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Error panel for execution validation failures */
+.execution-error-panel {
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: var(--radius-lg);
+    animation: fadeSlideIn 0.3s ease-out;
+}
+
+.execution-error-panel .error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: #f87171;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.execution-error-panel .error-body {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.execution-error-panel .error-line {
+    margin-bottom: 4px;
+}
+
+.execution-error-panel .error-bullet {
+    padding-left: 8px;
+    color: rgba(248, 113, 113, 0.85);
+    font-family: var(--font-mono, monospace);
+    font-size: 0.8rem;
+}
+
+@keyframes fadeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

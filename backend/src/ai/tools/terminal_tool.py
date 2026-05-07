@@ -92,18 +92,18 @@ class TerminalTool(Tool):
 
     async def run(self, input_data: str) -> str:
         """Execute command and return structured JSON result."""
-        return await self._execute(input_data)
+        return await self._execute(input_data, context=None)
 
     async def run_with_context(
         self, input_data: str, context: Optional[Dict[str, Any]] = None
     ) -> str:
-        return await self._execute(input_data)
+        return await self._execute(input_data, context=context)
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
-    async def _execute(self, input_data: str) -> str:
+    async def _execute(self, input_data: str, context: Optional[Dict[str, Any]] = None) -> str:
         # 1. Parse input
         try:
             if isinstance(input_data, dict):
@@ -121,6 +121,17 @@ class TerminalTool(Tool):
             int(args.get("timeout_s", _DEFAULT_TIMEOUT_S)),
             _MAX_TIMEOUT_S,
         )
+
+        # P3 — Tenant-scoped working directory for filesystem isolation
+        company_id = context.get("company_id") if context else None
+        if company_id:
+            import os
+            scoped_dir = os.path.join("/tmp", "sandbox", str(company_id))
+            os.makedirs(scoped_dir, exist_ok=True)
+            # If caller didn't specify a custom working_dir, use the scoped one
+            if working_dir == "/tmp":
+                working_dir = scoped_dir
+            logger.info(f"TerminalTool: executing command for company {company_id}")
 
         # 2. Validate
         if not command:

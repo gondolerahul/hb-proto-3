@@ -118,7 +118,11 @@ class GeminiLiveClient:
     def _is_native_audio(self, model: str) -> bool:
         return self.MODEL_CAPABILITIES.get(model, {}).get("native_audio", False)
 
-    def create_session_config(self, model: str = "gemini-2.0-flash-exp") -> Dict[str, Any]:
+    def create_session_config(
+        self,
+        model: str = "gemini-2.0-flash-exp",
+        tools: Optional[List[Dict]] = None,
+    ) -> Dict[str, Any]:
         """
         Create Gemini Live session configuration.
 
@@ -133,10 +137,10 @@ class GeminiLiveClient:
         generation_config — placing them at top-level causes silent ignoring.
         """
         if self._is_native_audio(model):
-            return self._create_native_audio_config()
-        return self._create_standard_config()
+            return self._create_native_audio_config(tools=tools)
+        return self._create_standard_config(tools=tools)
 
-    def _create_standard_config(self) -> Dict[str, Any]:
+    def _create_standard_config(self, tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
         """Gemini 2.0 Flash standard config — SDK v1.71.0 top-level fields."""
         config: Dict[str, Any] = {
             "response_modalities": ["AUDIO"],
@@ -145,14 +149,29 @@ class GeminiLiveClient:
                     "prebuilt_voice_config": {"voice_name": self._voice_name}
                 }
             },
+            # Phase 1: VAD tuning — HIGH start sensitivity for fast barge-in,
+            # LOW end sensitivity to avoid cutting off during natural pauses.
+            "realtime_input_config": {
+                "automatic_activity_detection": {
+                    "disabled": False,
+                    "start_of_speech_sensitivity": "START_SENSITIVITY_HIGH",
+                    "end_of_speech_sensitivity": "END_SENSITIVITY_LOW",
+                    "prefix_padding_ms": 100,
+                    "silence_duration_ms": 1000,
+                }
+            },
             "output_audio_transcription": {},
             "input_audio_transcription": {},
         }
         if self.system_instruction:
             config["system_instruction"] = self.system_instruction
+        # Phase 3: Tool declarations for function calling
+        if tools:
+            config["tools"] = [{"function_declarations": tools}]
+            logger.info(f"Registered {len(tools)} tool(s) in Gemini Live session config")
         return config
 
-    def _create_native_audio_config(self) -> Dict[str, Any]:
+    def _create_native_audio_config(self, tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
         """
         Gemini 2.5+ / 3.1 Flash Native Audio config.
 
@@ -166,18 +185,34 @@ class GeminiLiveClient:
                     "prebuilt_voice_config": {"voice_name": self._voice_name}
                 }
             },
+            # Phase 1: VAD tuning — HIGH start sensitivity for fast barge-in,
+            # LOW end sensitivity to avoid cutting off during natural pauses.
+            "realtime_input_config": {
+                "automatic_activity_detection": {
+                    "disabled": False,
+                    "start_of_speech_sensitivity": "START_SENSITIVITY_HIGH",
+                    "end_of_speech_sensitivity": "END_SENSITIVITY_LOW",
+                    "prefix_padding_ms": 100,
+                    "silence_duration_ms": 1000,
+                }
+            },
             "output_audio_transcription": {},
             "input_audio_transcription": {},
         }
         if self.system_instruction:
             config["system_instruction"] = self.system_instruction
+        # Phase 3: Tool declarations for function calling
+        if tools:
+            config["tools"] = [{"function_declarations": tools}]
+            logger.info(f"Registered {len(tools)} tool(s) in native audio session config")
         return config
 
-    async def connect(self, model: Optional[str] = None):
+    async def connect(self, model: Optional[str] = None, tools: Optional[List[Dict]] = None):
         """
         Create a live session context manager.
         Uses self._resolved_model if model not explicitly passed.
         Auto-selects the appropriate session config for the model.
+        Optionally includes tool declarations for function calling.
         """
         target_model = model or self._resolved_model
         if not target_model:
@@ -185,7 +220,7 @@ class GeminiLiveClient:
                 "No model resolved for GeminiLiveClient. "
                 "The speech_to_speech task default must be configured."
             )
-        config = self.create_session_config(model=target_model)
+        config = self.create_session_config(model=target_model, tools=tools)
         return self.client.aio.live.connect(model=target_model, config=config)
 
 

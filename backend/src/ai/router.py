@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from uuid import UUID
 from typing import List, Optional
 from src.common.database import get_db
@@ -18,20 +19,65 @@ router = APIRouter(prefix="/ai", tags=["AI Hierarchical Agent Platform"])
 @router.post("/entities", response_model=HierarchicalEntityResponse)
 async def create_entity(
     entity_in: HierarchicalEntityCreate,
+    target_company_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Determine the effective company for this entity
+    effective_company_id = current_user.company_id
+    if target_company_id:
+        if current_user.role == "app_admin":
+            effective_company_id = target_company_id
+        elif current_user.role in ("partner_admin", "partner_user"):
+            # Partners can create entities for their managed tenants
+            from src.auth.models import Company
+            result = await db.execute(
+                select(Company).where(
+                    Company.id == target_company_id,
+                    Company.parent_id == current_user.company_id,
+                )
+            )
+            if result.scalar_one_or_none():
+                effective_company_id = target_company_id
+            else:
+                raise HTTPException(status_code=403, detail="Not authorized to create entities for this company")
+        else:
+            raise HTTPException(status_code=403, detail="Cannot create entities for another company")
+
     service = AIService(db)
-    return await service.create_entity(entity_in, current_user.company_id, current_user.id)
+    return await service.create_entity(entity_in, effective_company_id, current_user.id)
 
 @router.get("/entities", response_model=List[HierarchicalEntityResponse])
 async def list_entities(
     type: Optional[EntityType] = None,
+    company_id: Optional[UUID] = None,
+    voice_enabled: Optional[bool] = None,
+    status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Allow app_admin to filter by specific company
+    effective_company_id = current_user.company_id
+    if company_id and current_user.role == "app_admin":
+        effective_company_id = company_id
+
     service = AIService(db)
-    return await service.get_entities(current_user.company_id, type, current_user.role, is_template=False)
+    entities = await service.get_entities(
+        effective_company_id, type, current_user.role,
+        is_template=False, status_filter=status,
+    )
+
+    # Client-requested voice filter: only return agents with voice config
+    if voice_enabled:
+        entities = [
+            e for e in entities
+            if e.type.value == "AGENT"
+            and e.identity
+            and isinstance(e.identity, dict)
+            and e.identity.get("voice")
+        ]
+
+    return entities
 
 @router.get("/entities/{entity_id}", response_model=HierarchicalEntityResponse)
 async def get_entity(
@@ -196,6 +242,22 @@ async def respond_to_approval(
 ):
     service = AIService(db)
     await service.respond_to_approval(approval_id, status, current_user.id, notes)
+
+    # Publish approval response to Redis so the worker's HITL checkpoint loop unblocks
+    try:
+        import redis.asyncio as redis_lib
+        import json
+        from src.common.config import settings
+        r = redis_lib.from_url(settings.REDIS_URL or "redis://localhost:6379")
+        await r.publish(f"hitl:{approval_id}", json.dumps({
+            "status": status,
+            "responded_by": str(current_user.id),
+            "notes": notes,
+        }))
+        await r.close()
+    except Exception:
+        pass  # Non-fatal: worker will timeout if pub/sub fails
+
     return {"status": "success"}
 
 # --- Tools ---
@@ -213,6 +275,128 @@ async def list_tools(
         # Fallback to simple ToolRegistry list if DB is unavailable
         from src.ai.tools import ToolRegistry
         return ToolRegistry.list_tools()
+
+# --- Context Source Upload ---
+@router.post("/context-sources/upload", response_model=dict)
+async def upload_context_source(
+    file: UploadFile = File(...),
+    entity_id: Optional[UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload a file as a context source for an entity.
+    
+    Saves as an Artifact, extracts text content for text-based files,
+    and ingests into a CORTEX tree. Returns artifact metadata for
+    the frontend to store as a context source reference.
+    
+    Max file size: 500 MB.
+    Supported: PDF, DOCX, TXT, CSV, XLSX, PPTX, images, audio, video.
+    """
+    from src.ai.artifact_service import ArtifactService
+    import mimetypes
+
+    # Validate file size (500 MB max)
+    MAX_SIZE = 500 * 1024 * 1024
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(400, f"File too large. Maximum size is 500 MB.")
+
+    # Determine file category from MIME type
+    mime = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+    if mime.startswith("image/"):
+        file_category = "images"
+    elif mime.startswith("video/"):
+        file_category = "videos"
+    elif mime.startswith("audio/"):
+        file_category = "recordings"
+    else:
+        file_category = "documents"
+
+    # Save as artifact
+    art_svc = ArtifactService(db)
+    artifact = await art_svc.save_artifact(
+        file_bytes=content,
+        file_name=file.filename or "upload",
+        mime_type=mime,
+        file_category=file_category,
+        origin="user-uploads",
+        company_id=current_user.company_id,
+        agent_id=entity_id,
+        purpose=f"Context source document for entity",
+        generated_by="context-source-upload",
+    )
+
+    # For text-based documents, also create a Document record for RAG
+    text_extensions = {"pdf", "txt", "csv", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "md", "json", "xml", "html"}
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    
+    doc_id = None
+    if ext in text_extensions:
+        try:
+            service = AIService(db)
+            document = await service.upload_document(
+                file_content=content,
+                filename=file.filename or "upload",
+                file_type=ext,
+                company_id=current_user.company_id,
+                entity_id=entity_id,
+            )
+            doc_id = str(document.id)
+        except Exception as doc_err:
+            # Non-fatal: artifact is already saved
+            import logging
+            logging.getLogger(__name__).warning(f"Document creation failed for context source: {doc_err}")
+
+    # Auto-add to entity's context_sources if entity_id is provided
+    if entity_id:
+        try:
+            from src.ai.models import HierarchicalEntity
+            from sqlalchemy import select
+            import copy
+            
+            result = await db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.id == entity_id)
+            )
+            entity = result.scalar_one_or_none()
+            if entity:
+                caps = copy.deepcopy(entity.capabilities or {})
+                ctx_eng = caps.setdefault("context_engineering", {})
+                sources = ctx_eng.setdefault("context_sources", [])
+                
+                # Add new context source entry
+                sources.append({
+                    "source_type": "DOCUMENT",
+                    "reference_id": str(artifact.id),
+                    "description": file.filename or "Uploaded document",
+                    "file_name": file.filename or "upload",
+                    "file_type": mime,
+                    "file_size": artifact.file_size,
+                })
+                
+                entity.capabilities = caps
+                await db.commit()
+                
+                import logging
+                logging.getLogger(__name__).info(
+                    f"Auto-added context source {artifact.id} to entity {entity_id} "
+                    f"(now has {len(sources)} source(s))"
+                )
+        except Exception as ctx_err:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Failed to auto-add context source to entity {entity_id}: {ctx_err}"
+            )
+
+    return {
+        "artifact_id": str(artifact.id),
+        "document_id": doc_id,
+        "file_name": artifact.file_name,
+        "file_size": artifact.file_size,
+        "mime_type": artifact.mime_type,
+        "file_category": artifact.file_category,
+    }
 
 # --- Documents ---
 @router.post("/documents/upload", response_model=dict)
@@ -237,6 +421,35 @@ async def upload_document(
         entity_id=entity_id
     )
     return {"id": str(document.id), "status": document.upload_status}
+
+@router.post("/avatar/upload", response_model=dict)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload an avatar image for an entity. Returns the public URL."""
+    import uuid as _uuid
+    from pathlib import Path
+
+    allowed = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in allowed:
+        raise HTTPException(400, f"File type '.{ext}' not allowed. Use: {', '.join(allowed)}")
+
+    if file.size and file.size > 5 * 1024 * 1024:
+        raise HTTPException(400, "Avatar must be under 5 MB")
+
+    avatar_dir = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/artifact/user-uploads/avatars")
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{_uuid.uuid4().hex[:12]}.{ext}"
+    filepath = avatar_dir / filename
+
+    content = await file.read()
+    filepath.write_bytes(content)
+
+    url = f"/artifact/user-uploads/avatars/{filename}"
+    return {"url": url, "filename": filename}
 
 @router.get("/documents", response_model=List[DocumentResponse])
 async def list_documents(
@@ -284,6 +497,7 @@ async def list_templates(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
+    # Templates are public — no company_id scoping
     return await service.get_entities(current_user.company_id, type, current_user.role, is_template=True)
 
 @router.get("/templates/{template_id}", response_model=HierarchicalEntityResponse)
@@ -303,6 +517,7 @@ async def create_template(
 ):
     entity_in.is_template = True
     service = AIService(db)
+    # Templates are public: company_id is set to None by create_entity when is_template=True
     return await service.create_entity(entity_in, current_user.company_id, current_user.id)
 
 @router.put("/templates/{template_id}", response_model=HierarchicalEntityResponse)

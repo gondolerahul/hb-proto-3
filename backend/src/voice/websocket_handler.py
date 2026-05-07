@@ -13,6 +13,7 @@ Fixes applied (Architectural Evolution Report):
   P1.6  incoming_audio_buffer capped at maxlen=200 (~1 sec backpressure)
 """
 import logging
+import time
 import asyncio
 import json
 import base64
@@ -76,9 +77,9 @@ class BaseStreamHandler:
         self.started_at: Optional[datetime] = None
 
         # Audio — P1.6: cap incoming buffer to prevent unbounded growth
-        # 200 packets ≈ 1 sec at 8kHz / 20 ms packets — oldest are silently dropped
-        self.incoming_audio_buffer: deque = deque(maxlen=200)
-        self.outgoing_audio_queue: asyncio.Queue = asyncio.Queue()
+        # 100 packets ≈ 500ms at 8kHz / 20ms packets — favors responsiveness
+        self.incoming_audio_buffer: deque = deque(maxlen=100)
+        self.outgoing_audio_queue: asyncio.Queue = asyncio.Queue(maxsize=500)  # ~2.5s at 20ms/frame
 
         # Conversation tracking
         self.turn_number = 0
@@ -86,6 +87,10 @@ class BaseStreamHandler:
         self._agent_transcript_buffer = ""
         self._customer_transcript_buffer = ""
         self._last_transcript_time = 0.0
+
+        # Phase 4: Telemetry — TTFB and interruption tracking
+        self._user_speech_end_time: Optional[float] = None
+        self._ttfb_logged = False
 
         # P0.4: Recording — streamed to a temp file not a bytearray
         # A 10-min 8k PCM call ≈ 9.6 MB; held entirely in RAM was an OOM risk
@@ -215,7 +220,9 @@ class BaseStreamHandler:
             gemini_client = live_client_or_tuple
             # connect() returns an async context manager; we must enter it
             # to get the actual live session with .receive()/.send_realtime_input()
-            session_cm = await gemini_client.connect()
+            # Phase 3: Pass loaded tools into the Gemini session config
+            voice_tools = agent_context.tools or []
+            session_cm = await gemini_client.connect(tools=voice_tools)
             self._live_session_cm = session_cm
             self.gemini_session = await session_cm.__aenter__()
 
@@ -432,10 +439,17 @@ class BaseStreamHandler:
                             except Exception:
                                 pass
 
-                    # ── 2. Transcription ──────────────────────────────────────
+                    # ── 2. Transcription & Interruption ───────────────────────
                     if response.server_content:
                         sc = response.server_content
-                        import time
+
+                        # ── 2a. Interruption signal ─────────────────────────
+                        # When the user speaks while the model is generating,
+                        # Gemini cancels generation and sends interrupted=True.
+                        # We MUST flush our local audio buffers immediately.
+                        if getattr(sc, 'interrupted', False):
+                            logger.info(f"[INTERRUPT] Gemini signaled interruption for session {self.session_id}")
+                            await self._handle_interruption()
 
                         output_transcript = getattr(sc, "output_transcription", None)
                         if output_transcript and getattr(output_transcript, "text", None):
@@ -450,9 +464,16 @@ class BaseStreamHandler:
                             if text:
                                 self._customer_transcript_buffer += text + " "
                                 self._last_transcript_time = time.time()
+                                # Phase 4: Track when user stops speaking for TTFB
+                                self._user_speech_end_time = time.time()
+                                self._ttfb_logged = False
 
                         if response.text:
                             logger.info(f"Gemini text response: {response.text}")
+
+                    # ── 3. Tool / Function Calls ──────────────────────────────
+                    if hasattr(response, 'tool_call') and response.tool_call:
+                        asyncio.create_task(self._handle_tool_call(response.tool_call))
 
                 if not self.is_running:
                     break
@@ -463,11 +484,135 @@ class BaseStreamHandler:
             logger.error(f"Error receiving from Live client: {e}", exc_info=True)
             self.is_running = False
 
+    async def _handle_interruption(self):
+        """
+        React to Gemini's interruption signal.
+
+        1. Drain the outgoing audio queue (discard stale audio)
+        2. Send a Twilio/Tata 'clear' event to flush their playback buffer
+        3. Clear the outbound recording buffer
+
+        This eliminates the "ghost speaking" effect where the agent
+        continues playing pre-buffered audio after being interrupted.
+        """
+        # 1. Drain outgoing audio queue
+        drained = 0
+        while not self.outgoing_audio_queue.empty():
+            try:
+                self.outgoing_audio_queue.get_nowait()
+                drained += 1
+            except asyncio.QueueEmpty:
+                break
+
+        # 2. Send 'clear' to telephony provider to flush their playback buffer
+        if self.stream_sid:
+            try:
+                await self.websocket.send_text(
+                    json.dumps({"event": "clear", "streamSid": self.stream_sid})
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send clear event: {e}")
+
+        # 3. Clear outbound recording buffer
+        self._outbound_recording_buffer.clear()
+
+        # Phase 4: Log interrupt latency
+        if self._last_transcript_time > 0:
+            interrupt_latency_ms = int((time.time() - self._last_transcript_time) * 1000)
+            logger.info(f"[PERF] Interrupt response time: {interrupt_latency_ms}ms, "
+                        f"drained {drained} audio chunks")
+        else:
+            logger.info(f"[INTERRUPT] Drained {drained} audio chunks, sent clear to provider")
+
+    async def _handle_tool_call(self, tool_call):
+        """
+        Execute a tool call from Gemini and return the result to the session.
+
+        Gemini Live API supports function calling: the model can invoke tools
+        registered in the session config, and this handler executes them
+        via the existing ToolRegistry/ToolExecutor infrastructure.
+
+        CRITICAL: Each FunctionResponse MUST include the `id` from the
+        corresponding FunctionCall — otherwise the API rejects it and
+        Gemini hangs waiting for the response (causing long silences).
+        """
+        from src.ai.tool_executor import ToolExecutor
+
+        # Preserve original FunctionCall objects for their `id` field
+        original_fcs = list(tool_call.function_calls)
+
+        function_calls = []
+        for fc in original_fcs:
+            args = dict(fc.args) if fc.args else {}
+
+            # Voice context: strip email_address from email tools.
+            # The LLM often invents fake sender addresses (e.g. "customer.email@example.com")
+            # which causes the connection lookup to fail. Removing it forces the
+            # tool to use the company's default email connection.
+            if fc.name in ("email_send", "email_draft") and "email_address" in args:
+                logger.info(f"[TOOL] Stripping LLM-provided email_address='{args['email_address']}' "
+                            f"from {fc.name} — will use company default")
+                del args["email_address"]
+
+            function_calls.append({
+                "name": fc.name,
+                "args": args,
+            })
+
+        logger.info(f"Executing {len(function_calls)} tool call(s): "
+                    f"{[c['name'] for c in function_calls]}")
+
+        extra_context = {
+            "company_id": str(self.voice_session.company_id),
+            "user_id": str(self.voice_session.customer_id),
+        }
+
+        results = await ToolExecutor.execute_from_function_calls(
+            function_calls, extra_context=extra_context
+        )
+
+        # Log tool results for observability
+        for fc_dict, result in zip(function_calls, results):
+            status = "SUCCESS" if result.success else "FAILED"
+            logger.info(f"[TOOL] {fc_dict['name']} → {status} ({result.latency_ms}ms)")
+
+        # Send results back to Gemini so it can continue the conversation
+        try:
+            from google.genai import types as genai_types
+
+            function_responses = []
+            for orig_fc, fc_dict, result in zip(original_fcs, function_calls, results):
+                # The `id` from the original FunctionCall MUST be included
+                # in the FunctionResponse — this is how Gemini correlates
+                # the response with the request.
+                fc_id = getattr(orig_fc, 'id', None)
+                function_responses.append(
+                    genai_types.FunctionResponse(
+                        id=fc_id,
+                        name=fc_dict["name"],
+                        response={"output": result.output, "success": result.success},
+                    )
+                )
+
+            # Use send_tool_response() — the dedicated SDK method for
+            # returning function call results.
+            await self.gemini_session.send_tool_response(
+                function_responses=function_responses,
+            )
+            logger.info(f"Sent {len(function_responses)} tool response(s) back to Gemini "
+                        f"(ids={[getattr(fc, 'id', None) for fc in original_fcs]})")
+        except Exception as e:
+            logger.error(f"Failed to send tool response to Gemini: {e}")
+
     async def _send_to_provider(self):
         """
-        P1.5: Removed busy-loop with 10ms timeout.
-        Now uses asyncio.Queue.get() — blocks until audio is available,
-        cancels cleanly when the task is cancelled.
+        Send audio to telephony provider.
+
+        Sends mulaw chunks directly as they arrive from the outgoing queue.
+        The queue itself provides sufficient buffering; an additional jitter
+        buffer was removed because it introduced audio gaps after interruption
+        flushes and at the start of each new agent response.
+        Phase 4: Added TTFB tracking.
         """
         try:
             while self.is_running:
@@ -476,6 +621,12 @@ class BaseStreamHandler:
                     mulaw_chunk = await self.outgoing_audio_queue.get()
                 except asyncio.CancelledError:
                     break
+
+                # Phase 4: TTFB tracking — time from user speech end to first audio out
+                if self._user_speech_end_time and not self._ttfb_logged:
+                    ttfb_ms = int((time.time() - self._user_speech_end_time) * 1000)
+                    logger.info(f"[PERF] TTFB: {ttfb_ms}ms for session {self.session_id}")
+                    self._ttfb_logged = True
 
                 self.outbound_chunk_counter += 1
                 payload = base64.b64encode(mulaw_chunk).decode("utf-8")
@@ -493,7 +644,6 @@ class BaseStreamHandler:
 
     async def _flush_transcripts(self):
         """Flush transcript buffers every 0.5s after 1s of silence."""
-        import time
         try:
             while self.is_running:
                 await asyncio.sleep(0.5)
@@ -656,6 +806,13 @@ class BaseStreamHandler:
                         except Exception as be:
                             logger.warning(f"Billing event recording failed: {be}")
 
+                # --- Post-call: update lead queue if this was a CRM-driven call ---
+                try:
+                    if self.voice_session and self.session_id:
+                        await self._update_lead_queue_post_call(session, duration)
+                except Exception as lq_err:
+                    logger.warning(f"Lead queue post-call update failed: {lq_err}")
+
             except Exception as e:
                 logger.error(f"Error during cleanup DB update: {e}")
 
@@ -664,6 +821,50 @@ class BaseStreamHandler:
             await self.websocket.close()
         except Exception:
             pass
+
+    async def _update_lead_queue_post_call(self, db_session, duration: int) -> None:
+        """
+        Update the lead_queue entry linked to this voice session.
+
+        Called after call cleanup. Marks the lead as completed with
+        call outcome data so the CRM can be updated.
+        """
+        try:
+            from src.ai.lead_queue_service import LeadQueueService
+
+            queue_svc = LeadQueueService(db_session)
+            entry = await queue_svc.get_by_voice_session(self.session_id)
+
+            if not entry:
+                return  # Not a CRM-driven call, nothing to do
+
+            # Build call outcome from session data
+            call_outcome = {
+                "status": "completed",
+                "duration_seconds": duration,
+                "turn_count": self.turn_number,
+                "phone": self.voice_session.phone_number if self.voice_session else "",
+            }
+
+            # Extract transcript if available
+            if hasattr(self, 'conversation_logger') and self.conversation_logger:
+                try:
+                    transcript = self.conversation_logger.get_transcript_text()
+                    if transcript:
+                        call_outcome["transcript_preview"] = transcript[:2000]
+                except Exception:
+                    pass
+
+            await queue_svc.mark_completed(entry.id, call_outcome)
+            logger.info(
+                f"[LeadQueue] Post-call update: lead {entry.lead_id} "
+                f"completed (duration={duration}s, turns={self.turn_number})"
+            )
+
+        except ImportError:
+            pass  # lead_queue_model not available — skip silently
+        except Exception as e:
+            logger.warning(f"[LeadQueue] Post-call update error: {e}")
 
 
 # ---------------------------------------------------------------------------

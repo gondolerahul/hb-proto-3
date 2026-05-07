@@ -12,6 +12,7 @@ interface CreateIntegrationModalProps {
     onSubmit: (data: any) => Promise<void>;
     currentUser: User | null;
     editingIntegration?: Integration | null;
+    userRole?: string;
 }
 
 const COMPONENT_TYPES = [
@@ -32,16 +33,25 @@ const SERVICE_CATEGORIES = [
     { id: 'IMAGE_GENERATION', name: 'Image Generation' },
     { id: 'VIDEO_GENERATION', name: 'Video Generation' },
     { id: 'EMAIL', name: 'Email (IMAP/SMTP)' },
+    { id: 'SOCIAL_MEDIA', name: 'Social Media (WhatsApp/Instagram)' },
     { id: 'OTHER', name: 'Other' }
 ];
+
+// Categories that tenant users are allowed to manage
+const TENANT_ALLOWED_CATEGORY_IDS = new Set(['EMAIL', 'SOCIAL_MEDIA', 'API_TOOL', 'OTHER']);
 
 export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
     isOpen,
     onClose,
     onSubmit,
     currentUser,
-    editingIntegration
+    editingIntegration,
+    userRole
 }) => {
+    const isTenantUser = userRole === 'tenant_admin' || userRole === 'tenant_user';
+    const availableCategories = isTenantUser
+        ? SERVICE_CATEGORIES.filter(c => TENANT_ALLOWED_CATEGORY_IDS.has(c.id))
+        : SERVICE_CATEGORIES;
     const [models, setModels] = useState<Model[]>([]);
     const [formData, setFormData] = useState({
         provider_name: '',
@@ -198,7 +208,7 @@ export const CreateIntegrationModal: React.FC<CreateIntegrationModalProps> = ({
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 transition-all"
                             required
                         >
-                            {SERVICE_CATEGORIES.map(c => (
+                            {availableCategories.map(c => (
                                 <option key={c.id} value={c.id} className="bg-gray-900">{c.name}</option>
                             ))}
                         </select>

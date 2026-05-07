@@ -11,9 +11,23 @@ from src.common.security import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-@router.post("/register", response_model=UserResponse)
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    return await service.create_user(db, user)
+@router.post("/register", response_model=Token)
+async def register(user: UserCreate, response: Response, db: AsyncSession = Depends(get_db)):
+    new_user = await service.create_user(db, user)
+    # Generate tokens so the frontend can immediately authenticate
+    access_token = create_access_token(data={"sub": new_user.email, "company_id": str(new_user.company_id)})
+    refresh_token = await service.create_refresh_token(db, new_user.id)
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60
+    )
+
+    return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
 
 @router.post("/login", response_model=Token)
 async def login(response: Response, login_data: UserLogin, db: AsyncSession = Depends(get_db)):

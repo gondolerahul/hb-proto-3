@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { JellyButton } from '@/components/ui';
 import { X, Layers } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import { useAuth } from '@/hooks/useAuth';
 import { HierarchicalEntity } from '@/types';
 import { EntityConfigurationTabs } from './EntityConfigurationTabs';
 import './EntityBuilder.css';
@@ -10,9 +11,11 @@ import './EntityBuilder.css';
 export const EntityBuilder: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [entity, setEntity] = useState<HierarchicalEntity | undefined>(undefined);
+    const [targetCompanyId, setTargetCompanyId] = useState<string | null>(null);
 
     useEffect(() => {
         if (id) {
@@ -41,7 +44,9 @@ export const EntityBuilder: React.FC = () => {
             if (id) {
                 await apiClient.put(`/ai/entities/${id}`, entityData);
             } else {
-                await apiClient.post('/ai/entities', entityData);
+                // Pass target_company_id as query parameter for new entities
+                const params = targetCompanyId ? `?target_company_id=${targetCompanyId}` : '';
+                await apiClient.post(`/ai/entities${params}`, entityData);
             }
             navigate('/ai/entities');
         } catch (err: any) {
@@ -100,6 +105,9 @@ export const EntityBuilder: React.FC = () => {
                         entity={entity}
                         onSave={handleSave}
                         onCancel={handleCancel}
+                        userRole={user?.role}
+                        userCompanyId={user?.company_id}
+                        onCompanyChange={setTargetCompanyId}
                     />
                 )}
             </div>

@@ -5,6 +5,7 @@ export interface Company {
     parent_id?: string;
     logo_url?: string;
     status: 'active' | 'suspended';
+    onboarding_status?: 'pending' | 'in_progress' | 'completed';
     created_at: string;
     updated_at: string;
 }
@@ -190,6 +191,7 @@ export interface LogicGate {
     review_mechanism: {
         enabled: boolean;
         review_prompt?: string;
+        review_system_prompt?: string;  // Base review prompt (overridable)
         on_failure?: 'RETRY' | 'ESCALATE' | 'ABORT';
         success_criteria?: any[];
     };
@@ -223,6 +225,7 @@ export interface Planning {
     dynamic_planning: {
         enabled: boolean;
         planning_prompt?: string;
+        planning_system_prompt?: string;  // Base planning prompt (overridable)
         constraints?: string[];
         reconciliation_strategy?: 'STATIC_PRIORITY' | 'DYNAMIC_PRIORITY' | 'HYBRID';
         allowed_deviations?: {
@@ -238,11 +241,15 @@ export interface Planning {
     };
 }
 
+export type ToolUsage = 'AUTONOMOUS' | 'PLANNED' | 'BOTH';
+
 export interface ToolDefinition {
     tool_id: string;
     name?: string;
     description?: string;
     provider?: string;
+    /** How the tool is used: AUTONOMOUS (LLM decides), PLANNED (deterministic step), BOTH */
+    usage?: ToolUsage;
     /** Permission declarations: read | write | execute | network | storage */
     permissions?: string[];
     sandbox_mode?: boolean;
@@ -263,7 +270,12 @@ export interface ContextSource {
     source_type: 'DOCUMENT' | 'KNOWLEDGE_BASE' | 'CORTEX_TREE' | 'DB_RECORDS';
     reference_id: string;
     description?: string;
-    ingest_to_cortex?: boolean;
+    // Display metadata for UI
+    file_name?: string;
+    file_type?: string;
+    file_size?: number;
+    tree_status?: string;
+    tree_node_count?: number;
 }
 
 export interface Capabilities {
@@ -285,6 +297,20 @@ export interface Capabilities {
     };
 }
 
+export type HITLTriggerType = 'BEFORE_STEP' | 'AFTER_STEP' | 'COST_THRESHOLD' | 'TOOL_CALL' | 'CUSTOM';
+
+export interface HITLCheckpoint {
+    trigger_type: HITLTriggerType;
+    step_ref?: string;              // For BEFORE_STEP/AFTER_STEP: step name or step_id
+    tool_ref?: string;              // For TOOL_CALL: tool_id to gate
+    threshold?: number;             // For COST_THRESHOLD: USD amount
+    expression?: string;            // For CUSTOM: boolean expression
+    timeout_ms: number;             // How long to wait for approval (default 5 min)
+    notification_channels: string[];// e.g. ["email", "slack", "dashboard"]
+    message?: string;               // Custom message shown to the reviewer
+    auto_approve_on_timeout: boolean;
+}
+
 export interface Governance {
     max_cost_usd?: number;
     timeout_ms: number;
@@ -294,7 +320,7 @@ export interface Governance {
         max_recursion_depth: number;
         max_tool_calls?: number;
     };
-    hitl_checkpoints: any[];
+    hitl_checkpoints: HITLCheckpoint[];
 }
 
 export interface IOContract {

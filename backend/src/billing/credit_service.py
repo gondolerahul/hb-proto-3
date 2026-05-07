@@ -21,6 +21,17 @@ from src.billing.billing_models import CreditWallet, Subscription
 from src.billing.billing_service import BillingService
 
 
+# Minimum credit thresholds by entity type.
+# Execution is blocked if the available balance is below this amount.
+MINIMUM_EXECUTION_THRESHOLDS = {
+    "PROCESS": Decimal("0.50"),   # Deep Research etc. — typically costs $0.50–$2.00
+    "AGENT":   Decimal("0.05"),   # Single-agent runs
+    "SKILL":   Decimal("0.02"),   # Lightweight skill invocations
+    "ACTION":  Decimal("0.01"),   # Atomic actions
+}
+DEFAULT_MINIMUM_THRESHOLD = Decimal("0.05")
+
+
 class InsufficientCreditsError(Exception):
     """Raised when all credit buckets are exhausted and task execution should be blocked."""
     pass
@@ -227,6 +238,119 @@ class CreditService:
         await self.db.commit()
         await self.db.refresh(wallet)
         return wallet
+
+    # ── New methods for credit overspend prevention ─────────────────────
+
+    async def check_sufficient_for_execution(
+        self,
+        company_id: UUID,
+        entity_type: str = "AGENT",
+    ) -> dict:
+        """
+        Pre-execution gate: ensure the company has at least the minimum
+        threshold for the given entity type.  Returns the balance dict on
+        success; raises InsufficientCreditsError if below threshold.
+        """
+        balance = await self.get_balance(company_id)
+        threshold = MINIMUM_EXECUTION_THRESHOLDS.get(
+            entity_type.upper(), DEFAULT_MINIMUM_THRESHOLD
+        )
+        available = Decimal(str(balance["total_available"]))
+        if available < threshold:
+            raise InsufficientCreditsError(
+                f"Cannot start execution: credit balance ${available:.4f} is below "
+                f"the minimum ${threshold:.4f} required for entity type '{entity_type}'. "
+                f"Please top up your wallet or wait for daily credit refresh."
+            )
+        return balance
+
+    async def get_effective_balance(
+        self,
+        company_id: UUID,
+        accumulated_cost: Decimal,
+    ) -> Decimal:
+        """
+        Real-time effective balance = total_available − cost already
+        incurred in the current run (but not yet formally deducted).
+        Used by the periodic circuit-breaker during execution.
+        """
+        balance = await self.get_balance(company_id)
+        total = Decimal(str(balance["total_available"]))
+        return total - accumulated_cost
+
+    async def consume_incremental(
+        self,
+        company_id: UUID,
+        amount: Decimal,
+    ) -> dict:
+        """
+        Deduct `amount` from credit buckets, consuming whatever is available.
+        Unlike `consume()`, this does NOT raise when the amount exceeds the
+        balance — it deducts as much as possible, so the wallet goes to $0
+        rather than allowing the balance to stay untouched while costs pile up.
+
+        Returns dict with deduction breakdown and a boolean `exhausted` flag.
+        """
+        wallet = await self.get_or_create_wallet(company_id)
+        now = datetime.utcnow()
+        remaining = amount
+        deductions = {
+            "daily": Decimal("0"),
+            "wallet": Decimal("0"),
+            "subscription": Decimal("0"),
+        }
+
+        # Check expiry and zero expired balances in-place
+        if wallet.daily_expires_at and wallet.daily_expires_at < now:
+            wallet.daily_credits = Decimal("0")
+        if wallet.wallet_expires_at and wallet.wallet_expires_at < now:
+            wallet.wallet_balance = Decimal("0")
+        if wallet.sub_credits_expire_at and wallet.sub_credits_expire_at < now:
+            wallet.subscription_credits = Decimal("0")
+            wallet.subscription_bonus_credits = Decimal("0")
+
+        # 1. Consume daily credits first
+        daily = Decimal(str(wallet.daily_credits))
+        if remaining > 0 and daily > 0:
+            take = min(remaining, daily)
+            wallet.daily_credits = daily - take
+            deductions["daily"] = take
+            remaining -= take
+
+        # 2a. PAYG — consume wallet balance
+        if remaining > 0 and wallet.account_model == "pay_as_you_go":
+            bal = Decimal(str(wallet.wallet_balance))
+            if bal > 0:
+                take = min(remaining, bal)
+                wallet.wallet_balance = bal - take
+                deductions["wallet"] = take
+                remaining -= take
+
+        # 2b. Subscription — consume subscription credits then bonus
+        elif remaining > 0 and wallet.account_model == "subscription":
+            sub = Decimal(str(wallet.subscription_credits))
+            if sub > 0:
+                take = min(remaining, sub)
+                wallet.subscription_credits = sub - take
+                deductions["subscription"] += take
+                remaining -= take
+
+            bonus = Decimal(str(wallet.subscription_bonus_credits))
+            if remaining > 0 and bonus > 0:
+                take = min(remaining, bonus)
+                wallet.subscription_bonus_credits = bonus - take
+                deductions["subscription"] += take
+                remaining -= take
+
+        wallet.updated_at = datetime.utcnow()
+        await self.db.commit()
+
+        exhausted = remaining > 0
+        return {
+            **deductions,
+            "shortfall": remaining,
+            "exhausted": exhausted,
+        }
 
     async def require_credits(self, company_id: UUID, amount: Decimal) -> None:
         """

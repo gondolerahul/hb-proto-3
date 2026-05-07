@@ -35,7 +35,8 @@ import {
     ChevronDown,
     Brain,
     Wrench,
-    Layers
+    Layers,
+    Users,
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import logo from '@/assets/logo.png';
@@ -66,6 +67,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             label: 'Platform Hub',
             icon: Server,
         }] : []),
+        ...(([UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN].includes(user?.role as UserRole)) ? [{
+            isStandalone: true,
+            path: '/partner',
+            label: 'Partner Dashboard',
+            icon: Users,
+        }] : []),
         {
             title: 'AI Workspace',
             icon: Bot,
@@ -82,7 +89,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             title: 'Communications',
             icon: Radio,
             items: [
-                { path: '/streaming/phone-numbers', label: 'Phone Numbers', icon: PhoneCall },
+                { path: '/phone-numbers', label: 'Phone Numbers', icon: PhoneCall },
                 { path: '/streaming/sessions', label: 'Streaming Sessions', icon: Activity },
                 { path: '/streaming/campaigns', label: 'Campaigns', icon: Megaphone },
             ]

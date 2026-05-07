@@ -14,6 +14,19 @@ class UsageService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _get_app_company_id(self) -> Optional[UUID]:
+        """Get the ID of the platform (APP) company.
+        
+        Cost-bearing services (AI models, telephony, SERP API, etc.) are
+        always registered at the platform level under the APP company.
+        This helper enables the fallback lookup for cost calculation.
+        """
+        from src.auth.models import Company
+        result = await self.db.execute(
+            select(Company.id).where(Company.type == "APP").limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def log_usage(
         self,
         company_id: UUID,
@@ -25,8 +38,12 @@ class UsageService:
         """
         Logs usage for a specific SKU and company.
         Calculates cost based on the internal_cost in IntegrationRegistry.
+
+        Cost-bearing services (AI models, telephony, etc.) are owned by the
+        APP company (platform-level).  If no company-specific SKU entry is
+        found, we fall back to the platform-level entry for cost calculation.
         """
-        # Fetch the SKU configuration
+        # 1. Try company-specific SKU
         result = await self.db.execute(
             select(IntegrationRegistry).where(
                 IntegrationRegistry.company_id == company_id,
@@ -36,10 +53,32 @@ class UsageService:
         )
         registry_entry = result.scalar_one_or_none()
         
+        # 2. Platform-level fallback: AI models, telephony, etc. are
+        #    owned by the APP company and should be used for cost
+        #    calculation across all tenants.
         if not registry_entry:
-            # Fallback to a global/default SKU if needed, or raise error
-            # For now, we assume company-specific SKUs must exist
-            logger.warning(f"No active registry entry found for SKU '{service_sku}' and company {company_id}")
+            app_company_id = await self._get_app_company_id()
+            if app_company_id and app_company_id != company_id:
+                result = await self.db.execute(
+                    select(IntegrationRegistry).where(
+                        IntegrationRegistry.company_id == app_company_id,
+                        IntegrationRegistry.service_sku == service_sku,
+                        IntegrationRegistry.status == "active"
+                    )
+                )
+                registry_entry = result.scalar_one_or_none()
+                if registry_entry:
+                    logger.info(
+                        f"Using platform-level SKU '{service_sku}' for cost calculation "
+                        f"(company {company_id} has no company-specific entry)"
+                    )
+
+        if not registry_entry:
+            # No SKU found at company or platform level
+            logger.warning(
+                f"No active registry entry found for SKU '{service_sku}' "
+                f"(checked company {company_id} and platform)"
+            )
             return None
 
         # Calculate cost

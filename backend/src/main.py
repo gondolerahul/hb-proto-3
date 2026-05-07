@@ -36,6 +36,18 @@ app.include_router(profile_router, prefix="/api/v1")
 from src.auth.user_router import router as user_router
 app.include_router(user_router, prefix="/api/v1")
 
+# Onboarding wizard
+from src.auth.onboarding_router import router as onboarding_router
+app.include_router(onboarding_router, prefix="/api/v1")
+
+# Partner management
+try:
+    from src.auth.partner_router import router as partner_router
+    app.include_router(partner_router, prefix="/api/v1")
+except ImportError as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Could not import partner router: {e}")
+
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
@@ -145,6 +157,10 @@ try:
 except ImportError as e:
     import logging
     logging.getLogger(__name__).warning(f"Could not import voice routers: {e}")
+
+
+# Phone Number Pool is now unified into phone_number_router (no separate router)
+
 
 
 

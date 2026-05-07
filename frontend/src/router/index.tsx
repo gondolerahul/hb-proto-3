@@ -24,7 +24,6 @@ const PlatformManagement = lazy(() => import('@/pages/PlatformManagement').then(
 const AIModelConfigPage = lazy(() => import('@/pages/ai-config/AIModelConfigPage').then(m => ({ default: m.AIModelConfigPage })));
 
 // Streaming pages
-const PhoneNumbersPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.PhoneNumbersPage })));
 const StreamingSessionsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.StreamingSessionsPage })));
 const CampaignsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CampaignsPage })));
 
@@ -47,6 +46,11 @@ const CortexTreeDetail = lazy(() => import('@/pages/ai/CortexTreeDetail').then(m
 // Tool Registry Management
 const ToolManagement = lazy(() => import('@/pages/ai/ToolManagement').then(m => ({ default: m.ToolManagement })));
 const TemplateMarketplace = lazy(() => import('@/pages/ai/TemplateMarketplace').then(m => ({ default: m.TemplateMarketplace })));
+
+// Platform Onboarding & Management
+const OnboardingWizard = lazy(() => import('@/pages/OnboardingWizard'));
+const PartnerDashboard = lazy(() => import('@/pages/PartnerDashboard'));
+const PhonePool = lazy(() => import('@/pages/PhonePool'));
 
 
 // Loading Component for Suspense
@@ -113,6 +117,42 @@ export const AppRouter: React.FC = () => {
 
                     {/* Protected Routes */}
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+                    {/* Onboarding Wizard — no layout wrapper */}
+                    <Route
+                        path="/onboarding"
+                        element={
+                            <ProtectedRoute>
+                                <OnboardingWizard />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Partner Dashboard */}
+                    <Route
+                        path="/partner"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <PartnerDashboard />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Unified Phone Numbers */}
+                    <Route
+                        path="/phone-numbers"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <PhonePool />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    {/* Legacy redirect from old pool route */}
+                    <Route path="/phone-pool" element={<Navigate to="/phone-numbers" replace />} />
 
                     {/* Dashboard */}
                     <Route
@@ -303,17 +343,8 @@ export const AppRouter: React.FC = () => {
                         }
                     />
 
-                    {/* Streaming - Phone Numbers */}
-                    <Route
-                        path="/streaming/phone-numbers"
-                        element={
-                            <ProtectedRoute>
-                                <MainLayout>
-                                    <PhoneNumbersPage />
-                                </MainLayout>
-                            </ProtectedRoute>
-                        }
-                    />
+                    {/* Legacy redirect from old streaming phone numbers route */}
+                    <Route path="/streaming/phone-numbers" element={<Navigate to="/phone-numbers" replace />} />
 
                     {/* Streaming - Sessions */}
                     <Route

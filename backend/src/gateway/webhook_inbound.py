@@ -113,6 +113,17 @@ class CRMWebhookStrategy(WebhookStrategy):
     def normalize(self, headers: dict, payload: dict, query_params: dict) -> dict:
         # Detect sub-type from payload
         event_type = payload.get("subscriptionType") or payload.get("crm_event", "crm_update")
+
+        # Extract entity_id (target agent) from payload or query params.
+        # This allows CRM webhooks to route leads to a specific voice agent
+        # instead of the generic "first active agent" fallback.
+        entity_id = (
+            payload.get("entity_id")
+            or query_params.get("entity_id", "")
+        )
+
+        properties = payload.get("properties", {})
+
         return {
             "client_id": query_params.get("client_id", ""),
             "event_type": event_type,
@@ -120,7 +131,12 @@ class CRMWebhookStrategy(WebhookStrategy):
                 "object_type": payload.get("objectTypeId") or payload.get("object_type", "contact"),
                 "object_id": payload.get("objectId") or payload.get("id"),
                 "change_source": payload.get("changeSource", "unknown"),
-                "properties": payload.get("properties", {}),
+                "properties": properties,
+                "entity_id": entity_id,
+                "phone": properties.get("phone", ""),
+                "lead_id": payload.get("id", ""),
+                "ad_source": properties.get("ad_source", ""),
+                "project_id": properties.get("project_id", ""),
                 "raw": payload,
             },
         }
