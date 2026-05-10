@@ -60,7 +60,7 @@ IDS["content_extract_action"] = d["id"]; time.sleep(0.3)
 d = create({"name":"deep-research-fact-check","display_name":"Deep Research Fact Checker","description":"Verifies claims against multiple independent sources via web search.","goal":"Independently verify claims. Produce verdict: VERIFIED/PARTIALLY_VERIFIED/UNVERIFIED/CONTRADICTED.","type":"ACTION","version":"1.0.0","status":"ACTIVE","tags":["deep-research","fact-checking","verification"],"identity":{"system_prompt":"You are a rigorous fact-checker. For each claim: (1) Search for corroboration, (2) Identify contradictions, (3) Note recency/reliability, (4) Assign verdict. Show verification chain.","behavioral_constraints":["Need 2+ sources for VERIFIED","Primary > secondary sources","Note temporal limitations","Flag unfalsifiable claims"]},"hierarchy":{"is_atomic":True,"composition_depth":0,"children":[]},"logic_gate":{"reasoning_config":{"task_type":"text_generation","temperature":0.1,"reasoning_mode":"REFLECTION"},"retry_policy":{"max_retries":2,"backoff_strategy":"LINEAR"}},"planning":{"static_plan":{"enabled":True,"steps":[{"step_id":"step_1","order":1,"name":"Search for Verification","description":"Search for confirming/denying sources","type":"TOOL_CALL","target":{"tool_id":"web_search","prompt_template":"verify: {{input}}"}},{"step_id":"step_2","order":2,"name":"Assess Evidence","description":"Produce verification verdict","type":"ACTION","target":{"prompt_template":"Based on {{step_1}}, verify:\n\nCLAIM: {{input}}\n\nProduce verdict with supporting/contradicting sources, confidence, caveats.","input_dependencies":["step_1"]}}]}},"capabilities":{"tools":[{"tool_id":"web_search"}],"memory":{"enabled":True,"mode":"CORTEX"}},"governance":{"timeout_ms":90000,"max_cost_usd":0.20}})
 IDS["fact_check_action"] = d["id"]; time.sleep(0.3)
 
-d = create({"name":"deep-research-section-writer","display_name":"Deep Research Section Writer","description":"Writes publication-quality report sections from structured research findings.","goal":"Transform findings into compelling, well-structured, properly cited report sections.","type":"ACTION","version":"1.0.0","status":"ACTIVE","tags":["deep-research","writing","report"],"identity":{"system_prompt":"You are a senior research writer. Every section: (1) Clear topic sentence, (2) Evidence+analysis, (3) Inline citations [Source, Date], (4) Concluding insight.","behavioral_constraints":["Every claim must be cited","No filler text","Specific numbers over qualifiers","Consistent tone"]},"hierarchy":{"is_atomic":True,"composition_depth":0,"children":[]},"logic_gate":{"reasoning_config":{"task_type":"text_generation","temperature":0.5,"reasoning_mode":"CHAIN_OF_THOUGHT"}},"planning":{"static_plan":{"enabled":True,"steps":[{"step_id":"step_1","order":1,"name":"Write Section","description":"Write publication-quality section","type":"ACTION","target":{"prompt_template":"{{input}}"}}]}},"capabilities":{"tools":[],"memory":{"enabled":True,"mode":"CORTEX"}},"governance":{"timeout_ms":120000,"max_cost_usd":0.25}})
+d = create({"name":"deep-research-section-writer","display_name":"Deep Research Section Writer","description":"Writes publication-quality report sections from structured research findings.","goal":"Transform findings into compelling, well-structured, properly cited report sections.","type":"ACTION","version":"1.0.0","status":"ACTIVE","tags":["deep-research","writing","report"],"identity":{"system_prompt":"You are a senior research writer producing COMPREHENSIVE, PUBLICATION-QUALITY reports.\n\n## MANDATORY REQUIREMENTS:\n- Minimum 5,000 words, target 6,000-8,000 words\n- Every section MUST have 3+ paragraphs with specific data points\n- Every factual claim MUST have an inline citation [Source Name, Date]\n- Include: Executive Summary, Methodology, 5-8 major analytical sections, each with 2-4 subsections, Conclusions, References\n- ANALYZE don't just summarize — provide original insights, cross-references, implications\n- Include specific numbers, statistics, percentages, and comparisons\n- Each section ends with a KEY INSIGHT callout\n- Include a Sources/References section at the end listing all cited sources\n\n## QUALITY STANDARDS:\n- Academic/consulting report quality\n- No filler text or generic statements\n- Specific data over qualitative assessments\n- Consistent professional tone throughout\n- Logical flow between sections with transition paragraphs","behavioral_constraints":["Every claim must be cited with [Source, Date]","No filler text or generic padding","Specific numbers over qualifiers","Consistent professional tone","Minimum 5000 words","Include at least 5 major sections with subsections","End each section with KEY INSIGHT","Include References section"]},"hierarchy":{"is_atomic":True,"composition_depth":0,"children":[]},"logic_gate":{"reasoning_config":{"task_type":"text_generation","temperature":0.5,"reasoning_mode":"CHAIN_OF_THOUGHT"},"context_policy":{"type":"FULL","summarize_threshold":50000}},"planning":{"static_plan":{"enabled":True,"steps":[{"step_id":"step_1","order":1,"name":"Write Section","description":"Write publication-quality section","type":"ACTION","target":{"prompt_template":"{{input}}"}}]}},"capabilities":{"tools":[],"memory":{"enabled":True,"mode":"CORTEX"}},"governance":{"timeout_ms":300000,"max_cost_usd":0.50}})
 IDS["section_writer_action"] = d["id"]; time.sleep(0.3)
 
 d = create({"name":"deep-research-outline-generator","display_name":"Deep Research Outline Generator","description":"Generates detailed hierarchical report outlines based on research findings.","goal":"Create a comprehensive report outline ensuring complete topic coverage.","type":"ACTION","version":"1.0.0","status":"ACTIVE","tags":["deep-research","planning","outline"],"identity":{"system_prompt":"You are a research report architect. Design outlines: (1) Comprehensive, (2) Logical flow, (3) Proportional depth, (4) Content guidance. Output JSON array.","behavioral_constraints":["Include Executive Summary","Include Methodology section","3-7 subsections per major section"]},"hierarchy":{"is_atomic":True,"composition_depth":0,"children":[]},"logic_gate":{"reasoning_config":{"task_type":"thinking","temperature":0.4,"reasoning_mode":"TREE_OF_THOUGHTS"}},"capabilities":{"tools":[],"memory":{"enabled":True,"mode":"CORTEX"}},"governance":{"timeout_ms":90000,"max_cost_usd":0.20}})
@@ -125,6 +125,155 @@ for agent_key, skill_keys in [
 ]:
     update(IDS[agent_key], {"hierarchy": {"is_atomic": False, "composition_depth": 2, "children": [{"child_id": IDS[sk], "child_type": "SKILL", "relationship": "SEQUENTIAL"} for sk in skill_keys]}})
     time.sleep(0.2)
+
+# ===================== LINK EXECUTION PLANS =====================
+# The execution engine invokes child entities ONLY via CHILD_ENTITY_INVOCATION
+# steps in planning.static_plan — NOT via hierarchy.children.
+# Without these steps, only the PROCESS→AGENT links fire; SKILLs and ACTIONs
+# are never executed as independent child runs.
+print("\n== Linking Execution Plans (CHILD_ENTITY_INVOCATION) ==")
+
+# SKILLs → Actions (add CHILD_ENTITY_INVOCATION steps to static_plan)
+# source_discoverer_skill: invoke web_search_action, then rank inline
+update(IDS["source_discoverer_skill"], {"planning": {
+    "static_plan": {"enabled": True, "steps": [
+        {"step_id": "step_1", "order": 1, "name": "Execute Web Search",
+         "description": "Invoke the Web Search action to search for sources",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["web_search_action"], "prompt_template": "{{input}}"},
+         "required": True},
+        {"step_id": "step_2", "order": 2, "name": "Rank Sources",
+         "description": "Deduplicate, rank, select top 10-15 sources for scraping",
+         "type": "ACTION",
+         "target": {"prompt_template": "Given results:\n\n{{Execute Web Search}}\n\nProduce ranked, deduplicated source list. Top 10-15 for scraping.",
+                    "input_dependencies": ["step_1"]}}
+    ]},
+    "dynamic_planning": {"enabled": True, "planning_prompt": "If results insufficient, generate additional queries."}
+}})
+time.sleep(0.2)
+
+# source_analyzer_skill: invoke page_scrape_action then content_extract_action
+update(IDS["source_analyzer_skill"], {"planning": {
+    "static_plan": {"enabled": True, "steps": [
+        {"step_id": "step_1", "order": 1, "name": "Scrape Source Content",
+         "description": "Invoke Page Scraper to scrape full content from source URL",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["page_scrape_action"], "prompt_template": "{{input}}"},
+         "required": True},
+        {"step_id": "step_2", "order": 2, "name": "Extract Structured Info",
+         "description": "Invoke Content Extractor to extract claims, stats, quotes",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["content_extract_action"],
+                    "prompt_template": "Analyze:\n\n{{Scrape Source Content}}\n\nExtract: KEY_CLAIMS, STATISTICS, QUOTES, ENTITIES, CREDIBILITY (1-5)",
+                    "input_dependencies": ["step_1"]},
+         "required": True}
+    ]},
+    "dynamic_planning": {"enabled": True, "planning_prompt": "Iterate through URLs. For each: scrape, analyze, continue. Skip failures."},
+    "loop_control": {"max_iterations": 12, "iteration_context_mode": "SUMMARIZED", "summary_every_n_iterations": 3}
+}})
+time.sleep(0.2)
+
+# fact_verifier_skill: invoke fact_check_action
+update(IDS["fact_verifier_skill"], {"planning": {
+    "static_plan": {"enabled": True, "steps": [
+        {"step_id": "step_1", "order": 1, "name": "Verify Claims",
+         "description": "Invoke Fact Checker to verify critical claims against independent sources",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["fact_check_action"], "prompt_template": "{{input}}"},
+         "required": True}
+    ]},
+    "dynamic_planning": {"enabled": True, "planning_prompt": "For each claim: (1) formulate query, (2) search, (3) assess evidence, (4) record verdict."},
+    "loop_control": {"max_iterations": 15, "iteration_context_mode": "SUMMARIZED", "summary_every_n_iterations": 5}
+}})
+time.sleep(0.2)
+
+# knowledge_synthesizer_skill: inline synthesis step, then invoke outline, section writer, pdf
+# CRITICAL: Pass the full raw research data ({{input}}) through to the section writer,
+# not just the condensed synthesis. The section writer needs ALL details for a comprehensive report.
+update(IDS["knowledge_synthesizer_skill"], {"planning": {
+    "static_plan": {"enabled": True, "steps": [
+        {"step_id": "step_1", "order": 1, "name": "Synthesize Knowledge",
+         "description": "Read all research findings and identify key themes, narrative threads, and analytical framework",
+         "type": "ACTION",
+         "target": {"prompt_template": "You are synthesizing research findings into an analytical framework for a comprehensive report.\n\nINSTRUCTIONS:\n1. Read ALL the research data below carefully\n2. Identify 5-8 major themes/topics\n3. For each theme, list the specific data points, statistics, and sources\n4. Identify cross-cutting insights and contradictions\n5. Note the strongest and weakest evidence areas\n6. Preserve ALL specific numbers, statistics, URLs, and source names\n\nDo NOT condense or summarize — PRESERVE all details for the report writer.\n\nRESEARCH DATA:\n\n{{input}}"}},
+        {"step_id": "step_2", "order": 2, "name": "Generate Outline",
+         "description": "Invoke Outline Generator to create detailed report outline with 5-8 major sections",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["outline_generator_action"],
+                    "prompt_template": "Based on these analytical themes:\n\n{{Synthesize Knowledge}}\n\nGenerate a DETAILED report outline as JSON array. Requirements:\n- Executive Summary (written last)\n- Methodology section\n- 5-8 major analytical sections, each with 2-4 subsections\n- Each section should specify key data points to include\n- Conclusions and Implications section\n- Sources/References section\n\nTarget: 20+ page report, 5000-8000 words.",
+                    "input_dependencies": ["step_1"]},
+         "required": True},
+        {"step_id": "step_3", "order": 3, "name": "Write Report Sections",
+         "description": "Invoke Section Writer with FULL research data + outline for comprehensive report",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["section_writer_action"],
+                    "prompt_template": "Write a COMPREHENSIVE research report (minimum 5,000 words, target 6,000-8,000 words).\n\n## REPORT OUTLINE:\n{{Generate Outline}}\n\n## ANALYTICAL FRAMEWORK:\n{{Synthesize Knowledge}}\n\n## FULL RESEARCH DATA (use ALL details, statistics, and sources below):\n{{input}}\n\n## INSTRUCTIONS:\n- Write EVERY section from the outline above\n- Include specific statistics, numbers, and data points from the research data\n- Add inline citations [Source Name, Date] for every factual claim\n- Each section must have 3+ paragraphs of substantive analysis\n- Include cross-references between sections\n- End each major section with a KEY INSIGHT callout\n- Write Executive Summary LAST (as the final section)\n- Include a References section listing all sources cited\n- Target: 6,000-8,000 words minimum",
+                    "input_dependencies": ["step_1", "step_2"]},
+         "required": True},
+        {"step_id": "step_4", "order": 4, "name": "Export PDF",
+         "description": "Invoke PDF Exporter to generate final PDF",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["pdf_export_action"],
+                    "prompt_template": "{{Write Report Sections}}",
+                    "input_dependencies": ["step_3"]},
+         "required": True}
+    ]},
+    "dynamic_planning": {"enabled": True, "planning_prompt": "Break long sections into subsections."}
+}})
+time.sleep(0.2)
+
+# AGENTs → Skills (add static_plan with CHILD_ENTITY_INVOCATION for each child SKILL)
+# research_director_agent: sequentially invoke 4 skills
+update(IDS["research_director_agent"], {"planning": {
+    "static_plan": {"enabled": True, "steps": [
+        {"step_id": "step_1", "order": 1, "name": "Query Decomposition",
+         "description": "Invoke Query Decomposer to break topic into targeted search queries",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["query_decomposer_skill"], "prompt_template": "{{input}}"},
+         "required": True},
+        {"step_id": "step_2", "order": 2, "name": "Source Discovery",
+         "description": "Invoke Source Discoverer to execute queries and rank sources",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["source_discoverer_skill"],
+                    "prompt_template": "Search for sources using these queries:\n\n{{Query Decomposition}}",
+                    "input_dependencies": ["step_1"]},
+         "required": True},
+        {"step_id": "step_3", "order": 3, "name": "Source Analysis",
+         "description": "Invoke Source Analyzer to scrape and analyze top sources",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["source_analyzer_skill"],
+                    "prompt_template": "Scrape and analyze these sources:\n\n{{Source Discovery}}",
+                    "input_dependencies": ["step_2"]},
+         "required": True},
+        {"step_id": "step_4", "order": 4, "name": "Fact Verification",
+         "description": "Invoke Fact Verifier to verify critical claims",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["fact_verifier_skill"],
+                    "prompt_template": "Verify critical claims from:\n\n{{Source Analysis}}",
+                    "input_dependencies": ["step_3"]},
+         "required": True}
+    ]},
+    "dynamic_planning": {"enabled": True,
+        "planning_prompt": "Multi-wave research:\nWave 1: decompose → search → rank → scrape → extract\nWave 2: gaps → follow-up queries → scrape more → extract\nWave 3: critical claims → verify → matrix\nTools: web_search, scraper_tool, headless_browser. CHECKPOINT each wave.",
+        "allowed_deviations": {"can_add_steps": True, "can_skip_optional_steps": True, "can_reorder_steps": True, "can_change_tools": True},
+        "reconciliation_strategy": "DYNAMIC_PRIORITY"},
+    "loop_control": {"max_iterations": 3, "iteration_context_mode": "SUMMARIZED", "summary_every_n_iterations": 1}
+}})
+time.sleep(0.2)
+
+# report_synthesizer_agent: invoke knowledge_synthesizer_skill
+update(IDS["report_synthesizer_agent"], {"planning": {
+    "static_plan": {"enabled": True, "steps": [
+        {"step_id": "step_1", "order": 1, "name": "Knowledge Synthesis",
+         "description": "Invoke Knowledge Synthesizer to read CORTEX, generate outline, write report, and export PDF",
+         "type": "CHILD_ENTITY_INVOCATION",
+         "target": {"entity_id": IDS["knowledge_synthesizer_skill"], "prompt_template": "{{input}}"},
+         "required": True}
+    ]},
+    "dynamic_planning": {"enabled": True,
+        "planning_prompt": "1. Read all CORTEX findings\n2. Synthesize themes\n3. Generate outline\n4. Write sections, review each\n5. Executive Summary last\n6. Generate PDF\n\nUse pdf_generator. Target: 3000-8000 words."}
+}})
+time.sleep(0.2)
 
 # ===================== DONE =====================
 print("\n" + "=" * 60)

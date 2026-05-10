@@ -59,12 +59,14 @@ reports_dir.mkdir(parents=True, exist_ok=True)
 # All platform-managed files live under backend/artifact/
 #   user-uploads/      — files uploaded by human users
 #   system-generated/  — files produced by AI agents / tools
-artifact_dir = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/artifact")
+# Derive from this file's location so it works regardless of CWD.
+_backend_dir = Path(__file__).resolve().parents[1]   # …/backend/src -> …/backend
+artifact_dir = _backend_dir / "artifact"
 (artifact_dir / "user-uploads").mkdir(parents=True, exist_ok=True)
 (artifact_dir / "system-generated").mkdir(parents=True, exist_ok=True)
 
 # Legacy uploads dir (profile pictures stored here until migrated)
-uploads_dir = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/uploads")
+uploads_dir = _backend_dir / "uploads"
 uploads_dir.mkdir(parents=True, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")

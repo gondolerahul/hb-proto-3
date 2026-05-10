@@ -9,6 +9,7 @@ from typing import Optional, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -143,9 +144,17 @@ async def get_artifact(
 @router.get("/{artifact_id}/download", summary="Download/stream artifact file")
 async def download_artifact(
     artifact_id: UUID,
-    current_user: User = Depends(get_current_user),
+    token: Optional[str] = Query(None, description="JWT token for media preview (alternative to Authorization header)"),
     db: AsyncSession = Depends(get_db),
+    header_token: Optional[str] = Depends(OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)),
 ):
+    # Authenticate via header token first, fall back to query token
+    from src.auth.dependencies import _authenticate_user
+    effective_token = header_token or token
+    if not effective_token:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    current_user = await _authenticate_user(effective_token, db)
+
     svc = ArtifactService(db)
     artifact = await svc.get_artifact(artifact_id, current_user.company_id)
     if not artifact:

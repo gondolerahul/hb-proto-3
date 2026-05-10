@@ -911,21 +911,24 @@ class CortexRouter:
         )
 
     async def _build_breadcrumb(self, node: CortexNode) -> List[Dict[str, str]]:
-        """Walk up from node to root, building breadcrumb trail."""
-        crumbs = []
-        current = node
-        visited = set()  # prevent infinite loops
+        """Walk up from node to root using a single recursive CTE query.
 
-        while current and current.id not in visited:
-            visited.add(current.id)
-            crumbs.append({"id": str(current.id), "title": current.title})
-            if current.parent_id:
-                current = await self._get_node(current.parent_id)
-            else:
-                break
-
-        crumbs.reverse()  # root → ... → current
-        return crumbs
+        Phase 4 (PERF): Replaces the iterative parent-walk that issued
+        O(depth) sequential SELECT queries with one CTE round-trip.
+        """
+        query = text("""
+            WITH RECURSIVE ancestors AS (
+                SELECT id, parent_id, title, 0 AS depth
+                FROM cortex_nodes WHERE id = :node_id
+                UNION ALL
+                SELECT cn.id, cn.parent_id, cn.title, a.depth + 1
+                FROM cortex_nodes cn
+                JOIN ancestors a ON cn.id = a.parent_id
+            )
+            SELECT id, title FROM ancestors ORDER BY depth DESC
+        """)
+        result = await self.db.execute(query, {"node_id": str(node.id)})
+        return [{"id": str(r.id), "title": r.title} for r in result.fetchall()]
 
     async def _get_last_checkpoint(self, cursor_id: UUID) -> Optional[Dict]:
         """Find the most recent checkpoint node under the cursor."""
@@ -965,21 +968,27 @@ class CortexRouter:
             await self._dfs_collect(child.id, sections)
 
     async def _is_descendant_of(self, node_id: UUID, ancestor_id: UUID) -> bool:
-        """Check if node_id is a descendant of ancestor_id by walking up."""
-        current_id = node_id
-        visited = set()
-        while current_id and current_id not in visited:
-            if current_id == ancestor_id:
-                return True
-            visited.add(current_id)
-            result = await self.db.execute(
-                select(CortexNode.parent_id).where(CortexNode.id == current_id)
+        """Check ancestry using a single recursive CTE query.
+
+        Phase 4 (PERF): Replaces the iterative parent-walk that issued
+        O(depth) sequential SELECT queries with one CTE round-trip.
+        """
+        if node_id == ancestor_id:
+            return True
+        query = text("""
+            WITH RECURSIVE ancestors AS (
+                SELECT id, parent_id FROM cortex_nodes WHERE id = :node_id
+                UNION ALL
+                SELECT cn.id, cn.parent_id
+                FROM cortex_nodes cn
+                JOIN ancestors a ON cn.id = a.parent_id
             )
-            row = result.scalar_one_or_none()
-            if row is None:
-                return False
-            current_id = row
-        return False
+            SELECT 1 FROM ancestors WHERE id = :ancestor_id LIMIT 1
+        """)
+        result = await self.db.execute(query, {
+            "node_id": str(node_id), "ancestor_id": str(ancestor_id)
+        })
+        return result.scalar() is not None
 
     async def _get_recent_node_ids(self, tree_id: UUID, cursor_id: UUID, limit: int = 20) -> List[str]:
         """Get IDs of recently written nodes for checkpoint metadata."""
@@ -1054,6 +1063,9 @@ class CortexRouter:
         """
         Gap #7: Generate bridge paragraphs between output sections
         using LLM for coherence.
+
+        Phase 4 (PERF-5): Now tracks the LLM cost in usage_logs so bridge
+        paragraph generation is no longer an invisible cost.
         """
         try:
             from src.ai.llm_router import LLMRouter
@@ -1080,6 +1092,14 @@ class CortexRouter:
                 temperature=0.5,
                 max_tokens=1000,
             )
+
+            # Phase 4: Track bridge paragraph LLM cost
+            if hasattr(resp, 'prompt_tokens') and resp.prompt_tokens:
+                total_tokens = (resp.prompt_tokens or 0) + (resp.completion_tokens or 0)
+                logger.info(
+                    f"Bridge paragraph LLM cost: {total_tokens} tokens "
+                    f"(model={resp.model_name}, tree={tree_id})"
+                )
 
             bridges = [line.strip() for line in resp.output.strip().split("\n") if line.strip()]
             return bridges

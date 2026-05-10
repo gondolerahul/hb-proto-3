@@ -34,6 +34,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 # ORM Model imported from models.py
 # ---------------------------------------------------------------------------
 from src.ai.models import EpisodicMemory
+from src.ai.constants import EMBEDDING_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ class MemoryRouter:
                 total_cost_usd=str(run.total_cost_usd) if run.total_cost_usd else None,
                 total_tokens=run.total_tokens,
                 execution_time_ms=run.execution_time_ms,
-                metadata={
+                metadata_info={
                     "tools_used": tools_used,
                     "step_count": len([k for k in ctx if k.startswith("step_")]),
                 },
@@ -210,7 +211,7 @@ class MemoryRouter:
 
             # Embed the query
             embed_resp = _client.models.embed_content(
-                model="text-embedding-004",
+                model=EMBEDDING_MODEL,
                 contents=query,
                 config=_types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
             )

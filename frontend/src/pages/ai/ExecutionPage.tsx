@@ -35,10 +35,13 @@ export const ExecutionPage: React.FC = () => {
             }
 
             // Extract variables from all prompt templates in the plan,
-            // but EXCLUDE internal step references (step_1, step_2, etc.)
-            // which are resolved at runtime from previous step outputs.
-            const stepRefPattern = /^step_\d+$/;
+            // but EXCLUDE internal step references which are resolved at
+            // runtime from previous step outputs.
+            // 1. Match step_N and step_N_anything patterns
+            // 2. Also exclude any variable that matches a step_id in the plan
+            const stepRefPattern = /^step_\d+/;
             const steps = data.planning?.static_plan?.steps || [];
+            const planStepIds = new Set(steps.map(s => s.step_id).filter(Boolean));
 
             steps.forEach(step => {
                 const promptTemplate = step.target?.prompt_template;
@@ -47,7 +50,7 @@ export const ExecutionPage: React.FC = () => {
                     const matches = promptTemplate.matchAll(regex);
                     for (const match of matches) {
                         // Only add user-facing variables, not internal step references
-                        if (!stepRefPattern.test(match[1])) {
+                        if (!stepRefPattern.test(match[1]) && !planStepIds.has(match[1])) {
                             allVars.add(match[1]);
                         }
                     }

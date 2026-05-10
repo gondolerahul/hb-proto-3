@@ -36,3 +36,6 @@ logs/
 backend/uploads/
 backend/artifact/
 backend/assets/
+
+# Claude
+.claude/

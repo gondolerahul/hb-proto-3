@@ -14,9 +14,36 @@ class EntityType(str, Enum):
 class RunStatus(str, Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
+    PAUSED = "PAUSED"                      # Waiting for HITL approval
+    RESUMING = "RESUMING"                  # Resuming from checkpoint
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    PARTIAL_COMPLETE = "PARTIAL_COMPLETE"  # Some steps OK, others failed
     REPAIRING = "REPAIRING"
+
+
+# Phase 3: Execution state machine — valid transitions
+VALID_TRANSITIONS: dict[str, set[str]] = {
+    "PENDING": {"RUNNING"},
+    "RUNNING": {"PAUSED", "COMPLETED", "FAILED", "PARTIAL_COMPLETE"},
+    "PAUSED": {"RUNNING", "RESUMING", "FAILED"},
+    "RESUMING": {"RUNNING", "FAILED"},
+    "PARTIAL_COMPLETE": {"RUNNING", "COMPLETED", "FAILED"},
+    "REPAIRING": {"RUNNING", "FAILED"},
+}
+
+
+def validate_transition(current: str, target: str) -> bool:
+    """Check if a status transition is valid. Logs a warning for invalid ones (lenient mode)."""
+    import logging
+    allowed = VALID_TRANSITIONS.get(current, set())
+    if target not in allowed:
+        logging.getLogger(__name__).warning(
+            f"Invalid state transition: {current} → {target} "
+            f"(allowed: {allowed or 'none'})"
+        )
+        return False
+    return True
 
 # Nested Entity Schemas
 
@@ -25,6 +52,7 @@ class EntityStatus(str, Enum):
     ACTIVE = "ACTIVE"
     DEPRECATED = "DEPRECATED"
     ARCHIVED = "ARCHIVED"
+    DELETED = "DELETED"  # Soft-deleted — hidden from UI, preserved for billing FK integrity
 
 class RelationshipType(str, Enum):
     SEQUENTIAL = "SEQUENTIAL"
@@ -67,6 +95,11 @@ class StepType(str, Enum):
     WRITE = "WRITE"
     RECURSE = "RECURSE"
     AWAIT_CHILDREN = "AWAIT_CHILDREN"
+
+class ExecutionMode(str, Enum):
+    """Phase 5: Execution strategy for entities."""
+    STANDARD = "STANDARD"      # Static plan-execute
+    AUTONOMOUS = "AUTONOMOUS"  # Goal-centric with self-reflection
 
 class PersonaExample(BaseModel):
     scenario: str = ""
@@ -198,6 +231,12 @@ class ReasoningConfig(BaseModel):
     top_p: float = 1.0
     max_tokens: Optional[int] = None
     reasoning_mode: ReasoningMode = ReasoningMode.REACT
+    # Phase 5: Autonomous loop configuration
+    execution_mode: str = "STANDARD"  # STANDARD | AUTONOMOUS
+    goal_validation_interval: int = 2       # Validate goal every N steps
+    confidence_threshold: float = 0.85      # Early-exit if score > this * 100
+    max_replanning_attempts: int = 3        # Max mid-execution re-plans
+    self_reflection_enabled: bool = False   # Query CORTEX knowledge before acting
 
 class RetryPolicy(BaseModel):
     max_retries: int = 3

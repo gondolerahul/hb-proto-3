@@ -7,6 +7,39 @@ registry for tool registration and lookup.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
+from uuid import UUID
+import json
+import logging
+
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: Typed Tool Protocol
+# ---------------------------------------------------------------------------
+
+class ToolParams(BaseModel):
+    """Base class for typed tool parameters.
+
+    Subclass this in each tool to define strongly-typed inputs that
+    replace the legacy string-JSON-string interface.
+    """
+    pass
+
+
+class ToolResult(BaseModel):
+    """Structured tool result with error handling.
+
+    All tools should progressively migrate to returning ToolResult
+    from run_typed() instead of raw strings from run().
+    """
+    success: bool = True
+    output: str = ""
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    metadata: Dict[str, Any] = {}
 
 
 class Tool(ABC):
@@ -54,6 +87,23 @@ class Tool(ABC):
         """
         return await self.run(input_data)
 
+    async def run_typed(self, params: ToolParams) -> ToolResult:
+        """New typed interface (Phase 6).
+
+        Default implementation falls back to the legacy string interface.
+        Override in subclasses for full type safety.
+        """
+        try:
+            result_str = await self.run(json.dumps(params.model_dump()))
+            return ToolResult(output=result_str)
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                output="",
+                error_code="TOOL_ERROR",
+                error_message=str(e),
+            )
+
     def supports_context(self) -> bool:
         """Return True if this tool overrides run_with_context for special DB/key handling."""
         return type(self).run_with_context is not Tool.run_with_context
@@ -80,51 +130,58 @@ class Tool(ABC):
 
 
 class ToolRegistry:
-    """Global registry for tool registration and lookup.
+    """Global and tenant-scoped registry for tool registration and lookup.
     
     Tools are registered at module import time and can be retrieved
     by name for execution by the AI engine.
+
+    Phase 6: Added tenant-scoped tool registration so companies
+    can have custom tools that don't leak across tenants.
     """
     _tools: Dict[str, Tool] = {}
+    _tenant_tools: Dict[str, Dict[str, Tool]] = {}  # company_id -> {name: Tool}
 
     @classmethod
     def register(cls, tool: Tool) -> None:
-        """Register a tool in the global registry.
-        
-        Args:
-            tool: Tool instance to register
-        """
+        """Register a tool in the global registry."""
         cls._tools[tool.name] = tool
 
     @classmethod
-    def get_tool(cls, name: str) -> Optional[Tool]:
-        """Get a tool by name.
-        
-        Args:
-            name: Tool name to look up
-            
-        Returns:
-            Tool instance or None if not found
-        """
+    def register_tenant_tool(cls, company_id: UUID, tool: Tool) -> None:
+        """Register a tool scoped to a specific company."""
+        cid = str(company_id)
+        if cid not in cls._tenant_tools:
+            cls._tenant_tools[cid] = {}
+        cls._tenant_tools[cid][tool.name] = tool
+        logger.info(f"Registered tenant tool '{tool.name}' for company {cid}")
+
+    @classmethod
+    def get_tool(cls, name: str, company_id: Optional[UUID] = None) -> Optional[Tool]:
+        """Get a tool by name. Tenant tools take priority over global."""
+        if company_id:
+            tenant = cls._tenant_tools.get(str(company_id), {})
+            if name in tenant:
+                return tenant[name]
         return cls._tools.get(name)
 
     @classmethod
-    def list_tools(cls) -> List[Dict[str, str]]:
-        """List all registered tools with their descriptions.
-        
-        Returns:
-            List of dicts with 'name' and 'description' keys
-        """
+    def get_tools_for_company(cls, company_id: UUID) -> Dict[str, Tool]:
+        """Get merged dict of global + tenant-specific tools."""
+        merged = dict(cls._tools)
+        merged.update(cls._tenant_tools.get(str(company_id), {}))
+        return merged
+
+    @classmethod
+    def list_tools(cls, company_id: Optional[UUID] = None) -> List[Dict[str, str]]:
+        """List all registered tools with their descriptions."""
+        tools = cls.get_tools_for_company(company_id) if company_id else cls._tools
         return [
             {"name": t.name, "description": t.description} 
-            for t in cls._tools.values()
+            for t in tools.values()
         ]
     
     @classmethod
-    def get_all_schemas(cls) -> List[Dict[str, Any]]:
-        """Get function schemas for all registered tools.
-        
-        Returns:
-            List of function schemas for OpenAI function calling
-        """
-        return [t.get_function_schema() for t in cls._tools.values()]
+    def get_all_schemas(cls, company_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
+        """Get function schemas for all registered tools."""
+        tools = cls.get_tools_for_company(company_id) if company_id else cls._tools
+        return [t.get_function_schema() for t in tools.values()]

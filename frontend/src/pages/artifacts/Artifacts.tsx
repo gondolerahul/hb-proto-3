@@ -168,9 +168,35 @@ export const Artifacts: React.FC = () => {
         setArtifacts((prev) => prev.filter((a) => a.id !== id));
     };
 
-    const getDownloadUrl = (artifact: Artifact) => {
+    const handleDownload = async (artifact: Artifact) => {
+        try {
+            const response = await fetch(
+                `${import.meta.env.VITE_API_URL || ''}/api/v1/artifacts/${artifact.id}/download`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`,
+                    },
+                }
+            );
+            if (!response.ok) throw new Error('Download failed');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = artifact.file_name;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (err: any) {
+            setError(err?.message || 'Download failed');
+        }
+    };
+
+    const getPreviewUrl = (artifact: Artifact) => {
         const base = import.meta.env.VITE_API_URL || '';
-        return `${base}/api/v1/artifacts/${artifact.id}/download`;
+        const token = localStorage.getItem('access_token') || '';
+        return `${base}/api/v1/artifacts/${artifact.id}/download?token=${token}`;
     };
 
     return (
@@ -306,7 +332,7 @@ export const Artifacts: React.FC = () => {
                 <div className="artifact-grid">
                     {artifacts.map((artifact) => {
                         const Icon = CATEGORY_ICON[artifact.file_category] || File;
-                        const downloadUrl = getDownloadUrl(artifact);
+                        const previewUrl = getPreviewUrl(artifact);
                         return (
                             <div
                                 key={artifact.id}
@@ -336,9 +362,9 @@ export const Artifacts: React.FC = () => {
                                                 )}
                                             </div>
                                         )}
-                                        <a href={downloadUrl} download={artifact.file_name} target="_blank" rel="noreferrer">
-                                            <button className="icon-btn" title="Download"><Download size={14} /></button>
-                                        </a>
+                                        <button className="icon-btn" title="Download" onClick={() => handleDownload(artifact)}>
+                                            <Download size={14} />
+                                        </button>
                                         <button
                                             className="icon-btn danger"
                                             onClick={() => handleDelete(artifact.id)}
@@ -357,18 +383,18 @@ export const Artifacts: React.FC = () => {
                                     {artifact.file_category === 'images' && (
                                         <div
                                             className="image-preview"
-                                            onClick={() => setLightboxSrc(downloadUrl)}
+                                            onClick={() => setLightboxSrc(previewUrl)}
                                             title="Click to enlarge"
                                         >
-                                            <img src={downloadUrl} alt={artifact.file_name} loading="lazy" />
+                                            <img src={previewUrl} alt={artifact.file_name} loading="lazy" />
                                             <div className="image-overlay"><ZoomIn size={20} /></div>
                                         </div>
                                     )}
                                     {artifact.file_category === 'videos' && (
-                                        <video controls className="video-preview" src={downloadUrl} />
+                                        <video controls className="video-preview" src={previewUrl} />
                                     )}
                                     {artifact.file_category === 'recordings' && (
-                                        <AudioPlayer src={downloadUrl} />
+                                        <AudioPlayer src={previewUrl} />
                                     )}
                                     {(artifact.file_category === 'documents' || artifact.file_category === 'text') && (
                                         <div className="doc-preview">

@@ -215,6 +215,12 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
     const [maxTokens, setMaxTokens] = useState<number | undefined>(entity?.logic_gate?.reasoning_config?.max_tokens);
     const [reasoningMode, setReasoningMode] = useState<string>(entity?.logic_gate?.reasoning_config?.reasoning_mode || 'REACT');
     const [modelName, setModelName] = useState(entity?.logic_gate?.reasoning_config?.model_name || '');
+    // Phase 5: Autonomous mode
+    const [executionMode, setExecutionMode] = useState<string>(entity?.logic_gate?.reasoning_config?.execution_mode || 'STANDARD');
+    const [goalValidationInterval, setGoalValidationInterval] = useState(entity?.logic_gate?.reasoning_config?.goal_validation_interval || 2);
+    const [confidenceThreshold, setConfidenceThreshold] = useState(entity?.logic_gate?.reasoning_config?.confidence_threshold || 0.85);
+    const [maxReplanningAttempts, setMaxReplanningAttempts] = useState(entity?.logic_gate?.reasoning_config?.max_replanning_attempts || 3);
+    const [selfReflectionEnabled, setSelfReflectionEnabled] = useState(entity?.logic_gate?.reasoning_config?.self_reflection_enabled || false);
     // Planning
     const [staticPlanEnabled, setStaticPlanEnabled] = useState(entity?.planning?.static_plan?.enabled ?? true);
     const [fallbackBehavior, setFallbackBehavior] = useState<string>(entity?.planning?.static_plan?.fallback_behavior || 'ADAPTIVE');
@@ -612,6 +618,11 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                 reasoning_config: {
                     task_type: taskType, temperature, top_p: topP, max_tokens: maxTokens,
                     reasoning_mode: reasoningMode, model_name: modelName || undefined,
+                    execution_mode: executionMode,
+                    goal_validation_interval: goalValidationInterval,
+                    confidence_threshold: confidenceThreshold,
+                    max_replanning_attempts: maxReplanningAttempts,
+                    self_reflection_enabled: selfReflectionEnabled,
                 },
                 retry_policy: { max_retries: maxRetries, backoff_strategy: backoffStrategy, backoff_multiplier: backoffMultiplier },
                 review_mechanism: {
@@ -1042,6 +1053,53 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                     <input type="number" value={maxTokens || ''} onChange={(e) => setMaxTokens(e.target.value ? parseInt(e.target.value) : undefined)} placeholder="Auto" />
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Phase 5: Autonomous Mode */}
+                        <div className="form-section">
+                            <div className="section-header-toggle">
+                                <h3>⚡ Execution Mode</h3>
+                                <select value={executionMode} onChange={(e) => setExecutionMode(e.target.value)} style={{ width: 'auto', minWidth: 160 }}>
+                                    <option value="STANDARD">Standard (Plan → Execute)</option>
+                                    <option value="AUTONOMOUS">Autonomous (Goal-Centric)</option>
+                                </select>
+                            </div>
+                            {executionMode === 'AUTONOMOUS' && (
+                                <div className="voice-settings-panel">
+                                    <small style={{ display: 'block', marginBottom: 12, opacity: 0.7 }}>
+                                        Autonomous mode validates goal progress during execution and can re-plan on failure.
+                                    </small>
+                                    <div className="form-row">
+                                        <div className="form-group">
+                                            <label>Goal Validation Interval</label>
+                                            <input type="number" min={1} max={10} value={goalValidationInterval} onChange={(e) => setGoalValidationInterval(parseInt(e.target.value) || 2)} />
+                                            <small>Check goal progress every N steps</small>
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Confidence Threshold ({(confidenceThreshold * 100).toFixed(0)}%)</label>
+                                            <input type="range" min="0" max="1" step="0.05" value={confidenceThreshold} onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))} />
+                                            <small>Early-exit if goal score exceeds this</small>
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Max Re-planning Attempts</label>
+                                            <input type="number" min={0} max={5} value={maxReplanningAttempts} onChange={(e) => setMaxReplanningAttempts(parseInt(e.target.value) || 3)} />
+                                            <small>Limit LLM re-plans on step failures</small>
+                                        </div>
+                                    </div>
+                                    <div className="section-header-toggle" style={{ marginTop: 8 }}>
+                                        <span>Self-Reflection (CORTEX)</span>
+                                        <label className="toggle-switch">
+                                            <input type="checkbox" checked={selfReflectionEnabled} onChange={(e) => setSelfReflectionEnabled(e.target.checked)} />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    {selfReflectionEnabled && (
+                                        <small style={{ display: 'block', opacity: 0.6, marginTop: 4 }}>
+                                            Agent queries prior CORTEX knowledge before THOUGHT steps and writes reflection nodes after each step.
+                                        </small>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Planning Strategy */}

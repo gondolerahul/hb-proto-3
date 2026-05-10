@@ -15,9 +15,19 @@ import os
 import re
 import logging
 from typing import Dict, Any, List, Optional
-from src.ai.tools.base import Tool
+from src.ai.tools.base import Tool, ToolParams, ToolResult as TypedToolResult
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: Typed Tool Protocol — reference implementation
+# ---------------------------------------------------------------------------
+
+class WebSearchParams(ToolParams):
+    """Typed parameters for web search tool."""
+    query: str
+    num_results: int = 8
 
 
 class WebSearchTool(Tool):
@@ -293,6 +303,23 @@ class WebSearchTool(Tool):
             )
 
         return self._format_results(query, results)
+
+    # ---------------------------------------------------------------------------
+    # Phase 6: Typed interface
+    # ---------------------------------------------------------------------------
+
+    async def run_typed(self, params: WebSearchParams) -> TypedToolResult:
+        """Typed tool execution — accepts WebSearchParams, returns TypedToolResult."""
+        try:
+            result_str = await self.run_with_context(
+                json.dumps({"query": params.query}), context=None
+            )
+            return TypedToolResult(output=result_str)
+        except Exception as e:
+            return TypedToolResult(
+                success=False, output="",
+                error_code="SEARCH_ERROR", error_message=str(e),
+            )
 
     # ---------------------------------------------------------------------------
     # Output formatting

@@ -176,6 +176,18 @@ ToolRegistry.register(SnapchatAdsManageAdSquadsTool())
 ToolRegistry.register(SnapchatAdsReportTool())
 ToolRegistry.register(SnapchatAdsManageAudiencesTool())
 
+# Meta-Agent tools (context-aware — use run_with_context)
+from src.ai.tools.meta import (
+    MetaRegistrySearchTool, MetaSchemaValidatorTool,
+    MetaEntityCreatorTool, MetaEntityExecutorTool,
+    MetaPlatformIntrospectTool,
+)
+ToolRegistry.register(MetaPlatformIntrospectTool())
+ToolRegistry.register(MetaRegistrySearchTool())
+ToolRegistry.register(MetaSchemaValidatorTool())
+ToolRegistry.register(MetaEntityCreatorTool())
+ToolRegistry.register(MetaEntityExecutorTool())
+
 __all__ = [
     "Tool", "ToolRegistry",
     "CalculatorTool", "WebSearchTool", "ExcelTool", "ScraperTool",
@@ -222,5 +234,9 @@ __all__ = [
     # CRM integration tools
     "GetCurrentDateTimeTool", "WhatsAppSendTenantTool",
     "GoogleCalendarCreateEventTool", "CRMUpdateLeadTool",
+    # Meta-Agent tools
+    "MetaPlatformIntrospectTool", "MetaRegistrySearchTool",
+    "MetaSchemaValidatorTool", "MetaEntityCreatorTool",
+    "MetaEntityExecutorTool",
 ]
 

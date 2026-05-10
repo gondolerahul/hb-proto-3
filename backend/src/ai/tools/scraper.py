@@ -1,7 +1,17 @@
 import json
 import httpx
 from typing import Any, Dict
-from src.ai.tools.base import Tool
+from src.ai.tools.base import Tool, ToolParams, ToolResult as TypedToolResult
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: Typed Tool Protocol — reference implementation
+# ---------------------------------------------------------------------------
+
+class ScraperParams(ToolParams):
+    """Typed parameters for web scraper tool."""
+    url: str
+    purpose: str = ""
 
 class ScraperTool(Tool):
     """Tool for scraping content from web pages using Firecrawl.
@@ -175,6 +185,22 @@ class ScraperTool(Tool):
         except Exception as e:
             return json.dumps({"error": f"Scraper Tool Error: {str(e)}"})
 
+    # ---------------------------------------------------------------------------
+    # Phase 6: Typed interface
+    # ---------------------------------------------------------------------------
+
+    async def run_typed(self, params: ScraperParams) -> TypedToolResult:
+        """Typed tool execution — accepts ScraperParams, returns TypedToolResult."""
+        try:
+            result_str = await self.run_with_context(
+                json.dumps({"url": params.url, "purpose": params.purpose})
+            )
+            return TypedToolResult(output=result_str)
+        except Exception as e:
+            return TypedToolResult(
+                success=False, output="",
+                error_code="SCRAPER_ERROR", error_message=str(e),
+            )
     def get_function_schema(self) -> Dict[str, Any]:
         return {
             "name": self.name,

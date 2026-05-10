@@ -74,6 +74,7 @@ class HierarchicalEntity(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)  # Soft-delete timestamp; NULL = active
 
     company = relationship("Company")
     parent = relationship("HierarchicalEntity", remote_side=[id], backref="children",
@@ -105,6 +106,7 @@ class ExecutionRun(Base):
     execution_time_ms = Column(Integer, nullable=True)
     trace_id = Column(UUID(as_uuid=True), nullable=True)
     span_id = Column(String, nullable=True)
+    idempotency_key = Column(String(255), nullable=True, index=True)  # Phase 3: step-level dedup
 
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
@@ -152,6 +154,7 @@ class ToolInteractionLog(Base):
     error_message = Column(Text, nullable=True)
     latency_ms = Column(Integer, nullable=True)
     log_metadata = Column(JSON, nullable=True)
+    idempotency_key = Column(String(255), nullable=True, index=True)  # Phase 3: step-level dedup
     created_at = Column(DateTime, default=datetime.utcnow)
 
     run = relationship("ExecutionRun", back_populates="tool_logs")

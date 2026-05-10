@@ -7,11 +7,36 @@ Supports tables, lists, code blocks, and proper formatting with citations.
 
 import json
 import os
+import re as _re_module
 import tempfile
 from typing import Dict, Any
 from datetime import datetime
 from pathlib import Path
 from src.ai.tools.base import Tool
+
+
+def _sanitize_filename(raw: str, max_length: int = 80) -> str:
+    """Sanitize an LLM-generated filename into a filesystem-safe string.
+
+    Handles common issues like colons, slashes, quotes, and Unicode.
+    Returns a non-empty basename suitable for use in Path() / f"{name}.pdf".
+    """
+    # Strip leading/trailing whitespace
+    name = raw.strip()
+    # Remove .pdf extension if present (caller adds it back)
+    if name.lower().endswith(".pdf"):
+        name = name[:-4]
+    # Replace path separators and other dangerous chars with underscore
+    name = _re_module.sub(r'[:/\\<>|"?*\x00-\x1f]', '_', name)
+    # Replace spaces and multiple underscores with a single underscore
+    name = _re_module.sub(r'[\s_]+', '_', name)
+    # Strip leading/trailing underscores and dots
+    name = name.strip('_.')
+    # Truncate to max_length
+    if len(name) > max_length:
+        name = name[:max_length].rstrip('_')
+    # Final fallback if empty
+    return name or "document"
 
 try:
     from weasyprint import HTML, CSS
@@ -157,7 +182,28 @@ class PDFGeneratorTool(Tool):
                             sanitized += f'\\u{ord(ch):04x}'
                             continue
                     sanitized += ch
-                params = json.loads(sanitized, strict=False)
+                try:
+                    params = json.loads(sanitized, strict=False)
+                except json.JSONDecodeError:
+                    # Final fallback: input is raw markdown/text, not JSON at all.
+                    # Auto-wrap it as a document with generated title and filename.
+                    # Extract a title from the first markdown heading if present.
+                    _lines = cleaned.split('\n')
+                    _title = "Research Report"
+                    for _l in _lines:
+                        _stripped = _l.strip()
+                        if _stripped.startswith('# '):
+                            _title = _stripped.lstrip('# ').strip()
+                            break
+                        elif _stripped.startswith('## '):
+                            _title = _stripped.lstrip('# ').strip()
+                            break
+                    _safe_filename = _sanitize_filename(_title)
+                    params = {
+                        "content": cleaned,
+                        "title": _title,
+                        "filename": _safe_filename,
+                    }
 
             # Inject company_id / user_id from execution context so image resolution
             # can search the correct tenant artifact directory
@@ -377,10 +423,9 @@ class PDFGeneratorTool(Tool):
             subject=subject
         )
         
-        # Strip .pdf extension if provided by LLM to avoid double extension
-        clean_filename = filename
-        if clean_filename.lower().endswith(".pdf"):
-            clean_filename = clean_filename[:-4]
+        # Sanitize filename — LLM often produces path-unsafe names with
+        # colons, slashes, etc. (e.g. "Strategic_Report:_The_2024/2025_...")
+        clean_filename = _sanitize_filename(filename)
             
         # Generate PDF
         output_path = output_dir / f"{clean_filename}.pdf"

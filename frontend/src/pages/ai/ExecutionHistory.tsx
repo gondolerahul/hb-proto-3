@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { Clock, CheckCircle, XCircle, Loader, Eye, RotateCcw, DollarSign, Database } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, Loader, Eye, RotateCcw, DollarSign, Database, Pause, Play } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus } from '@/types';
 import './ExecutionHistory.css';
@@ -34,6 +34,10 @@ export const ExecutionHistory: React.FC = () => {
                 return <XCircle size={20} color="var(--color-error)" />;
             case RunStatus.RUNNING:
                 return <Loader className="spin" size={20} color="var(--color-info)" />;
+            case 'PAUSED' as RunStatus:
+                return <Pause size={20} color="var(--color-warning, #f59e0b)" />;
+            case 'RESUMING' as RunStatus:
+                return <Play size={20} color="var(--color-info)" />;
             default:
                 return <Clock size={20} color="var(--color-warning)" />;
         }
@@ -73,11 +77,11 @@ export const ExecutionHistory: React.FC = () => {
             </header>
 
             <div className="filter-bar">
-                {(['ALL', ...Object.values(RunStatus)] as const).map(s => (
+                {(['ALL', ...Object.values(RunStatus), 'PAUSED', 'RESUMING', 'PARTIAL_COMPLETE'] as const).map(s => (
                     <button
                         key={s}
                         className={`filter-btn ${filter === s ? 'active' : ''}`}
-                        onClick={() => setFilter(s)}
+                        onClick={() => setFilter(s as any)}
                     >
                         {s} ({s === 'ALL' ? executions.length : executions.filter(e => e.status === s).length})
                     </button>

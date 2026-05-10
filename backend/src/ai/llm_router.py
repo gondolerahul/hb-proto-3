@@ -113,6 +113,56 @@ class GeminiAdapter(BaseLLMAdapter):
         from src.common.genai_factory import build_vertex_genai_client_sync
         return build_vertex_genai_client_sync(self.service_metadata)
 
+    _GEMINI_TYPE_MAP = {
+        "string": "STRING",
+        "integer": "INTEGER",
+        "number": "NUMBER",
+        "boolean": "BOOLEAN",
+        "array": "ARRAY",
+        "object": "OBJECT",
+    }
+
+    def _prop_to_schema(self, prop_def: Dict) -> Any:
+        """Recursively convert a JSON-Schema property dict to a Gemini types.Schema.
+
+        Handles nested objects, arrays with items, and enum values — all of which
+        the Gemini API strictly validates.
+        """
+        from google.genai import types
+
+        prop_type = self._GEMINI_TYPE_MAP.get(prop_def.get("type", "string"), "STRING")
+        kwargs: Dict[str, Any] = {
+            "type": prop_type,
+            "description": prop_def.get("description", ""),
+        }
+
+        # Enum values
+        if "enum" in prop_def:
+            kwargs["enum"] = [str(v) for v in prop_def["enum"]]
+
+        # Array → must have items
+        if prop_type == "ARRAY":
+            items_def = prop_def.get("items")
+            if items_def and isinstance(items_def, dict):
+                kwargs["items"] = self._prop_to_schema(items_def)
+            else:
+                # Fallback: Gemini requires items for ARRAY; default to STRING
+                kwargs["items"] = types.Schema(type="STRING")
+
+        # Nested object → recurse into properties
+        if prop_type == "OBJECT":
+            nested_props = prop_def.get("properties", {})
+            if nested_props and isinstance(nested_props, dict):
+                kwargs["properties"] = {
+                    k: self._prop_to_schema(v)
+                    for k, v in nested_props.items()
+                }
+            nested_required = prop_def.get("required")
+            if nested_required:
+                kwargs["required"] = nested_required
+
+        return types.Schema(**kwargs)
+
     def get_tool_declarations(self, tool_schemas: List[Dict]) -> Any:
         """Convert JSON Schema tool defs to Gemini FunctionDeclaration objects."""
         try:
@@ -127,16 +177,18 @@ class GeminiAdapter(BaseLLMAdapter):
             raw_props = schema.get("parameters", {}).get("properties", {})
             raw_required = schema.get("parameters", {}).get("required", [])
             for prop_name, prop_def in raw_props.items():
-                type_map = {
-                    "string": "STRING",
-                    "integer": "INTEGER",
-                    "number": "NUMBER",
-                    "boolean": "BOOLEAN",
-                    "array": "ARRAY",
-                    "object": "OBJECT",
-                }
-                prop_type = type_map.get(prop_def.get("type", "string"), "STRING")
-                props[prop_name] = types.Schema(type=prop_type, description=prop_def.get("description", ""))
+                try:
+                    props[prop_name] = self._prop_to_schema(prop_def)
+                except Exception as e:
+                    logger.warning(
+                        f"Skipping malformed property '{prop_name}' in tool "
+                        f"'{schema.get('name', '?')}': {e}"
+                    )
+                    # Fallback to basic STRING to avoid crashing the whole tool
+                    props[prop_name] = types.Schema(
+                        type="STRING",
+                        description=prop_def.get("description", ""),
+                    )
             if raw_required:
                 required = raw_required
 
@@ -817,9 +869,14 @@ class LLMRouter:
     def __init__(self, db: AsyncSession, company_id: UUID):
         self.db = db
         self.company_id = company_id
+        self._adapter_cache: dict = {}  # Phase 4: per-run cache to avoid repeated DB lookups
 
     async def _resolve_adapter(self, task_type: str, model_override: Optional[str] = None) -> BaseLLMAdapter:
         """Resolve the correct adapter based on task defaults.
+        
+        Phase 4 (PERF-4): Results are cached per (company_id, task_type,
+        model_override) tuple for the lifetime of this LLMRouter instance
+        to avoid repeated ConfigService DB queries within a single run.
         
         Args:
             task_type: The task type to resolve the model for.
@@ -827,6 +884,10 @@ class LLMRouter:
                            When set, the adapter uses this model instead of the
                            integration's default (e.g. "gemini-3.1-pro-preview").
         """
+        cache_key = f"{self.company_id}:{task_type}:{model_override or ''}"
+        if cache_key in self._adapter_cache:
+            return self._adapter_cache[cache_key]
+
         from src.config.service import ConfigService
         config_svc = ConfigService(self.db)
         integration, api_key = await config_svc.resolve_model_for_task(
@@ -852,12 +913,14 @@ class LLMRouter:
                 f"LLMRouter: Model override '{model_override}' "
                 f"(default was '{integration.model_name}')"
             )
-        return _get_adapter(
+        adapter = _get_adapter(
             provider_name=integration.provider_name,
             api_key=api_key,
             model_name=effective_model,
             service_metadata=integration.service_metadata or {},
         )
+        self._adapter_cache[cache_key] = adapter
+        return adapter
 
     async def call_llm(
         self,

@@ -439,7 +439,7 @@ async def upload_avatar(
     if file.size and file.size > 5 * 1024 * 1024:
         raise HTTPException(400, "Avatar must be under 5 MB")
 
-    avatar_dir = Path("/home/rahul/workspace/dev-hb-codebase/hb-proto-3/backend/artifact/user-uploads/avatars")
+    avatar_dir = Path(__file__).resolve().parents[2] / "artifact" / "user-uploads" / "avatars"
     avatar_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{_uuid.uuid4().hex[:12]}.{ext}"

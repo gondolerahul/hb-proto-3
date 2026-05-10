@@ -10,6 +10,27 @@ import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus, EntityType, LLMInteractionLog, ToolInteractionLog } from '@/types';
 import './ExecutionDetail.css';
 
+// Authenticated PDF download — fetches via API with JWT token
+const downloadPdfFile = async (pdfUrl: string, filename?: string) => {
+    try {
+        const response = await fetch(pdfUrl, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}` },
+        });
+        if (!response.ok) throw new Error('Download failed');
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'report.pdf';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    } catch (err) {
+        console.error('PDF download failed:', err);
+    }
+};
+
 // ─── Step Result from result_data.steps ─────────────────────────────────────
 interface StepResult {
     step: string;
@@ -199,6 +220,9 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
             case RunStatus.COMPLETED: return 'var(--color-success)';
             case RunStatus.FAILED: return 'var(--color-error)';
             case RunStatus.RUNNING: return 'var(--color-info)';
+            case 'PAUSED' as RunStatus: return 'var(--color-warning, #f59e0b)';
+            case 'RESUMING' as RunStatus: return 'var(--color-info)';
+            case 'PARTIAL_COMPLETE' as RunStatus: return 'var(--color-success)';
             default: return 'var(--color-text-tertiary)';
         }
     };
@@ -398,17 +422,13 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
                                 <code style={{ flex: 1, padding: '0.5rem', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
                                     {pdfPath?.split('/').pop() || 'report.pdf'}
                                 </code>
-                                <a
-                                    href={pdfUrl}
-                                    download
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{ textDecoration: 'none' }}
+                                <JellyButton
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => downloadPdfFile(pdfUrl!, pdfPath?.split('/').pop() || 'report.pdf')}
                                 >
-                                    <JellyButton variant="secondary" size="sm">
-                                        <Download size={16} /> Download PDF
-                                    </JellyButton>
-                                </a>
+                                    <Download size={16} /> Download PDF
+                                </JellyButton>
                             </div>
                         </div>
                     )}
@@ -466,7 +486,7 @@ export const ExecutionDetail: React.FC = () => {
     // Set up polling interval only once
     useEffect(() => {
         const interval = setInterval(() => {
-            if (runRef.current?.status === RunStatus.RUNNING || runRef.current?.status === RunStatus.PENDING) {
+            if (runRef.current?.status === RunStatus.RUNNING || runRef.current?.status === RunStatus.PENDING || (runRef.current?.status as string) === 'PAUSED' || (runRef.current?.status as string) === 'RESUMING') {
                 fetchRun();
             }
         }, 3000);
@@ -675,20 +695,17 @@ export const ExecutionDetail: React.FC = () => {
                     )}
 
                     {globalPdfUrl && (
-                        <a
-                            href={globalPdfUrl}
-                            download
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="no-underline"
+                        <JellyButton
+                            variant="primary"
+                            size="md"
+                            className="flex items-center gap-2"
+                            onClick={() => downloadPdfFile(globalPdfUrl!, globalPdfPath?.split('/').pop() || 'report.pdf')}
                         >
-                            <JellyButton variant="primary" size="md" className="flex items-center gap-2">
-                                <Download size={18} />
-                                Download PDF Report
-                            </JellyButton>
-                        </a>
+                            <Download size={18} />
+                            Download PDF Report
+                        </JellyButton>
                     )}
-                    <div className={`badge ${run.status === RunStatus.COMPLETED ? 'badge-ready' : run.status === RunStatus.FAILED ? 'badge-failed' : 'bg-blue-500/20 text-blue-400'} px-6 py-3 text-sm font-bold tracking-widest`}>
+                    <div className={`badge ${run.status === RunStatus.COMPLETED ? 'badge-ready' : run.status === RunStatus.FAILED ? 'badge-failed' : (run.status as string) === 'PAUSED' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'} px-6 py-3 text-sm font-bold tracking-widest`}>
                         {run.status.toUpperCase()}
                     </div>
                 </div>

@@ -6,8 +6,13 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from src.ai.tools import ToolRegistry
+from src.ai.tools.base import Tool as _BaseTool, ToolParams as _BaseToolParams
 import re
 import json
+
+# Phase 6: Cache base references for introspection in execute_from_function_calls
+_base_run_typed = _BaseTool.run_typed
+_base_tool_params = _BaseToolParams
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +140,31 @@ class ToolExecutor:
             if tool:
                 _start = datetime.now(timezone.utc)
                 try:
-                    # Build raw input string the tool expects
+                    # Phase 6: Prefer run_typed() if the tool has overridden it
+                    _has_typed = type(tool).run_typed is not _base_run_typed
+                    if _has_typed and isinstance(tool_args, dict):
+                        # Discover params class from run_typed type hints
+                        import inspect
+                        hints = inspect.get_type_hints(tool.run_typed)
+                        params_cls = hints.get("params")
+                        if params_cls and params_cls is not _base_tool_params:
+                            clean_args = {k: v for k, v in tool_args.items()
+                                          if k not in ("company_id", "user_id")}
+                            typed_params = params_cls(**clean_args)
+                            typed_result = await tool.run_typed(typed_params)
+                            _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
+                            call_counts[tool_name] = call_counts.get(tool_name, 0) + 1
+                            results.append(ToolResult(
+                                tool=tool_name,
+                                args=tool_args,
+                                output=typed_result.output,
+                                success=typed_result.success,
+                                latency_ms=_latency,
+                                error=typed_result.error_message,
+                            ))
+                            continue
+
+                    # Legacy path: build raw input string
                     if isinstance(tool_args, dict) and "input" in tool_args:
                         raw_input = tool_args["input"]
                     elif isinstance(tool_args, str):

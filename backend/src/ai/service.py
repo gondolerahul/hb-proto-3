@@ -50,6 +50,9 @@ class AIService:
         from sqlalchemy.orm import selectinload
         query = select(HierarchicalEntity)
         
+        # ── Always exclude soft-deleted entities from listings ──
+        query = query.where(HierarchicalEntity.status != "DELETED")
+        
         # Templates are public (company_id=NULL) — visible to everyone
         if is_template is True:
             query = query.where(HierarchicalEntity.is_template == True)
@@ -74,7 +77,10 @@ class AIService:
     async def get_entity(self, entity_id: UUID, company_id: UUID, user_role: str = None) -> HierarchicalEntity:
         from sqlalchemy.orm import selectinload
         query = select(HierarchicalEntity).options(selectinload(HierarchicalEntity.execution_runs))
-        query = query.where(HierarchicalEntity.id == entity_id)
+        query = query.where(
+            HierarchicalEntity.id == entity_id,
+            HierarchicalEntity.status != "DELETED",  # Hide soft-deleted entities
+        )
         
         # Platform administrators can view any entity; templates are public
         if user_role != "app_admin":
@@ -130,143 +136,70 @@ class AIService:
     async def delete_entity(self, entity_id: UUID, company_id: UUID):
         entity = await self.get_entity(entity_id, company_id)
         
-        from sqlalchemy import delete, update
+        from sqlalchemy import update
         from src.ai.models import UsageLog, EpisodicMemory
         
         # ── Collect the full entity tree (this entity + all descendants) ──
         # A PROCESS entity may have child entities (agents, skills) that
-        # must also be deleted to avoid orphans.
+        # must also be soft-deleted to avoid orphans.
         async def _collect_entity_tree(eid: UUID, visited: set[UUID]) -> list[UUID]:
             if eid in visited:
                 return []
             visited.add(eid)
             child_result = await self.db.execute(
                 select(HierarchicalEntity.id).where(
-                    HierarchicalEntity.parent_id == eid
+                    HierarchicalEntity.parent_id == eid,
+                    HierarchicalEntity.status != "DELETED",  # Skip already-deleted children
                 )
             )
             child_ids = [r[0] for r in child_result.fetchall()]
+            
+            # Also check hierarchy.children JSON for referenced entities
+            entity_result = await self.db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.id == eid)
+            )
+            entity_obj = entity_result.scalar_one_or_none()
+            if entity_obj and entity_obj.hierarchy and isinstance(entity_obj.hierarchy, dict):
+                for child_ref in entity_obj.hierarchy.get("children", []):
+                    if isinstance(child_ref, dict):
+                        child_id_str = child_ref.get("child_id")
+                        if child_id_str:
+                            try:
+                                child_uuid = UUID(str(child_id_str))
+                                if child_uuid not in visited:
+                                    child_ids.append(child_uuid)
+                            except (ValueError, AttributeError):
+                                continue
+            
             descendants = []
             for cid in child_ids:
                 descendants.extend(await _collect_entity_tree(cid, visited))
             return [eid] + descendants
 
         all_entity_ids = await _collect_entity_tree(entity_id, set())
-        logger.info(f"delete_entity: deleting {len(all_entity_ids)} entities (root + descendants)")
+        logger.info(f"delete_entity: soft-deleting {len(all_entity_ids)} entities (root + descendants)")
 
-        # ── Collect ALL execution run IDs across all entities in the tree ──
-        runs_result = await self.db.execute(
-            select(ExecutionRun.id).where(ExecutionRun.entity_id.in_(all_entity_ids))
-        )
-        direct_run_ids = [r[0] for r in runs_result.fetchall()]
-        
-        # Also collect child runs (runs spawned by parent runs)
-        all_run_ids = list(direct_run_ids)
-        if direct_run_ids:
-            child_runs_result = await self.db.execute(
-                select(ExecutionRun.id).where(ExecutionRun.parent_run_id.in_(direct_run_ids))
-            )
-            child_run_ids = [r[0] for r in child_runs_result.fetchall()]
-            all_run_ids.extend(child_run_ids)
-        
-        if all_run_ids:
-            # ── Delete records that reference execution_runs ──
-            
-            # 1. LLM interaction logs
-            await self.db.execute(
-                delete(LLMInteractionLog).where(LLMInteractionLog.run_id.in_(all_run_ids))
-            )
-            # 2. Tool interaction logs
-            await self.db.execute(
-                delete(ToolInteractionLog).where(ToolInteractionLog.run_id.in_(all_run_ids))
-            )
-            # 3. Human approvals
-            await self.db.execute(
-                delete(HumanApproval).where(HumanApproval.run_id.in_(all_run_ids))
-            )
-            # 4. Usage logs
-            await self.db.execute(
-                delete(UsageLog).where(UsageLog.run_id.in_(all_run_ids))
-            )
-            # 5. Episodic memories (reference both entity_id and run_id)
-            await self.db.execute(
-                delete(EpisodicMemory).where(EpisodicMemory.run_id.in_(all_run_ids))
-            )
-            # 6. CORTEX nodes referencing execution runs
-            try:
-                from src.ai.cortex_models import CortexNode
-                await self.db.execute(
-                    update(CortexNode)
-                    .where(CortexNode.execution_run_id.in_(all_run_ids))
-                    .values(execution_run_id=None)
-                )
-            except Exception as e:
-                logger.debug(f"CortexNode run_id cleanup skipped: {e}")
-            # 7. Artifacts referencing execution runs
-            try:
-                from src.ai.artifact_models import Artifact
-                await self.db.execute(
-                    update(Artifact)
-                    .where(Artifact.run_id.in_(all_run_ids))
-                    .values(run_id=None)
-                )
-            except Exception as e:
-                logger.debug(f"Artifact run_id cleanup skipped: {e}")
-            
-            # ── Delete execution runs (children first, then parents) ──
-            if len(all_run_ids) > len(direct_run_ids):
-                child_only = [r for r in all_run_ids if r not in set(direct_run_ids)]
-                await self.db.execute(
-                    delete(ExecutionRun).where(ExecutionRun.id.in_(child_only))
-                )
-            await self.db.execute(
-                delete(ExecutionRun).where(ExecutionRun.id.in_(direct_run_ids))
-            )
-
-        # ── Delete records that reference hierarchical_entities directly ──
-        
-        # Episodic memories (entity_id FK — catch any not already deleted via run_id)
+        # ── SOFT-DELETE: Mark all entities as DELETED ──
+        # The entity rows stay in the database so that execution_runs,
+        # usage_logs, llm_interaction_logs, and all billing-critical data
+        # retain valid FK references.
+        now = datetime.utcnow()
         await self.db.execute(
-            delete(EpisodicMemory).where(EpisodicMemory.entity_id.in_(all_entity_ids))
+            update(HierarchicalEntity)
+            .where(HierarchicalEntity.id.in_(all_entity_ids))
+            .values(
+                status="DELETED",
+                deleted_at=now,
+                updated_at=now,
+            )
         )
-        
-        # CORTEX trees (entity_id FK) — cascade deletes cortex_nodes via relationship
-        try:
-            from src.ai.cortex_models import CortexTree
-            await self.db.execute(
-                delete(CortexTree).where(CortexTree.entity_id.in_(all_entity_ids))
-            )
-        except Exception as e:
-            logger.debug(f"CortexTree cleanup skipped: {e}")
-        
-        # Artifacts (agent_id / campaign_id FK) — nullify, don't delete files
-        try:
-            from src.ai.artifact_models import Artifact
-            await self.db.execute(
-                update(Artifact)
-                .where(Artifact.agent_id.in_(all_entity_ids))
-                .values(agent_id=None)
-            )
-            await self.db.execute(
-                update(Artifact)
-                .where(Artifact.campaign_id.in_(all_entity_ids))
-                .values(campaign_id=None)
-            )
-        except Exception as e:
-            logger.debug(f"Artifact entity ref cleanup skipped: {e}")
-        
-        # Call logs (agent_id FK) — nullify
-        try:
-            from src.ai.artifact_models import CallLog
-            await self.db.execute(
-                update(CallLog)
-                .where(CallLog.agent_id.in_(all_entity_ids))
-                .values(agent_id=None)
-            )
-        except Exception as e:
-            logger.debug(f"CallLog cleanup skipped: {e}")
-        
+
+        # ── Sever live operational links (nullable FKs only) ──
+        # These are references from operational tables that should no longer
+        # point to a deleted entity, but where the FK is nullable.
+
         # Documents — unlink from entity
+        from src.ai.models import Document
         await self.db.execute(
             update(Document).where(Document.entity_id.in_(all_entity_ids)).values(entity_id=None)
         )
@@ -278,18 +211,47 @@ class AIService:
             .values(template_source_id=None)
         )
         
-        # ── Delete entities (children first, then root) ──
-        # Reverse order: deepest descendants first
-        for eid in reversed(all_entity_ids):
-            e_result = await self.db.execute(
-                select(HierarchicalEntity).where(HierarchicalEntity.id == eid)
+        # Artifacts — nullify agent/campaign references
+        try:
+            from src.ai.artifact_models import Artifact, CallLog
+            await self.db.execute(
+                update(Artifact)
+                .where(Artifact.agent_id.in_(all_entity_ids))
+                .values(agent_id=None)
             )
-            e_obj = e_result.scalar_one_or_none()
-            if e_obj:
-                await self.db.delete(e_obj)
+            await self.db.execute(
+                update(Artifact)
+                .where(Artifact.campaign_id.in_(all_entity_ids))
+                .values(campaign_id=None)
+            )
+            # Call logs — nullify agent reference
+            await self.db.execute(
+                update(CallLog)
+                .where(CallLog.agent_id.in_(all_entity_ids))
+                .values(agent_id=None)
+            )
+        except Exception as e:
+            logger.debug(f"Artifact/CallLog cleanup skipped: {e}")
         
+        # Phone numbers — unassign from deleted agent, revert to 'claimed'
+        try:
+            from src.voice.phone_pool_models import PhoneNumber
+            await self.db.execute(
+                update(PhoneNumber)
+                .where(PhoneNumber.agent_id.in_(all_entity_ids))
+                .values(agent_id=None, status="claimed", assigned_at=None)
+            )
+        except Exception as e:
+            logger.debug(f"PhoneNumber cleanup skipped: {e}")
+
+        # ── Billing-critical data is INTENTIONALLY preserved ──
+        # execution_runs, usage_logs, llm_interaction_logs, tool_interaction_logs,
+        # episodic_memories, cortex_trees, voice_sessions, whatsapp_sessions,
+        # conversation_history, campaigns, and lead_queue all retain valid FK
+        # references to the soft-deleted entity rows.
+
         await self.db.commit()
-        logger.info(f"delete_entity: successfully deleted entity {entity_id} and {len(all_entity_ids)-1} children")
+        logger.info(f"delete_entity: successfully soft-deleted entity {entity_id} and {len(all_entity_ids)-1} children")
 
     # Execution
     async def trigger_execution(self, execution_in: ExecutionRunCreate, company_id: UUID, user_id: UUID = None) -> ExecutionRun:
@@ -659,7 +621,8 @@ class AIService:
         from sqlalchemy import text
         
         # Get query embedding via Vertex AI
-        model_name = "gemini-embedding-004"
+        from src.ai.constants import EMBEDDING_MODEL
+        model_name = EMBEDDING_MODEL
         
         from google import genai
         from google.genai import types
@@ -796,27 +759,8 @@ class AIService:
         # 3. Clone fields helper
         old_to_new_id: dict[UUID, UUID] = {}
 
-        def _clone_fields(src: HierarchicalEntity) -> dict:
-            import copy
-            return {
-                "name": src.name,
-                "display_name": src.display_name,
-                "description": src.description,
-                "goal": src.goal,
-                "type": src.type,
-                "version": src.version,
-                "status": src.status,
-                "tags": copy.deepcopy(src.tags) if src.tags else src.tags,
-                "identity": copy.deepcopy(src.identity) if src.identity else src.identity,
-                "hierarchy": copy.deepcopy(src.hierarchy) if src.hierarchy else src.hierarchy,
-                "logic_gate": copy.deepcopy(src.logic_gate) if src.logic_gate else src.logic_gate,
-                "planning": copy.deepcopy(src.planning) if src.planning else src.planning,
-                "capabilities": copy.deepcopy(src.capabilities) if src.capabilities else src.capabilities,
-                "governance": copy.deepcopy(src.governance) if src.governance else src.governance,
-                "io_contract": copy.deepcopy(src.io_contract) if src.io_contract else src.io_contract,
-                "observability": copy.deepcopy(src.observability) if src.observability else src.observability,
-                "metadata_extensions": copy.deepcopy(src.metadata_extensions) if src.metadata_extensions else src.metadata_extensions,
-            }
+        from src.ai.entity_clone_helpers import clone_entity_fields, remap_entity_refs
+        _clone_fields = clone_entity_fields
 
         # 4. Clone root as template
         root_template = HierarchicalEntity(
@@ -847,48 +791,8 @@ class AIService:
             old_to_new_id[child.id] = clone.id
 
         # 6. Remap internal entity_id references (same logic as clone_template)
-        def _remap_uuid(val: str | None) -> str | None:
-            if not val:
-                return val
-            try:
-                old_uuid = UUID(str(val))
-            except (ValueError, AttributeError):
-                return val
-            new_uuid = old_to_new_id.get(old_uuid)
-            return str(new_uuid) if new_uuid else val
-
-        def _remap_entity_refs(entity: HierarchicalEntity) -> bool:
-            modified = False
-            planning = entity.planning
-            if planning and isinstance(planning, dict):
-                static_plan = planning.get("static_plan")
-                if static_plan and isinstance(static_plan, dict):
-                    for step in static_plan.get("steps", []):
-                        target = step.get("target") if isinstance(step, dict) else None
-                        if target and isinstance(target, dict):
-                            old_eid = target.get("entity_id")
-                            if old_eid:
-                                new_eid = _remap_uuid(old_eid)
-                                if new_eid != old_eid:
-                                    target["entity_id"] = new_eid
-                                    modified = True
-                    if modified:
-                        entity.planning = {**planning}
-            hierarchy = entity.hierarchy
-            if hierarchy and isinstance(hierarchy, dict):
-                hierarchy_modified = False
-                for child_ref in hierarchy.get("children", []):
-                    if isinstance(child_ref, dict):
-                        old_cid = child_ref.get("child_id")
-                        if old_cid:
-                            new_cid = _remap_uuid(old_cid)
-                            if new_cid != old_cid:
-                                child_ref["child_id"] = new_cid
-                                hierarchy_modified = True
-                if hierarchy_modified:
-                    entity.hierarchy = {**hierarchy}
-                    modified = True
-            return modified
+        def _remap_entity_refs_wrapper(entity: HierarchicalEntity) -> bool:
+            return remap_entity_refs(entity, old_to_new_id)
 
         all_cloned = [root_template] + [
             (await self.db.execute(
@@ -897,7 +801,7 @@ class AIService:
             for new_id in list(old_to_new_id.values())[1:]
         ]
         for cloned_entity in all_cloned:
-            if _remap_entity_refs(cloned_entity):
+            if _remap_entity_refs_wrapper(cloned_entity):
                 self.db.add(cloned_entity)
 
         await self.db.commit()
@@ -1007,34 +911,8 @@ class AIService:
         # 3. Clone root template
         old_to_new_id: dict[UUID, UUID] = {}
 
-        def _clone_fields(src: HierarchicalEntity) -> dict:
-            """Extract clonable fields from a template entity.
-            
-            IMPORTANT: JSON/dict fields must be deep-copied to prevent
-            shared references between the template and clone. SQLAlchemy
-            returns the same dict object for JSON columns, so without
-            deep-copy, the remap step would mutate template data.
-            """
-            import copy
-            return {
-                "name": src.name,
-                "display_name": src.display_name,
-                "description": src.description,
-                "goal": src.goal,
-                "type": src.type,
-                "version": src.version,
-                "status": src.status,
-                "tags": copy.deepcopy(src.tags) if src.tags else src.tags,
-                "identity": copy.deepcopy(src.identity) if src.identity else src.identity,
-                "hierarchy": copy.deepcopy(src.hierarchy) if src.hierarchy else src.hierarchy,
-                "logic_gate": copy.deepcopy(src.logic_gate) if src.logic_gate else src.logic_gate,
-                "planning": copy.deepcopy(src.planning) if src.planning else src.planning,
-                "capabilities": copy.deepcopy(src.capabilities) if src.capabilities else src.capabilities,
-                "governance": copy.deepcopy(src.governance) if src.governance else src.governance,
-                "io_contract": copy.deepcopy(src.io_contract) if src.io_contract else src.io_contract,
-                "observability": copy.deepcopy(src.observability) if src.observability else src.observability,
-                "metadata_extensions": copy.deepcopy(src.metadata_extensions) if src.metadata_extensions else src.metadata_extensions,
-            }
+        from src.ai.entity_clone_helpers import clone_entity_fields, remap_entity_refs
+        _clone_fields = clone_entity_fields
 
         root_clone = HierarchicalEntity(
             **_clone_fields(template),
@@ -1067,71 +945,12 @@ class AIService:
             old_to_new_id[child.id] = clone.id
 
         # 5. Post-clone: remap internal entity_id references using old_to_new_id
-        import copy as _copy
         from sqlalchemy.orm.attributes import flag_modified
 
         logger.info(
             f"clone_template: old_to_new_id mapping ({len(old_to_new_id)} entries): "
             + ", ".join(f"{str(k)[:8]}→{str(v)[:8]}" for k, v in old_to_new_id.items())
         )
-
-        def _remap_uuid(val: str | None) -> str | None:
-            """If val is a UUID string that exists in old_to_new_id, return the new UUID."""
-            if not val:
-                return val
-            try:
-                old_uuid = UUID(str(val))
-            except (ValueError, AttributeError):
-                return val
-            new_uuid = old_to_new_id.get(old_uuid)
-            if new_uuid:
-                logger.debug(f"  remap: {str(old_uuid)[:8]}.. → {str(new_uuid)[:8]}..")
-            return str(new_uuid) if new_uuid else val
-
-        def _remap_entity_refs(entity: HierarchicalEntity) -> bool:
-            """Remap entity_id references inside planning and hierarchy JSON. Returns True if modified."""
-            modified = False
-
-            # Remap planning.static_plan.steps[].target.entity_id
-            planning = _copy.deepcopy(entity.planning) if entity.planning else None
-            if planning and isinstance(planning, dict):
-                static_plan = planning.get("static_plan")
-                if static_plan and isinstance(static_plan, dict):
-                    steps = static_plan.get("steps", [])
-                    for step in steps:
-                        target = step.get("target") if isinstance(step, dict) else None
-                        if target and isinstance(target, dict):
-                            old_eid = target.get("entity_id")
-                            if old_eid:
-                                new_eid = _remap_uuid(old_eid)
-                                if new_eid != old_eid:
-                                    target["entity_id"] = new_eid
-                                    modified = True
-                                    logger.info(f"  Remapped step entity_id: {old_eid[:12]}.. → {new_eid[:12]}..")
-                    if modified:
-                        entity.planning = planning
-                        flag_modified(entity, "planning")
-
-            # Remap hierarchy.children[].child_id
-            hierarchy = _copy.deepcopy(entity.hierarchy) if entity.hierarchy else None
-            if hierarchy and isinstance(hierarchy, dict):
-                children = hierarchy.get("children", [])
-                hierarchy_modified = False
-                for child_ref in children:
-                    if isinstance(child_ref, dict):
-                        old_cid = child_ref.get("child_id")
-                        if old_cid:
-                            new_cid = _remap_uuid(old_cid)
-                            if new_cid != old_cid:
-                                child_ref["child_id"] = new_cid
-                                hierarchy_modified = True
-                                logger.info(f"  Remapped hierarchy child_id: {old_cid[:12]}.. → {new_cid[:12]}..")
-                if hierarchy_modified:
-                    entity.hierarchy = hierarchy
-                    flag_modified(entity, "hierarchy")
-                    modified = True
-
-            return modified
 
         # Apply remapping to every cloned entity
         # We must reload each clone from DB to get the flushed state,
@@ -1144,12 +963,14 @@ class AIService:
             all_cloned.append(result.scalar_one())
 
         for cloned_entity in all_cloned:
-            was_modified = _remap_entity_refs(cloned_entity)
+            was_modified = remap_entity_refs(cloned_entity, old_to_new_id)
             logger.info(
                 f"clone_template: remap '{cloned_entity.name}' (id={str(cloned_entity.id)[:8]}..): "
                 f"modified={was_modified}"
             )
             if was_modified:
+                flag_modified(cloned_entity, "planning")
+                flag_modified(cloned_entity, "hierarchy")
                 self.db.add(cloned_entity)
 
         await self.db.commit()
