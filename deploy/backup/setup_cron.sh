@@ -43,7 +43,9 @@ echo ""
 echo "▸ Registering cron job …"
 
 # Remove any existing HireBuddha backup cron entries, then add the new one
-( crontab -l 2>/dev/null | grep -v "db_backup.sh" | grep -v "HireBuddha monthly DB backup" ; echo "${CRON_COMMENT}" ; echo "${CRON_ENTRY}" ) | crontab -
+EXISTING_CRONTAB="$(crontab -l 2>/dev/null || true)"
+FILTERED="$(echo "${EXISTING_CRONTAB}" | grep -v "db_backup.sh" | grep -v "HireBuddha monthly DB backup" || true)"
+( echo "${FILTERED}" ; echo "${CRON_COMMENT}" ; echo "${CRON_ENTRY}" ) | crontab -
 
 echo "✓ Cron job installed:"
 echo ""
