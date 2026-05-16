@@ -46,6 +46,7 @@ _BUILTIN_CATEGORIES = {
     "headless_browser": "browser",
     "docx_tool": "document",
     "pptx_tool": "document",
+    "document_save": "document",
 }
 
 

@@ -86,6 +86,43 @@ class MetaEntityCreatorTool(Tool):
 
         mode = params.get("mode", "CREATE").upper()
 
+        # ── Tier 3 Runtime Creation Governance ─────────────────────────
+        # When an entity creates children at runtime (Tier 3 self-modification),
+        # enforce additional governance beyond the dedicated Meta-Agent.
+        is_meta_agent = context.get("__is_meta_agent__", False)
+        if not is_meta_agent:
+            # Check runtime creation count limit
+            runtime_count_key = f"__meta_runtime_creations_{company_id}__"
+            current_count = context.get(runtime_count_key, 0)
+            max_creations = context.get("__meta_max_runtime_creations__", 3)
+            if current_count >= max_creations:
+                return json.dumps({
+                    "success": False,
+                    "error": (
+                        f"Runtime entity creation limit reached: {current_count}/{max_creations} "
+                        f"entities created in this execution. This limit prevents unbounded "
+                        f"agent proliferation during a single run."
+                    ),
+                    "gate": "runtime_creation_limit",
+                })
+            # Increment counter in context
+            context[runtime_count_key] = current_count + 1
+
+            logger.info(
+                f"Tier 3: Runtime entity creation by non-Meta-Agent "
+                f"(count={current_count + 1}/{max_creations}, mode={mode})"
+            )
+
+            # Tag the payload with runtime provenance
+            if mode == "CREATE":
+                payload = params.get("entity_payload", {})
+                metadata = payload.get("metadata_extensions", {}) or {}
+                metadata["runtime_created"] = True
+                metadata["created_by_entity"] = context.get("__entity_name__", "unknown")
+                payload["metadata_extensions"] = metadata
+                params["entity_payload"] = payload
+        # ───────────────────────────────────────────────────────────────
+
         try:
             from src.common.database import AsyncSessionLocal
 

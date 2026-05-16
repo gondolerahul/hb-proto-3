@@ -62,22 +62,51 @@ async def list_entities(
         effective_company_id = company_id
 
     service = AIService(db)
-    entities = await service.get_entities(
+    entities = list(await service.get_entities(
         effective_company_id, type, current_user.role,
         is_template=False, status_filter=status,
-    )
+    ))
+
+    # For partner_admin/partner_user, also include entities from child tenants
+    if current_user.role in ("partner_admin", "partner_user"):
+        from src.auth.models import Company
+        child_result = await db.execute(
+            select(Company.id).where(Company.parent_id == current_user.company_id)
+        )
+        seen_ids = {e.id for e in entities}
+        for (child_id,) in child_result.fetchall():
+            child_entities = await service.get_entities(
+                child_id, type, "app_admin",
+                is_template=False, status_filter=status,
+            )
+            for ce in child_entities:
+                if ce.id not in seen_ids:
+                    entities.append(ce)
+                    seen_ids.add(ce.id)
 
     # Client-requested voice filter: only return agents with voice config
     if voice_enabled:
         entities = [
             e for e in entities
-            if e.type.value == "AGENT"
-            and e.identity
-            and isinstance(e.identity, dict)
-            and e.identity.get("voice")
+            if (getattr(e.type, 'value', e.type) == "AGENT")
+            and _has_voice_config(e.identity)
         ]
 
     return entities
+
+
+def _has_voice_config(identity) -> bool:
+    """Check if an entity's identity JSON contains voice configuration.
+    Handles both direct format {"voice": {...}} and
+    wrapped format {"persona": {"voice": {...}}}."""
+    if not identity or not isinstance(identity, dict):
+        return False
+    if identity.get("voice"):
+        return True
+    persona = identity.get("persona")
+    if isinstance(persona, dict) and persona.get("voice"):
+        return True
+    return False
 
 @router.get("/entities/{entity_id}", response_model=HierarchicalEntityResponse)
 async def get_entity(
@@ -96,7 +125,7 @@ async def update_entity(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.update_entity(entity_id, entity_in, current_user.company_id)
+    return await service.update_entity(entity_id, entity_in, current_user.company_id, user_role=current_user.role)
 
 @router.delete("/entities/{entity_id}")
 async def delete_entity(
@@ -528,7 +557,7 @@ async def update_template(
     current_user: User = Depends(app_admin_only)
 ):
     service = AIService(db)
-    return await service.update_entity(template_id, entity_in, current_user.company_id)
+    return await service.update_entity(template_id, entity_in, current_user.company_id, user_role=current_user.role)
 
 @router.delete("/templates/{template_id}")
 async def delete_template(

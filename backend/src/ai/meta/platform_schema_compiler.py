@@ -110,6 +110,87 @@ class PlatformSchemaCompiler:
         """Return cached schema without recompilation."""
         return self._cached_schema
 
+    async def compile_summary(self) -> str:
+        """Compile a compact platform summary (~2-4K tokens) for prompt injection.
+
+        This is the Tier 1 meta-cognition payload. It gives any agent enough
+        knowledge to make intelligent dynamic planning and tool selection
+        decisions without the full schema overhead.
+
+        Sections:
+          1. Available tools (name + 1-line description + category)
+          2. Step type definitions (when to use each)
+          3. Entity type hierarchy (composition rules)
+          4. Execution modes and reasoning strategies
+          5. Key behavioral rules (top 8 most critical)
+          6. Memory modes
+        """
+        # Use cached full schema or compile fresh
+        schema = self._cached_schema
+        if not schema:
+            schema = await self.compile(include_tenant_tools=True)
+
+        lines = [
+            "# HireBuddha Platform — Capability Manifest",
+            "",
+        ]
+
+        # 1. Tools
+        tools = schema.get("tools", [])
+        if tools:
+            lines.append("## Available Tools")
+            for t in tools:
+                cat = t.get("category", "utility")
+                desc = (t.get("description") or "No description")[:140]
+                lines.append(f"- **{t['tool_id']}** [{cat}]: {desc}")
+            lines.append("")
+
+        # 2. Step Types
+        lines.append("## Step Types (use in planning)")
+        for st in schema.get("step_types", []):
+            lines.append(f"- **{st['type']}**: {st['description'][:160]}")
+        lines.append("")
+
+        # 3. Entity Type Hierarchy
+        lines.append("## Entity Types (composition hierarchy)")
+        for et in schema.get("entity_types", []):
+            children = "Can have children" if et.get("can_have_children") else "Leaf node"
+            lines.append(f"- **{et['type']}**: {et['description'][:120]} ({children})")
+        lines.append("")
+
+        # 4. Reasoning & Execution Modes
+        lines.append("## Reasoning Modes")
+        for rm in schema.get("reasoning_modes", []):
+            lines.append(f"- **{rm['mode']}**: {rm['description']}")
+        lines.append("")
+        lines.append("## Execution Modes")
+        for em in schema.get("execution_modes", []):
+            lines.append(f"- **{em['mode']}**: {em['description'][:120]}")
+        lines.append("")
+
+        # 5. Key Behavioral Rules (top 8)
+        annotations = schema.get("behavioral_annotations", [])
+        if annotations:
+            lines.append("## Critical Platform Rules")
+            for ann in annotations[:8]:
+                lines.append(f"- **{ann['rule']}**: {ann['description'][:180]}")
+            lines.append("")
+
+        # 6. Memory Modes
+        for mm in schema.get("memory_modes", []):
+            lines.append(f"- **{mm['mode']}** memory: {mm['description'][:140]}")
+        lines.append("")
+
+        # 7. Composition Rules
+        comp = schema.get("composition_rules", [])
+        if comp:
+            lines.append("## Composition Rules")
+            for rule in comp[:5]:
+                lines.append(f"- {rule[:180]}")
+            lines.append("")
+
+        return "\n".join(lines)
+
     # ------------------------------------------------------------------
     # Entity Types
     # ------------------------------------------------------------------
@@ -581,4 +662,171 @@ async def compile_platform_schema(
     """One-shot schema compilation."""
     compiler = PlatformSchemaCompiler(db=db, company_id=company_id)
     return await compiler.compile()
+
+
+# ---------------------------------------------------------------------------
+# Tier 1: Platform Awareness — Summarized manifest for system prompt injection
+# ---------------------------------------------------------------------------
+
+_MANIFEST_CACHE_TTL = 300  # 5 minutes
+
+async def get_platform_summary(
+    db: AsyncSession,
+    company_id: UUID,
+    redis=None,
+) -> str:
+    """Return a compact (~2-4K token) platform summary for prompt injection.
+
+    Uses Redis cache with 5-minute TTL per tenant. Falls back to in-memory
+    compilation if Redis is unavailable.
+
+    This is the primary entry point for Tier 1 meta-cognition. Injected into:
+      - build_sandwich_prompt() as Layer 3.5: Platform Awareness
+      - PlannerService._generate_dynamic_plan() system prompt
+    """
+    cache_key = f"meta:manifest:{company_id}"
+
+    # Try Redis cache first
+    if redis:
+        try:
+            cached = await redis.get(cache_key)
+            if cached:
+                return cached.decode("utf-8") if isinstance(cached, bytes) else cached
+        except Exception as e:
+            logger.debug(f"Redis cache miss for manifest: {e}")
+
+    # Compile fresh summary
+    compiler = PlatformSchemaCompiler(db=db, company_id=company_id)
+    summary = await compiler.compile_summary()
+
+    # Cache in Redis
+    if redis:
+        try:
+            await redis.set(cache_key, summary, ex=_MANIFEST_CACHE_TTL)
+        except Exception as e:
+            logger.debug(f"Redis cache write failed for manifest: {e}")
+
+    return summary
+
+
+async def describe_entity_children(
+    db: AsyncSession,
+    entity_id: UUID,
+    company_id: UUID,
+) -> str:
+    """Describe an entity's children for injection into the dynamic planner.
+
+    Returns a markdown summary of all child entities referenced in the
+    entity's hierarchy.children[]. Used by PlannerService to give the
+    dynamic planner awareness of available child agents.
+    """
+    from src.ai.models import HierarchicalEntity
+
+    result = await db.execute(
+        select(HierarchicalEntity).where(
+            HierarchicalEntity.id == entity_id,
+            HierarchicalEntity.company_id == company_id,
+        )
+    )
+    entity = result.scalar_one_or_none()
+    if not entity:
+        return ""
+
+    hierarchy = entity.hierarchy or {}
+    children_refs = hierarchy.get("children", [])
+    if not children_refs:
+        return ""
+
+    child_ids = [c.get("child_id") for c in children_refs if c.get("child_id")]
+    if not child_ids:
+        return ""
+
+    # Load all children in one query
+    from sqlalchemy import cast, String
+    children_result = await db.execute(
+        select(HierarchicalEntity).where(
+            HierarchicalEntity.company_id == company_id,
+            HierarchicalEntity.id.in_([UUID(cid) if isinstance(cid, str) else cid for cid in child_ids]),
+        )
+    )
+    children = children_result.scalars().all()
+
+    if not children:
+        return ""
+
+    lines = ["## Available Child Entities"]
+    for child in children:
+        identity = child.identity or {}
+        role = identity.get("role") or identity.get("persona", {}).get("role", "")
+        tools = child.capabilities.get("tools", []) if child.capabilities else []
+        tool_names = [t.get("tool_id", "") for t in tools]
+        goal = child.goal or child.description or "No description"
+
+        lines.append(f"### {child.name} ({child.type})")
+        if role:
+            lines.append(f"- **Role:** {role}")
+        lines.append(f"- **Goal:** {goal[:200]}")
+        if tool_names:
+            lines.append(f"- **Tools:** {', '.join(tool_names[:8])}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def resolve_meta_cognition(entity) -> Dict[str, Any]:
+    """Resolve effective meta-cognition config for an entity.
+
+    Auto-enables tiers based on entity type unless explicitly overridden:
+      - Tier 1 (platform_awareness): ON when dynamic_planning.enabled or
+        reasoning_mode=REACT. OFF for static-only plans.
+      - Tier 2 (registry_search): ON for AGENT and PROCESS types.
+      - Tier 3 (self_modification): ON for AGENT and PROCESS types.
+
+    Returns a dict with resolved boolean flags and limits.
+    """
+    caps = entity.capabilities or {}
+    explicit = caps.get("meta_cognition", {})
+
+    # Start with defaults
+    config = {
+        "platform_awareness": explicit.get("platform_awareness", True),
+        "registry_search": explicit.get("registry_search", False),
+        "self_modification": explicit.get("self_modification", False),
+        "max_runtime_creations": explicit.get("max_runtime_creations", 3),
+        "max_registry_searches": explicit.get("max_registry_searches", 5),
+    }
+
+    entity_type = getattr(entity, "type", None) or entity.get("type", "")
+    if isinstance(entity_type, str):
+        entity_type = entity_type.upper()
+
+    # Tier 1: auto-enable for dynamic planning or REACT
+    planning = entity.planning if hasattr(entity, "planning") else (entity.get("planning") or {})
+    logic_gate = entity.logic_gate if hasattr(entity, "logic_gate") else (entity.get("logic_gate") or {})
+
+    if isinstance(planning, dict):
+        dyn = planning.get("dynamic_planning", {})
+    else:
+        dyn = {}
+    if isinstance(logic_gate, dict):
+        reasoning = logic_gate.get("reasoning_config", {})
+    else:
+        reasoning = {}
+
+    dynamic_enabled = dyn.get("enabled", False)
+    reasoning_mode = reasoning.get("reasoning_mode", "REACT")
+
+    # Option B: only inject when LLM is making decisions
+    if "platform_awareness" not in explicit:
+        config["platform_awareness"] = dynamic_enabled or reasoning_mode == "REACT"
+
+    # Tier 2: auto-enable for AGENT/PROCESS
+    if "registry_search" not in explicit:
+        config["registry_search"] = entity_type in ("AGENT", "PROCESS")
+
+    # Tier 3: auto-enable for AGENT/PROCESS
+    if "self_modification" not in explicit:
+        config["self_modification"] = entity_type in ("AGENT", "PROCESS")
+
+    return config
 

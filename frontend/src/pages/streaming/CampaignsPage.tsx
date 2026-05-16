@@ -14,6 +14,9 @@ interface Campaign {
     calls_initiated: number;
     calls_completed: number;
     calls_failed: number;
+    calls_calling?: number;
+    calls_pending?: number;
+    provider?: string;
     created_at: string;
 }
 
@@ -109,7 +112,8 @@ export const CampaignsPage: React.FC = () => {
 
     const calculateProgress = (campaign: Campaign) => {
         if (campaign.total_contacts === 0) return 0;
-        return Math.round((campaign.calls_completed / campaign.total_contacts) * 100);
+        const done = (campaign.calls_completed ?? 0) + (campaign.calls_failed ?? 0);
+        return Math.round((done / campaign.total_contacts) * 100);
     };
 
     if (loading) {
@@ -173,11 +177,11 @@ export const CampaignsPage: React.FC = () => {
                                         </div>
                                         <div className="stat">
                                             <span className="stat-label">Completed</span>
-                                            <span className="stat-value success">{campaign.calls_completed}</span>
+                                            <span className="stat-value success">{campaign.calls_completed ?? 0}</span>
                                         </div>
                                         <div className="stat">
                                             <span className="stat-label">Pending</span>
-                                            <span className="stat-value">{campaign.total_contacts - (campaign.calls_completed + campaign.calls_failed)}</span>
+                                            <span className="stat-value">{campaign.calls_pending ?? campaign.total_contacts - ((campaign.calls_completed ?? 0) + (campaign.calls_failed ?? 0))}</span>
                                         </div>
                                     </div>
 
@@ -272,19 +276,71 @@ export const CampaignsPage: React.FC = () => {
                                     <strong>{selectedCampaign.total_contacts}</strong>
                                 </div>
                                 <div className="detail-item">
-                                    <span className="label">Initiated</span>
-                                    <strong>{selectedCampaign.calls_initiated}</strong>
+                                    <span className="label">Completed</span>
+                                    <strong className="success">{selectedCampaign.calls_completed ?? 0}</strong>
                                 </div>
                                 <div className="detail-item">
-                                    <span className="label">Success</span>
-                                    <strong className="success">{selectedCampaign.calls_completed}</strong>
+                                    <span className="label">In Progress</span>
+                                    <strong style={{ color: '#3b82f6' }}>{selectedCampaign.calls_calling ?? 0}</strong>
                                 </div>
                                 <div className="detail-item">
-                                    <span className="label">Anomalies</span>
-                                    <strong className="danger">{selectedCampaign.calls_failed}</strong>
+                                    <span className="label">Pending</span>
+                                    <strong>{selectedCampaign.calls_pending ?? 0}</strong>
+                                </div>
+                                <div className="detail-item">
+                                    <span className="label">Failed</span>
+                                    <strong className="danger">{selectedCampaign.calls_failed ?? 0}</strong>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Individual Call Records */}
+                        {selectedCampaign.calls && selectedCampaign.calls.length > 0 && (
+                            <div className="detail-section">
+                                <h3>Call Records</h3>
+                                <div className="call-records-table">
+                                    <table className="data-table compact">
+                                        <thead>
+                                            <tr>
+                                                <th>Contact</th>
+                                                <th>Phone</th>
+                                                <th>Company</th>
+                                                <th>Status</th>
+                                                <th>Called At</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {selectedCampaign.calls.map((call: any) => (
+                                                <tr key={call.id}>
+                                                    <td>{call.contact_name}</td>
+                                                    <td className="phone-number">{call.contact_phone}</td>
+                                                    <td>{call.contact_company || '—'}</td>
+                                                    <td>
+                                                        <span className={`status-badge ${getStatusColor(call.status)}`}>
+                                                            {call.status}
+                                                        </span>
+                                                    </td>
+                                                    <td>{call.called_at ? new Date(call.called_at).toLocaleString() : '—'}</td>
+                                                    <td>
+                                                        {call.voice_session_id && (
+                                                            <a
+                                                                href={`/streaming/calls/${call.voice_session_id}`}
+                                                                className="btn-view"
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                            >
+                                                                <Info size={14} /> View Call
+                                                            </a>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="detail-section">
                             <h3>Configuration</h3>

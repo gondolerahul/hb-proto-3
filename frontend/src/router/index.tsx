@@ -26,6 +26,7 @@ const AIModelConfigPage = lazy(() => import('@/pages/ai-config/AIModelConfigPage
 // Streaming pages
 const StreamingSessionsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.StreamingSessionsPage })));
 const CampaignsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CampaignsPage })));
+const CallDetailPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CallDetailPage })));
 
 const Artifacts = lazy(() => import('@/pages/artifacts/Artifacts').then(m => ({ default: m.Artifacts })));
 const CostingReport = lazy(() => import('@/pages/reports/CostingReport').then(m => ({ default: m.CostingReport })));
@@ -365,6 +366,18 @@ export const AppRouter: React.FC = () => {
                             <ProtectedRoute>
                                 <MainLayout>
                                     <CampaignsPage />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Call Detail Page */}
+                    <Route
+                        path="/streaming/calls/:sessionId"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <CallDetailPage />
                                 </MainLayout>
                             </ProtectedRoute>
                         }

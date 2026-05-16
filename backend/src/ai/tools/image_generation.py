@@ -47,8 +47,8 @@ class ImageGenerationTool(Tool):
         "Generate images from text prompts using AI models. "
         "Can also edit existing images by providing a reference image. "
         "Input should be a JSON string with: "
-        "'model_name' (e.g. 'gemini-3-pro-image-preview'), "
         "'prompt' (text description of desired image), "
+        "and optionally 'model_name' (leave empty to use the configured default), "
         "and optionally 'reference_image_path' (path to an existing image for editing)."
     )
 
@@ -67,7 +67,7 @@ class ImageGenerationTool(Tool):
                 "properties": {
                     "model_name": {
                         "type": "string",
-                        "description": "The image generation model to use (e.g. 'gemini-3-pro-image-preview')"
+                        "description": "The image generation model to use. Leave empty to use the system default."
                     },
                     "prompt": {
                         "type": "string",
@@ -120,6 +120,29 @@ class ImageGenerationTool(Tool):
 
         return None
 
+    async def _resolve_model_name_from_defaults(self, company_id: Optional[str] = None) -> Optional[str]:
+        """Resolve the default image generation model from task defaults."""
+        if not company_id:
+            return None
+        try:
+            from uuid import UUID as _UUID
+            from src.common.database import AsyncSessionLocal
+            from src.config.service import ConfigService
+
+            async with AsyncSessionLocal() as db:
+                config_service = ConfigService(db)
+                company_uuid = _UUID(str(company_id))
+                integration, _ = await config_service.resolve_model_for_task(
+                    company_id=company_uuid,
+                    task_type="text_to_image",
+                )
+                if integration and integration.model_name:
+                    logger.info(f"[ImageGen] Resolved model from task defaults: {integration.model_name}")
+                    return integration.model_name
+        except Exception as e:
+            logger.warning(f"[ImageGen] Failed to resolve model from task defaults: {e}")
+        return None
+
     def _get_output_dir(self, company_id: Optional[str] = None) -> Path:
         """Resolve the output directory for saving generated images.
         
@@ -153,7 +176,7 @@ class ImageGenerationTool(Tool):
         except json.JSONDecodeError:
             return json.dumps({"error": "Invalid JSON input. Expected: {\"model_name\": \"...\", \"prompt\": \"...\"}"})
 
-        model_name = params.get("model_name", "gemini-3-pro-image-preview")
+        model_name = params.get("model_name") or None  # treat empty string as None
         prompt = params.get("prompt")
         reference_image_path = params.get("reference_image_path")
 
@@ -169,6 +192,18 @@ class ImageGenerationTool(Tool):
 
         if not GENAI_AVAILABLE:
             return json.dumps({"error": "Google GenAI SDK not installed. Run: pip install google-genai"})
+
+        # Resolve model_name from task defaults if not explicitly provided
+        if not model_name:
+            model_name = await self._resolve_model_name_from_defaults(company_id)
+        if not model_name:
+            return json.dumps({
+                "error": (
+                    "No image generation model specified and no default configured. "
+                    "Please configure a 'text_to_image' task default in AI Model Configuration, "
+                    "or pass 'model_name' explicitly."
+                )
+            })
 
         # Resolve Vertex AI service_metadata from DB
         service_metadata = await self._resolve_vertex_metadata(model_name, company_id)
@@ -186,34 +221,6 @@ class ImageGenerationTool(Tool):
             from src.common.genai_factory import build_vertex_genai_client_sync
             client = build_vertex_genai_client_sync(service_metadata)
 
-            # Build content parts
-            contents = []
-
-            # Add reference image if provided
-            if reference_image_path and os.path.exists(reference_image_path):
-                logger.info(f"Loading reference image from {reference_image_path}")
-                with open(reference_image_path, "rb") as f:
-                    image_bytes = f.read()
-
-                ext = os.path.splitext(reference_image_path)[1].lower()
-                mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                            ".webp": "image/webp", ".gif": "image/gif"}
-                mime_type = mime_map.get(ext, "image/png")
-                contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
-
-            # Add text prompt
-            contents.append(prompt)
-
-            logger.info(f"[ImageGen] Generating with model={model_name}, company={company_id}, prompt='{prompt[:80]}...'")
-
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"]
-                )
-            )
-
             # Determine output directory
             output_dir = self._get_output_dir(company_id)
 
@@ -225,31 +232,104 @@ class ImageGenerationTool(Tool):
                 "image_path": None,  # Convenience: path to the first generated image
             }
 
-            if response.candidates and response.candidates[0].content:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, 'text') and part.text:
-                        result["text_response"] = part.text
-                    elif hasattr(part, 'inline_data') and part.inline_data:
+            logger.info(f"[ImageGen] Generating with model={model_name}, company={company_id}, prompt='{prompt[:80]}...'")
+
+            # Per-image cost for billing (Imagen 4 standard pricing)
+            # imagen-4.0-generate-001 = $0.04/image, fast = $0.02, ultra = $0.06
+            image_cost_map = {
+                "imagen-4.0-generate-001": 0.04,
+                "imagen-4-fast": 0.02,
+                "imagen-4-ultra": 0.06,
+            }
+            image_cost = image_cost_map.get(model_name, 0.04)
+
+            # ── Imagen models use generate_image API ──────────────────────────
+            if "imagen" in model_name.lower():
+                imagen_config = types.GenerateImageConfig(
+                    number_of_images=1,
+                    output_mime_type="image/png",
+                )
+
+                response = client.models.generate_image(
+                    model=model_name,
+                    prompt=prompt,
+                    config=imagen_config,
+                )
+
+                if response.generated_images:
+                    for gen_img in response.generated_images:
                         image_id = str(uuid.uuid4())[:8]
                         image_filename = f"panel_{image_id}.png"
                         image_path = str(output_dir / image_filename)
 
-                        image_data = part.inline_data.data
-                        if isinstance(image_data, str):
-                            image_data = base64.b64decode(image_data)
+                        # gen_img.image is a google.genai.types.Image object
+                        # Its save() only accepts a filepath string (not PIL.Image)
+                        gen_img.image.save(image_path)
 
-                        with open(image_path, "wb") as f:
-                            f.write(image_data)
-
+                        file_size = os.path.getsize(image_path)
                         result["images"].append({
                             "path": image_path,
                             "filename": image_filename,
-                            "size_bytes": len(image_data)
+                            "size_bytes": file_size,
                         })
                         if result["image_path"] is None:
-                            result["image_path"] = image_path  # first image = convenience field
+                            result["image_path"] = image_path
 
-                        logger.info(f"[ImageGen] Image saved to {image_path}")
+                        logger.info(f"[ImageGen] Imagen image saved to {image_path}")
+
+            # ── Gemini image models use generate_content API ──────────────────
+            else:
+                # Build content parts
+                contents = []
+
+                # Add reference image if provided
+                if reference_image_path and os.path.exists(reference_image_path):
+                    logger.info(f"Loading reference image from {reference_image_path}")
+                    with open(reference_image_path, "rb") as f:
+                        image_bytes = f.read()
+
+                    ext = os.path.splitext(reference_image_path)[1].lower()
+                    mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                                ".webp": "image/webp", ".gif": "image/gif"}
+                    mime_type = mime_map.get(ext, "image/png")
+                    contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+
+                # Add text prompt
+                contents.append(prompt)
+
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"]
+                    )
+                )
+
+                if response.candidates and response.candidates[0].content:
+                    for part in response.candidates[0].content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            result["text_response"] = part.text
+                        elif hasattr(part, 'inline_data') and part.inline_data:
+                            image_id = str(uuid.uuid4())[:8]
+                            image_filename = f"panel_{image_id}.png"
+                            image_path = str(output_dir / image_filename)
+
+                            image_data = part.inline_data.data
+                            if isinstance(image_data, str):
+                                image_data = base64.b64decode(image_data)
+
+                            with open(image_path, "wb") as f:
+                                f.write(image_data)
+
+                            result["images"].append({
+                                "path": image_path,
+                                "filename": image_filename,
+                                "size_bytes": len(image_data)
+                            })
+                            if result["image_path"] is None:
+                                result["image_path"] = image_path
+
+                            logger.info(f"[ImageGen] Image saved to {image_path}")
 
             if not result["images"]:
                 logger.warning(f"[ImageGen] No image parts in response for model={model_name}. Response: {response}")
@@ -300,7 +380,7 @@ class ImageGenerationTool(Tool):
 
                     async with AsyncSessionLocal() as _db:
                         _num_images = len(result["images"])
-                        _total_cost = image_cost * _num_images
+                        _total_cost = _Decimal(str(image_cost)) * _num_images
 
                         billing_svc = BillingService(_db)
                         await billing_svc.record_billing_event(

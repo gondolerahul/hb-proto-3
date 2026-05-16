@@ -144,8 +144,8 @@ class ToolExecutor:
                     _has_typed = type(tool).run_typed is not _base_run_typed
                     if _has_typed and isinstance(tool_args, dict):
                         # Discover params class from run_typed type hints
-                        import inspect
-                        hints = inspect.get_type_hints(tool.run_typed)
+                        import typing as _typing_mod
+                        hints = _typing_mod.get_type_hints(tool.run_typed)
                         params_cls = hints.get("params")
                         if params_cls and params_cls is not _base_tool_params:
                             clean_args = {k: v for k, v in tool_args.items()
@@ -163,6 +163,12 @@ class ToolExecutor:
                                 error=typed_result.error_message,
                             ))
                             continue
+                except Exception as _typed_err:
+                    # Typed path failed (type hint resolution, param mismatch, etc.)
+                    # Fall through to legacy string-based path silently.
+                    logger.debug(f"Typed tool path failed for {tool_name}, using legacy: {_typed_err}")
+
+                try:
 
                     # Legacy path: build raw input string
                     if isinstance(tool_args, dict) and "input" in tool_args:

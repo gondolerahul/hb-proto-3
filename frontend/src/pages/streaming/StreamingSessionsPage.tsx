@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { GlassCard } from '@/components/ui';
 import './StreamingSessionsPage.css';
@@ -57,6 +58,7 @@ interface Stats {
 
 export const StreamingSessionsPage: React.FC = () => {
     const { token } = useAuth();
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'voice' | 'whatsapp' | 'stats'>('voice');
     const [voiceSessions, setVoiceSessions] = useState<VoiceSession[]>([]);
     const [whatsappSessions, setWhatsAppSessions] = useState<WhatsAppSession[]>([]);
@@ -222,7 +224,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                             <td>
                                                 <button
                                                     className="btn-view"
-                                                    onClick={() => viewSessionDetails(session.id, 'voice')}
+                                                    onClick={() => navigate(`/streaming/calls/${session.id}`)}
                                                 >
                                                     View
                                                 </button>

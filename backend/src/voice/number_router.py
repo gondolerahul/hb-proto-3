@@ -225,13 +225,43 @@ class NumberRouter:
     async def get_company_number(
         self,
         company_id: UUID,
-        provider: str = "twilio"
+        provider: str = "twilio",
+        agent_id: Optional[UUID] = None,
     ) -> Optional[PhoneNumber]:
         """
         Get company's assigned phone number for outbound calls.
 
-        For campaigns, we use the company's first active assigned number as caller ID.
+        When agent_id is provided, returns the number assigned to that
+        specific agent — this ensures campaign calls use the correct
+        caller ID matching the campaign's voice agent.
+
+        Falls back to any active assigned company number if no
+        agent-specific number is found.
         """
+        # Strategy 1: Look up number assigned to the specific agent
+        if agent_id:
+            result = await self.db.execute(
+                select(PhoneNumber).where(
+                    PhoneNumber.company_id == company_id,
+                    PhoneNumber.provider == provider,
+                    PhoneNumber.agent_id == agent_id,
+                    PhoneNumber.status == "assigned",
+                    PhoneNumber.is_active == True
+                ).limit(1)
+            )
+            assignment = result.scalar_one_or_none()
+            if assignment:
+                logger.info(
+                    f"Resolved agent-specific number {assignment.phone_number} "
+                    f"for agent {agent_id}"
+                )
+                return assignment
+            logger.warning(
+                f"No {provider} number assigned to agent {agent_id}, "
+                f"falling back to company-level lookup"
+            )
+
+        # Strategy 2: Fallback — first active assigned company number
         result = await self.db.execute(
             select(PhoneNumber).where(
                 PhoneNumber.company_id == company_id,

@@ -39,3 +39,7 @@ backend/assets/
 
 # Claude
 .claude/
+
+# DB Backup artifacts (scripts are tracked, dumps/logs are not)
+deploy/backup/dumps/
+deploy/backup/logs/

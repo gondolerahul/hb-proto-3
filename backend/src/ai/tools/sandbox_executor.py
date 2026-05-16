@@ -108,6 +108,18 @@ class SandboxCodeTool(Tool):
         if company_id:
             sandbox_dir = os.path.join(tempfile.gettempdir(), "sandbox", str(company_id))
             os.makedirs(sandbox_dir, exist_ok=True)
+            # Create a stable /tmp/sandbox/output symlink so LLM-generated code
+            # using the generic path "/tmp/sandbox/output/" resolves correctly.
+            output_link = os.path.join(tempfile.gettempdir(), "sandbox", "output")
+            try:
+                if os.path.islink(output_link):
+                    os.unlink(output_link)
+                elif os.path.isdir(output_link):
+                    pass  # real dir already — leave it
+                if not os.path.exists(output_link):
+                    os.symlink(sandbox_dir, output_link)
+            except OSError:
+                pass  # Non-fatal — code can still use the real company path
             logger.info(f"SandboxCodeTool: executing {language} for company {company_id}")
         else:
             sandbox_dir = None

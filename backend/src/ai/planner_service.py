@@ -247,6 +247,52 @@ class PlannerService:
         if entity_system_prompt:
             system_prompt += f"\n\n## Agent Instructions (from system prompt)\n{entity_system_prompt}"
 
+        # ── Tier 1 Meta-Cognition: Inject platform awareness ───────────
+        # Gives the planner knowledge of tool descriptions, step types,
+        # entity hierarchy, and behavioral rules — enabling informed planning.
+        from src.ai.meta.platform_schema_compiler import resolve_meta_cognition
+        meta_config = resolve_meta_cognition(entity)
+
+        if meta_config.get("platform_awareness"):
+            try:
+                from src.ai.meta.platform_schema_compiler import get_platform_summary
+                manifest_summary = await get_platform_summary(
+                    db=self.db,
+                    company_id=self.company_id,
+                )
+                if manifest_summary:
+                    system_prompt += f"\n\n{manifest_summary}"
+                    logger.info(
+                        f"Tier 1: Injected platform awareness into planner "
+                        f"({len(manifest_summary)} chars) for {entity.name}"
+                    )
+            except Exception as e:
+                logger.warning(f"Tier 1: Failed to inject platform awareness into planner: {e}")
+
+        # ── Inject children descriptions for PROCESS/AGENT entities ────
+        # So the planner knows what child entities are available to delegate to.
+        entity_type = getattr(entity, "type", "")
+        if isinstance(entity_type, str):
+            entity_type = entity_type.upper()
+
+        if entity_type in ("PROCESS", "AGENT"):
+            try:
+                from src.ai.meta.platform_schema_compiler import describe_entity_children
+                children_desc = await describe_entity_children(
+                    db=self.db,
+                    entity_id=entity.id,
+                    company_id=self.company_id,
+                )
+                if children_desc:
+                    system_prompt += f"\n\n{children_desc}"
+                    logger.info(
+                        f"Planner: Injected children descriptions "
+                        f"({len(children_desc)} chars) for {entity.name}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to inject children descriptions into planner: {e}")
+        # ───────────────────────────────────────────────────────────────
+
         user_prompt = f"Entity: {entity.name}\n"
         if entity_goal:
             user_prompt += f"Agent Goal: {entity_goal}\n"

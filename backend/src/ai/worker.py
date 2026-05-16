@@ -195,6 +195,7 @@ def build_sandwich_prompt(
     success_criteria: Optional[List[Dict]] = None,
     allowed_deviations: Optional[Dict] = None,
     execution_constraints: Optional[Dict] = None,
+    platform_awareness: Optional[str] = None,
 ) -> str:
     """
     Build structured prompt using the 'Sandwich Method'.
@@ -203,6 +204,7 @@ def build_sandwich_prompt(
     1. Identity & Role (Who I am)
     2. Goal & Objective (What I'm trying to achieve)
     3. Tools & Capabilities (What I can do)
+    3.5. Platform Awareness (Meta-cognition: what the platform can do)
     4. Few-Shot Examples (How I should behave)
     5. Success Criteria (How output will be judged)
     6. Planning Permissions (Dynamic planning deviations)
@@ -226,6 +228,11 @@ def build_sandwich_prompt(
             f"- **{t['name']}**: {t['description']}" for t in tools
         ])
         sections.append(f"## Available Tools\nYou can use the following tools:\n{tool_descriptions}")
+
+    # Layer 3.5: Platform Awareness (Tier 1 Meta-Cognition)
+    if platform_awareness:
+        sections.append(f"## Platform Awareness\n{platform_awareness}")
+
     
     # Layer 4: Few-Shot Examples
     if few_shot_examples:
@@ -483,7 +490,7 @@ class ExecutionEngine:
                 # isolated session. Use atomic DB increments for cost/tokens.
                 async def _isolated_step(step_dict: dict, frozen_ctx: dict) -> dict:
                     async with AsyncSessionLocal() as isolated_db:
-                        isolated_engine = ExecutionEngine(isolated_db, self.redis)
+                        isolated_engine = ExecutionEngine(isolated_db, self.redis, company_id=self.company_id)
                         step_obj = PlanStep(**step_dict)
                         # Reload run in isolated session to avoid DetachedInstanceError
                         iso_result = await isolated_db.execute(

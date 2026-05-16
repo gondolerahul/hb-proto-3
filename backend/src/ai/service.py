@@ -121,8 +121,8 @@ class AIService:
                 
         return entity
 
-    async def update_entity(self, entity_id: UUID, entity_in: HierarchicalEntityUpdate, company_id: UUID) -> HierarchicalEntity:
-        entity = await self.get_entity(entity_id, company_id)
+    async def update_entity(self, entity_id: UUID, entity_in: HierarchicalEntityUpdate, company_id: UUID, user_role: str = None) -> HierarchicalEntity:
+        entity = await self.get_entity(entity_id, company_id, user_role=user_role)
         
         update_data = entity_in.model_dump(mode='json', exclude_unset=True)
         for field, value in update_data.items():

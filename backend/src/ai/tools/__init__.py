@@ -24,6 +24,7 @@ from src.ai.tools.terminal_tool import TerminalTool
 from src.ai.tools.browser_tool import HeadlessBrowserTool
 from src.ai.tools.docx_tool import DocxTool
 from src.ai.tools.pptx_tool import PptxTool
+from src.ai.tools.document_save import DocumentSaveTool
 from src.ai.tools.crm_tools import (
     GetCurrentDateTimeTool,
     WhatsAppSendTenantTool,
@@ -61,6 +62,9 @@ ToolRegistry.register(HeadlessBrowserTool())
 # Document CRUD tools
 ToolRegistry.register(DocxTool())
 ToolRegistry.register(PptxTool())
+
+# Document save utility (Phase 8: Document Generation Toolkit)
+ToolRegistry.register(DocumentSaveTool())
 
 # CRM integration tools (Real Estate tenant workflow)
 ToolRegistry.register(GetCurrentDateTimeTool())
@@ -195,7 +199,7 @@ __all__ = [
     "EmailIngestTool", "EmailClassifyTool", "EmailDraftTool", "EmailSendTool",
     "ImageGenerationTool", "VideoGenerationTool", "SandboxCodeTool", "TerminalTool",
     "HeadlessBrowserTool",
-    "DocxTool", "PptxTool",
+    "DocxTool", "PptxTool", "DocumentSaveTool",
     # Phase 1 social
     "LinkedInCreatePostTool", "LinkedInGetAnalyticsTool",
     "LinkedInManageCommentsTool", "LinkedInGetProfileTool",

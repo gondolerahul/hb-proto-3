@@ -10,10 +10,10 @@ import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus, EntityType, LLMInteractionLog, ToolInteractionLog } from '@/types';
 import './ExecutionDetail.css';
 
-// Authenticated PDF download — fetches via API with JWT token
-const downloadPdfFile = async (pdfUrl: string, filename?: string) => {
+// Authenticated file download — fetches via API with JWT token
+const downloadArtifactFile = async (fileUrl: string, filename?: string) => {
     try {
-        const response = await fetch(pdfUrl, {
+        const response = await fetch(fileUrl, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}` },
         });
         if (!response.ok) throw new Error('Download failed');
@@ -21,15 +21,18 @@ const downloadPdfFile = async (pdfUrl: string, filename?: string) => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename || 'report.pdf';
+        a.download = filename || 'document';
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
     } catch (err) {
-        console.error('PDF download failed:', err);
+        console.error('Artifact download failed:', err);
     }
 };
+
+// Supported document extensions for artifact detection
+const DOCUMENT_EXTENSIONS = '(?:pdf|pptx|docx|xlsx)';
 
 // ─── Step Result from result_data.steps ─────────────────────────────────────
 interface StepResult {
@@ -227,18 +230,20 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
         }
     };
 
-    // Helper function to extract PDF path from result data or tool logs
-    const extractPdfPath = (run: ExecutionRun): string | null => {
+    // Helper function to extract artifact path from result data or tool logs
+    const extractArtifactPath = (run: ExecutionRun): string | null => {
         const { result_data: resultData, tool_logs: toolLogs } = run;
 
-        // Scan any string for embedded PDF paths (absolute or relative artifact paths)
+        // Scan any string for embedded document paths (absolute or relative artifact paths)
         const scanStr = (s: string): string | null => {
             if (!s) return null;
-            // Absolute path: /some/path/artifact/uuid/uuid/file.pdf
-            const absMatch = s.match(/\/[^\s"']*\/artifact\/([^\s"']+\.pdf)/);
+            const extPattern = new RegExp(`\\/[^\\s"']*\\/artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
+            // Absolute path: /some/path/artifact/uuid/uuid/file.ext
+            const absMatch = s.match(extPattern);
             if (absMatch) return `artifact/${absMatch[1]}`;
-            // Relative: artifact/uuid/uuid/file.pdf
-            const relMatch = s.match(/artifact\/([^\s"']+\.pdf)/);
+            // Relative: artifact/uuid/uuid/file.ext
+            const relPattern = new RegExp(`artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
+            const relMatch = s.match(relPattern);
             if (relMatch) return `artifact/${relMatch[1]}`;
             // Legacy /tmp path
             const tmpMatch = s.match(/\/tmp\/research_reports\/[a-zA-Z0-9_.-]+\.pdf/);
@@ -246,8 +251,10 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
             return null;
         };
 
-        // 1. result_data.pdf_path
+        // 1. result_data.pdf_path or file_path
         if (resultData?.pdf_path) return scanStr(resultData.pdf_path) || resultData.pdf_path;
+        if (resultData?.file_path) return scanStr(resultData.file_path) || resultData.file_path;
+        if (resultData?.document_path) return scanStr(resultData.document_path) || resultData.document_path;
 
         // 2. tool logs
         if (toolLogs && toolLogs.length > 0) {
@@ -259,6 +266,8 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
                     try {
                         const parsed = JSON.parse(raw);
                         if (parsed.pdf_path) return scanStr(parsed.pdf_path) || parsed.pdf_path;
+                        if (parsed.file_path) return scanStr(parsed.file_path) || parsed.file_path;
+                        if (parsed.document_path) return scanStr(parsed.document_path) || parsed.document_path;
                     } catch { }
                     const found = scanStr(raw);
                     if (found) return found;
@@ -274,6 +283,8 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
             try {
                 const parsed = JSON.parse(raw);
                 if (parsed.pdf_path) return scanStr(parsed.pdf_path) || parsed.pdf_path;
+                if (parsed.file_path) return scanStr(parsed.file_path) || parsed.file_path;
+                if (parsed.document_path) return scanStr(parsed.document_path) || parsed.document_path;
             } catch { }
             const found = scanStr(raw);
             if (found) return found;
@@ -293,7 +304,7 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
         return null;
     };
 
-    const pdfPath = extractPdfPath(run);
+    const pdfPath = extractArtifactPath(run);
 
     // Convert file path to URL accessible via the backend static files server
     const getPdfUrl = (filePath: string | null): string | null => {
@@ -414,20 +425,20 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
                         </div>
                     )}
 
-                    {/* PDF Download Button */}
+                    {/* Document Download Button */}
                     {pdfUrl && (
                         <div className="node-result" style={{ marginBottom: '1rem' }}>
-                            <label>Generated PDF Report</label>
+                            <label>Generated Document</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
                                 <code style={{ flex: 1, padding: '0.5rem', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
-                                    {pdfPath?.split('/').pop() || 'report.pdf'}
+                                    {pdfPath?.split('/').pop() || 'document'}
                                 </code>
                                 <JellyButton
                                     variant="secondary"
                                     size="sm"
-                                    onClick={() => downloadPdfFile(pdfUrl!, pdfPath?.split('/').pop() || 'report.pdf')}
+                                    onClick={() => downloadArtifactFile(pdfUrl!, pdfPath?.split('/').pop() || 'document')}
                                 >
-                                    <Download size={16} /> Download PDF
+                                    <Download size={16} /> Download
                                 </JellyButton>
                             </div>
                         </div>
@@ -518,13 +529,15 @@ export const ExecutionDetail: React.FC = () => {
         }
     };
 
-    // Helper to extract PDF path from a run (same logic as TraceNode but reused here)
-    const getPdfPath = (run: ExecutionRun): string | null => {
+    // Helper to extract artifact path from a run (delegates to shared function in TraceNode)
+    const getArtifactPath = (run: ExecutionRun): string | null => {
         const scanStr = (s: string): string | null => {
             if (!s) return null;
-            const absMatch = s.match(/\/[^\s"']*\/artifact\/([^\s"']+\.pdf)/);
+            const extPattern = new RegExp(`\\/[^\\s"']*\\/artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
+            const absMatch = s.match(extPattern);
             if (absMatch) return `artifact/${absMatch[1]}`;
-            const relMatch = s.match(/artifact\/([^\s"']+\.pdf)/);
+            const relPattern = new RegExp(`artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
+            const relMatch = s.match(relPattern);
             if (relMatch) return `artifact/${relMatch[1]}`;
             const tmpMatch = s.match(/\/tmp\/research_reports\/[a-zA-Z0-9_.-]+\.pdf/);
             if (tmpMatch) return tmpMatch[0];
@@ -533,6 +546,8 @@ export const ExecutionDetail: React.FC = () => {
 
         const { result_data: resultData, tool_logs: toolLogs } = run;
         if (resultData?.pdf_path) return scanStr(resultData.pdf_path) || resultData.pdf_path;
+        if (resultData?.file_path) return scanStr(resultData.file_path) || resultData.file_path;
+        if (resultData?.document_path) return scanStr(resultData.document_path) || resultData.document_path;
 
         if (toolLogs) {
             for (const log of toolLogs) {
@@ -543,6 +558,7 @@ export const ExecutionDetail: React.FC = () => {
                     try {
                         const parsed = JSON.parse(raw);
                         if (parsed.pdf_path) return scanStr(parsed.pdf_path) || parsed.pdf_path;
+                        if (parsed.file_path) return scanStr(parsed.file_path) || parsed.file_path;
                     } catch { }
                     const found = scanStr(raw);
                     if (found) return found;
@@ -561,28 +577,29 @@ export const ExecutionDetail: React.FC = () => {
         return null;
     };
 
-    // Recursively find PDF in the entire tree
-    const findPdfInTree = (run: ExecutionRun): string | null => {
-        const path = getPdfPath(run);
+    // Recursively find artifact in the entire tree
+    const findArtifactInTree = (run: ExecutionRun): string | null => {
+        const path = getArtifactPath(run);
         if (path) return path;
 
         if (run.child_runs) {
             for (const child of run.child_runs) {
-                const childPath = findPdfInTree(child);
+                const childPath = findArtifactInTree(child);
                 if (childPath) return childPath;
             }
         }
         return null;
     };
 
-    const globalPdfPath = run ? findPdfInTree(run) : null;
-    const globalPdfUrl = globalPdfPath
-        ? globalPdfPath.startsWith('artifact/')
-            ? `/${globalPdfPath}`
-            : globalPdfPath.includes('/artifact/')
-                ? `/artifact/${globalPdfPath.split('/artifact/')[1]}`
-                : `/reports/${globalPdfPath.split('/').pop()}`
+    const globalArtifactPath = run ? findArtifactInTree(run) : null;
+    const globalArtifactUrl = globalArtifactPath
+        ? globalArtifactPath.startsWith('artifact/')
+            ? `/${globalArtifactPath}`
+            : globalArtifactPath.includes('/artifact/')
+                ? `/artifact/${globalArtifactPath.split('/artifact/')[1]}`
+                : `/reports/${globalArtifactPath.split('/').pop()}`
         : null;
+    const globalArtifactFilename = globalArtifactPath?.split('/').pop() || 'document';
 
     // ── Issue 2: Flatten child entity steps into the Step Timeline ──────────
     // Recursively collect steps from child_runs with entity context
@@ -694,15 +711,15 @@ export const ExecutionDetail: React.FC = () => {
                         </JellyButton>
                     )}
 
-                    {globalPdfUrl && (
+                    {globalArtifactUrl && (
                         <JellyButton
                             variant="primary"
                             size="md"
                             className="flex items-center gap-2"
-                            onClick={() => downloadPdfFile(globalPdfUrl!, globalPdfPath?.split('/').pop() || 'report.pdf')}
+                            onClick={() => downloadArtifactFile(globalArtifactUrl!, globalArtifactFilename)}
                         >
                             <Download size={18} />
-                            Download PDF Report
+                            Download {globalArtifactFilename}
                         </JellyButton>
                     )}
                     <div className={`badge ${run.status === RunStatus.COMPLETED ? 'badge-ready' : run.status === RunStatus.FAILED ? 'badge-failed' : (run.status as string) === 'PAUSED' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'} px-6 py-3 text-sm font-bold tracking-widest`}>

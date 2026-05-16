@@ -68,6 +68,9 @@ class PhoneNumberBulk(BaseModel):
 
 
 class PhoneNumberUpdate(BaseModel):
+    phone_number: Optional[str] = None
+    provider: Optional[str] = None
+    country_code: Optional[str] = None
     customer_name: Optional[str] = None
     agent_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
@@ -509,6 +512,21 @@ async def update_phone_number(
     if current_user.role != "app_admin" and entry.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
+    if data.phone_number is not None:
+        # Check for duplicate
+        dup_result = await db.execute(
+            select(PhoneNumber).where(
+                PhoneNumber.phone_number == data.phone_number,
+                PhoneNumber.id != number_id,
+            )
+        )
+        if dup_result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Phone number {data.phone_number} already exists")
+        entry.phone_number = data.phone_number
+    if data.provider is not None:
+        entry.provider = data.provider
+    if data.country_code is not None:
+        entry.country_code = data.country_code
     if data.customer_name is not None:
         entry.customer_name = data.customer_name
     if data.label is not None:
@@ -641,12 +659,28 @@ async def assign_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Agent must belong to the same company as the phone number
-    if entry.company_id and agent.company_id != entry.company_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Agent must belong to the same company as the phone number"
+    # Company matching — app_admin can assign any agent to any number
+    if current_user.role == "app_admin":
+        pass  # No restriction
+    elif current_user.role in ("partner_admin", "partner_user"):
+        # Partner admins can assign agents from their own company or child tenants
+        from src.auth.models import Company as CompanyModel
+        child_result = await db.execute(
+            select(CompanyModel.id).where(CompanyModel.parent_id == current_user.company_id)
         )
+        allowed_companies = {current_user.company_id} | {r[0] for r in child_result.fetchall()}
+        if agent.company_id not in allowed_companies:
+            raise HTTPException(
+                status_code=403,
+                detail="Agent must belong to your company or one of your tenants"
+            )
+    else:
+        # Regular users: agent must belong to the same company as the phone number
+        if entry.company_id and agent.company_id != entry.company_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Agent must belong to the same company as the phone number"
+            )
 
     # Agent must be ACTIVE
     if agent.status != "ACTIVE":
@@ -655,9 +689,16 @@ async def assign_agent(
             detail=f"Only ACTIVE agents can be assigned to phone numbers (agent status: {agent.status})"
         )
 
-    # Agent must have voice configuration
+    # Agent must have voice configuration (check both direct and nested persona format)
     identity = agent.identity
-    if not identity or not isinstance(identity, dict) or not identity.get("voice"):
+    has_voice = False
+    if identity and isinstance(identity, dict):
+        if identity.get("voice"):
+            has_voice = True
+        persona = identity.get("persona")
+        if isinstance(persona, dict) and persona.get("voice"):
+            has_voice = True
+    if not has_voice:
         raise HTTPException(
             status_code=400,
             detail="Only voice-enabled agents can be assigned to phone numbers. "

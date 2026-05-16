@@ -1,13 +1,16 @@
 """
-seed_meta_agent.py — Seeds Meta-Agent V2 template into the database.
+seed_meta_agent.py — Seeds Meta-Agent V3 template into the database.
 
-V2: Creates a single AGENT entity (no child entities needed).
+V3: Seeds a single AGENT entity for EVERY company account.
+The Meta-Agent is no longer architecturally special — it's a standard
+AGENT entity with the tiered meta-cognition layer fully enabled.
 
 Usage: cd backend && .venv/bin/python -m src.ai.meta.seed_meta_agent
 
 Flags:
     --force     Purge ALL existing MetaAgent templates/entities before seeding.
-                Without this flag, the script skips if one already exists.
+                Without this flag, the script skips companies that already have one.
+    --company   Only seed for a specific company_id (default: all companies).
 """
 import asyncio, sys
 from pathlib import Path
@@ -111,7 +114,7 @@ async def _purge_entities(db, entity_ids: list[str]) -> None:
     ))
 
 
-async def seed(force: bool = False):
+async def seed(force: bool = False, target_company_id: str = None):
     from sqlalchemy import select, text, or_, String
     from src.common.database import AsyncSessionLocal
     from src.ai.models import HierarchicalEntity
@@ -119,54 +122,76 @@ async def seed(force: bool = False):
     from src.ai.meta.meta_agent_template import generate_meta_agent_template
 
     async with AsyncSessionLocal() as db:
-        # ── 1. Locate every existing MetaAgent entity (templates + clones) ──
-        meta_q = select(HierarchicalEntity).where(
-            or_(
-                HierarchicalEntity.name == "MetaAgent",
-                HierarchicalEntity.tags.cast(String).contains("meta_agent"),
-            )
-        )
-        result = await db.execute(meta_q)
-        existing = result.scalars().all()
-
-        if existing and not force:
-            ids = [str(e.id) for e in existing]
-            print(f"Found {len(existing)} MetaAgent entities: {ids}")
-            print("Skipping. Pass --force to purge and re-seed.")
-            return
-
-        if existing:
-            entity_ids = [str(e.id) for e in existing]
-            print(f"Purging {len(entity_ids)} MetaAgent entities …")
-            await _purge_entities(db, entity_ids)
-            await db.flush()
-            print("  ✓ Old MetaAgent rows deleted.")
-
-        # ── 2. Find an admin user for ownership ──
-        r = await db.execute(text("SELECT id, company_id FROM users WHERE role='app_admin' LIMIT 1"))
+        # ── 1. Find the primary admin account ──
+        if target_company_id:
+            r = await db.execute(text(
+                f"SELECT id, company_id FROM users WHERE company_id = '{target_company_id}' "
+                f"ORDER BY CASE WHEN role = 'app_admin' THEN 0 "
+                f"WHEN role = 'admin' THEN 1 ELSE 2 END LIMIT 1"
+            ))
+        else:
+            r = await db.execute(text(
+                "SELECT id, company_id FROM users WHERE role='app_admin' LIMIT 1"
+            ))
         admin = r.fetchone()
         if not admin:
-            print("No app_admin found.")
+            print("No admin user found.")
             return
 
         uid, cid = admin[0], admin[1]
-        print(f"Admin: uid={uid}, cid={cid}")
+        companies = [(cid,)]
+        print(f"Seeding MetaAgent template for admin: uid={uid}, company={cid}")
 
-        # ── 3. Create the new V2 template ──
-        template = generate_meta_agent_template()
-        ein = HierarchicalEntityCreate.model_validate(template)
-        data = ein.model_dump(mode="json")
-        ma = HierarchicalEntity(**data, company_id=cid, created_by=uid)
-        db.add(ma)
-        await db.flush()
+        # ── 2. For each company, check and seed ──
+        seeded_count = 0
+        skipped_count = 0
+
+        for (cid,) in companies:
+            # Check if MetaAgent already exists for this company
+            meta_q = select(HierarchicalEntity).where(
+                HierarchicalEntity.company_id == cid,
+                or_(
+                    HierarchicalEntity.name == "MetaAgent",
+                    HierarchicalEntity.tags.cast(String).contains("meta_agent"),
+                ),
+            )
+            result = await db.execute(meta_q)
+            existing = result.scalars().all()
+
+            if existing and not force:
+                skipped_count += 1
+                continue
+
+            if existing and force:
+                entity_ids = [str(e.id) for e in existing]
+                print(f"  Purging {len(entity_ids)} existing MetaAgent entities …")
+                await _purge_entities(db, entity_ids)
+                await db.flush()
+
+            # Create the Meta-Agent V3 template
+            template = generate_meta_agent_template()
+            ein = HierarchicalEntityCreate.model_validate(template)
+            data = ein.model_dump(mode="json")
+            ma = HierarchicalEntity(**data, company_id=cid, created_by=uid)
+            db.add(ma)
+            await db.flush()
+
+            seeded_count += 1
+            print(f"  ✓ Meta-Agent V3 seeded: id={ma.id}")
 
         await db.commit()
-        print(f"\n✓ Meta-Agent V2 seeded successfully!")
-        print(f"  ID:      {ma.id}")
-        print(f"  Version: {ma.version}")
-        print(f"  Type:    {ma.type}")
-        print(f"  Template: {ma.is_template}")
+        print(f"\n{'═' * 50}")
+        print(f"Meta-Agent V3 Seeding Complete")
+        print(f"  Seeded: {seeded_count} companies")
+        print(f"  Skipped: {skipped_count} companies (already have MetaAgent)")
+        print(f"  Version: 3.0.0")
+        if skipped_count > 0:
+            print(f"  Run with --force to re-seed skipped companies")
 
 if __name__ == "__main__":
     force = "--force" in sys.argv
-    asyncio.run(seed(force=force))
+    company = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--company" and i + 1 < len(sys.argv):
+            company = sys.argv[i + 1]
+    asyncio.run(seed(force=force, target_company_id=company))

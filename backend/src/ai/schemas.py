@@ -452,10 +452,33 @@ class ContextEngineering(BaseModel):
     inject_cortex_viewport: bool = True          # Include CORTEX tree viewport
     no_truncation: bool = True                   # CORTEX handles unbounded contexts
 
+class MetaCognitionConfig(BaseModel):
+    """Controls meta-cognitive capabilities for this entity.
+
+    Three tiers of meta-cognition, gated by entity type and governance:
+      - Tier 1 (platform_awareness): Injects platform manifest summary into
+        system prompt. Auto-enabled when dynamic_planning.enabled or
+        reasoning_mode=REACT. Cost: ~2-4K tokens extra per prompt.
+      - Tier 2 (registry_search): Auto-injects meta_registry_search tool.
+        Lets agents discover existing entities mid-execution.
+        Auto-enabled for AGENT and PROCESS types.
+      - Tier 3 (self_modification): Auto-injects meta_entity_creator and
+        meta_entity_executor tools. Lets agents create/adapt children at
+        runtime. Auto-enabled for AGENT and PROCESS types. Requires HITL
+        approval unless the entity is the dedicated Meta-Agent.
+    """
+    platform_awareness: bool = True     # Tier 1 (auto: dynamic_planning or REACT)
+    registry_search: bool = False       # Tier 2 (auto: AGENT/PROCESS)
+    self_modification: bool = False     # Tier 3 (auto: AGENT/PROCESS, requires HITL)
+    max_runtime_creations: int = 3      # Tier 3: max entities created per execution run
+    max_registry_searches: int = 5      # Tier 2: max searches per execution run
+
+
 class Capabilities(BaseModel):
     tools: List[ToolReference] = []  # Accept simple tool references
     memory: MemoryConfig = MemoryConfig()
     context_engineering: ContextEngineering = ContextEngineering()
+    meta_cognition: MetaCognitionConfig = MetaCognitionConfig()
 
 class ExecutionLimits(BaseModel):
     max_recursion_depth: int = 5

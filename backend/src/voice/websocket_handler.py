@@ -1032,9 +1032,18 @@ class TataStreamHandler(BaseStreamHandler):
             )
             return
 
+        # If the phone number is assigned to an agent but not a specific customer
+        # (customer_id is NULL), generate a deterministic UUID from the caller's
+        # phone number so the NOT NULL constraint on voice_sessions is satisfied.
+        from uuid import uuid5, NAMESPACE_DNS as _NS
+        resolved_customer_id = (
+            customer_assignment.customer_id
+            or uuid5(_NS, f"caller:{from_number}")
+        )
+
         self.voice_session = await self.session_manager.create_voice_session(
             company_id=customer_assignment.company_id,
-            customer_id=customer_assignment.customer_id,
+            customer_id=resolved_customer_id,
             agent_id=customer_assignment.agent_id,
             phone_number=(
                 from_number

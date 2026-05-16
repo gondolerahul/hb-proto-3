@@ -115,39 +115,33 @@ class CampaignExecutor:
     async def _execute_campaign(self, campaign_id: UUID):
         """
         Main execution loop for a campaign.
-        
-        Args:
-            campaign_id: Campaign UUID
+
+        Processes all pending calls sequentially to avoid DB session
+        concurrency issues. Each call uses its own isolated DB session.
         """
         try:
             campaign = await self._get_campaign(campaign_id)
-            
+
             # Get pending calls
             pending_calls = await self._get_pending_calls(campaign_id)
-            
+
             logger.info(f"Executing campaign {campaign_id} with {len(pending_calls)} pending calls")
-            
-            # Create call queue
-            call_queue = asyncio.Queue()
+
+            # Process calls sequentially — each call gets its own DB session
+            # to avoid the "another operation is in progress" concurrency error.
             for call in pending_calls:
-                await call_queue.put(call)
-            
-            # Start worker tasks (respecting max_concurrent_calls)
-            workers = []
-            for i in range(campaign.max_concurrent_calls):
-                worker = asyncio.create_task(
-                    self._call_worker(campaign, call_queue)
-                )
-                workers.append(worker)
-            
-            # Wait for all workers to complete
-            await asyncio.gather(*workers, return_exceptions=True)
-            
+                try:
+                    await self._place_call_isolated(campaign, call)
+                except Exception as e:
+                    logger.error(f"Error placing call {call.id}: {e}", exc_info=True)
+                # Delay between calls to respect rate limits
+                await asyncio.sleep(2)
+
             # Mark campaign as completed
             await self._update_campaign_status(campaign_id, "completed")
-            
+
             logger.info(f"Campaign {campaign_id} completed")
-            
+
         except asyncio.CancelledError:
             logger.info(f"Campaign {campaign_id} was cancelled")
         except Exception as e:
@@ -157,7 +151,7 @@ class CampaignExecutor:
             # Remove from active campaigns
             if campaign_id in self.active_campaigns:
                 self.active_campaigns.pop(campaign_id)
-    
+
     async def _call_worker(self, campaign: Campaign, call_queue: asyncio.Queue):
         """
         Worker task that processes calls from the queue.
@@ -189,104 +183,131 @@ class CampaignExecutor:
             except Exception as e:
                 logger.error(f"Error in call worker: {e}", exc_info=True)
     
+    async def _place_call_isolated(self, campaign: Campaign, campaign_call: CampaignCall):
+        """
+        Place an outbound call using an isolated DB session.
+
+        Each call gets its own session to prevent the
+        'another operation is in progress' concurrency error that occurs
+        when multiple workers share a single async DB session.
+        """
+        from src.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            contact = campaign_call.contact_data
+            phone = contact.get("phone")
+
+            logger.info(f"Placing call to {phone} for campaign {campaign.id}")
+
+            try:
+                # Update call status to "calling"
+                await db.execute(
+                    update(CampaignCall)
+                    .where(CampaignCall.id == campaign_call.id)
+                    .values(status="calling")
+                )
+                await db.commit()
+
+                # Resolve the number assigned to the campaign's agent
+                number_router = NumberRouter(db)
+                assignment = await number_router.get_company_number(
+                    company_id=campaign.company_id,
+                    provider=campaign.provider,
+                    agent_id=campaign.agent_id,
+                )
+
+                if not assignment:
+                    logger.error(f"No phone number assigned for company {campaign.company_id}")
+                    await db.execute(
+                        update(CampaignCall)
+                        .where(CampaignCall.id == campaign_call.id)
+                        .values(status="failed")
+                    )
+                    await db.commit()
+                    return
+
+                # Create voice session
+                voice_session = VoiceSession(
+                    company_id=campaign.company_id,
+                    customer_id=uuid4(),
+                    agent_id=campaign.agent_id,
+                    phone_number=assignment.phone_number,
+                    provider=campaign.provider,
+                    direction="outbound",
+                    status="initiated",
+                    call_sid=f"pending_{uuid4()}",
+                    session_metadata={
+                        "campaign_id": str(campaign.id),
+                        "campaign_call_id": str(campaign_call.id),
+                        "contact_data": contact,
+                    },
+                )
+
+                db.add(voice_session)
+                await db.commit()
+                await db.refresh(voice_session)
+
+                # Link voice session to campaign call
+                await db.execute(
+                    update(CampaignCall)
+                    .where(CampaignCall.id == campaign_call.id)
+                    .values(
+                        voice_session_id=voice_session.id,
+                        called_at=datetime.utcnow(),
+                    )
+                )
+                await db.commit()
+
+                # Place actual call via provider
+                if campaign.provider == "twilio":
+                    call_sid = await self._place_twilio_call(
+                        to=phone,
+                        from_=assignment.phone_number,
+                        voice_session_id=voice_session.id,
+                        agent_id=campaign.agent_id,
+                        company_id=campaign.company_id,
+                    )
+                elif campaign.provider == "tata_tele":
+                    call_sid = await self._place_tata_call(
+                        to=phone,
+                        from_=assignment.phone_number,
+                        voice_session_id=voice_session.id,
+                        agent_id=campaign.agent_id,
+                        company_id=campaign.company_id,
+                    )
+                else:
+                    raise ValueError(f"Unknown provider: {campaign.provider}")
+
+                # Update call_sid
+                await db.execute(
+                    update(CampaignCall)
+                    .where(CampaignCall.id == campaign_call.id)
+                    .values(call_sid=call_sid)
+                )
+                await db.commit()
+
+                # Update campaign stats
+                await self._increment_campaign_stat_safe(db, campaign.id, "calls_initiated")
+
+                logger.info(f"Call placed successfully: {call_sid}")
+
+            except Exception as e:
+                logger.error(f"Error placing call to {phone}: {e}", exc_info=True)
+                try:
+                    await db.rollback()
+                    await db.execute(
+                        update(CampaignCall)
+                        .where(CampaignCall.id == campaign_call.id)
+                        .values(status="failed")
+                    )
+                    await db.commit()
+                    await self._increment_campaign_stat_safe(db, campaign.id, "calls_failed")
+                except Exception:
+                    logger.error(f"Failed to mark call {campaign_call.id} as failed")
+
     async def _place_call(self, campaign: Campaign, campaign_call: CampaignCall):
-        """
-        Place an outbound call to a contact.
-        
-        Args:
-            campaign: Campaign object
-            campaign_call: CampaignCall object
-        """
-        contact = campaign_call.contact_data
-        phone = contact.get("phone")
-        
-        logger.info(f"Placing call to {phone} for campaign {campaign.id}")
-        
-        try:
-            # Update call status to "calling"
-            await self._update_call_status(campaign_call.id, "calling")
-            
-            # Get phone number assignment
-            # For outbound calls, we need to get the company's assigned number
-            assignment = await self.number_router.get_company_number(
-                company_id=campaign.company_id,
-                provider=campaign.provider
-            )
-            
-            if not assignment:
-                logger.error(f"No phone number assigned for company {campaign.company_id}")
-                await self._update_call_status(campaign_call.id, "failed")
-                return
-            
-            # Create voice session
-            voice_session = VoiceSession(
-                company_id=campaign.company_id,
-                customer_id=uuid4(),  # Generate random UUID since customer_id is non-nullable
-                agent_id=campaign.agent_id,
-                phone_number=assignment.phone_number,
-                provider=campaign.provider,
-                direction="outbound",
-                status="initiated",
-                call_sid=f"pending_{uuid4()}",  # Temporary SID until provider returns real one
-                session_metadata={
-                    "campaign_id": str(campaign.id),
-                    "campaign_call_id": str(campaign_call.id),
-                    "contact_data": contact
-                }
-            )
-            
-            self.db.add(voice_session)
-            await self.db.commit()
-            await self.db.refresh(voice_session)
-            
-            # Link voice session to campaign call
-            await self.db.execute(
-                update(CampaignCall)
-                .where(CampaignCall.id == campaign_call.id)
-                .values(
-                    voice_session_id=voice_session.id,
-                    called_at=datetime.utcnow()
-                )
-            )
-            await self.db.commit()
-            
-            # Place actual call via provider
-            if campaign.provider == "twilio":
-                call_sid = await self._place_twilio_call(
-                    to=phone,
-                    from_=assignment.phone_number,
-                    voice_session_id=voice_session.id,
-                    agent_id=campaign.agent_id,
-                    company_id=campaign.company_id
-                )
-            elif campaign.provider == "tata_tele":
-                call_sid = await self._place_tata_call(
-                    to=phone,
-                    from_=assignment.phone_number,
-                    voice_session_id=voice_session.id,
-                    agent_id=campaign.agent_id,
-                    company_id=campaign.company_id
-                )
-            else:
-                raise ValueError(f"Unknown provider: {campaign.provider}")
-            
-            # Update call_sid
-            await self.db.execute(
-                update(CampaignCall)
-                .where(CampaignCall.id == campaign_call.id)
-                .values(call_sid=call_sid)
-            )
-            await self.db.commit()
-            
-            # Update campaign stats
-            await self._increment_campaign_stat(campaign.id, "calls_initiated")
-            
-            logger.info(f"Call placed successfully: {call_sid}")
-            
-        except Exception as e:
-            logger.error(f"Error placing call to {phone}: {e}", exc_info=True)
-            await self._update_call_status(campaign_call.id, "failed")
-            await self._increment_campaign_stat(campaign.id, "calls_failed")
+        """Legacy method — delegates to _place_call_isolated."""
+        await self._place_call_isolated(campaign, campaign_call)
     
     async def _place_twilio_call(
         self,
@@ -574,3 +595,20 @@ class CampaignExecutor:
                 .values({stat: current_value + 1})
             )
             await self.db.commit()
+
+    async def _increment_campaign_stat_safe(self, db: AsyncSession, campaign_id: UUID, stat: str):
+        """Increment a campaign statistic counter using the given DB session."""
+        result = await db.execute(
+            select(Campaign).where(Campaign.id == campaign_id)
+        )
+        campaign = result.scalar_one_or_none()
+
+        if campaign:
+            current_value = getattr(campaign, stat, 0)
+            await db.execute(
+                update(Campaign)
+                .where(Campaign.id == campaign_id)
+                .values({stat: current_value + 1})
+            )
+            await db.commit()
+

@@ -197,13 +197,26 @@ async def get_voice_session(
 
                     if _client:
                         _prompt = (
-                            "You are a helpful assistant. Summarize the following call transcript "
-                            "in 2-3 sentences, highlighting key topics discussed and any outcomes or actions.\n\n"
+                            "You are a helpful assistant. Analyze the following call transcript and provide:\n"
+                            "1. A 2-3 sentence summary highlighting key topics discussed and outcomes.\n"
+                            "2. A bullet list of 'Next Actions' the caller/agent should take.\n\n"
+                            "Format your response as:\n"
+                            "SUMMARY: <your summary>\n\n"
+                            "NEXT ACTIONS:\n"
+                            "- <action 1>\n"
+                            "- <action 2>\n\n"
                             f"Transcript:\n{formatted}"
                         )
-                        _resp = _client.models.generate_content(
-                            model="gemini-2.0-flash",
-                            contents=_prompt
+                        import asyncio
+                        # Use run_in_executor to avoid blocking the event loop
+                        # since the genai client's generate_content is synchronous
+                        loop = asyncio.get_event_loop()
+                        _resp = await loop.run_in_executor(
+                            None,
+                            lambda: _client.models.generate_content(
+                                model="gemini-2.0-flash",
+                                contents=_prompt,
+                            ),
                         )
                         call_summary = _resp.text.strip() if _resp and _resp.text else None
             except Exception as _se:

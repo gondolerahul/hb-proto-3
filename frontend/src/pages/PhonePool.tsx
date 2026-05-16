@@ -32,10 +32,17 @@ interface Agent {
     name: string;
 }
 
+interface CustomerCompany {
+    id: string;
+    name: string;
+    type: string;
+}
+
 const PhonePool: React.FC = () => {
     const { user, token } = useAuth();
     const [numbers, setNumbers] = useState<PhoneNumberEntry[]>([]);
     const [agents, setAgents] = useState<Agent[]>([]);
+    const [customers, setCustomers] = useState<CustomerCompany[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('');
     const [providerFilter, setProviderFilter] = useState('');
@@ -43,6 +50,22 @@ const PhonePool: React.FC = () => {
     const [showAssignModal, setShowAssignModal] = useState<PhoneNumberEntry | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState<any>(null);
+
+    // Confirmation modal state (replaces window.confirm)
+    const [confirmModal, setConfirmModal] = useState<{
+        message: string;
+        action: () => Promise<void>;
+    } | null>(null);
+    const [confirmLoading, setConfirmLoading] = useState(false);
+
+    // Edit modal state
+    const [showEditModal, setShowEditModal] = useState<PhoneNumberEntry | null>(null);
+    const [editForm, setEditForm] = useState({
+        phone_number: '',
+        provider: '',
+        label: '',
+        notes: '',
+    });
 
     const [addForm, setAddForm] = useState({
         phone_number: '',
@@ -86,8 +109,39 @@ const PhonePool: React.FC = () => {
         }
     };
 
+    const fetchCustomers = async () => {
+        try {
+            const results: CustomerCompany[] = [];
+            // Fetch tenants
+            const tenantRes = await fetch(
+                `${import.meta.env.VITE_API_BASE_URL}/companies/tenants`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            if (tenantRes.ok) {
+                const tenantData = await tenantRes.json();
+                const tenants = Array.isArray(tenantData) ? tenantData : tenantData.data || [];
+                results.push(...tenants.map((c: any) => ({ id: c.id, name: c.name, type: 'TENANT' })));
+            }
+            // Fetch partners (app_admin only)
+            if (isAdmin) {
+                const partnerRes = await fetch(
+                    `${import.meta.env.VITE_API_BASE_URL}/companies/partners`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }
+                );
+                if (partnerRes.ok) {
+                    const partnerData = await partnerRes.json();
+                    const partners = Array.isArray(partnerData) ? partnerData : partnerData.data || [];
+                    results.push(...partners.map((c: any) => ({ id: c.id, name: c.name, type: 'PARTNER' })));
+                }
+            }
+            setCustomers(results);
+        } catch (err) {
+            console.error('Error fetching customers:', err);
+        }
+    };
+
     useEffect(() => { fetchNumbers(); }, [fetchNumbers]);
-    useEffect(() => { fetchAgents(); }, []);
+    useEffect(() => { fetchAgents(); fetchCustomers(); }, []);
 
     const handleSync = async () => {
         setSyncing(true);
@@ -124,14 +178,14 @@ const PhonePool: React.FC = () => {
         }
     };
 
-    const handleRelease = async (id: string) => {
-        if (!confirm('Release this number back to the pool?')) return;
-        try {
-            await phonePoolService.releaseNumber(id);
-            fetchNumbers();
-        } catch (err: any) {
-            alert(err?.response?.data?.detail || 'Failed to release');
-        }
+    const handleRelease = (id: string) => {
+        setConfirmModal({
+            message: 'Are you sure you want to release this number back to the pool? The agent and customer assignments will be removed.',
+            action: async () => {
+                await phonePoolService.releaseNumber(id);
+                fetchNumbers();
+            },
+        });
     };
 
     const handleAssign = async (e: React.FormEvent) => {
@@ -159,13 +213,59 @@ const PhonePool: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Delete this phone number?')) return;
+    const handleDelete = (id: string) => {
+        setConfirmModal({
+            message: 'Are you sure you want to permanently delete this phone number? This action cannot be undone.',
+            action: async () => {
+                await phonePoolService.deleteNumber(id);
+                fetchNumbers();
+            },
+        });
+    };
+
+    const handleConfirmAction = async () => {
+        if (!confirmModal) return;
+        setConfirmLoading(true);
         try {
-            await phonePoolService.deleteNumber(id);
+            await confirmModal.action();
+            setConfirmModal(null);
+        } catch (err: any) {
+            alert(err?.response?.data?.detail || 'Operation failed');
+        } finally {
+            setConfirmLoading(false);
+        }
+    };
+
+    const handleOpenEdit = (n: PhoneNumberEntry) => {
+        setShowEditModal(n);
+        setEditForm({
+            phone_number: n.phone_number,
+            provider: n.provider,
+            label: n.label || '',
+            notes: n.notes || '',
+        });
+    };
+
+    const handleEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!showEditModal) return;
+        try {
+            const updates: any = {};
+            if (editForm.phone_number !== showEditModal.phone_number) updates.phone_number = editForm.phone_number;
+            if (editForm.provider !== showEditModal.provider) updates.provider = editForm.provider;
+            if (editForm.label !== (showEditModal.label || '')) updates.label = editForm.label;
+            if (editForm.notes !== (showEditModal.notes || '')) updates.notes = editForm.notes;
+
+            if (Object.keys(updates).length === 0) {
+                setShowEditModal(null);
+                return;
+            }
+
+            await phonePoolService.updateNumber(showEditModal.id, updates);
+            setShowEditModal(null);
             fetchNumbers();
         } catch (err: any) {
-            alert(err?.response?.data?.detail || 'Failed to delete');
+            alert(err?.response?.data?.detail || 'Failed to update number');
         }
     };
 
@@ -314,6 +414,7 @@ const PhonePool: React.FC = () => {
                                                     onClick={() => {
                                                         setShowAssignModal(n);
                                                         setAssignForm({ agent_id: '', customer_name: '' });
+                                                        fetchAgents(); // Refresh agent list on every open
                                                     }}
                                                 >
                                                     Assign Agent
@@ -337,6 +438,9 @@ const PhonePool: React.FC = () => {
                                                 </button>
                                             </>
                                         )}
+                                        <button className="btn-icon" onClick={() => handleOpenEdit(n)} title="Edit">
+                                            ✏️
+                                        </button>
                                         <button className="btn-delete" onClick={() => handleDelete(n.id)}>
                                             🗑
                                         </button>
@@ -347,6 +451,35 @@ const PhonePool: React.FC = () => {
                     </table>
                 )}
             </div>
+
+            {/* Confirmation Modal (replaces window.confirm) */}
+            {confirmModal && (
+                <div className="pool-modal-overlay" onClick={() => !confirmLoading && setConfirmModal(null)}>
+                    <div className="pool-modal confirm-modal" onClick={e => e.stopPropagation()}>
+                        <div className="confirm-icon">⚠️</div>
+                        <h3>Confirm Action</h3>
+                        <p className="confirm-message">{confirmModal.message}</p>
+                        <div className="pool-modal-actions">
+                            <button
+                                type="button"
+                                className="btn-release"
+                                onClick={() => setConfirmModal(null)}
+                                disabled={confirmLoading}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="btn-confirm-danger"
+                                onClick={handleConfirmAction}
+                                disabled={confirmLoading}
+                            >
+                                {confirmLoading ? 'Processing…' : 'Confirm'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Sync Results Modal */}
             {syncResult && (
@@ -453,18 +586,76 @@ const PhonePool: React.FC = () => {
                                     </select>
                                 </div>
                                 <div className="form-group full-width">
-                                    <label>Customer Name (optional)</label>
-                                    <input
-                                        type="text"
+                                    <label>Customer (optional)</label>
+                                    <select
                                         value={assignForm.customer_name}
                                         onChange={e => setAssignForm({ ...assignForm, customer_name: e.target.value })}
-                                        placeholder="Who is this number for?"
-                                    />
+                                    >
+                                        <option value="">Select a customer...</option>
+                                        {customers.map(c => (
+                                            <option key={c.id} value={c.name}>{c.name} ({c.type})</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                             <div className="pool-modal-actions">
                                 <button type="button" className="btn-release" onClick={() => setShowAssignModal(null)}>Cancel</button>
                                 <button type="submit" className="btn-add-number">Assign</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Number Modal */}
+            {showEditModal && (
+                <div className="pool-modal-overlay" onClick={() => setShowEditModal(null)}>
+                    <div className="pool-modal" onClick={e => e.stopPropagation()}>
+                        <h3>Edit Phone Number</h3>
+                        <form onSubmit={handleEditSubmit}>
+                            <div className="add-number-form">
+                                <div className="form-group">
+                                    <label>Phone Number</label>
+                                    <input
+                                        type="tel"
+                                        value={editForm.phone_number}
+                                        onChange={e => setEditForm({ ...editForm, phone_number: e.target.value })}
+                                        placeholder="918065251146"
+                                        required
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Provider</label>
+                                    <select
+                                        value={editForm.provider}
+                                        onChange={e => setEditForm({ ...editForm, provider: e.target.value })}
+                                    >
+                                        <option value="tata_tele">Tata Tele</option>
+                                        <option value="twilio">Twilio</option>
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Label (optional)</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.label}
+                                        onChange={e => setEditForm({ ...editForm, label: e.target.value })}
+                                        placeholder="Sales line, Support, etc."
+                                    />
+                                </div>
+                                <div className="form-group full-width">
+                                    <label>Notes (optional)</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.notes}
+                                        onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
+                                        placeholder="Internal notes..."
+                                    />
+                                </div>
+                            </div>
+                            <div className="pool-modal-actions">
+                                <button type="button" className="btn-release" onClick={() => setShowEditModal(null)}>Cancel</button>
+                                <button type="submit" className="btn-add-number">Save Changes</button>
                             </div>
                         </form>
                     </div>

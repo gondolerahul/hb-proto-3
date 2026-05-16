@@ -458,6 +458,13 @@ class StepExecutorService:
                     "scraper_tool": ["firecrawl"],
                     "headless_browser": ["headless-browser"],
                     "pdf_generator": ["pdf-generator"],
+                    "image_generation": ["imagen-4.0-generate-001"],
+                }
+                # Fixed per-call costs for tools that bill independently
+                # (used as fallback when IntegrationRegistry has no entry)
+                _TOOL_FIXED_COST = {
+                    "image_generation": _Dec("0.04"),   # Imagen 4 standard
+                    "video_generation": _Dec("0.05"),   # Veo per-call
                 }
                 _sku_matches = _TOOL_SKU_MAP.get(tool_id, [])
                 _or_clauses = [
@@ -490,6 +497,10 @@ class StepExecutorService:
                         calculated_cost=_tool_cost,
                         log_metadata={"tool": tool_id, "latency_ms": latency},
                     ))
+                elif tool_id in _TOOL_FIXED_COST:
+                    _tool_cost = _TOOL_FIXED_COST[tool_id]
+                    run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tool_cost
+                    logger.info(f"Tool cost for '{tool_id}': ${_tool_cost} (fixed fallback)")
                 else:
                     logger.warning(f"No cost entry found for tool '{tool_id}' — cost not tracked")
             except Exception as _ce:
@@ -685,7 +696,41 @@ class StepExecutorService:
                 if t.get("usage", "AUTONOMOUS") in ("AUTONOMOUS", "BOTH")
             ]
             tool_ids = [t.get("tool_id") for t in autonomous_tools]
-            tool_schemas = ToolExecutor.get_tool_schemas(tool_ids)
+
+        # ── Meta-Cognition: Auto-inject meta-tools by tier ─────────────
+        from src.ai.meta.platform_schema_compiler import resolve_meta_cognition
+        meta_config = resolve_meta_cognition(entity)
+
+        # Tier 2: Registry Search (AGENT + PROCESS)
+        if meta_config.get("registry_search"):
+            if "meta_registry_search" not in tool_ids:
+                tool_ids.append("meta_registry_search")
+                logger.debug(f"Tier 2: Auto-injected meta_registry_search for {entity.name}")
+
+        # Tier 3: Self-Modification (AGENT + PROCESS)
+        if meta_config.get("self_modification"):
+            for meta_tool in ["meta_entity_creator", "meta_entity_executor"]:
+                if meta_tool not in tool_ids:
+                    tool_ids.append(meta_tool)
+            logger.debug(f"Tier 3: Auto-injected meta_entity_creator/executor for {entity.name}")
+        # ───────────────────────────────────────────────────────────────
+
+        tool_schemas = ToolExecutor.get_tool_schemas(tool_ids)
+
+        # ── Tier 1: Platform Awareness ─────────────────────────────────
+        platform_awareness_text = None
+        if meta_config.get("platform_awareness"):
+            try:
+                from src.ai.meta.platform_schema_compiler import get_platform_summary
+                platform_awareness_text = await get_platform_summary(
+                    db=self.db,
+                    company_id=run.company_id,
+                    redis=self.redis,
+                )
+                logger.debug(f"Tier 1: Injected platform awareness ({len(platform_awareness_text)} chars) for {entity.name}")
+            except Exception as e:
+                logger.warning(f"Tier 1: Failed to load platform awareness: {e}")
+        # ───────────────────────────────────────────────────────────────
 
         # --- Build sandwich system prompt with all architecture fields ---
         # Inject context_sources if available
@@ -701,6 +746,7 @@ class StepExecutorService:
             success_criteria=success_criteria,
             allowed_deviations=allowed_deviations,
             execution_constraints=exec_constraints if exec_constraints else None,
+            platform_awareness=platform_awareness_text,
         )
 
         # --- Resolve reasoning mode and dispatch ---

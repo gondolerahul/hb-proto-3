@@ -276,8 +276,29 @@
 }
 
 .campaign-details {
-    max-width: 800px;
+    max-width: 960px;
     padding: 2.5rem;
+}
+
+.call-records-table {
+    margin-top: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.call-records-table .data-table.compact th,
+.call-records-table .data-table.compact td {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.82rem;
+}
+
+.call-records-table .btn-view {
+    font-size: 0.78rem;
+    text-decoration: none;
+    color: var(--color-rose-gold, #e5a07e);
+    white-space: nowrap;
 }
 
 .detail-grid {
