@@ -57,6 +57,7 @@ class PhoneNumberCreate(BaseModel):
     notes: Optional[str] = None
 
     # Assignment fields (optional — skip to add as 'available')
+    company_id: Optional[UUID] = None  # app_admin can assign to any company
     agent_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
     customer_name: Optional[str] = None
@@ -71,6 +72,7 @@ class PhoneNumberUpdate(BaseModel):
     phone_number: Optional[str] = None
     provider: Optional[str] = None
     country_code: Optional[str] = None
+    company_id: Optional[UUID] = None  # app_admin can reassign to different company
     customer_name: Optional[str] = None
     agent_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
@@ -89,6 +91,10 @@ class AssignRequest(BaseModel):
     customer_id: Optional[UUID] = None
     customer_name: Optional[str] = None
     customer_metadata: Optional[dict] = None
+
+
+class ClaimRequest(BaseModel):
+    target_company_id: Optional[UUID] = None  # app_admin can claim for any company
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────
@@ -122,11 +128,20 @@ async def create_phone_number(
 
         status = "assigned"
         assigned_at = datetime.utcnow()
-        company_id = current_user.company_id
+        # app_admin can assign to any company; others default to their own
+        if data.company_id and current_user.role == "app_admin":
+            company_id = data.company_id
+        else:
+            company_id = current_user.company_id
     else:
         status = "available"
         assigned_at = None
-        company_id = None
+        # If app_admin provides company_id even without agent, set as 'claimed'
+        if data.company_id and current_user.role == "app_admin":
+            company_id = data.company_id
+            status = "claimed"
+        else:
+            company_id = None
 
     entry = PhoneNumber(
         phone_number=data.phone_number,
@@ -457,9 +472,19 @@ async def list_phone_numbers(
         )
         agents = {a.id: a.name for a in agents_result.scalars().all()}
 
+    # Resolve company names
+    company_ids = [n.company_id for n in numbers if n.company_id]
+    company_names = {}
+    if company_ids:
+        from src.auth.models import Company as CompanyModel
+        companies_result = await db.execute(
+            select(CompanyModel).where(CompanyModel.id.in_(company_ids))
+        )
+        company_names = {c.id: c.name for c in companies_result.scalars().all()}
+
     return {
         "total": len(numbers),
-        "phone_numbers": [_to_response(n, agents) for n in numbers],
+        "phone_numbers": [_to_response(n, agents, company_names) for n in numbers],
     }
 
 
@@ -537,17 +562,26 @@ async def update_phone_number(
         entry.customer_metadata = data.customer_metadata
     if data.is_active is not None:
         entry.is_active = data.is_active
+    if data.company_id is not None and current_user.role == "app_admin":
+        entry.company_id = data.company_id
 
     if data.agent_id is not None:
-        # Verify agent exists
-        agent_result = await db.execute(
-            select(HierarchicalEntity).where(
-                and_(
-                    HierarchicalEntity.id == data.agent_id,
-                    HierarchicalEntity.company_id == current_user.company_id,
+        # Verify agent exists — app_admin can assign agents from any company
+        if current_user.role == "app_admin":
+            agent_result = await db.execute(
+                select(HierarchicalEntity).where(
+                    HierarchicalEntity.id == data.agent_id
                 )
             )
-        )
+        else:
+            agent_result = await db.execute(
+                select(HierarchicalEntity).where(
+                    and_(
+                        HierarchicalEntity.id == data.agent_id,
+                        HierarchicalEntity.company_id == current_user.company_id,
+                    )
+                )
+            )
         if not agent_result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="Agent not found")
         entry.agent_id = data.agent_id
@@ -569,10 +603,11 @@ async def update_phone_number(
 @router.post("/{number_id}/claim")
 async def claim_number(
     number_id: UUID,
+    body: Optional[ClaimRequest] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Claim an available number for the caller's company."""
+    """Claim an available number. App admin can specify target_company_id."""
     if current_user.role not in ("tenant_admin", "partner_admin", "app_admin"):
         raise HTTPException(status_code=403, detail="Only admins can claim phone numbers")
 
@@ -585,8 +620,20 @@ async def claim_number(
     if entry.status != "available":
         raise HTTPException(status_code=400, detail=f"Number is not available (current status: {entry.status})")
 
+    # Determine which company to claim for
+    target_company_id = None
+    if body and body.target_company_id and current_user.role == "app_admin":
+        # Validate the target company exists
+        from src.auth.models import Company as CompanyModel
+        company_result = await db.execute(
+            select(CompanyModel).where(CompanyModel.id == body.target_company_id)
+        )
+        if not company_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Target company not found")
+        target_company_id = body.target_company_id
+
     entry.status = "claimed"
-    entry.company_id = current_user.company_id
+    entry.company_id = target_company_id or current_user.company_id
     entry.claimed_by_user_id = current_user.id
     entry.claimed_at = datetime.utcnow()
 
@@ -745,8 +792,9 @@ async def delete_phone_number(
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
-def _to_response(entry: PhoneNumber, agents: dict = None) -> dict:
+def _to_response(entry: PhoneNumber, agents: dict = None, companies: dict = None) -> dict:
     agents = agents or {}
+    companies = companies or {}
     return {
         "id": str(entry.id),
         "phone_number": entry.phone_number,
@@ -761,6 +809,7 @@ def _to_response(entry: PhoneNumber, agents: dict = None) -> dict:
         "is_active": entry.is_active,
         # Ownership
         "company_id": str(entry.company_id) if entry.company_id else None,
+        "company_name": companies.get(entry.company_id, None) if entry.company_id else None,
         "claimed_at": entry.claimed_at.isoformat() if entry.claimed_at else None,
         # Agent assignment
         "agent_id": str(entry.agent_id) if entry.agent_id else None,

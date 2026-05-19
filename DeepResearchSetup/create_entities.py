@@ -512,7 +512,7 @@ SKILLS = [
                             "description": "Generate 5-15 targeted, non-overlapping search queries covering all identified dimensions",
                             "type": "ACTION",
                             "target": {
-                                "prompt_template": "Based on this topic analysis:\n\n{{step_1}}\n\nGenerate 5-15 optimal search queries as a JSON array. Each query should have: query (the search string), rationale (why this query), expected_source_type (academic/news/official/expert/data), priority (1=highest, 5=lowest).\n\nOutput ONLY the JSON array.",
+                                "prompt_template": "Based on this topic analysis:\n\n{{step_1}}\n\nGenerate 5-15 optimal search queries. Output ONLY a raw JSON array of query strings, nothing else. No markdown, no explanations, no source lists. Example format:\n[\"query 1\", \"query 2\", \"query 3\"]\n\nThe queries should be actual Google search queries, NOT source titles, URLs, or descriptions.",
                                 "input_dependencies": ["step_1"]
                             }
                         }
@@ -561,9 +561,13 @@ SKILLS = [
                             "step_id": "step_1",
                             "order": 1,
                             "name": "Execute All Search Queries",
-                            "description": "Execute each search query from the input and collect all results",
+                            "description": "Execute all search queries from the input using batch search and collect all results",
                             "type": "TOOL_CALL",
-                            "target": {"tool_id": "web_search", "prompt_template": "{{input}}"}
+                            # batch_web_search accepts a JSON array of queries — it executes each
+                            # one individually with SerpAPI and returns aggregated results.
+                            # This prevents the 'URL too long' error from passing the full array
+                            # as a single query to web_search.
+                            "target": {"tool_id": "batch_web_search", "prompt_template": "{{input}}"}
                         },
                         {
                             "step_id": "step_2",
@@ -579,12 +583,11 @@ SKILLS = [
                     ]
                 },
                 "dynamic_planning": {
-                    "enabled": True,
-                    "planning_prompt": "If initial search queries yield insufficient results on a dimension, generate additional targeted queries and execute them. Adapt the number of searches to the complexity of the topic."
+                    "enabled": False
                 }
             },
             "capabilities": {
-                "tools": [{"tool_id": "web_search"}],
+                "tools": [{"tool_id": "batch_web_search"}, {"tool_id": "web_search"}],
                 "memory": {"enabled": True, "mode": "CORTEX"}
             },
             "governance": {"timeout_ms": 300000, "max_cost_usd": 1.00}

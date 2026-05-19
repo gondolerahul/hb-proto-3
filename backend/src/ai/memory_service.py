@@ -117,6 +117,7 @@ class MemoryRouter:
     async def write_episodic(self, run: Any) -> Optional[EpisodicMemory]:
         """
         Persist the completed run as an episodic memory record.
+        DUAL WRITE: v1 flat table + v2 Episodic Tree.
 
         Only top-level runs are written (parent_run_id is None).
         Sub-runs (child steps) are dropped to keep the episodic store lean.
@@ -130,11 +131,13 @@ class MemoryRouter:
         if getattr(run, "parent_run_id", None) is not None:
             return None
 
+        episode = None
+
+        # --- V1: Write to flat table (existing behavior) ---
         try:
             input_summary = _summarize(run.input_data)
             output_summary = _summarize(run.result_data)
 
-            # Collect metadata from context_state
             ctx = run.context_state or {}
             tools_used = list({
                 tr["tool"]
@@ -161,17 +164,33 @@ class MemoryRouter:
                 },
             )
             self.db.add(episode)
-            await self.db.flush()   # Get the ID without full commit (caller commits)
+            await self.db.flush()
 
-            # Prune old episodes beyond MAX_EPISODES
             await self._prune_old_episodes(run.entity_id, run.user_id)
-
-            logger.debug(f"Episodic memory written for run {run.id}")
-            return episode
+            logger.debug(f"Episodic memory v1 written for run {run.id}")
 
         except Exception as e:
-            logger.warning(f"EpisodicMemory write failed for run {run.id}: {e}")
-            return None
+            logger.warning(f"EpisodicMemory v1 write failed for run {run.id}: {e}")
+
+        # --- V2: Write to Episodic Tree (non-fatal) ---
+        try:
+            from src.ai.episodic_tree_service import EpisodicTreeService
+            episodic_service = EpisodicTreeService(self.db, run.company_id)
+
+            ctx = run.context_state or {}
+            runtime_tree_id_str = ctx.get("__cortex_tree_id__")
+            runtime_tree_id = UUID(runtime_tree_id_str) if runtime_tree_id_str else None
+
+            episode_node_id = await episodic_service.write_episode(
+                entity_id=run.entity_id,
+                run=run,
+                runtime_tree_id=runtime_tree_id,
+            )
+            logger.info(f"Episodic Tree v2: episode {episode_node_id} for run {run.id}")
+        except Exception as e:
+            logger.warning(f"Episodic Tree v2 write failed for run {run.id}: {e}")
+
+        return episode
 
     # ------------------------------------------------------------------
     # Semantic Search (pgvector)
@@ -185,39 +204,52 @@ class MemoryRouter:
         api_key: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Vector similarity search across DocumentChunk records for this entity.
-        Uses Vertex AI for embedding (no direct API key calls).
+        Hybrid semantic + graph search across all memory domains (v2).
+        Falls back to v1 document_chunks search if v2 is unavailable.
 
         Returns empty list gracefully if embeddings or config unavailable.
         """
+        # --- V2: Semantic Graph Search ---
         try:
-            from google import genai as _genai
-            from google.genai import types as _types
+            company_id = await self._get_company_id(entity_id)
+            if company_id:
+                from src.ai.graph_service import SemanticGraphService
+                graph = SemanticGraphService(self.db, company_id)
+                results = await graph.semantic_graph_search(
+                    query=query,
+                    entity_id=entity_id,
+                    domains=None,  # Search all domains
+                    top_k=top_k,
+                    graph_expansion_depth=1,
+                )
+                if results:
+                    return [
+                        {
+                            "content": r.get("summary", ""),
+                            "score": r.get("combined_score", 0.0),
+                            "node_type": r.get("node_type"),
+                            "memory_domain": r.get("memory_domain"),
+                            "source": r.get("source", "semantic"),
+                        }
+                        for r in results
+                    ]
+        except Exception as e:
+            logger.debug(f"V2 semantic graph search failed, falling back to v1: {e}")
 
-            # Build Vertex AI client from company integration
+        # --- V1 Fallback: document_chunks ---
+        try:
             company_id = await self._get_company_id(entity_id)
             if not company_id:
                 return []
 
-            from src.common.genai_factory import build_vertex_genai_client
-            try:
-                _client = await build_vertex_genai_client(
-                    self.db, company_id,
-                    http_options={"api_version": "v1beta"}
-                )
-            except (RuntimeError, ValueError) as _cfg_err:
-                logger.debug(f"Vertex AI client not available for semantic search: {_cfg_err}")
+            from src.ai.embedding_service import EmbeddingService
+            embedding_service = EmbeddingService(self.db, company_id)
+            query_vector = await embedding_service.embed_query(query)
+
+            if not query_vector:
+                logger.debug("Semantic search skipped: embedding generation failed")
                 return []
 
-            # Embed the query
-            embed_resp = _client.models.embed_content(
-                model=EMBEDDING_MODEL,
-                contents=query,
-                config=_types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
-            )
-            query_vector = embed_resp.embeddings[0].values
-
-            # pgvector cosine distance query
             from src.ai.models import DocumentChunk, Document
             from sqlalchemy import text
 
@@ -326,7 +358,24 @@ class MemoryRouter:
         entity_id: UUID,
         user_id: Optional[UUID],
     ) -> List[Dict[str, Any]]:
-        """Load last N episodic records for this entity/user pair."""
+        """
+        Load episodic memories — prefers v2 Episodic Tree, falls back to v1 flat table.
+        """
+        # --- V2: Try Episodic Tree first ---
+        try:
+            company_id = await self._get_company_id(entity_id)
+            if company_id:
+                from src.ai.episodic_tree_service import EpisodicTreeService
+                episodic_service = EpisodicTreeService(self.db, company_id)
+                episodes = await episodic_service.get_recent_episodes(
+                    entity_id=entity_id, limit=self.MAX_EPISODES,
+                )
+                if episodes:
+                    return episodes
+        except Exception as e:
+            logger.debug(f"Episodic Tree v2 load failed, falling back to v1: {e}")
+
+        # --- V1: Flat table fallback ---
         try:
             stmt = (
                 select(EpisodicMemory)
@@ -345,7 +394,7 @@ class MemoryRouter:
                     "status": r.status,
                     "at": r.created_at.isoformat() if r.created_at else "",
                 }
-                for r in reversed(rows)   # oldest-first for chronological reading
+                for r in reversed(rows)
             ]
         except Exception as e:
             logger.debug(f"Episodic load failed: {e}")

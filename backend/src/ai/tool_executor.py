@@ -151,7 +151,15 @@ class ToolExecutor:
                             clean_args = {k: v for k, v in tool_args.items()
                                           if k not in ("company_id", "user_id")}
                             typed_params = params_cls(**clean_args)
-                            typed_result = await tool.run_typed(typed_params)
+                            # Forward extra_context to run_typed() if supported.
+                            # This is critical for tools like WebSearchTool that
+                            # need company_id to resolve API keys from the registry.
+                            import inspect as _inspect
+                            _rtyped_sig = _inspect.signature(tool.run_typed)
+                            if "context" in _rtyped_sig.parameters:
+                                typed_result = await tool.run_typed(typed_params, context=extra_context)
+                            else:
+                                typed_result = await tool.run_typed(typed_params)
                             _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
                             call_counts[tool_name] = call_counts.get(tool_name, 0) + 1
                             results.append(ToolResult(

@@ -38,6 +38,12 @@ interface CustomerCompany {
     type: string;
 }
 
+interface Company {
+    id: string;
+    name: string;
+    type: string;
+}
+
 const PhonePool: React.FC = () => {
     const { user, token } = useAuth();
     const [numbers, setNumbers] = useState<PhoneNumberEntry[]>([]);
@@ -66,6 +72,11 @@ const PhonePool: React.FC = () => {
         label: '',
         notes: '',
     });
+
+    // Claim modal state — app_admin can choose target company
+    const [showClaimModal, setShowClaimModal] = useState<PhoneNumberEntry | null>(null);
+    const [claimCompanyId, setClaimCompanyId] = useState('');
+    const [companies, setCompanies] = useState<Company[]>([]);
 
     const [addForm, setAddForm] = useState({
         phone_number: '',
@@ -141,7 +152,25 @@ const PhonePool: React.FC = () => {
     };
 
     useEffect(() => { fetchNumbers(); }, [fetchNumbers]);
-    useEffect(() => { fetchAgents(); fetchCustomers(); }, []);
+    useEffect(() => {
+        fetchAgents();
+        fetchCustomers();
+        if (isAdmin) fetchCompanies();
+    }, []);
+
+    const fetchCompanies = async () => {
+        try {
+            const response = await fetch(
+                `${import.meta.env.VITE_API_BASE_URL}/companies`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            if (!response.ok) return;
+            const data = await response.json();
+            setCompanies(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error('Error fetching companies:', err);
+        }
+    };
 
     const handleSync = async () => {
         setSyncing(true);
@@ -169,9 +198,31 @@ const PhonePool: React.FC = () => {
         }
     };
 
-    const handleClaim = async (id: string) => {
+    const handleClaim = async (entry: PhoneNumberEntry) => {
+        if (isAdmin && companies.length > 0) {
+            // Show claim modal with company selector
+            setShowClaimModal(entry);
+            setClaimCompanyId('');
+            return;
+        }
+        // Non-admin: direct claim
         try {
-            await phonePoolService.claimNumber(id);
+            await phonePoolService.claimNumber(entry.id);
+            fetchNumbers();
+        } catch (err: any) {
+            alert(err?.response?.data?.detail || 'Failed to claim number');
+        }
+    };
+
+    const handleClaimSubmit = async () => {
+        if (!showClaimModal) return;
+        try {
+            await phonePoolService.claimNumber(
+                showClaimModal.id,
+                claimCompanyId || undefined
+            );
+            setShowClaimModal(null);
+            setClaimCompanyId('');
             fetchNumbers();
         } catch (err: any) {
             alert(err?.response?.data?.detail || 'Failed to claim number');
@@ -403,7 +454,7 @@ const PhonePool: React.FC = () => {
                                     <td>{n.label || '—'}</td>
                                     <td className="actions-cell">
                                         {n.status === 'available' && (
-                                            <button className="btn-claim" onClick={() => handleClaim(n.id)}>
+                                            <button className="btn-claim" onClick={() => handleClaim(n)}>
                                                 Claim
                                             </button>
                                         )}
@@ -603,6 +654,46 @@ const PhonePool: React.FC = () => {
                                 <button type="submit" className="btn-add-number">Assign</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Claim with Company Modal (app_admin) */}
+            {showClaimModal && (
+                <div className="pool-modal-overlay" onClick={() => setShowClaimModal(null)}>
+                    <div className="pool-modal" onClick={e => e.stopPropagation()}>
+                        <h3>Claim {showClaimModal.phone_number}</h3>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                            Select which company this number should belong to. This company will be billed for all calls on this number.
+                        </p>
+                        <div className="add-number-form">
+                            <div className="form-group full-width">
+                                <label>Company *</label>
+                                <select
+                                    value={claimCompanyId}
+                                    onChange={e => setClaimCompanyId(e.target.value)}
+                                    required
+                                >
+                                    <option value="">-- Select Company --</option>
+                                    {companies.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} ({c.type})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="pool-modal-actions">
+                            <button type="button" className="btn-release" onClick={() => setShowClaimModal(null)}>Cancel</button>
+                            <button
+                                type="button"
+                                className="btn-add-number"
+                                onClick={handleClaimSubmit}
+                                disabled={!claimCompanyId}
+                            >
+                                Claim for Company
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

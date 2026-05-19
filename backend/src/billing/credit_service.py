@@ -42,7 +42,7 @@ class CreditService:
         self.db = db
 
     async def get_or_create_wallet(self, company_id: UUID) -> CreditWallet:
-        """Return credit wallet for company, creating with $5 daily credit if not found."""
+        """Return credit wallet for company, creating with config-defined daily credit if not found."""
         stmt = select(CreditWallet).where(CreditWallet.company_id == company_id)
         result = await self.db.execute(stmt)
         wallet = result.scalar_one_or_none()
@@ -53,7 +53,7 @@ class CreditService:
             
             billing_svc = BillingService(self.db)
             config = await billing_svc.get_billing_config(company_id)
-            daily_amount = config.default_daily_credits if config else Decimal("5.00")
+            daily_amount = Decimal(str(config.default_daily_credits)) if config and config.default_daily_credits else Decimal("0")
             
             wallet = CreditWallet(
                 company_id=company_id,
@@ -69,7 +69,7 @@ class CreditService:
     async def get_balance(self, company_id: UUID) -> dict:
         """Return current credit balance across all buckets.
         
-        Auto-renews daily credits if they have expired (so the $5 daily allowance
+        Auto-renews daily credits if they have expired (so the daily allowance
         is not stuck at 0 between cron runs).
         """
         wallet = await self.get_or_create_wallet(company_id)
@@ -117,9 +117,9 @@ class CreditService:
         remaining = amount
         deductions = {"daily": Decimal("0"), "wallet": Decimal("0"), "subscription": Decimal("0")}
 
-        # Check expiry and zero expired balances in-place
+        # Auto-renew expired daily credits (same as get_balance)
         if wallet.daily_expires_at and wallet.daily_expires_at < now:
-            wallet.daily_credits = Decimal("0")
+            wallet = await self.flush_and_inject_daily_credits(company_id)
         if wallet.wallet_expires_at and wallet.wallet_expires_at < now:
             wallet.wallet_balance = Decimal("0")
         if wallet.sub_credits_expire_at and wallet.sub_credits_expire_at < now:
@@ -228,7 +228,7 @@ class CreditService:
         
         billing_svc = BillingService(self.db)
         config = await billing_svc.get_billing_config(company_id)
-        daily_amount = config.default_daily_credits if config else Decimal("5.00")
+        daily_amount = Decimal(str(config.default_daily_credits)) if config and config.default_daily_credits else Decimal("0")
         
         wallet.daily_credits = daily_amount
         tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -300,9 +300,9 @@ class CreditService:
             "subscription": Decimal("0"),
         }
 
-        # Check expiry and zero expired balances in-place
+        # Auto-renew expired daily credits (same as get_balance)
         if wallet.daily_expires_at and wallet.daily_expires_at < now:
-            wallet.daily_credits = Decimal("0")
+            wallet = await self.flush_and_inject_daily_credits(company_id)
         if wallet.wallet_expires_at and wallet.wallet_expires_at < now:
             wallet.wallet_balance = Decimal("0")
         if wallet.sub_credits_expire_at and wallet.sub_credits_expire_at < now:

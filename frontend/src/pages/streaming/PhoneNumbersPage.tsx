@@ -26,11 +26,14 @@ interface PhoneNumber {
     agent_name: string;
     is_active: boolean;
     assigned_at: string;
+    company_id?: string;
+    company_name?: string;
 }
 
 interface Agent {
     id: string;
     name: string;
+    company_id?: string;
 }
 
 interface Customer {
@@ -39,11 +42,19 @@ interface Customer {
     company_name?: string;
 }
 
+interface Company {
+    id: string;
+    name: string;
+    type: string;
+}
+
 export const PhoneNumbersPage: React.FC = () => {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
+    const isAppAdmin = user?.role === 'app_admin';
     const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
     const [agents, setAgents] = useState<Agent[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
+    const [companies, setCompanies] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [formData, setFormData] = useState({
@@ -51,14 +62,25 @@ export const PhoneNumbersPage: React.FC = () => {
         phone_number: '',
         provider: 'twilio',
         agent_id: '',
-        customer_id: ''
+        customer_id: '',
+        company_id: ''
     });
 
     useEffect(() => {
         fetchPhoneNumbers();
         fetchAgents();
         fetchCustomers();
+        if (isAppAdmin) {
+            fetchCompanies();
+        }
     }, []);
+
+    // Re-fetch agents when company selection changes (for app_admin)
+    useEffect(() => {
+        if (isAppAdmin && formData.company_id) {
+            fetchAgents(formData.company_id);
+        }
+    }, [formData.company_id]);
 
     const fetchPhoneNumbers = async () => {
         try {
@@ -76,9 +98,13 @@ export const PhoneNumbersPage: React.FC = () => {
         }
     };
 
-    const fetchAgents = async () => {
+    const fetchAgents = async (companyId?: string) => {
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/ai/entities?type=AGENT`, {
+            let url = `${import.meta.env.VITE_API_BASE_URL}/ai/entities?type=AGENT`;
+            if (companyId) {
+                url += `&company_id=${companyId}`;
+            }
+            const response = await fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -90,7 +116,6 @@ export const PhoneNumbersPage: React.FC = () => {
             }
 
             const data = await response.json();
-            console.log('Agents response:', data);
 
             // Handle different possible response structures
             if (Array.isArray(data)) {
@@ -129,12 +154,10 @@ export const PhoneNumbersPage: React.FC = () => {
             }
 
             const data = await response.json();
-            console.log('Customers response:', data);
 
             // Handle different possible response structures
             if (Array.isArray(data)) {
                 setCustomers(data);
-                console.log(`Loaded ${data.length} customers`);
             } else if (data.tenants && Array.isArray(data.tenants)) {
                 const mappedCustomers = data.tenants.map((t: any) => ({
                     id: t.id,
@@ -142,15 +165,30 @@ export const PhoneNumbersPage: React.FC = () => {
                     company_name: t.company_name
                 }));
                 setCustomers(mappedCustomers);
-                console.log(`Loaded ${mappedCustomers.length} customers from tenants`);
             } else if (data.data && Array.isArray(data.data)) {
                 setCustomers(data.data);
-                console.log(`Loaded ${data.data.length} customers from data`);
             } else {
                 console.warn('Unexpected customer response structure:', data);
             }
         } catch (error) {
             console.error('Error fetching customers:', error);
+        }
+    };
+
+    const fetchCompanies = async () => {
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/companies`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (!response.ok) return;
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                setCompanies(data);
+            }
+        } catch (error) {
+            console.error('Error fetching companies:', error);
         }
     };
 
@@ -164,11 +202,18 @@ export const PhoneNumbersPage: React.FC = () => {
         }
 
         try {
-            const submitData = {
+            const submitData: any = {
                 ...formData,
                 customer_id: formData.customer_id || generateUUID(),
                 customer_name: formData.customer_name || 'Unknown Customer'
             };
+
+            // Include company_id for app_admin if selected
+            if (isAppAdmin && formData.company_id) {
+                submitData.company_id = formData.company_id;
+            } else {
+                delete submitData.company_id;
+            }
 
             const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/phone-numbers`, {
                 method: 'POST',
@@ -186,7 +231,8 @@ export const PhoneNumbersPage: React.FC = () => {
                     phone_number: '',
                     provider: 'twilio',
                     agent_id: '',
-                    customer_id: ''
+                    customer_id: '',
+                    company_id: ''
                 });
                 fetchPhoneNumbers();
             } else {
@@ -241,6 +287,14 @@ export const PhoneNumbersPage: React.FC = () => {
         }
     };
 
+    // Use company_name from API response
+    const getCompanyName = (pn: PhoneNumber) => {
+        if (pn.company_name) return pn.company_name;
+        if (!pn.company_id) return '—';
+        const company = companies.find(c => c.id === pn.company_id);
+        return company ? company.name : pn.company_id.slice(0, 8) + '…';
+    };
+
     if (loading) {
         return <div className="loading">Loading phone numbers...</div>;
     }
@@ -266,6 +320,7 @@ export const PhoneNumbersPage: React.FC = () => {
                                 <th>Phone Number</th>
                                 <th>Provider</th>
                                 <th>Agent</th>
+                                {isAppAdmin && <th>Company</th>}
                                 <th>Status</th>
                                 <th>Assigned</th>
                                 <th>Actions</th>
@@ -274,7 +329,7 @@ export const PhoneNumbersPage: React.FC = () => {
                         <tbody>
                             {phoneNumbers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="empty-state">
+                                    <td colSpan={isAppAdmin ? 8 : 7} className="empty-state">
                                         No phone numbers configured. Add one to get started.
                                     </td>
                                 </tr>
@@ -289,12 +344,13 @@ export const PhoneNumbersPage: React.FC = () => {
                                             </span>
                                         </td>
                                         <td>{pn.agent_name}</td>
+                                        {isAppAdmin && <td>{getCompanyName(pn)}</td>}
                                         <td>
                                             <span className={`status-badge ${pn.is_active ? 'active' : 'inactive'}`}>
                                                 {pn.is_active ? 'Active' : 'Inactive'}
                                             </span>
                                         </td>
-                                        <td>{new Date(pn.assigned_at).toLocaleDateString()}</td>
+                                        <td>{pn.assigned_at ? new Date(pn.assigned_at).toLocaleDateString() : '—'}</td>
                                         <td className="actions">
                                             <button
                                                 className="btn-icon"
@@ -324,6 +380,34 @@ export const PhoneNumbersPage: React.FC = () => {
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
                         <h2>Add Phone Number Assignment</h2>
                         <form onSubmit={handleSubmit}>
+                            {/* Company selector — app_admin only */}
+                            {isAppAdmin && companies.length > 0 && (
+                                <div className="form-group">
+                                    <label>Assign to Company *</label>
+                                    <select
+                                        value={formData.company_id}
+                                        onChange={e => {
+                                            setFormData({
+                                                ...formData,
+                                                company_id: e.target.value,
+                                                agent_id: '' // Reset agent when company changes
+                                            });
+                                        }}
+                                        required
+                                    >
+                                        <option value="">-- Select Company --</option>
+                                        {companies.map(company => (
+                                            <option key={company.id} value={company.id}>
+                                                {company.name} ({company.type})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <small style={{ color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block', fontSize: '0.875rem' }}>
+                                        The company that will be billed for calls on this number
+                                    </small>
+                                </div>
+                            )}
+
                             {customers.length > 0 && (
                                 <div className="form-group">
                                     <label>Select Existing Customer (Optional)</label>
@@ -407,6 +491,11 @@ export const PhoneNumbersPage: React.FC = () => {
                                         </option>
                                     ))}
                                 </select>
+                                {isAppAdmin && !formData.company_id && (
+                                    <small style={{ color: 'var(--warning-color, #f59e0b)', marginTop: '0.25rem', display: 'block', fontSize: '0.875rem' }}>
+                                        Select a company first to see its agents
+                                    </small>
+                                )}
                             </div>
 
                             <div className="form-actions">

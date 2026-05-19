@@ -48,7 +48,7 @@ export interface CampaignAnalyticsData {
 }
 
 export interface PersonalTasksData {
-    tasks: { id: string; entity_name: string; status: string; input_data?: any; total_cost_usd: number; total_tokens: number; execution_time_ms?: number; started_at?: string; completed_at?: string; created_at: string; error_message?: string }[];
+    tasks: { id: string; entity_name: string; status: string; input_data?: any; total_cost_usd: number; billed_amount?: number; total_tokens: number; execution_time_ms?: number; started_at?: string; completed_at?: string; created_at: string; error_message?: string }[];
     summary: { total: number; completed: number; failed: number; success_rate: number; total_cost_usd: number; total_execution_ms: number; estimated_time_saved_hours: number };
 }
 

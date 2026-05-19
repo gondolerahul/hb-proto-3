@@ -168,7 +168,7 @@ async def trigger_execution(
     current_user: User = Depends(get_current_user)
 ):
     service = AIService(db)
-    return await service.trigger_execution(execution_in, current_user.company_id, current_user.id)
+    return await service.trigger_execution(execution_in, current_user.company_id, current_user.id, user_role=current_user.role)
 
 @router.get("/executions", response_model=List[ExecutionRunSummary])
 async def list_executions(

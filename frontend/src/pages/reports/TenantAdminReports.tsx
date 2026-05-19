@@ -29,7 +29,7 @@ const EmptyChart: React.FC<{ message?: string }> = ({ message = 'No data availab
 );
 
 const TABS = [
-    { id: 'cost', label: 'Cost Breakdown', icon: DollarSign },
+    { id: 'cost', label: 'Billing Breakdown', icon: DollarSign },
     { id: 'forecast', label: 'Credit Forecast', icon: TrendingDown },
     { id: 'campaign', label: 'Campaign Analytics', icon: BarChart3 },
     { id: 'agents', label: 'Agent Performance', icon: Zap },
@@ -67,7 +67,7 @@ const CostTab: React.FC = () => {
             </div>
 
             <div className="stats-grid-4">
-                <StatCard label="Total Spend" value={`$${(data?.total_cost_usd || 0).toFixed(4)}`} icon={DollarSign} color="#e8885a" />
+                <StatCard label="Total Billing" value={`$${(data?.total_cost_usd || 0).toFixed(4)}`} icon={DollarSign} color="#e8885a" />
                 <StatCard label="Largest Channel" value={channels[0]?.service || '—'} icon={Activity} />
                 <StatCard label="Total API Calls" value={channels.reduce((s, c) => s + c.calls, 0).toLocaleString()} icon={Zap} />
                 <StatCard label="Days Tracked" value={days} icon={Clock} />
@@ -75,7 +75,7 @@ const CostTab: React.FC = () => {
 
             <div className="two-col-grid">
                 <div>
-                    <SectionTitle>Cost by Channel</SectionTitle>
+                    <SectionTitle>Billing by Channel</SectionTitle>
                     <div className="chart-container glass">
                         {channels.length === 0 ? <EmptyChart /> : (
                             <ResponsiveContainer width="100%" height={260}>
@@ -99,7 +99,7 @@ const CostTab: React.FC = () => {
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                                     <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
                                     <YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
-                                    <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} formatter={(v) => [`$${Number(v).toFixed(6)}`, 'Cost']} />
+                                    <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} formatter={(v) => [`$${Number(v).toFixed(6)}`, 'Billing']} />
                                     <Area type="monotone" dataKey="cost" stroke="#e8c5a0" fill="rgba(232,197,160,0.15)" strokeWidth={2} />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -113,7 +113,7 @@ const CostTab: React.FC = () => {
                 <table className="report-table">
                     <thead><tr>
                         <th>Service</th><th>Category</th><th className="num">Calls</th>
-                        <th className="num">Total Quantity</th><th className="num highlight-col">Total Cost</th>
+                        <th className="num">Total Quantity</th><th className="num highlight-col">Total Billing</th>
                     </tr></thead>
                     <tbody>
                         {channels.map((c, i) => (
@@ -200,7 +200,7 @@ const ForecastTab: React.FC = () => {
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                                     <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
                                     <YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
-                                    <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} formatter={(v) => [`$${Number(v).toFixed(6)}`, 'Cost']} />
+                                    <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} formatter={(v) => [`$${Number(v).toFixed(6)}`, 'Billing']} />
                                     <Bar dataKey="cost" fill="#c9956c" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -429,7 +429,7 @@ export const TenantAdminReports: React.FC = () => {
             <div className="page-header">
                 <div>
                     <h1 className="page-title"><DollarSign size={24} style={{ marginRight: '0.5rem' }} />Tenant Admin — Operations Analytics</h1>
-                    <p className="page-subtitle">Cost allocation, campaign performance, and AI agent analytics</p>
+                    <p className="page-subtitle">Billing allocation, campaign performance, and AI agent analytics</p>
                 </div>
             </div>
             <div className="report-tabs">

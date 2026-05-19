@@ -187,17 +187,37 @@ class PDFGeneratorTool(Tool):
                 except json.JSONDecodeError:
                     # Final fallback: input is raw markdown/text, not JSON at all.
                     # Auto-wrap it as a document with generated title and filename.
-                    # Extract a title from the first markdown heading if present.
+                    # Extract a meaningful title from the first H1 heading,
+                    # skipping step-metadata headings (e.g. "Analyze Research Topic",
+                    # "Wave 1:", "Step 1:", "Scrape Source", etc.)
+                    _SKIP_PREFIXES = (
+                        "analyze research", "wave ", "step ", "scrape", "extract",
+                        "generate", "synthesize", "decompose", "discover", "verify",
+                        "fact", "outline", "write", "section",
+                    )
                     _lines = cleaned.split('\n')
-                    _title = "Research Report"
+                    _title = None
                     for _l in _lines:
                         _stripped = _l.strip()
                         if _stripped.startswith('# '):
-                            _title = _stripped.lstrip('# ').strip()
-                            break
-                        elif _stripped.startswith('## '):
-                            _title = _stripped.lstrip('# ').strip()
-                            break
+                            _candidate = _stripped.lstrip('# ').strip()
+                            _lower = _candidate.lower()
+                            if not any(_lower.startswith(p) for p in _SKIP_PREFIXES):
+                                _title = _candidate
+                                break
+                    if not _title:
+                        # Try first ## that looks like a report title
+                        for _l in _lines:
+                            _stripped = _l.strip()
+                            if _stripped.startswith('## '):
+                                _candidate = _stripped.lstrip('# ').strip()
+                                _lower = _candidate.lower()
+                                if not any(_lower.startswith(p) for p in _SKIP_PREFIXES):
+                                    _title = _candidate
+                                    break
+                    if not _title:
+                        from datetime import datetime as _dtnow
+                        _title = f"Deep Research Report {_dtnow.utcnow().strftime('%Y-%m-%d')}"
                     _safe_filename = _sanitize_filename(_title)
                     params = {
                         "content": cleaned,

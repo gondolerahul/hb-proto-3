@@ -36,7 +36,7 @@ export const BillingSettings: React.FC = () => {
                     platform_fee_pct: 0.0,
                     sales_partner_fee_pct: 0.0,
                     discount_pct: 0.0,
-                    default_daily_credits: 5.0,
+                    default_daily_credits: 0,
                 });
             }
             setTiers(tiersRes);

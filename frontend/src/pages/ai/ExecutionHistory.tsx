@@ -132,8 +132,8 @@ export const ExecutionHistory: React.FC = () => {
                             </div>
 
                             <div className="card-meta">
-                                <span className="meta-item" title="Total Cost">
-                                    <DollarSign size={12} /> ${execution.total_cost_usd.toFixed(4)}
+                                <span className="meta-item" title="Billed Amount">
+                                    <DollarSign size={12} /> ${(execution.billed_amount != null ? execution.billed_amount : execution.total_cost_usd).toFixed(4)}
                                 </span>
                                 <span className="meta-item" title="Token Usage">
                                     <Database size={12} /> {execution.total_tokens.toLocaleString()}

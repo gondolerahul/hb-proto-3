@@ -754,7 +754,12 @@ async def describe_entity_children(
     if not children:
         return ""
 
-    lines = ["## Available Child Entities"]
+    lines = ["## Available Child Entities (for CHILD_ENTITY_INVOCATION steps)"]
+    lines.append(
+        "IMPORTANT: When creating CHILD_ENTITY_INVOCATION steps, you MUST use the "
+        "exact `entity_id` UUID shown below for each child entity. "
+        "Do NOT use the entity name — only the UUID is valid.\n"
+    )
     for child in children:
         identity = child.identity or {}
         role = identity.get("role") or identity.get("persona", {}).get("role", "")
@@ -763,6 +768,7 @@ async def describe_entity_children(
         goal = child.goal or child.description or "No description"
 
         lines.append(f"### {child.name} ({child.type})")
+        lines.append(f"- **entity_id (USE THIS EXACT UUID):** `{child.id}`")
         if role:
             lines.append(f"- **Role:** {role}")
         lines.append(f"- **Goal:** {goal[:200]}")
@@ -771,6 +777,7 @@ async def describe_entity_children(
         lines.append("")
 
     return "\n".join(lines)
+
 
 
 def resolve_meta_cognition(entity) -> Dict[str, Any]:

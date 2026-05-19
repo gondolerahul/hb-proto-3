@@ -260,7 +260,14 @@ class VoiceUsageLogger:
         company_id: UUID,
         sku_name: str
     ) -> Optional[IntegrationRegistry]:
-        """Get active SKU from integration registry."""
+        """Get active SKU from integration registry.
+        
+        Lookup order:
+        1. Company-specific SKU (tenant override)
+        2. service_sku match for company
+        3. model_name match for company
+        4. APP company fallback (platform-level SKUs)
+        """
         # Try company-specific SKU first
         result = await self.db.execute(
             select(IntegrationRegistry).where(
@@ -281,8 +288,37 @@ class VoiceUsageLogger:
                 ).limit(1)
             )
             entry = result.scalar_one_or_none()
-        
+
+        if not entry:
+            # Fall back to APP company SKUs (platform-level pricing shared across all tenants)
+            from src.auth.models import Company
+            app_result = await self.db.execute(
+                select(Company.id).where(Company.type == "APP").limit(1)
+            )
+            app_company_id = app_result.scalar_one_or_none()
+            if app_company_id and app_company_id != company_id:
+                result = await self.db.execute(
+                    select(IntegrationRegistry).where(
+                        IntegrationRegistry.company_id == app_company_id,
+                        IntegrationRegistry.service_sku == sku_name,
+                        IntegrationRegistry.status == "active"
+                    ).limit(1)
+                )
+                entry = result.scalar_one_or_none()
+                if not entry:
+                    result = await self.db.execute(
+                        select(IntegrationRegistry).where(
+                            IntegrationRegistry.company_id == app_company_id,
+                            IntegrationRegistry.model_name == sku_name,
+                            IntegrationRegistry.status == "active"
+                        ).limit(1)
+                    )
+                    entry = result.scalar_one_or_none()
+                if entry:
+                    logger.debug(f"Using APP-company SKU fallback for {sku_name} (billing company: {company_id})")
+
         return entry
+
     
     async def _update_session_total_cost(
         self,

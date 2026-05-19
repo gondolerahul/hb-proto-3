@@ -29,7 +29,7 @@ class BillingConfig(Base):
     sales_partner_fee_pct = Column(Numeric(10, 4), nullable=False, default=0.0)  # spf
     discount_pct = Column(Numeric(10, 4), nullable=False, default=0.0)           # d
 
-    default_daily_credits = Column(Numeric(10, 4), nullable=False, default=5.0)
+    default_daily_credits = Column(Numeric(10, 4), nullable=False, default=0)
 
     # Base cost overrides
     base_cost_telephony = Column(Numeric(14, 6), nullable=True) 
@@ -54,8 +54,8 @@ class CreditWallet(Base):
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, unique=True)
     account_model = Column(String(30), nullable=False, default="pay_as_you_go")  # pay_as_you_go | subscription
 
-    # Daily credits — $5 injected daily, expires at 00:00:00 next day (never carries forward)
-    daily_credits = Column(Numeric(10, 4), nullable=False, default=5.0)
+    # Daily credits — injected daily per BillingConfig, expires at 00:00:00 next day (never carries forward)
+    daily_credits = Column(Numeric(10, 4), nullable=False, default=0)
     daily_expires_at = Column(DateTime, nullable=True)
 
     # Wallet balance — topped up via Razorpay, 365-day validity

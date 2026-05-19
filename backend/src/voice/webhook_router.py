@@ -67,8 +67,26 @@ async def twilio_incoming_call(
     <Hangup/>
 </Response>"""
         return Response(content=twiml, media_type="application/xml")
+    # 2. Pre-call credit check — reject if balance below minimum threshold
+    try:
+        from src.billing.credit_service import CreditService
+        credit_svc = CreditService(db)
+        balance = await credit_svc.get_balance(customer_assignment.company_id)
+        if balance["total_available"] < 0.10:
+            logger.warning(
+                f"Insufficient credits for inbound call on {to_number} "
+                f"(company {customer_assignment.company_id}, available: ${balance['total_available']:.4f})"
+            )
+            twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice">Sorry, this service is temporarily unavailable due to insufficient credits. Please contact your administrator.</Say>
+    <Hangup/>
+</Response>"""
+            return Response(content=twiml, media_type="application/xml")
+    except Exception as credit_err:
+        logger.warning(f"Pre-call credit check failed (allowing call): {credit_err}")
     
-    # 2. Create session in database
+    # 3. Create session in database
     session = await session_manager.create_voice_session(
         company_id=customer_assignment.company_id,
         customer_id=customer_assignment.customer_id,
@@ -416,8 +434,24 @@ async def tata_incoming_call(
             "sucess": False,
             "error": "Number not configured"
         }
+    # 3. Pre-call credit check — reject if balance below minimum threshold
+    try:
+        from src.billing.credit_service import CreditService
+        credit_svc = CreditService(db)
+        balance = await credit_svc.get_balance(customer_assignment.company_id)
+        if balance["total_available"] < 0.10:
+            logger.warning(
+                f"Insufficient credits for inbound Tata call on {to_number} "
+                f"(company {customer_assignment.company_id}, available: ${balance['total_available']:.4f})"
+            )
+            return {
+                "sucess": False,
+                "error": "Insufficient credits for this service"
+            }
+    except Exception as credit_err:
+        logger.warning(f"Pre-call credit check failed (allowing call): {credit_err}")
     
-    # 3. Create NEW session (Inbound Flow)
+    # 4. Create NEW session (Inbound Flow)
     session = await session_manager.create_voice_session(
         company_id=customer_assignment.company_id,
         customer_id=customer_assignment.customer_id,

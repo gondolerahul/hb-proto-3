@@ -55,25 +55,46 @@ class WebSearchTool(Tool):
     # ---------------------------------------------------------------------------
 
     def _parse_query(self, input_data: str) -> str:
-        """Extract search query from raw input string or JSON dict."""
+        """Extract search query from raw input string or JSON dict/list."""
         raw = (input_data or "").strip()
         if not raw:
             return ""
 
         # Try JSON parsing first
-        if raw.startswith("{"):
+        if raw.startswith("{") or raw.startswith("["):
             try:
                 parsed = json.loads(raw)
-                if isinstance(parsed, dict):
+                if isinstance(parsed, list):
+                    # Source-discoverer passes a JSON array of query objects.
+                    # Extract the first valid query string — the caller (REACT loop)
+                    # is responsible for iterating through the array; this method
+                    # only returns one query per call.
+                    for item in parsed:
+                        if isinstance(item, str) and item.strip():
+                            return item.strip()[:500]
+                        if isinstance(item, dict):
+                            for key in ("query", "q", "search", "text"):
+                                if key in item and isinstance(item[key], str):
+                                    return item[key].strip()[:500]
+                elif isinstance(parsed, dict):
                     for key in ("query", "q", "search", "input", "text"):
                         if key in parsed and isinstance(parsed[key], str):
-                            return parsed[key].strip()
+                            return parsed[key].strip()[:500]
                     # Fallback: first string value
                     for v in parsed.values():
                         if isinstance(v, str) and v.strip():
-                            return v.strip()
+                            return v.strip()[:500]
             except json.JSONDecodeError:
                 pass  # Not JSON
+
+        # Hard cap: queries >500 chars are always malformed (e.g. LLM passed full
+        # research context instead of a search query). Truncate and warn.
+        if len(raw) > 500:
+            logger.warning(
+                f"[WebSearch] Query too long ({len(raw)} chars) — likely a prompt injection. "
+                f"Truncating to 500 chars. First 100: {raw[:100]!r}"
+            )
+            raw = raw[:500]
 
         return raw
 
@@ -308,11 +329,11 @@ class WebSearchTool(Tool):
     # Phase 6: Typed interface
     # ---------------------------------------------------------------------------
 
-    async def run_typed(self, params: WebSearchParams) -> TypedToolResult:
+    async def run_typed(self, params: WebSearchParams, context: Optional[Dict] = None) -> TypedToolResult:
         """Typed tool execution — accepts WebSearchParams, returns TypedToolResult."""
         try:
             result_str = await self.run_with_context(
-                json.dumps({"query": params.query}), context=None
+                json.dumps({"query": params.query}), context=context
             )
             return TypedToolResult(output=result_str)
         except Exception as e:

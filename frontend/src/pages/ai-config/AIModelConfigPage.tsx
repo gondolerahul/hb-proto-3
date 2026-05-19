@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     Brain, MessageSquare, Image as ImageIcon, Video, Mic,
     Music, Cuboid, Save, AlertCircle, Loader2, Route,
-    ChevronDown, Trash2
+    ChevronDown, Trash2, Search
 } from 'lucide-react';
 import { GlassCard, JellyButton } from '@/components/ui';
 import { aiConfigService, ModelTaskDefault } from '@/services/ai-config.service';
@@ -13,6 +13,7 @@ import './AIModelConfigPage.css';
 const TASK_TYPES = [
     { id: 'text_generation', name: 'Text Generation', icon: MessageSquare, category: 'llm', description: 'Standard completions, reasoning, and conversational agent responses.' },
     { id: 'thinking', name: 'Thinking (Reasoning)', icon: Brain, category: 'llm', description: 'Complex planning and chain-of-thought processing before answering.' },
+    { id: 'embedding', name: 'Embedding', icon: Search, category: 'llm', description: 'Vector embedding generation for semantic search, memory retrieval, and similarity matching.' },
     { id: 'speech_to_speech', name: 'Live Streaming (Voice)', icon: Mic, category: 'realtime', description: 'Real-time WebSocket streaming models for low-latency voice AI.' },
     { id: 'text_to_image', name: 'Text to Image', icon: ImageIcon, category: 'image', description: 'Generating images from prompts.' },
     { id: 'image_to_image', name: 'Image to Image', icon: ImageIcon, category: 'image', description: 'Modifying images based on visual inputs and prompts.' },

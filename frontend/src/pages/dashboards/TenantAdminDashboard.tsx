@@ -40,14 +40,14 @@ export const TenantAdminDashboard: React.FC = () => {
         <div className="dashboard-wrapper">
             <div className="dashboard-header">
                 <h1 className="page-title">Operations & Budgets</h1>
-                <p className="page-subtitle">Cost Control, Campaign Analytics, and Agent Performance</p>
+                <p className="page-subtitle">Billing Control, Campaign Analytics, and Agent Performance</p>
             </div>
 
             <div className="stats-grid-4">
                 <StatCard label="Total Available Credits" value={fmtUSD(forecastData?.wallet.total_available || 0)} icon={DollarSign} color="#4dbe8d" />
                 <StatCard label="Burn Rate (Avg/Day)" value={fmtUSD(forecastData?.burn_rate.avg_daily_usd || 0)} icon={Zap} color="#e8885a" />
                 <StatCard label="Days Remaining" value={forecastData?.forecast.days_remaining || 0} icon={Clock} color={forecastData && forecastData.forecast.days_remaining < 7 ? "#e8885a" : "#6b9bd2"} />
-                <StatCard label="Total Audio Outbound" value={`${campaignData?.telephony.total_outbound_minutes || 0} min`} icon={Briefcase} color="#d2b96b" sub={`Cost: ${fmtUSD(campaignData?.telephony.total_charge_usd || 0)}`} />
+                <StatCard label="Total Audio Outbound" value={`${campaignData?.telephony.total_outbound_minutes || 0} min`} icon={Briefcase} color="#d2b96b" sub={`Billed: ${fmtUSD(campaignData?.telephony.total_charge_usd || 0)}`} />
             </div>
 
             <div className="two-col-grid">
@@ -98,7 +98,7 @@ export const TenantAdminDashboard: React.FC = () => {
                             <th>Total Runs</th>
                             <th>Failed</th>
                             <th>Error Rate</th>
-                            <th>Cost</th>
+                            <th>Billing</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -343,6 +343,64 @@ ACTIONS = [
             "governance": {"timeout_ms": 120000, "max_cost_usd": 0.10}
         }
     },
+    {
+        "key": "citation_generator_action",
+        "payload": {
+            "name": "deep-research-citation-generator",
+            "display_name": "Deep Research Citation Generator",
+            "description": "Collects all scraped and verified sources from the research pipeline and generates a formatted bibliography/citations section for the final report.",
+            "goal": "Produce a complete, properly formatted citations section listing every source consulted during the research, with author, title, URL, date, and relevance note.",
+            "type": "ACTION", "version": "1.0.0", "status": "ACTIVE",
+            "tags": ["deep-research", "citations", "bibliography", "references"],
+            "identity": {
+                "system_prompt": (
+                    "You are a research librarian specializing in citation management. "
+                    "Given all research findings, produce a complete, formatted bibliography section.\n\n"
+                    "For each source, format as:\n"
+                    "[N]. **[Title]** — [Organization/Author], [Date]\n"
+                    "    URL: [full URL]\n"
+                    "    Type: [Market Report / Academic Paper / News / Government / Vendor / Case Study]\n"
+                    "    Key Contribution: [1-sentence description of what this source contributed to the report]\n\n"
+                    "Also include:\n"
+                    "- A METHODOLOGY note explaining the research process\n"
+                    "- A DATA QUALITY note rating overall source quality (High/Medium/Low)\n"
+                    "- Count of: total sources found, successfully scraped, used in report"
+                ),
+                "behavioral_constraints": [
+                    "Include ALL sources that were scraped or verified, not just ones explicitly cited",
+                    "Never invent citations — only include sources actually found in the research data",
+                    "Flag sources that could not be scraped as [SEARCH RESULT ONLY — not fully scraped]",
+                    "Sort citations by authority score (highest first)",
+                    "Include exact URLs — never shorten or paraphrase them"
+                ]
+            },
+            "hierarchy": {"is_atomic": True, "composition_depth": 0, "children": []},
+            "logic_gate": {
+                "reasoning_config": {"task_type": "text_generation", "temperature": 0.1, "reasoning_mode": "CHAIN_OF_THOUGHT"}
+            },
+            "planning": {
+                "static_plan": {
+                    "enabled": True,
+                    "steps": [{
+                        "step_id": "step_1", "order": 1,
+                        "name": "Generate Citations Section",
+                        "description": "Compile all sources from the research into a formatted bibliography",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "Based on all the research data provided below, generate a complete REFERENCES AND CITATIONS section.\n\n"
+                                "RESEARCH DATA:\n{{input}}\n\n"
+                                "Extract every source mentioned (URLs, titles, organizations) and format the bibliography as instructed. "
+                                "Include a research methodology note and data quality assessment."
+                            )
+                        }
+                    }]
+                }
+            },
+            "capabilities": {"tools": [], "memory": {"enabled": True, "mode": "CORTEX"}},
+            "governance": {"timeout_ms": 120000, "max_cost_usd": 0.20}
+        }
+    },
 ]
 
 # --- Layer 2: SKILLs (5 entities) ---
@@ -369,7 +427,7 @@ SKILLS = [
             "planning": {
                 "static_plan": {"enabled": True, "steps": [
                     {"step_id": "step_1", "order": 1, "name": "Analyze Research Topic", "description": "Analyze the research topic to identify key dimensions", "type": "ACTION", "target": {"prompt_template": "Analyze this research topic and identify all key dimensions:\n\nTOPIC: {{input}}"}},
-                    {"step_id": "step_2", "order": 2, "name": "Generate Search Queries", "description": "Generate 5-15 targeted search queries", "type": "ACTION", "target": {"prompt_template": "Based on this topic analysis:\n\n{{step_1}}\n\nGenerate 5-15 optimal search queries as a JSON array.", "input_dependencies": ["step_1"]}}
+                    {"step_id": "step_2", "order": 2, "name": "Generate Search Queries", "description": "Generate 5-15 targeted search queries as a clean JSON array of strings", "type": "ACTION", "target": {"prompt_template": "Based on this topic analysis:\n\n{{step_1}}\n\nGenerate 5-15 optimal search queries that will be passed directly to a web search tool.\n\nCRITICAL OUTPUT FORMAT RULES:\n- Output ONLY a raw JSON array of plain query STRINGS\n- Do NOT wrap in markdown code fences\n- Do NOT add any headers, titles, or explanations\n- Do NOT use query objects — only plain strings\n- The queries should be actual Google search queries\n\nCorrect output example:\n[\"neural basis of learning and memory\", \"computational models of brain function\", \"spiking neural networks vs artificial neural networks\"]", "input_dependencies": ["step_1"]}}
                 ]},
                 "dynamic_planning": {"enabled": False}
             },
@@ -398,13 +456,49 @@ SKILLS = [
             },
             "planning": {
                 "static_plan": {"enabled": True, "steps": [
-                    {"step_id": "step_1", "order": 1, "name": "Execute All Search Queries", "description": "Execute each search query and collect all results", "type": "TOOL_CALL", "target": {"tool_id": "web_search", "prompt_template": "{{input}}"}},
-                    {"step_id": "step_2", "order": 2, "name": "Rank and Deduplicate Sources", "description": "Analyze results, deduplicate URLs, rank sources", "type": "ACTION", "target": {"prompt_template": "Given these search results:\n\n{{step_1}}\n\nProduce a ranked, deduplicated source list. Select the top 10-15 most valuable sources for scraping.", "input_dependencies": ["step_1"]}}
+                    {
+                        "step_id": "step_1",
+                        "order": 1,
+                        "name": "Extract Search Queries",
+                        "description": "Extract the JSON array of search queries from the decomposer output. The input may contain markdown headers and analysis text — extract ONLY the JSON array of query strings.",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "The following input contains search queries generated by a query decomposer. "
+                                "The input may be wrapped in markdown formatting, headers, or code fences.\n\n"
+                                "INPUT:\n{{input}}\n\n"
+                                "TASK: Extract the search query strings and output them as a PLAIN JSON array. "
+                                "Output ONLY the JSON array — no markdown fences, no headers, no explanation.\n\n"
+                                "If the input contains query objects like {\"query\": \"...\", ...}, extract just the query string values.\n\n"
+                                "Example correct output:\n"
+                                '[\"query one\", \"query two\", \"query three\"]'
+                            )
+                        }
+                    },
+                    {
+                        "step_id": "step_2",
+                        "order": 2,
+                        "name": "Execute All Search Queries",
+                        "description": "Execute the JSON query array using batch_web_search",
+                        "type": "TOOL_CALL",
+                        "target": {"tool_id": "batch_web_search", "prompt_template": "{{step_1}}", "input_dependencies": ["step_1"]}
+                    },
+                    {
+                        "step_id": "step_3",
+                        "order": 3,
+                        "name": "Rank and Deduplicate Sources",
+                        "description": "Analyze all search results, deduplicate URLs, and rank sources by authority and relevance",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": "Given these batch search results:\n\n{{step_2}}\n\nProduce a ranked, deduplicated source list. For each source provide: url, title, source_type, authority_score (1-10), scrape_priority (1=first). Select the top 10-15 most valuable sources.",
+                            "input_dependencies": ["step_2"]
+                        }
+                    }
                 ]},
-                "dynamic_planning": {"enabled": True, "planning_prompt": "If initial search queries yield insufficient results on a dimension, generate additional targeted queries."}
+                "dynamic_planning": {"enabled": False}
             },
-            "capabilities": {"tools": [{"tool_id": "web_search"}], "memory": {"enabled": True, "mode": "CORTEX"}},
-            "governance": {"timeout_ms": 300000, "max_cost_usd": 1.00}
+            "capabilities": {"tools": [{"tool_id": "batch_web_search"}, {"tool_id": "web_search"}, {"tool_id": "headless_browser"}], "memory": {"enabled": True, "mode": "CORTEX", "memory_scope": "INTELLIGENCE_ONLY"}},
+            "governance": {"timeout_ms": 300000, "max_cost_usd": 1.50}
         }
     },
     {
@@ -412,32 +506,113 @@ SKILLS = [
         "payload": {
             "name": "deep-research-source-analyzer",
             "display_name": "Research Source Analyzer",
-            "description": "For each high-priority source: scrapes content, extracts key claims/statistics/quotes, assesses credibility, writes findings to CORTEX.",
-            "goal": "Transform raw web sources into structured, citation-ready research knowledge.",
-            "type": "SKILL", "version": "1.0.0", "status": "ACTIVE",
+            "description": "For ALL high-priority sources: batch-scrapes up to 10 URLs, extracts key claims/statistics/quotes per source, assesses credibility, and produces a combined structured findings document.",
+            "goal": "Transform ALL discovered web sources into structured, citation-ready research knowledge. Must process every URL in the provided ranked list.",
+            "type": "SKILL", "version": "2.0.0", "status": "ACTIVE",
             "tags": ["deep-research", "source-analysis", "extraction"],
             "identity": {
-                "system_prompt": "You are a deep research analyst. For each source URL: (1) Scrape full content, (2) Extract key claims/statistics/quotes, (3) Assess credibility, (4) Identify cross-source relationships, (5) Write findings to CORTEX tree.",
-                "behavioral_constraints": ["Process sources one at a time", "Write findings to CORTEX after each source", "Track cross-source corroboration", "Stop after 10 sources or diminishing returns"]
+                "system_prompt": (
+                    "You are a deep research analyst. Your job is to process EVERY source URL given to you.\n\n"
+                    "PROCESS:\n"
+                    "1. Step 1: Extract ALL URLs from the input ranked source list. Pass them as a JSON object "
+                    "{\"urls\": [\"url1\", \"url2\", ...]} to the scraper_tool. The scraper handles batching.\n"
+                    "2. Step 2: For EACH scraped result, extract: KEY_CLAIMS (with quotes), STATISTICS, "
+                    "CREDIBILITY_SCORE (1-5), SOURCE_TYPE, PUBLICATION_DATE (if available).\n"
+                    "3. Step 3: Synthesize all findings, identify cross-source corroboration and contradictions.\n"
+                    "4. Step 4: Produce a CITATIONS LIST with: url, title, author/org, date, key_contribution.\n\n"
+                    "CRITICAL: You MUST process ALL URLs, not just the first one. "
+                    "If a source fails to scrape, note it as FAILED and continue with the rest."
+                ),
+                "behavioral_constraints": [
+                    "MUST pass ALL URLs to scraper_tool in a single {\"urls\":[...]} call",
+                    "MUST produce findings for every successfully scraped source",
+                    "MUST produce a CITATIONS section at the end listing every source",
+                    "Never stop after processing only 1 source",
+                    "Track which sources corroborate or contradict each other"
+                ]
             },
             "hierarchy": {"is_atomic": False, "composition_depth": 1, "children": []},
             "logic_gate": {
-                "reasoning_config": {"task_type": "text_generation", "temperature": 0.2, "reasoning_mode": "CHAIN_OF_THOUGHT"},
-                "context_policy": {"type": "SLIDING_WINDOW", "max_chars": 25000, "summarize_threshold": 20000}
+                "reasoning_config": {"task_type": "thinking", "temperature": 0.2, "reasoning_mode": "CHAIN_OF_THOUGHT"},
+                "context_policy": {"type": "SLIDING_WINDOW", "max_chars": 40000, "summarize_threshold": 35000}
             },
             "planning": {
                 "static_plan": {"enabled": True, "steps": [
-                    {"step_id": "step_1", "order": 1, "name": "Scrape Source Content", "description": "Scrape the full content from the next priority source URL", "type": "TOOL_CALL", "target": {"tool_id": "scraper_tool", "prompt_template": "{{input}}"}},
-                    {"step_id": "step_2", "order": 2, "name": "Extract Structured Information", "description": "Analyze scraped content and extract key information", "type": "ACTION", "target": {"prompt_template": "Analyze this scraped content and extract structured research information:\n\n{{step_1}}\n\nExtract: KEY_CLAIMS, STATISTICS, QUOTES, ENTITIES, CREDIBILITY_SCORE (1-5), RELATIONSHIP_TO_PRIOR_FINDINGS", "input_dependencies": ["step_1"]}}
+                    {
+                        "step_id": "step_1",
+                        "order": 1,
+                        "name": "Extract URLs as JSON Array",
+                        "description": (
+                            "Read the ranked source list from the input and output ONLY a JSON object "
+                            '{"urls": ["https://...", ...]} containing every URL found. '
+                            "No markdown, no explanation — pure JSON only."
+                        ),
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "You are given a ranked list of research sources. "
+                                "Extract every URL from the list below and output ONLY a JSON object in this exact format — "
+                                "no markdown fences, no explanation, just the raw JSON:\n\n"
+                                '{"urls": ["https://first-url.com", "https://second-url.com", ...]}\n\n'
+                                "SOURCE LIST:\n{{input}}\n\n"
+                                "Output the JSON object now:"
+                            )
+                        }
+                    },
+                    {
+                        "step_id": "step_2",
+                        "order": 2,
+                        "name": "Batch-Scrape ALL Source URLs",
+                        "description": "Pass the JSON URL array to scraper_tool to scrape all sources in one batch call.",
+                        "type": "TOOL_CALL",
+                        "target": {
+                            "tool_id": "scraper_tool",
+                            "prompt_template": "{{step_1}}",
+                            "input_dependencies": ["step_1"]
+                        }
+                    },
+                    {
+                        "step_id": "step_3",
+                        "order": 3,
+                        "name": "Analyze All Scraped Sources",
+                        "description": "For each successfully scraped source, extract structured findings. Identify cross-source patterns.",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "You have scraped the following sources:\n\n{{step_2}}\n\n"
+                                "For EACH source that was successfully scraped, produce a structured analysis block:\n\n"
+                                "## SOURCE: [URL]\n"
+                                "- **Title:** [page title]\n"
+                                "- **Source Type:** [Market Report / Academic / News / Gov / Vendor / Case Study]\n"
+                                "- **Publication Date:** [date if found, else 'Unknown']\n"
+                                "- **Credibility Score:** [1-5]\n"
+                                "- **Key Claims:** [bullet list of 3-7 key claims with exact quotes where possible]\n"
+                                "- **Key Statistics:** [all specific numbers, percentages, dollar amounts found]\n"
+                                "- **Corroborates:** [which other sources confirm similar findings]\n"
+                                "- **Contradicts:** [any conflicting data from other sources]\n\n"
+                                "After ALL sources, add:\n"
+                                "## CROSS-SOURCE SYNTHESIS\n"
+                                "Identify: (1) Points of consensus, (2) Contested claims, (3) Data gaps\n\n"
+                                "## CITATIONS REGISTER\n"
+                                "List every source as: [Number]. URL | Title | Organization | Date | Key Contribution"
+                            ),
+                            "input_dependencies": ["step_2"]
+                        }
+                    }
                 ]},
-                "dynamic_planning": {"enabled": True, "planning_prompt": "Iterate through all source URLs. For each URL: scrape, analyze, then continue. Skip failed scrapes."},
-                "loop_control": {"max_iterations": 12, "iteration_context_mode": "SUMMARIZED", "summary_every_n_iterations": 3}
+                "dynamic_planning": {"enabled": False}
             },
             "capabilities": {
-                "tools": [{"tool_id": "scraper_tool"}, {"tool_id": "headless_browser"}, {"tool_id": "web_search"}],
-                "memory": {"enabled": True, "mode": "CORTEX", "cortex_config": {"auto_checkpoint": True, "context_budget_pct": 40}}
+                "tools": [{"tool_id": "scraper_tool"}, {"tool_id": "web_search"}, {"tool_id": "headless_browser"}],
+                "memory": {
+                    "enabled": True, "mode": "CORTEX",
+                    "memory_scope": "INTELLIGENCE_ONLY",
+                    "cortex_config": {"auto_checkpoint": True, "context_budget_pct": 50},
+                    "episodic_memory_count": 0,
+                    "semantic_search_enabled": False
+                }
             },
-            "governance": {"timeout_ms": 600000, "max_cost_usd": 3.00}
+            "governance": {"timeout_ms": 900000, "max_cost_usd": 5.00}
         }
     },
     {
@@ -479,29 +654,130 @@ SKILLS = [
             "type": "SKILL", "version": "1.0.0", "status": "ACTIVE",
             "tags": ["deep-research", "synthesis", "report-writing", "output"],
             "identity": {
-                "system_prompt": "You are a senior research writer and knowledge synthesizer. (1) Navigate CORTEX, (2) Identify narrative threads, (3) Design report outline, (4) Write each section with citations, (5) ANALYZE, don't just summarize.",
-                "behavioral_constraints": ["Read ALL CORTEX nodes before writing", "Executive Summary written LAST", "Every factual claim must be cited", "Include a Key Findings section"]
+                "system_prompt": (
+                    "You are a senior research writer and knowledge synthesizer. "
+                    "Your ONLY job is to write a report about the CURRENT research topic provided in {{input}}. "
+                    "NEVER write about any other topic. If context mentions past research on different topics, IGNORE it completely. "
+                    "(1) Focus exclusively on the topic in {{input}}, (2) Identify narrative threads from CURRENT findings only, "
+                    "(3) Design report outline, (4) Write each section with citations, (5) ANALYZE, don't just summarize."
+                ),
+                "behavioral_constraints": [
+                    "ONLY write about the research topic specified in the input — never a different topic",
+                    "If you see content about unrelated topics in context, discard it entirely",
+                    "Executive Summary written LAST",
+                    "Every factual claim must be cited",
+                    "Include a Key Findings section"
+                ]
             },
             "hierarchy": {"is_atomic": False, "composition_depth": 1, "children": []},
             "logic_gate": {
                 "reasoning_config": {"task_type": "text_generation", "temperature": 0.5, "reasoning_mode": "CHAIN_OF_THOUGHT"},
-                "context_policy": {"type": "FULL", "summarize_threshold": 30000},
-                "review_mechanism": {"enabled": True, "review_prompt": "Review the report section for factual accuracy, analytical depth, coherence, and completeness.", "on_failure": "RETRY"}
+                "context_policy": {"type": "FULL", "summarize_threshold": 30000}
             },
             "planning": {
                 "static_plan": {"enabled": True, "steps": [
-                    {"step_id": "step_1", "order": 1, "name": "Synthesize Knowledge Tree", "description": "Read all findings from CORTEX and synthesize key themes", "type": "ACTION", "target": {"prompt_template": "Review all research findings and synthesize key themes:\n\n{{input}}"}},
-                    {"step_id": "step_2", "order": 2, "name": "Generate Report Outline", "description": "Create a detailed, hierarchical report outline", "type": "ACTION", "target": {"prompt_template": "Based on these synthesized themes:\n\n{{step_1}}\n\nGenerate a comprehensive report outline as a JSON array.", "input_dependencies": ["step_1"]}},
-                    {"step_id": "step_3", "order": 3, "name": "Write Full Report", "description": "Write each section of the report with proper citations", "type": "ACTION", "target": {"prompt_template": "Using this outline:\n\n{{step_2}}\n\nAnd these research findings:\n\n{{step_1}}\n\nWrite the complete research report. Write the Executive Summary LAST.", "input_dependencies": ["step_1", "step_2"]}},
-                    {"step_id": "step_4", "order": 4, "name": "Generate PDF", "description": "Export the final report as a professionally formatted PDF", "type": "TOOL_CALL", "target": {"tool_id": "pdf_generator", "prompt_template": "{{step_3}}", "input_dependencies": ["step_3"]}}
+                    {
+                        "step_id": "step_1", "order": 1,
+                        "name": "Synthesize Knowledge Tree",
+                        "description": "Read all current-run findings and synthesize key themes for the research topic",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "RESEARCH TOPIC: {{topic}}\n\n"
+                                "You MUST write only about the topic above. "
+                                "Review the research findings below and synthesize key themes, "
+                                "noting every source URL mentioned. "
+                                "DISCARD any content about unrelated topics.\n\n"
+                                "RESEARCH FINDINGS:\n{{input}}"
+                            )
+                        }
+                    },
+                    {
+                        "step_id": "step_2", "order": 2,
+                        "name": "Generate Report Outline",
+                        "description": "Create a detailed, hierarchical report outline with at least 8 sections",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "Based on these synthesized themes:\n\n{{step_1}}\n\n"
+                                "Generate a comprehensive report outline as a JSON array. "
+                                "Must include sections: Executive Summary, Market Overview, Competitive Landscape, "
+                                "Technology Deep-Dive, Investment & Funding, Use Cases, Challenges & Risks, "
+                                "Future Outlook, and References. At least 8 major sections with 3-5 subsections each."
+                            ),
+                            "input_dependencies": ["step_1"]
+                        }
+                    },
+                    {
+                        "step_id": "step_3", "order": 3,
+                        "name": "Write Full Report",
+                        "description": "Write each section of the report with proper inline citations",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "Using this outline:\n\n{{step_2}}\n\n"
+                                "And these research findings:\n\n{{step_1}}\n\n"
+                                "Write the COMPLETE research report. Rules:\n"
+                                "1. Every factual claim MUST have an inline citation: [Source Name, Year]\n"
+                                "2. Use specific statistics and data points — avoid vague generalities\n"
+                                "3. Each section must be at least 3-4 paragraphs of substantive content\n"
+                                "4. Write the Executive Summary LAST, after all sections are complete\n"
+                                "5. Aim for a comprehensive report of 15-25 pages worth of content\n"
+                                "6. Note every source URL you reference for the citations section"
+                            ),
+                            "input_dependencies": ["step_1", "step_2"]
+                        }
+                    },
+                    {
+                        "step_id": "step_4", "order": 4,
+                        "name": "Generate Citations & References Section",
+                        "description": "Compile all sources into a formatted bibliography/citations section",
+                        "type": "ACTION",
+                        "target": {
+                            "prompt_template": (
+                                "Based on all the research data and the report written:\n\n"
+                                "REPORT:\n{{step_3}}\n\n"
+                                "RESEARCH FINDINGS:\n{{step_1}}\n\n"
+                                "Generate a complete REFERENCES AND CITATIONS section. For each source:\n"
+                                "[N]. **[Title]** — [Organization/Author], [Date if known]\n"
+                                "    URL: [full URL]\n"
+                                "    Type: [Market Report / Academic / News / Government / Vendor / Case Study]\n"
+                                "    Key Contribution: [1-sentence description]\n\n"
+                                "After the references, add:\n"
+                                "## Research Methodology\n"
+                                "Describe the multi-wave research process: queries generated, sources discovered, "
+                                "sources scraped, fact-checking performed.\n\n"
+                                "## Data Quality Assessment\n"
+                                "Rate the overall evidence quality and note any significant gaps."
+                            ),
+                            "input_dependencies": ["step_1", "step_3"]
+                        }
+                    },
+                    {
+                        "step_id": "step_5", "order": 5,
+                        "name": "Generate Final PDF",
+                        "description": "Export the complete report including citations as a professionally formatted PDF",
+                        "type": "TOOL_CALL",
+                        "target": {
+                            "tool_id": "pdf_generator",
+                            "prompt_template": "{{step_3}}\n\n{{step_4}}",
+                            "input_dependencies": ["step_3", "step_4"]
+                        }
+                    }
                 ]},
-                "dynamic_planning": {"enabled": True, "planning_prompt": "If sections are too long, break into subsections."}
+                "dynamic_planning": {"enabled": False}
             },
             "capabilities": {
                 "tools": [{"tool_id": "pdf_generator"}],
-                "memory": {"enabled": True, "mode": "CORTEX", "cortex_config": {"auto_checkpoint": True, "context_budget_pct": 50}}
+                "memory": {
+                    "enabled": True, "mode": "CORTEX",
+                    "memory_scope": "INTELLIGENCE_ONLY",
+                    "cortex_config": {"auto_checkpoint": True, "context_budget_pct": 50},
+                    "episodic_memory_count": 0,
+                    "semantic_search_enabled": False
+                }
             },
-            "governance": {"timeout_ms": 900000, "max_cost_usd": 5.00}
+            "governance": {"timeout_ms": 1200000, "max_cost_usd": 8.00}
         }
     },
 ]
@@ -524,7 +800,7 @@ AGENTS = [
             },
             "hierarchy": {"is_atomic": False, "composition_depth": 2, "children": []},
             "logic_gate": {
-                "reasoning_config": {"task_type": "thinking", "temperature": 0.4, "reasoning_mode": "REFLECTION"},
+                "reasoning_config": {"task_type": "thinking", "temperature": 0.4, "reasoning_mode": "REFLECTION", "goal_validation_interval": 2},
                 "retry_policy": {"max_retries": 3, "backoff_strategy": "EXPONENTIAL"},
                 "context_policy": {"type": "SLIDING_WINDOW", "max_chars": 30000, "summarize_threshold": 25000, "preserve_keys": ["research_topic", "current_wave", "verification_matrix"]},
                 "review_mechanism": {"enabled": True, "review_prompt": "Evaluate research completeness: (1) All topic dimensions covered? (2) At least 3 sources per major claim? (3) Opposing viewpoints explored? (4) Verification matrix complete?", "on_failure": "RETRY"}
@@ -532,16 +808,39 @@ AGENTS = [
             "planning": {
                 "dynamic_planning": {
                     "enabled": True,
-                    "planning_prompt": "Plan a multi-wave research process:\n\nWave 1 — Broad Discovery: Decompose topic → execute searches → discover and rank sources → scrape top sources → extract findings\n\nWave 2 — Deep Dive: Identify gaps → follow-up queries → search → scrape additional sources → extract findings\n\nWave 3 — Verification: Extract critical claims → verify each independently → build verification matrix\n\nUse tools: web_search, scraper_tool, headless_browser. CHECKPOINT after each wave.",
+                    "planning_prompt": (
+                        "Plan a multi-wave research process using your child entities (SKILL/ACTION entities):\n\n"
+                        "AVAILABLE CHILD ENTITIES (use CHILD_ENTITY_INVOCATION steps for these):\n"
+                        "- deep-research-query-decomposer: Takes the research topic, returns a JSON array of search queries\n"
+                        "- deep-research-source-discoverer: Takes the JSON query array, executes all searches, returns ranked source list\n"
+                        "- deep-research-source-analyzer: Takes a list of URLs, scrapes and analyzes each source\n"
+                        "- deep-research-fact-verifier: Takes extracted claims, verifies them via search\n\n"
+                        "CRITICAL RULES FOR INTER-ENTITY DATA PASSING:\n"
+                        "1. When invoking deep-research-source-discoverer, the prompt_template for that step MUST be the raw JSON array output from the Query Decomposer. "
+                        "Do NOT synthesize, summarize, or reformat the queries — pass the JSON array directly as: {{Wave 1: Query Decomposition}} or the step output variable.\n"
+                        "2. When invoking deep-research-source-analyzer, the prompt_template must be the ranked URL list from the Source Discoverer output.\n"
+                        "3. Never call batch_web_search with narrative text — only with a JSON array like: [\"query 1\", \"query 2\"]\n\n"
+                        "Wave 1 — Broad Discovery:\n"
+                        "  Step 1: Invoke deep-research-query-decomposer with the research topic\n"
+                        "  Step 2: Invoke deep-research-source-discoverer with the JSON queries from Step 1\n"
+                        "  Step 3: Invoke deep-research-source-analyzer with the ranked URLs from Step 2\n\n"
+                        "Wave 2 — Deep Dive (if gaps identified):\n"
+                        "  Step 4: Invoke deep-research-query-decomposer again for gap areas\n"
+                        "  Step 5: Invoke deep-research-source-discoverer with new queries\n"
+                        "  Step 6: Invoke deep-research-source-analyzer with new sources\n\n"
+                        "Wave 3 — Verification:\n"
+                        "  Step 7: Invoke deep-research-fact-verifier with extracted claims\n"
+                        "\nCHECKPOINT to CORTEX after each wave."
+                    ),
                     "allowed_deviations": {"can_add_steps": True, "can_skip_optional_steps": True, "can_reorder_steps": True, "can_change_tools": True},
                     "reconciliation_strategy": "DYNAMIC_PRIORITY"
                 },
                 "loop_control": {"max_iterations": 3, "iteration_context_mode": "SUMMARIZED", "summary_every_n_iterations": 1}
             },
             "capabilities": {
-                "tools": [{"tool_id": "web_search"}, {"tool_id": "scraper_tool"}, {"tool_id": "headless_browser"}],
-                "memory": {"enabled": True, "mode": "CORTEX", "cortex_config": {"max_children": 12, "page_size_tokens": 8000, "context_budget_pct": 40, "auto_checkpoint": True, "resume_enabled": True}},
-                "context_engineering": {"inject_cortex_viewport": True, "inject_episodic_memory": True, "inject_semantic_context": True, "no_truncation": True}
+                "tools": [{"tool_id": "web_search"}, {"tool_id": "batch_web_search"}, {"tool_id": "scraper_tool"}, {"tool_id": "headless_browser"}],
+                "memory": {"enabled": True, "mode": "CORTEX", "memory_scope": "INTELLIGENCE_ONLY", "cortex_config": {"max_children": 12, "page_size_tokens": 8000, "context_budget_pct": 40, "auto_checkpoint": True, "resume_enabled": True}},
+                "context_engineering": {"inject_cortex_viewport": True, "inject_episodic_memory": False, "inject_semantic_context": True, "no_truncation": True}
             },
             "governance": {"timeout_ms": 1200000, "max_cost_usd": 8.00, "max_recursion_depth": 4, "execution_limits": {"max_tool_calls": 50}},
             "observability": {"log_level": "INFO", "log_thoughts": True, "track_cost": True}
@@ -571,8 +870,8 @@ AGENTS = [
             },
             "capabilities": {
                 "tools": [{"tool_id": "pdf_generator"}],
-                "memory": {"enabled": True, "mode": "CORTEX", "cortex_config": {"auto_checkpoint": True, "context_budget_pct": 50, "resume_enabled": True}},
-                "context_engineering": {"inject_cortex_viewport": True, "no_truncation": True}
+                "memory": {"enabled": True, "mode": "CORTEX", "memory_scope": "INTELLIGENCE_ONLY", "cortex_config": {"auto_checkpoint": True, "context_budget_pct": 50, "resume_enabled": True}},
+                "context_engineering": {"inject_cortex_viewport": True, "inject_episodic_memory": False, "no_truncation": True}
             },
             "governance": {"timeout_ms": 900000, "max_cost_usd": 6.00, "max_recursion_depth": 3}
         }
@@ -807,6 +1106,127 @@ def main():
             "hierarchy": {"is_atomic": False, "composition_depth": 2, "children": children}
         })
         time.sleep(0.2)
+
+    # ========================================
+    # PHASE 7: Patch Research Director with real UUIDs
+    # ========================================
+    # CRITICAL: Without this patch, the dynamic planner LLM generates entity
+    # name strings instead of UUIDs in CHILD_ENTITY_INVOCATION steps, causing:
+    #   "Exception: Child invocation missing entity_id for step Wave 1: ..."
+    # We inject real UUIDs into both the static_plan AND the planning_prompt.
+    print("\n" + "=" * 60)
+    print("Phase 7: Patching Research Director with real entity UUIDs")
+    print("=" * 60)
+
+    qd_id  = entity_ids["query_decomposer_skill"]
+    sd_id  = entity_ids["source_discoverer_skill"]
+    sa_id  = entity_ids["source_analyzer_skill"]
+    fv_id  = entity_ids["fact_verifier_skill"]
+    dir_id = entity_ids["research_director_agent"]
+
+    director_patch = {
+        "planning": {
+            "static_plan": {
+                "enabled": True,
+                "fallback_behavior": "ADAPTIVE",
+                "steps": [
+                    {
+                        "step_id": "wave1_decompose", "order": 1,
+                        "name": "Wave 1: Decompose Research Topic",
+                        "description": "Invoke Query Decomposer to break the topic into 8-12 targeted search queries.",
+                        "type": "CHILD_ENTITY_INVOCATION",
+                        "target": {"entity_id": qd_id, "prompt_template": "{{input}}", "input_dependencies": []},
+                        "required": True
+                    },
+                    {
+                        "step_id": "wave1_discover", "order": 2,
+                        "name": "Wave 1: Discover Sources",
+                        "description": "Invoke Source Discoverer with the JSON query array from the decomposer.",
+                        "type": "CHILD_ENTITY_INVOCATION",
+                        "target": {"entity_id": sd_id, "prompt_template": "{{wave1_decompose}}", "input_dependencies": ["wave1_decompose"]},
+                        "required": True
+                    },
+                    {
+                        "step_id": "wave1_analyze", "order": 3,
+                        "name": "Wave 1: Analyze Sources",
+                        "description": "Invoke Source Analyzer to scrape and extract knowledge from top sources.",
+                        "type": "CHILD_ENTITY_INVOCATION",
+                        "target": {"entity_id": sa_id, "prompt_template": "{{wave1_discover}}", "input_dependencies": ["wave1_discover"]},
+                        "required": True
+                    },
+                    {
+                        "step_id": "wave2_decompose", "order": 4,
+                        "name": "Wave 2: Decompose Gap Queries",
+                        "description": "Identify research gaps and generate follow-up queries.",
+                        "type": "CHILD_ENTITY_INVOCATION",
+                        "target": {"entity_id": qd_id, "prompt_template": "Based on initial research:\\n{{wave1_analyze}}\\n\\nIdentify gaps and generate 5-8 follow-up queries as a JSON array.", "input_dependencies": ["wave1_analyze"]},
+                        "required": False
+                    },
+                    {
+                        "step_id": "wave2_discover", "order": 5,
+                        "name": "Wave 2: Discover Additional Sources",
+                        "description": "Run follow-up searches to fill identified gaps.",
+                        "type": "CHILD_ENTITY_INVOCATION",
+                        "target": {"entity_id": sd_id, "prompt_template": "{{wave2_decompose}}", "input_dependencies": ["wave2_decompose"]},
+                        "required": False
+                    },
+                    {
+                        "step_id": "wave2_analyze", "order": 6,
+                        "name": "Wave 2: Analyze Additional Sources",
+                        "description": "Scrape and extract from the gap-filling sources.",
+                        "type": "CHILD_ENTITY_INVOCATION",
+                        "target": {"entity_id": sa_id, "prompt_template": "{{wave2_discover}}", "input_dependencies": ["wave2_discover"]},
+                        "required": False
+                    },
+                    {
+                        "step_id": "wave3_verify", "order": 7,
+                        "name": "Wave 3: Verify Critical Claims",
+                        "description": "Invoke Fact Verifier with extracted claims from all research waves.",
+                        "type": "CHILD_ENTITY_INVOCATION",
+                        "target": {"entity_id": fv_id, "prompt_template": "Verify critical claims:\\nWave 1:\\n{{wave1_analyze}}\\nWave 2:\\n{{wave2_analyze}}", "input_dependencies": ["wave1_analyze", "wave2_analyze"]},
+                        "required": True
+                    }
+                ]
+            },
+            "dynamic_planning": {
+                "enabled": True,
+                "reconciliation_strategy": "HYBRID",
+                "allowed_deviations": {
+                    "can_add_steps": True,
+                    "can_skip_optional_steps": True,
+                    "can_reorder_steps": False,
+                    "can_change_tools": False
+                },
+                "planning_prompt": (
+                    f"You orchestrate a multi-wave deep research process using CHILD_ENTITY_INVOCATION steps.\n\n"
+                    f"## AVAILABLE CHILD ENTITIES — COPY UUIDs EXACTLY AS SHOWN:\n"
+                    f"| Entity Name | entity_id UUID |\n"
+                    f"|-------------|----------------|\n"
+                    f"| deep-research-query-decomposer  | {qd_id} |\n"
+                    f"| deep-research-source-discoverer | {sd_id} |\n"
+                    f"| deep-research-source-analyzer   | {sa_id} |\n"
+                    f"| deep-research-fact-verifier     | {fv_id} |\n\n"
+                    f"## CRITICAL RULES:\n"
+                    f"1. Every CHILD_ENTITY_INVOCATION step MUST have target.entity_id set to the UUID from the table above.\n"
+                    f"2. NEVER use entity name strings as entity_id — ONLY the UUIDs above are valid.\n"
+                    f"3. Follow the static plan step order: wave1_decompose → wave1_discover → wave1_analyze → (optional wave2) → wave3_verify.\n"
+                    f"4. The Query Decomposer returns a raw JSON array of strings — pass it DIRECTLY to the Source Discoverer's prompt_template.\n"
+                    f"5. You may skip wave2 steps if wave1 provided sufficient coverage.\n"
+                )
+            }
+        }
+    }
+
+    try:
+        client.update_entity(dir_id, director_patch)
+        print(f"  ✅ Research Director patched with real UUIDs:")
+        print(f"     Query Decomposer:   {qd_id}")
+        print(f"     Source Discoverer:  {sd_id}")
+        print(f"     Source Analyzer:    {sa_id}")
+        print(f"     Fact Verifier:      {fv_id}")
+    except Exception as e:
+        print(f"  ❌ Failed to patch Research Director: {e}")
+        sys.exit(1)
 
     # ========================================
     # Summary

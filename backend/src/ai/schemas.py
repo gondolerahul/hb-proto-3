@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 import json as _json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -297,6 +297,34 @@ class PlanStepTarget(BaseModel):
     tool_id: Optional[str] = None
     prompt_template: Optional[str] = None
     input_dependencies: List[str] = []  # Explicit step output dependencies (e.g., ["step_1", "step_2"])
+    # When entity_id is a name string rather than a UUID, it's captured here for DB lookup.
+    entity_name_hint: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def capture_entity_name_hint(cls, data):
+        """Run before ALL field validation. If entity_id is a name string (not a UUID),
+        copy it into entity_name_hint so Strategy 3 in step_executor can resolve it by
+        name lookup. This fires in every Pydantic code path — direct construction,
+        model_validate(), and nested parsing."""
+        if not isinstance(data, dict):
+            return data
+        import re as _re
+        raw_eid = data.get("entity_id")
+        if raw_eid is not None:
+            is_uuid = _re.match(
+                r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+                r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+                str(raw_eid)
+            )
+            if not is_uuid and not data.get("entity_name_hint"):
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    f"[PlanStepTarget] entity_id '{raw_eid}' is not a valid UUID — "
+                    f"storing as entity_name_hint for name-based resolution."
+                )
+                data = {**data, "entity_name_hint": str(raw_eid), "entity_id": None}
+        return data
 
     @field_validator("prompt_template", mode="before")
     @classmethod
@@ -418,6 +446,12 @@ class MemoryConfig(BaseModel):
     """Memory configuration aligned with CORTEX memory system."""
     enabled: bool = False
     mode: str = "STANDARD"  # STANDARD | CORTEX
+    # Phase 9: Memory scope controls what gets injected into runtime prompts
+    # FULL = episodic + semantic (legacy default)
+    # RUN_SCOPED = only current run's episodic data
+    # INTELLIGENCE_ONLY = only distilled intelligence/learnings + failure patterns
+    # NONE = no memory injection at all
+    memory_scope: str = "FULL"  # FULL | RUN_SCOPED | INTELLIGENCE_ONLY | NONE
     # STANDARD mode: episodic + semantic memory
     episodic_memory_count: int = 10  # How many past episodes to inject
     semantic_search_enabled: bool = True  # pgvector document search

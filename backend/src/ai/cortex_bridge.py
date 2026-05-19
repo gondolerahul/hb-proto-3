@@ -10,6 +10,7 @@ viewport/checkpoint management.
 import json
 import logging
 from decimal import Decimal
+from typing import List, Optional
 from uuid import UUID
 
 from src.ai.cortex_service import CortexRouter as CortexService
@@ -198,6 +199,10 @@ class CortexBridge:
                         "run_id": str(run.id),
                         "char_count": len(content),
                         "artifact_id": item.get("artifact_id"),
+                        # Phase 9: Provenance tracking
+                        "tool_success": True,
+                        "verified": False,  # Set to True after fact-checking
+                        "provenance_chain": f"{tool_id}→cortex_bridge",
                     },
                 )
 
@@ -553,3 +558,91 @@ class CortexBridge:
             )
         except Exception as e:
             logger.debug(f"Reflection write failed for step {step_name}: {e}")
+
+    # ------------------------------------------------------------------
+    # Knowledge Tree Reference Resolution (Phase B)
+    # ------------------------------------------------------------------
+
+    async def get_knowledge_tree_references(
+        self,
+        entity_id: UUID,
+        query: str,
+        top_k: int = 3,
+    ) -> str:
+        """
+        Search the entity's persistent Knowledge Tree for relevant references.
+
+        Returns a formatted prompt string with knowledge snippets. If no
+        Knowledge Tree exists or no results are found, returns empty string.
+        """
+        try:
+            from src.ai.knowledge_tree_service import KnowledgeTreeService
+            kt_service = KnowledgeTreeService(self.db, self.company_id)
+            refs = await kt_service.get_knowledge_references(
+                entity_id=entity_id, query=query, top_k=top_k,
+            )
+            if not refs:
+                return ""
+
+            lines = ["## Relevant Knowledge (from Knowledge Base)"]
+            for i, ref in enumerate(refs, 1):
+                lines.append(
+                    f"  [{i}] {ref['title']} (score: {ref['score']:.2f})\n"
+                    f"      {ref['snippet']}"
+                )
+            return "\n".join(lines)
+        except Exception as e:
+            logger.debug(f"Knowledge Tree reference lookup failed: {e}")
+            return ""
+
+    async def write_knowledge_reference(
+        self,
+        cortex: CortexService,
+        knowledge_root_id: UUID,
+        knowledge_node_id: str,
+        title: str,
+        snippet: str,
+    ) -> None:
+        """
+        Write a lightweight reference node into a runtime tree's knowledge
+        section that points to a node in the persistent Knowledge Tree.
+
+        Uses cross_refs to maintain the association without duplicating content.
+        """
+        try:
+            await cortex.write(
+                parent_id=knowledge_root_id,
+                node_type="knowledge",
+                title=f"📎 Ref: {title[:100]}",
+                content=snippet,
+                summary=f"Reference to knowledge node {knowledge_node_id[:8]}... — {title[:200]}",
+                status="complete",
+                metadata_extra={
+                    "is_reference": True,
+                    "knowledge_node_id": knowledge_node_id,
+                },
+            )
+        except Exception as e:
+            logger.debug(f"Knowledge reference write failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Runtime Access Tracking (Phase E)
+    # ------------------------------------------------------------------
+
+    async def track_node_access(
+        self,
+        node_ids: List[UUID],
+        run_id: UUID,
+    ) -> None:
+        """
+        Track which nodes were accessed together in this execution step.
+        Creates/strengthens 'co_accessed' edges in the semantic graph.
+        """
+        if len(node_ids) < 2:
+            return
+        try:
+            from src.ai.graph_service import SemanticGraphService
+            graph = SemanticGraphService(self.db, self.company_id)
+            await graph.track_co_access(node_ids, run_id)
+        except Exception as e:
+            logger.debug(f"Co-access tracking failed: {e}")

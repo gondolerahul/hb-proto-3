@@ -1,14 +1,22 @@
 """
-cortex_models.py — CORTEX Memory Architecture ORM Models
+cortex_models.py — CORTEX Memory Architecture ORM Models (v2.0)
 
 The CORTEX (Cognitive Orchestrated Recursive Tree EXecution) system
 provides a persistent, navigable, writable cognitive tree that serves
 as the agent's memory, working scratchpad, knowledge base, and
 output canvas during long-running tasks.
 
-Two core tables:
-  cortex_trees  — Root container for a cognitive tree (one per long-running task)
-  cortex_nodes  — Individual nodes in the tree (knowledge, findings, tasks, outputs, checkpoints)
+v2.0 additions:
+  - Four memory domains: Knowledge, Experience, Intelligence, Episodic
+  - Six-level hierarchical scoping: App → Partner → Tenant → User → Entity → Runtime
+  - Semantic graph layer via CortexEdge
+  - Embedding vectors on nodes for semantic search
+  - Access tracking and importance scoring
+
+Three core tables:
+  cortex_trees  — Root container for a cognitive tree
+  cortex_nodes  — Individual nodes in the tree
+  cortex_edges  — Weighted directed edges between nodes (semantic graph)
 
 Design references:
   - PageIndex: Hierarchical tree index for reasoning-based RAG
@@ -17,13 +25,15 @@ Design references:
 """
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Column, String, Boolean, ForeignKey, DateTime, Text,
-    Integer, Enum as SAEnum, Index,
+    Integer, Numeric, Enum as SAEnum, Index, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
+import pgvector.sqlalchemy
 
 from src.common.database import Base
 
@@ -43,12 +53,26 @@ class CortexTreeStatus(str, enum.Enum):
 
 
 class CortexNodeType(str, enum.Enum):
+    # --- v1 types (existing) ---
     ROOT = "root"
     KNOWLEDGE = "knowledge"       # Ingested from a document (PageIndex-derived)
     FINDING = "finding"           # Written by the agent during execution
     TASK = "task"                 # A sub-task to be executed
     OUTPUT = "output"            # A section of the output document
     CHECKPOINT = "checkpoint"    # A compacted state snapshot
+    # --- v2 types (new) ---
+    GROUP = "group"              # Re-clustering group container
+    DOCUMENT = "document"        # Represents an ingested document
+    SECTION = "section"          # A section/chapter within a document
+    CHUNK = "chunk"              # Leaf-level text chunk with embedding
+    OBSERVATION = "observation"  # Experience: specific observation from execution analysis
+    PATTERN = "pattern"          # Experience: recurring pattern across observations
+    SUGGESTION = "suggestion"    # Experience: suggested approach based on patterns
+    INSTRUCTION = "instruction"  # Intelligence: distilled actionable rule
+    STRATEGY = "strategy"        # Intelligence: high-level strategic approach
+    PREFERENCE = "preference"    # Intelligence: user/entity behavioral preference
+    EPISODE = "episode"          # Episodic: single execution episode record
+    EPISODE_GROUP = "episode_group"  # Episodic: grouped episodes (by date, topic)
 
 
 class CortexNodeStatus(str, enum.Enum):
@@ -58,6 +82,24 @@ class CortexNodeStatus(str, enum.Enum):
     SUMMARISED = "summarised"    # Content replaced by summary (compacted)
 
 
+class MemoryDomain(str, enum.Enum):
+    """Which memory domain a CORTEX tree belongs to."""
+    KNOWLEDGE = "knowledge"         # Persistent knowledge base (documents, facts)
+    EXPERIENCE = "experience"       # Learned patterns from execution history
+    INTELLIGENCE = "intelligence"   # Distilled rules and strategies
+    EPISODIC = "episodic"           # Chronological execution history
+
+
+class ScopeLevel(str, enum.Enum):
+    """Hierarchical scope level for memory inheritance."""
+    APP = "app"             # L0: Platform-wide (shared across all partners)
+    PARTNER = "partner"     # L1: Partner organization level
+    TENANT = "tenant"       # L2: Company/tenant level
+    USER = "user"           # L3: End-user level
+    ENTITY = "entity"       # L4: Agent/entity level
+    RUNTIME = "runtime"     # L5: Single execution run
+
+
 # ---------------------------------------------------------------------------
 # CortexTree — Root container for a cognitive tree
 # ---------------------------------------------------------------------------
@@ -65,10 +107,13 @@ class CortexNodeStatus(str, enum.Enum):
 class CortexTree(Base):
     """
     A persistent cognitive tree owned by an entity (agent) for a specific task.
-    
+
     The tree IS the agent's complete cognitive state. The agent's context window
     is just a viewport onto the tree — never the tree itself.
-    
+
+    v2.0: Trees are now scoped by memory_domain and scope_level to support
+    the four-domain unified memory architecture with hierarchical inheritance.
+
     Key field: resume_cursor_id — always points to the last node the agent was
     actively working on. Enables deterministic resumption after interruption.
     """
@@ -101,12 +146,43 @@ class CortexTree(Base):
     resume_schedule = Column(String(100), nullable=True)   # Cron expression for periodic wake-ups
     next_resume_at = Column(DateTime, nullable=True)       # Next scheduled resume timestamp
 
+    # --- v2.0: Memory Domain & Scope ---
+    memory_domain = Column(
+        SAEnum(MemoryDomain, name="memory_domain", create_constraint=False,
+               values_callable=lambda x: [e.value for e in x]),
+        default=MemoryDomain.KNOWLEDGE,
+        server_default="knowledge",
+        nullable=False,
+    )
+    scope_level = Column(
+        SAEnum(ScopeLevel, name="scope_level", create_constraint=False,
+               values_callable=lambda x: [e.value for e in x]),
+        default=ScopeLevel.RUNTIME,
+        server_default="runtime",
+        nullable=False,
+    )
+
+    # Scope hierarchy keys (nullable — set based on scope_level)
+    app_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
+    partner_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
+
+    # Categorization and lifecycle
+    tree_category = Column(String(100), nullable=True)      # e.g. "hr_policies", "sales_playbook"
+    expires_at = Column(DateTime, nullable=True)             # Expiration time (NULL = never)
+    is_persistent = Column(Boolean, default=True, server_default="true")  # Survives archival?
+
+    # Consolidation / Dreaming tracking
+    last_consolidated_at = Column(DateTime, nullable=True)   # Last dreaming process timestamp
+    consolidation_generation = Column(Integer, default=0, server_default="0")  # Dream cycle count
+    source_run_ids = Column(JSONB, nullable=True)            # Which runs contributed
+
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     entity = relationship("HierarchicalEntity")
-    company = relationship("Company")
+    company = relationship("Company", foreign_keys=[company_id])
     nodes = relationship("CortexNode", back_populates="tree", cascade="all, delete-orphan",
                          foreign_keys="CortexNode.tree_id")
 
@@ -114,6 +190,8 @@ class CortexTree(Base):
         Index("ix_cortex_trees_entity_id", "entity_id"),
         Index("ix_cortex_trees_company_id", "company_id"),
         Index("ix_cortex_trees_status", "status"),
+        Index("ix_cortex_trees_domain_scope", "memory_domain", "scope_level"),
+        Index("ix_cortex_trees_scope_company", "scope_level", "company_id"),
     )
 
 
@@ -126,7 +204,13 @@ class CortexNode(Base):
     Every piece of information in CORTEX — whether it is a section of an input
     document, an intermediate finding, a sub-task, or a section of the output
     being written — is a CortexNode.
-    
+
+    v2.0 additions:
+      - embedding: pgvector semantic vector for similarity search
+      - cross_refs: JSONB pointers to related nodes in other trees
+      - access_count / last_accessed_at: usage tracking for importance decay
+      - importance_score: 0.0–1.0, updated by learning algorithm
+
     Invariants:
       1. Summary Always Exists — every node must have a summary before it can be a parent
       2. No Unbounded Viewports — max MAX_CHILDREN direct children per node
@@ -140,7 +224,7 @@ class CortexNode(Base):
     parent_id = Column(UUID(as_uuid=True), ForeignKey("cortex_nodes.id", ondelete="SET NULL"), nullable=True)
 
     node_type = Column(
-        SAEnum(CortexNodeType, name="cortex_node_type", create_constraint=True,
+        SAEnum(CortexNodeType, name="cortex_node_type", create_constraint=False,
                values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
@@ -173,11 +257,32 @@ class CortexNode(Base):
     # Arbitrary metadata (cost, tokens, tool_used, etc.)
     metadata_extra = Column(JSONB, nullable=True)
 
+    # --- v2.0: Semantic embedding ---
+    embedding = Column(pgvector.sqlalchemy.Vector(768), nullable=True)
+    embedding_model = Column(String(100), nullable=True)  # Which model generated the embedding
+
+    # --- v2.0: Cross-tree references ---
+    cross_refs = Column(JSONB, nullable=True)    # [{tree_id, node_id, relationship}, ...]
+
+    # --- v2.0: Access tracking ---
+    access_count = Column(Integer, default=0, server_default="0")
+    last_accessed_at = Column(DateTime, nullable=True)
+
+    # --- v2.0: Importance scoring ---
+    importance_score = Column(Numeric(5, 3), default=Decimal("0.500"), server_default="0.500")
+
     # Relationships
     tree = relationship("CortexTree", back_populates="nodes", foreign_keys=[tree_id])
     parent = relationship("CortexNode", remote_side=[id], backref="children",
                           foreign_keys=[parent_id])
     execution_run = relationship("ExecutionRun")
+
+    # Edges where this node is the source
+    outgoing_edges = relationship("CortexEdge", foreign_keys="CortexEdge.source_node_id",
+                                  back_populates="source_node", cascade="all, delete-orphan")
+    # Edges where this node is the target
+    incoming_edges = relationship("CortexEdge", foreign_keys="CortexEdge.target_node_id",
+                                  back_populates="target_node", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_cortex_nodes_tree_id", "tree_id"),
@@ -185,4 +290,58 @@ class CortexNode(Base):
         Index("ix_cortex_nodes_tree_parent", "tree_id", "parent_id"),
         Index("ix_cortex_nodes_tree_type", "tree_id", "node_type"),
         Index("ix_cortex_nodes_status", "status"),
+        Index("ix_cortex_nodes_tree_type_status", "tree_id", "node_type", "status"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CortexEdge — Weighted directed edge in the semantic graph
+# ---------------------------------------------------------------------------
+
+class CortexEdge(Base):
+    """
+    A weighted, typed edge connecting two CortexNodes across any trees.
+
+    The cortex_edges table provides the semantic graph layer that overlays
+    the tree structures, enabling associative navigation and hybrid
+    semantic-structural search.
+
+    Edge types:
+      - references: Document cites or references another
+      - derived_from: Experience observation derived from episodic data
+      - generalizes: Intelligence rule generalizes an experience pattern
+      - semantic_similar: High embedding cosine similarity (auto-created)
+      - co_accessed: Nodes accessed together in same execution (runtime tracking)
+      - precedes: Temporal sequence in same session
+      - contradicts: Conflicting intelligence rules
+      - supersedes: Updated rule replaces old one
+      - applies_to: Intelligence rule applies to specific knowledge domain
+    """
+    __tablename__ = "cortex_edges"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_node_id = Column(UUID(as_uuid=True),
+                            ForeignKey("cortex_nodes.id", ondelete="CASCADE"), nullable=False)
+    target_node_id = Column(UUID(as_uuid=True),
+                            ForeignKey("cortex_nodes.id", ondelete="CASCADE"), nullable=False)
+    edge_type = Column(String(50), nullable=False)
+    weight = Column(Numeric(5, 4), default=Decimal("0.5000"), server_default="0.5000")
+    traversal_count = Column(Integer, default=0, server_default="0")
+    last_traversed_at = Column(DateTime, nullable=True)
+    created_by = Column(String(50), nullable=True)  # "dreaming_engine", "embedding_pipeline", etc.
+    edge_metadata = Column("metadata", JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    source_node = relationship("CortexNode", foreign_keys=[source_node_id],
+                               back_populates="outgoing_edges")
+    target_node = relationship("CortexNode", foreign_keys=[target_node_id],
+                               back_populates="incoming_edges")
+
+    __table_args__ = (
+        UniqueConstraint("source_node_id", "target_node_id", "edge_type",
+                         name="uq_cortex_edges_src_tgt_type"),
+        Index("ix_cortex_edges_source", "source_node_id"),
+        Index("ix_cortex_edges_target", "target_node_id"),
+        Index("ix_cortex_edges_type_weight", "edge_type", weight.desc()),
     )

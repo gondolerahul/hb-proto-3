@@ -74,9 +74,9 @@ const PartnerDashboard: React.FC = () => {
                         <div className="stat-sub">Aggregate wallet balance</div>
                     </div>
                     <div className="partner-stat-card cost">
-                        <div className="stat-label">Platform Cost</div>
+                        <div className="stat-label">Platform Billing</div>
                         <div className="stat-value">${analytics.total_cost_usd.toFixed(2)}</div>
-                        <div className="stat-sub">Total AI spend</div>
+                        <div className="stat-sub">Total AI billing</div>
                     </div>
                 </div>
             )}
@@ -224,7 +224,7 @@ const PartnerDashboard: React.FC = () => {
                                 {selectedTenant.recent_executions.slice(0, 5).map((r: any) => (
                                     <div key={r.id} className="detail-row">
                                         <span className="label">{r.status}</span>
-                                        <span className="value">${r.total_cost_usd.toFixed(4)}</span>
+                                        <span className="value">${(r.billed_amount != null ? r.billed_amount : r.total_cost_usd).toFixed(4)}</span>
                                     </div>
                                 ))}
                             </div>

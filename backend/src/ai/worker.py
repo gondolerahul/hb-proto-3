@@ -475,11 +475,38 @@ class ExecutionEngine:
             logger.debug(f"Executing batch: {[s['name'] for s in ready]}")
 
             if len(ready) == 1:
-                # Single-step batch: run on self.db (no isolation overhead)
+                # ── Phase 9: Dependency validation before execution ──────
                 step_obj = PlanStep(**ready[0])
-                result = await self._execute_step_wrapper(run, entity, step_obj, context_state)
-                results_map[ready[0]["step_id"]] = result
-                completed.add(ready[0]["step_id"])
+                _dep_missing = False
+                if step_obj.target and step_obj.target.prompt_template:
+                    _required = re.findall(r'\{\{(.+?)\}\}', str(step_obj.target.prompt_template))
+                    for _var in _required:
+                        _base = _var.split('.')[0]
+                        # Check if it's a step reference that should be in context
+                        if _base.startswith('step_') and _base not in context_state:
+                            # Check if the dependent step failed
+                            _dep_step_name = step_map.get(_base, {}).get('name', _base)
+                            _failed_val = context_state.get(_dep_step_name, '')
+                            if str(_failed_val).startswith('[FAILED]') or str(_failed_val).startswith('[TOOL_EMPTY]'):
+                                logger.warning(
+                                    f"Step '{step_obj.name}' depends on '{_base}' which FAILED. "
+                                    f"Skipping step to prevent hallucination."
+                                )
+                                _dep_error = (
+                                    f"[DEPENDENCY_FAILED] Cannot execute '{step_obj.name}': "
+                                    f"required data from '{_base}' ({_dep_step_name}) failed. "
+                                    f"Failure: {str(_failed_val)[:200]}"
+                                )
+                                _store_step_output(context_state, step_obj.name, step_obj.step_id or step_obj.name, _dep_error)
+                                results_map[ready[0]['step_id']] = {'step': step_obj.name, 'output': _dep_error, 'success': False}
+                                completed.add(ready[0]['step_id'])
+                                _dep_missing = True
+                                break
+                # ─────────────────────────────────────────────────────────
+                if not _dep_missing:
+                    result = await self._execute_step_wrapper(run, entity, step_obj, context_state)
+                    results_map[ready[0]["step_id"]] = result
+                    completed.add(ready[0]["step_id"])
             else:
                 # Multi-step parallel batch: each step gets its own AsyncSession.
                 # P1-A: This prevents PendingRollbackError when two coroutines
@@ -605,6 +632,56 @@ class ExecutionEngine:
         if entity.logic_gate and entity.logic_gate.get("review_mechanism", {}).get("enabled"):
             step_result = await self._review_step_output(run, entity, step_obj, step_result, context_state)
 
+        # ── Phase 9: Goal Alignment Verification ──────────────────────────
+        # After critical steps, verify that the output aligns with the entity's goal.
+        # Gated by reasoning_config.goal_validation_interval (default 0 = disabled).
+        reasoning_cfg = (entity.logic_gate or {}).get("reasoning_config", {})
+        goal_interval = reasoning_cfg.get("goal_validation_interval", 0)
+        if goal_interval > 0 and entity.goal and isinstance(step_result, dict) and step_result.get("output"):
+            # Use a monotonic counter — dynamic plan step names (e.g. 'Wave 1: Discover Sources')
+            # don't match step_* patterns, so key-counting would always be 0.
+            step_count = context_state.get("__goal_check_counter__", 0) + 1
+            context_state["__goal_check_counter__"] = step_count
+            if step_count % goal_interval == 0:
+                try:
+                    from src.ai.goal_alignment import GoalAlignmentVerifier
+                    verifier = GoalAlignmentVerifier(self.db, run.company_id)
+                    alignment = await verifier.verify_step_alignment(
+                        entity_goal=entity.goal,
+                        task_desc=context_state.get("input", ""),
+                        step_output=step_result["output"],
+                        step_name=step_obj.name,
+                    )
+                    if not alignment.get("aligned", True):
+                        logger.warning(
+                            f"GOAL DRIFT DETECTED in step '{step_obj.name}': "
+                            f"issues={alignment.get('issues')}, "
+                            f"confidence={alignment.get('confidence')}"
+                        )
+                        # Add correction context for retry
+                        correction = alignment.get("correction_hint", "")
+                        _retry_key = f"__retry_{step_obj.step_id or step_obj.name}__"
+                        if not context_state.get(_retry_key):
+                            context_state[_retry_key] = True
+                            context_state["__alignment_correction__"] = (
+                                f"⚠️ GOAL DRIFT: The previous output for '{step_obj.name}' was "
+                                f"misaligned with the goal. Issues: {alignment['issues']}. "
+                                f"Correction: {correction}. "
+                                f"Focus STRICTLY on the original goal: {entity.goal}"
+                            )
+                            logger.info(f"Re-executing step '{step_obj.name}' with goal alignment correction")
+                            step_result = await asyncio.wait_for(
+                                self._execute_step(run, entity, step_obj, context_state),
+                                timeout=timeout_ms / 1000.0,
+                            )
+                            # Clean up correction context
+                            context_state.pop("__alignment_correction__", None)
+                        else:
+                            logger.warning(f"Step '{step_obj.name}' already retried for alignment — not retrying again")
+                except Exception as _ga_err:
+                    logger.warning(f"Goal alignment verification error: {_ga_err}")
+        # ──────────────────────────────────────────────────────────────────
+
         # Update Context immediately (Phase 4: capped size)
         if isinstance(step_result, dict) and "output" in step_result:
             _store_step_output(context_state, step_obj.name, step_obj.step_id or "", step_result["output"])
@@ -716,6 +793,9 @@ class ExecutionEngine:
                 logger.info(f"CORTEX new tree: {tree.id}")
 
             # C2: Retrieve memory context with tree ID
+            # Phase 9: Respect memory_scope — skip episodic for INTELLIGENCE_ONLY
+            memory_config = (entity.capabilities or {}).get("memory", {})
+            _memory_scope = memory_config.get("memory_scope", "FULL")
             memory_router = MemoryRouter(self.db)
             memory_ctx = await memory_router.retrieve(
                 entity_id=entity.id,
@@ -726,9 +806,27 @@ class ExecutionEngine:
 
             # C3: Build context from viewport (replaces context_state dict)
             context_state = input_data.copy()
-            memory_text = memory_router.format_for_prompt(memory_ctx)
-            if memory_text:
-                context_state["__memory__"] = memory_text
+
+            if _memory_scope in ("FULL", "RUN_SCOPED"):
+                memory_text = memory_router.format_for_prompt(memory_ctx)
+                if memory_text:
+                    context_state["__memory__"] = memory_text
+            elif _memory_scope == "INTELLIGENCE_ONLY":
+                logger.info(f"Memory scope=INTELLIGENCE_ONLY for {entity.name}: skipping episodic injection")
+                # Only inject intelligence rules if available via MemoryAssemblyService
+                try:
+                    from src.ai.failure_pattern_service import FailurePatternService
+                    fps = FailurePatternService(self.db)
+                    patterns = await fps.get_failure_patterns(entity.id, limit=5)
+                    if patterns:
+                        pattern_text = "## Known Failure Patterns\n"
+                        for p in patterns:
+                            pattern_text += f"⚠️ {p['description']}\n   Mitigation: {p['suggestion']}\n"
+                        context_state["__memory__"] = pattern_text
+                except (ImportError, Exception) as _fp_err:
+                    logger.debug(f"Failure pattern injection skipped: {_fp_err}")
+            else:
+                logger.info(f"Memory scope=NONE for {entity.name}: no memory injection")
             # Inject CORTEX viewport as the primary context
             context_state["__cortex_viewport__"] = viewport.to_prompt_text()
             context_state["__cortex_tree_id__"] = str(tree.id)
@@ -1538,38 +1636,87 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
             chunk_size = 500
             chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
             
-            from src.ai.constants import EMBEDDING_MODEL
-            model_name = EMBEDDING_MODEL
+            # Use centralized EmbeddingService (admin-configurable model)
+            from src.ai.embedding_service import EmbeddingService
+            embedding_service = EmbeddingService(db, document.company_id)
             
-            # Build Vertex AI client for embedding
-            from src.common.genai_factory import build_vertex_genai_client
-            from google.genai import types as _types
-            _embed_client = await build_vertex_genai_client(
-                db, document.company_id,
-                http_options={"api_version": "v1beta"}
-            )
+            total_chunks = len(chunks)
+            success_count = 0
+            failed_count = 0
+            
             for idx, chunk_text in enumerate(chunks):
-                try:
-                    embed_response = _embed_client.models.embed_content(
-                        model=model_name,
-                        contents=chunk_text,
-                        config=_types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
-                    )
-                    embedding = embed_response.embeddings[0].values
-                except Exception as _embed_err:
-                    logger.warning(f"Embedding error for chunk {idx}: {_embed_err}")
-                    continue
-
-                chunk = DocumentChunk(
-                    document_id=document.id,
-                    chunk_index=str(idx),
-                    content=chunk_text,
-                    embedding=embedding
+                embedding = await embedding_service.embed_text(
+                    chunk_text, task_type="RETRIEVAL_DOCUMENT"
                 )
+                
+                if embedding is None:
+                    failed_count += 1
+                    logger.warning(f"Embedding failed for chunk {idx}/{total_chunks} of doc {document_id}")
+                    # Still create the chunk without embedding
+                    chunk = DocumentChunk(
+                        document_id=document.id,
+                        chunk_index=str(idx),
+                        content=chunk_text,
+                        embedding=None,
+                    )
+                else:
+                    success_count += 1
+                    chunk = DocumentChunk(
+                        document_id=document.id,
+                        chunk_index=str(idx),
+                        content=chunk_text,
+                        embedding=embedding,
+                    )
                 db.add(chunk)
             
-            document.upload_status = "completed"
+            # Set upload_status based on embedding results
+            if failed_count == total_chunks:
+                document.upload_status = "failed"
+                logger.error(
+                    f"All {total_chunks} chunks failed embedding for document "
+                    f"{document.id} ({document.filename})"
+                )
+            elif failed_count > 0:
+                document.upload_status = "partial"
+                logger.warning(
+                    f"{failed_count}/{total_chunks} chunks failed embedding for document "
+                    f"{document.id} ({document.filename})"
+                )
+            else:
+                document.upload_status = "completed"
+                logger.info(
+                    f"Document {document.id} ({document.filename}): "
+                    f"all {total_chunks} chunks embedded successfully"
+                )
+            
             await db.commit()
+            
+            # --- v2: Dual-write into Knowledge Tree ---
+            # Ingest the document into the entity's persistent Knowledge Tree
+            # alongside the legacy document_chunks table (Phase B dual-write).
+            if document.entity_id:
+                try:
+                    from src.ai.knowledge_tree_service import KnowledgeTreeService
+                    kt_service = KnowledgeTreeService(db, document.company_id)
+                    tree = await kt_service.get_or_create_knowledge_tree(
+                        entity_id=document.entity_id
+                    )
+                    kt_node_count = await kt_service.ingest_document(
+                        tree_id=tree.id,
+                        document_id=document.id,
+                        content=text,
+                        filename=filename,
+                        entity_id=document.entity_id,
+                    )
+                    await db.commit()
+                    logger.info(
+                        f"Knowledge Tree v2: ingested {kt_node_count} nodes for "
+                        f"document {document.id} ({document.filename})"
+                    )
+                except Exception as kt_err:
+                    logger.warning(
+                        f"Knowledge Tree v2 ingestion failed (non-fatal): {kt_err}"
+                    )
             
         except Exception as e:
             document.upload_status = "failed"
@@ -1578,6 +1725,73 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
 
 # Import campaign worker functions
 from src.ai.campaign_worker import execute_campaign_task, pause_campaign_task, stop_campaign_task
+
+
+# ---------------------------------------------------------------------------
+# Phase D: dreaming_worker — Background learning pipeline
+# ---------------------------------------------------------------------------
+async def dreaming_worker(ctx: dict, entity_id_str: str, company_id_str: str, force: bool = False) -> dict:
+    """
+    Background worker task for the Dreaming Engine.
+    Runs the three-phase learning pipeline for an entity:
+      Phase 1: Extract observations from episodes
+      Phase 2: Recognize patterns across observations
+      Phase 3: Distill intelligence rules from patterns
+
+    Scheduled to run after execution completion or on a timer.
+    """
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        try:
+            from src.ai.dreaming_engine import DreamingEngine
+            engine = DreamingEngine(db, UUID(company_id_str))
+            result = await engine.dream(
+                entity_id=UUID(entity_id_str),
+                force=force,
+            )
+            await db.commit()
+            return result
+        except Exception as e:
+            logger.error(f"Dreaming worker failed for entity {entity_id_str}: {e}")
+            return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Phase E: graph_maintenance_worker — Periodic graph maintenance
+# ---------------------------------------------------------------------------
+async def graph_maintenance_worker(ctx: dict) -> dict:
+    """
+    Periodic maintenance for the semantic graph.
+    Run daily via scheduler. Decays stale edge weights and prunes weak edges.
+    """
+    from src.common.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
+
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(_text(
+                "SELECT DISTINCT company_id FROM cortex_trees WHERE status = 'active'"
+            ))
+            companies = result.fetchall()
+
+            total_decayed = 0
+            total_pruned = 0
+
+            for row in companies:
+                from src.ai.graph_service import SemanticGraphService
+                graph = SemanticGraphService(db, row[0])
+                decayed = await graph.decay_weights(days_inactive=30)
+                pruned = await graph.prune_weak_edges()
+                total_decayed += decayed
+                total_pruned += pruned
+
+            await db.commit()
+            logger.info(f"Graph maintenance: {total_decayed} edges decayed, {total_pruned} pruned")
+            return {"decayed": total_decayed, "pruned": total_pruned}
+        except Exception as e:
+            logger.error(f"Graph maintenance worker failed: {e}")
+            return {"error": str(e)}
 
 # ---------------------------------------------------------------------------
 # Ph-C: resume_execution — Arq job to resume a checkpointed run

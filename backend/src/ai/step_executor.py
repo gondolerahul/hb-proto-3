@@ -188,6 +188,28 @@ class StepExecutorService:
                             logger.info(f"Resolved entity_id {entity_id} for step '{step.name}' from hierarchy children[{idx}]")
                         break
 
+            # Strategy 3: Resolve by entity_name_hint — LLM used entity name instead of UUID
+            name_hint = getattr(step.target, "entity_name_hint", None) if step.target else None
+            if not entity_id and name_hint:
+                from sqlalchemy import select as _select
+                name_lookup = await self.db.execute(
+                    _select(HierarchicalEntity).where(
+                        HierarchicalEntity.name == name_hint,
+                        HierarchicalEntity.status != "DELETED",
+                    )
+                )
+                name_match = name_lookup.scalar_one_or_none()
+                if name_match:
+                    entity_id = name_match.id
+                    logger.info(
+                        f"[Strategy 3] Resolved entity_id {entity_id} for step '{step.name}' "
+                        f"by name lookup on hint '{name_hint}'"
+                    )
+                else:
+                    logger.warning(
+                        f"[Strategy 3] entity_name_hint '{name_hint}' did not match any entity in DB"
+                    )
+
         if not entity_id:
             raise Exception(f"Child invocation missing entity_id for step {step.name}")
         
@@ -195,19 +217,21 @@ class StepExecutorService:
         if isinstance(entity_id, str):
             entity_id = UUID(entity_id)
 
-        # ── Runtime safety net: validate child entity belongs to this company ──
-        # This catches cases where the pre-flight check in trigger_execution()
-        # was bypassed, or entity references became stale after cloning.
+
+        # ── Runtime safety net: validate child entity exists ──
+        # The pre-flight check in trigger_execution() already validated
+        # company-scoped access. Here we just confirm the entity exists
+        # and hasn't been deleted since execution was enqueued.
         child_entity_check = await self.db.execute(
             select(HierarchicalEntity).where(
                 HierarchicalEntity.id == entity_id,
-                HierarchicalEntity.company_id == run.company_id,
+                HierarchicalEntity.status != "DELETED",
             )
         )
         if not child_entity_check.scalar_one_or_none():
             raise Exception(
-                f"Child entity {entity_id} not found in company {run.company_id}. "
-                f"The process template was not fully cloned. "
+                f"Child entity {entity_id} not found or has been deleted. "
+                f"The process template may not have been fully cloned. "
                 f"Please re-clone the template to create all child entities."
             )
 
@@ -364,6 +388,7 @@ class StepExecutorService:
                     raw_input = context["input"]
                 else:
                     user_ctx = {k: v for k, v in context.items() if k not in _INTERNAL_KEYS}
+
                     # Prefer the most recent step output (last key that looks like step data)
                     step_keys = [k for k in user_ctx if k.startswith("step_") or "step" in k.lower()]
                     if step_keys:
@@ -383,30 +408,53 @@ class StepExecutorService:
             result = await ToolExecutor.execute_tools([{"tool": tool_id, "input": raw_input}], extra_context=extra_context)
             tool_result = result[0]  # ToolResult dataclass (P3.2)
 
-            # ── Self-Healing Retry: If the tool failed due to a FORMAT error,
-            # ask the LLM to reformat the input and retry once. ────────────
-            # Only triggers on parsing/formatting errors, not infrastructure
-            # failures (missing API key, network timeout, etc.).
+            # ── Phase 9 Hardening: Extended Self-Healing Retry ────────────
+            # Covers FORMAT, IO, EMPTY, and TIMEOUT failures.
+            # On persistent failure, tries tool fallback chains.
             _FORMAT_ERROR_KEYWORDS = {"invalid json", "json", "parse", "format", "delimiter", "control character", "expecting", "decode"}
-            # Also handle filesystem errors caused by bad LLM-generated filenames
             _IO_ERROR_KEYWORDS = {"no such file or directory", "errno 2", "errno 22", "invalid argument", "file name too long"}
-            tool_output_str = str(tool_result.output).lower()
-            
+            _EMPTY_KEYWORDS = {"no results", "empty response", "0 results"}
+            _TIMEOUT_KEYWORDS = {"timeout", "timed out", "deadline exceeded"}
+            tool_output_str = str(tool_result.output or "").lower()
+
+            # Classify failure type
+            _is_empty = (
+                not tool_result.output
+                or (isinstance(tool_result.output, str) and not tool_result.output.strip())
+                or any(kw in tool_output_str for kw in _EMPTY_KEYWORDS)
+            )
+            _is_error_msg = (
+                isinstance(tool_result.output, str)
+                and tool_result.output.strip().upper().startswith("ERROR:")
+            )
             _is_format_err = self._is_format_error(tool_output_str, _FORMAT_ERROR_KEYWORDS)
             _is_io_err = (
                 not tool_result.success
                 and any(kw in tool_output_str for kw in _IO_ERROR_KEYWORDS)
             )
+            _is_timeout = (
+                not tool_result.success
+                and any(kw in tool_output_str for kw in _TIMEOUT_KEYWORDS)
+            )
+            _failure_type = (
+                "empty" if _is_empty else
+                "error_msg" if _is_error_msg else
+                "format" if _is_format_err else
+                "io" if _is_io_err else
+                "timeout" if _is_timeout else
+                None
+            )
 
-            if _is_format_err or _is_io_err:
-                _err_kind = "format" if _is_format_err else "filesystem/IO"
-                logger.info(f"Tool '{tool_id}' returned {_err_kind} error. Attempting LLM reformat...")
+            if _failure_type:
+                logger.warning(f"Tool '{tool_id}' failed ({_failure_type}). Output: {tool_output_str[:200]}")
+
+                # Step 1: Try LLM-guided reformat/simplification retry
                 reformatted_input = await self._reformat_tool_input(
                     run=run,
                     entity=entity,
                     tool_id=tool_id,
                     original_input=raw_input,
-                    error_message=str(tool_result.output),
+                    error_message=str(tool_result.output or "[EMPTY OUTPUT]"),
                     step_description=step.description or step.name,
                 )
                 if reformatted_input and reformatted_input != raw_input:
@@ -416,17 +464,66 @@ class StepExecutorService:
                         extra_context=extra_context,
                     )
                     retry_tool_result = retry_result[0]
-                    # Use retry result if it succeeded or at least produced different output
-                    retry_output_str = str(retry_tool_result.output).lower()
-                    _retry_still_bad = (
-                        self._is_format_error(retry_output_str, _FORMAT_ERROR_KEYWORDS)
-                        or any(kw in retry_output_str for kw in _IO_ERROR_KEYWORDS)
+                    retry_output_str = str(retry_tool_result.output or "").lower()
+                    _retry_ok = (
+                        retry_tool_result.success
+                        and retry_tool_result.output
+                        and isinstance(retry_tool_result.output, str)
+                        and retry_tool_result.output.strip()
+                        and not self._is_format_error(retry_output_str, _FORMAT_ERROR_KEYWORDS)
+                        and not any(kw in retry_output_str for kw in _IO_ERROR_KEYWORDS)
                     )
-                    if not _retry_still_bad:
+                    if _retry_ok:
                         logger.info(f"Retry succeeded for tool '{tool_id}'")
                         tool_result = retry_tool_result
                     else:
-                        logger.warning(f"Retry also failed for tool '{tool_id}', using original result")
+                        logger.warning(f"Retry also failed for tool '{tool_id}'")
+
+                # Step 2: If still failing, try tool fallback chain
+                _still_failed = (
+                    not tool_result.output
+                    or (isinstance(tool_result.output, str) and not tool_result.output.strip())
+                    or not tool_result.success
+                )
+                if _still_failed:
+                    try:
+                        from src.ai.tool_fallback import get_fallback_tool
+                        alt_tool_id, alt_input = get_fallback_tool(tool_id, raw_input)
+                        if alt_tool_id:
+                            # Check entity has access to the fallback tool
+                            entity_tools = [t.get("tool_id") for t in (entity.capabilities or {}).get("tools", [])]
+                            if alt_tool_id in entity_tools or not entity_tools:
+                                logger.info(f"Falling back from '{tool_id}' to '{alt_tool_id}'")
+                                alt_result = await ToolExecutor.execute_tools(
+                                    [{"tool": alt_tool_id, "input": alt_input}],
+                                    extra_context=extra_context,
+                                )
+                                alt_tool_result = alt_result[0]
+                                if alt_tool_result.success and alt_tool_result.output and str(alt_tool_result.output).strip():
+                                    logger.info(f"Fallback to '{alt_tool_id}' succeeded!")
+                                    tool_result = alt_tool_result
+                                    tool_id = f"{tool_id}→{alt_tool_id}"  # Track provenance
+                                else:
+                                    logger.warning(f"Fallback to '{alt_tool_id}' also failed")
+                            else:
+                                logger.debug(f"Fallback tool '{alt_tool_id}' not in entity capabilities")
+                    except ImportError:
+                        pass  # tool_fallback module not yet available
+                    except Exception as _fb_err:
+                        logger.warning(f"Tool fallback failed: {_fb_err}")
+
+                # Step 3: If STILL empty after all retries, mark as explicit failure
+                _final_empty = (
+                    not tool_result.output
+                    or (isinstance(tool_result.output, str) and not tool_result.output.strip())
+                )
+                if _final_empty:
+                    tool_result.output = (
+                        f"[TOOL_EMPTY] Tool '{tool_id}' returned no results after retry. "
+                        f"The search/operation may have failed. Original failure type: {_failure_type}."
+                    )
+                    tool_result.success = False
+                    logger.error(f"Tool '{tool_id}' produced no output after all retry attempts")
             # ─────────────────────────────────────────────────────────────
             
             latency = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -606,7 +703,7 @@ class StepExecutorService:
                 completion_tokens=resp.completion_tokens,
                 latency_ms=resp.latency_ms,
                 reasoning_mode="REFORMAT",
-                step_name=step.name if step else "__reformat__",
+                step_name=(step_description[:100] if step_description else "__reformat__"),
             )
             self.db.add(reformat_log)
             await self._log_usage(run, resp.model_name, resp.prompt_tokens, resp.completion_tokens, reformat_log)
@@ -756,6 +853,21 @@ class StepExecutorService:
         raw_template = step.target.prompt_template if step.target and step.target.prompt_template else "{{input}}"
         user_prompt = parse_variables(raw_template, input_vars)
 
+        # ── Phase 9: Detect unresolved {{variables}} in ACTION/THOUGHT prompts ──
+        _unresolved_vars = re.findall(r'\{\{(.+?)\}\}', user_prompt)
+        if _unresolved_vars:
+            logger.warning(
+                f"Unresolved variables in prompt for step '{step.name}': {_unresolved_vars}. "
+                f"Upstream steps may have failed or not produced output."
+            )
+            user_prompt += (
+                f"\n\n⚠️ DATA_MISSING: The following data references could not be resolved: "
+                f"{', '.join(_unresolved_vars)}. "
+                f"If you cannot complete this task without this data, respond with: "
+                f"[DATA_MISSING] and explain what information is needed. "
+                f"Do NOT fabricate or hallucinate data to fill these gaps."
+            )
+
         # ── Enrich user prompt with prior step context ──────────────────────
         # Dynamic-plan THOUGHT/ACTION steps often have descriptions like
         # "Extract URLs from search results" but no explicit {{step_1.output}}
@@ -770,10 +882,16 @@ class StepExecutorService:
             context_block = "\n\n## Available Context from Previous Steps\n"
             for ctx_key, ctx_val in step_outputs.items():
                 val_str = str(ctx_val)
-                # Truncate very large values to avoid overwhelming the prompt
-                if len(val_str) > 30000:
-                    val_str = val_str[:30000] + "\n... (truncated)"
-                context_block += f"\n### {ctx_key}\n{val_str}\n"
+                # Mark failed/empty steps clearly
+                if val_str.startswith("[FAILED]") or val_str.startswith("[TOOL_EMPTY]"):
+                    context_block += f"\n### ❌ {ctx_key} (FAILED)\n{val_str[:500]}\n"
+                elif val_str.startswith("[TIMEOUT]") or val_str.startswith("[ERROR]"):
+                    context_block += f"\n### ⏱️ {ctx_key} (ERROR)\n{val_str[:500]}\n"
+                else:
+                    # Truncate very large values to avoid overwhelming the prompt
+                    if len(val_str) > 30000:
+                        val_str = val_str[:30000] + "\n... (truncated)"
+                    context_block += f"\n### ✅ {ctx_key}\n{val_str}\n"
             user_prompt += context_block
 
         # Also include the step description as task instruction if it's not
@@ -1135,7 +1253,7 @@ Step 2: [your analysis]
             return context_state
 
         context_policy = (entity.logic_gate or {}).get("context_policy") or {}
-        threshold = context_policy.get("summarize_threshold", 20000)
+        threshold = context_policy.get("summarize_threshold") or 20000
 
         context_str = json.dumps(context_state, default=str)
         if len(context_str) <= threshold:

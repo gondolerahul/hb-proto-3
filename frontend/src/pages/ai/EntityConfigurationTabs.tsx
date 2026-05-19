@@ -104,7 +104,7 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
     useEffect(() => {
         if (isAdminOrPartner) {
             // Fetch companies available to this user
-            const endpoint = userRole === 'app_admin' ? '/auth/companies' : '/partner/tenants';
+            const endpoint = '/companies';
             apiClient.get(endpoint).then(res => {
                 const data = res.data;
                 let companyList: CompanyOption[] = [];

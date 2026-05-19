@@ -48,7 +48,7 @@ export const PartnerAdminDashboard: React.FC = () => {
             <div className="stats-grid-4">
                 <StatCard label="Total Portfolio Revenue" value={fmtUSD(totalRevenue)} icon={DollarSign} color="#4dbe8d" />
                 <StatCard label="Total Sub-Tenants" value={totalTenants} icon={Users} color="#6b9bd2" />
-                <StatCard label="Total Cost (30d)" value={fmtUSD(usageData?.total_cost_usd || 0)} icon={Activity} color="#e8885a" />
+                <StatCard label="Total Billing (30d)" value={fmtUSD(usageData?.total_cost_usd || 0)} icon={Activity} color="#e8885a" />
                 <StatCard label="Top Performer" value={topPartner ? topPartner.partner_name : 'N/A'} icon={TrendingUp} color="#d2b96b" sub={topPartner ? fmtUSD(topPartner.total_revenue_usd) : ''} />
             </div>
 
@@ -71,7 +71,7 @@ export const PartnerAdminDashboard: React.FC = () => {
                 </div>
 
                 <div>
-                    <SectionTitle>Sub-Tenant Daily Cost Trend (30d)</SectionTitle>
+                    <SectionTitle>Sub-Tenant Daily Billing Trend (30d)</SectionTitle>
                     <div className="dashboard-chart-container">
                         {usageDaily.length === 0 ? <EmptyChart message="No trend data available" /> : (
                             <ResponsiveContainer width="100%" height={260}>
@@ -80,7 +80,7 @@ export const PartnerAdminDashboard: React.FC = () => {
                                     <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
                                     <YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
                                     <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} />
-                                    <Bar dataKey="cost" name="Daily Cost" fill="#e8885a" radius={[2, 2, 0, 0]} />
+                                    <Bar dataKey="cost" name="Daily Billing" fill="#e8885a" radius={[2, 2, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         )}

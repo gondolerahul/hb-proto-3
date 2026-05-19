@@ -336,9 +336,9 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
 
                 <div className="node-meta">
                     <div className="stat-group">
-                        {run.total_cost_usd > 0 && (
-                            <div className="stat-item mini" title="Cost">
-                                <DollarSign size={10} /> ${run.total_cost_usd.toFixed(4)}
+                        {(run.billed_amount != null ? run.billed_amount > 0 : run.total_cost_usd > 0) && (
+                            <div className="stat-item mini" title="Billed">
+                                <DollarSign size={10} /> ${(run.billed_amount != null ? run.billed_amount : run.total_cost_usd).toFixed(4)}
                             </div>
                         )}
                         {run.total_tokens > 0 && (
@@ -854,11 +854,6 @@ export const ExecutionDetail: React.FC = () => {
                                     <span className="text-xl font-black text-rose-gold">
                                         ${run.billed_amount != null ? run.billed_amount.toFixed(4) : run.total_cost_usd.toFixed(4)}
                                     </span>
-                                    {run.billed_amount != null && run.billed_amount !== run.total_cost_usd && (
-                                        <span className="text-xs text-tertiary block mt-1">
-                                            Provider: ${run.total_cost_usd.toFixed(4)}
-                                        </span>
-                                    )}
                                 </div>
                                 <div className="context-item border-l-2 border-secondary">
                                     <label className="context-label">Tokens</label>

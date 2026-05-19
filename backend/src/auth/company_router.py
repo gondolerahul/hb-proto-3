@@ -10,6 +10,31 @@ from src.auth.dependencies import get_current_user, RoleChecker
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
+@router.get("", response_model=List[CompanyResponse])
+async def list_companies(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List all companies. app_admin sees all; partner_admin sees own + children."""
+    if current_user.role == "app_admin":
+        result = await db.execute(select(Company).order_by(Company.name))
+    elif current_user.role in ("partner_admin", "partner_user"):
+        from sqlalchemy import or_
+        result = await db.execute(
+            select(Company).where(
+                or_(
+                    Company.id == current_user.company_id,
+                    Company.parent_id == current_user.company_id,
+                )
+            ).order_by(Company.name)
+        )
+    else:
+        # Tenants only see their own company
+        result = await db.execute(
+            select(Company).where(Company.id == current_user.company_id)
+        )
+    return result.scalars().all()
+
 @router.get("/partners", response_model=List[CompanyResponse])
 async def get_partners(
     db: AsyncSession = Depends(get_db),

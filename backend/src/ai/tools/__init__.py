@@ -12,6 +12,7 @@ This package contains production-ready tool implementations for:
 from src.ai.tools.base import Tool, ToolRegistry
 from src.ai.tools.calculator import CalculatorTool
 from src.ai.tools.search import WebSearchTool
+from src.ai.tools.batch_search import BatchWebSearchTool
 from src.ai.tools.excel import ExcelTool
 from src.ai.tools.scraper import ScraperTool
 from src.ai.tools.pdf_generator import PDFGeneratorTool
@@ -35,6 +36,7 @@ from src.ai.tools.crm_tools import (
 # Register all default tools
 ToolRegistry.register(CalculatorTool())
 ToolRegistry.register(WebSearchTool())
+ToolRegistry.register(BatchWebSearchTool())
 ToolRegistry.register(ExcelTool())
 ToolRegistry.register(ScraperTool())
 ToolRegistry.register(PDFGeneratorTool())
@@ -194,7 +196,7 @@ ToolRegistry.register(MetaEntityExecutorTool())
 
 __all__ = [
     "Tool", "ToolRegistry",
-    "CalculatorTool", "WebSearchTool", "ExcelTool", "ScraperTool",
+    "CalculatorTool", "WebSearchTool", "BatchWebSearchTool", "ExcelTool", "ScraperTool",
     "PDFGeneratorTool", "FileWriterTool",
     "EmailIngestTool", "EmailClassifyTool", "EmailDraftTool", "EmailSendTool",
     "ImageGenerationTool", "VideoGenerationTool", "SandboxCodeTool", "TerminalTool",

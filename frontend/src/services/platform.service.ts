@@ -131,8 +131,9 @@ export const phonePoolService = {
         return res.data;
     },
 
-    claimNumber: async (numberId: string): Promise<any> => {
-        const res = await apiClient.post(`/phone-numbers/${numberId}/claim`);
+    claimNumber: async (numberId: string, targetCompanyId?: string): Promise<any> => {
+        const body = targetCompanyId ? { target_company_id: targetCompanyId } : undefined;
+        const res = await apiClient.post(`/phone-numbers/${numberId}/claim`, body);
         return res.data;
     },
 

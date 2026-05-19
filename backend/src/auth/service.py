@@ -30,7 +30,7 @@ async def _provision_new_tenant(db: AsyncSession, company: Company):
         from decimal import Decimal
 
         # Read default from company (set by caller from BillingConfig)
-        default_daily = Decimal("5.0")  # ultimate fallback only
+        default_daily = Decimal("0")  # no fallback — must come from BillingConfig
         if company.default_daily_credits:
             try:
                 default_daily = Decimal(str(company.default_daily_credits))

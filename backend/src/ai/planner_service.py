@@ -82,15 +82,55 @@ class PlannerService:
         )
 
     def has_parallel_steps(self, steps: List[dict]) -> bool:
-        """Check if any steps can run in parallel (heuristic).
+        """Return True ONLY if at least two steps can run simultaneously.
 
-        If any step has explicit ``input_dependencies``, we assume
-        a DAG execution is intended.
+        The previous implementation returned True whenever *any* step had
+        input_dependencies — but that means 'this step needs output from step X',
+        NOT 'run me in parallel'.  A pure chain like:
+
+            step1 (no deps) → step2 (deps=[step1]) → step3 (deps=[step2])
+
+        has input_dependencies on steps 2 and 3 but is 100% sequential and must
+        NEVER be routed to the DAG/parallel executor (which opens isolated
+        AsyncSessions per step and races for the shared self.db).
+
+        Correct logic: simulate one round of DAG scheduling.  If the first wave
+        of 'ready' steps (those whose deps are all absent/empty) has two or more
+        members, genuine parallelism exists → use the DAG executor.  Otherwise
+        the plan is sequential → use the sequential loop.
         """
+        if not steps:
+            return False
+
+        # Build dep sets from explicit input_dependencies + {{step_id}} refs
+        step_ids = {s.get("step_id") for s in steps if s.get("step_id")}
+        step_deps: dict = {}
+
         for s in steps:
-            if s.get("target") and s["target"].get("input_dependencies"):
-                return True
-        return False
+            s_id = s.get("step_id")
+            if not s_id:
+                continue
+            deps: set = set()
+            target = s.get("target") or {}
+            for dep in target.get("input_dependencies", []):
+                if dep in step_ids:
+                    deps.add(dep)
+            # Also honour {{step_id}} template references
+            prompt = target.get("prompt_template", "") or ""
+            if isinstance(prompt, dict):
+                import json as _json
+                prompt = _json.dumps(prompt)
+            import re as _re
+            for var in _re.findall(r'\{\{(.*?)\}\}', str(prompt)):
+                base = var.split('.')[0]
+                if base in step_ids and base != s_id:
+                    deps.add(base)
+            step_deps[s_id] = deps
+
+        # Count steps that are immediately ready (no dependencies at all)
+        initially_ready = sum(1 for deps in step_deps.values() if not deps)
+        return initially_ready >= 2
+
 
     async def validate_goal_progress(
         self,

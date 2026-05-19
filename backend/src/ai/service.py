@@ -254,15 +254,15 @@ class AIService:
         logger.info(f"delete_entity: successfully soft-deleted entity {entity_id} and {len(all_entity_ids)-1} children")
 
     # Execution
-    async def trigger_execution(self, execution_in: ExecutionRunCreate, company_id: UUID, user_id: UUID = None) -> ExecutionRun:
+    async def trigger_execution(self, execution_in: ExecutionRunCreate, company_id: UUID, user_id: UUID = None, user_role: str = None) -> ExecutionRun:
         # Pre-flight: validate entity exists and belongs to this company
-        entity = await self.get_entity(execution_in.entity_id, company_id)
+        entity = await self.get_entity(execution_in.entity_id, company_id, user_role=user_role)
 
         # For PROCESS entities, validate all child entity references exist
         # within the executing company before allowing execution.
         entity_type_str = entity.type.value if hasattr(entity.type, 'value') else str(entity.type)
         if entity_type_str == "PROCESS":
-            await self._validate_process_children(entity, company_id)
+            await self._validate_process_children(entity, company_id, user_role=user_role)
 
         # Create Execution Record
         execution = ExecutionRun(
@@ -298,7 +298,7 @@ class AIService:
 
         return execution
 
-    async def _validate_process_children(self, entity: HierarchicalEntity, company_id: UUID) -> None:
+    async def _validate_process_children(self, entity: HierarchicalEntity, company_id: UUID, user_role: str = None) -> None:
         """
         Pre-flight check: verify all CHILD_ENTITY_INVOCATION targets exist
         within the executing company.  Raises HTTP 400 if any are missing,
@@ -320,12 +320,13 @@ class AIService:
             except (ValueError, AttributeError):
                 missing.append(f"Step '{step.get('name', '?')}' has invalid entity_id '{target_id}'")
                 continue
-            result = await self.db.execute(
-                select(HierarchicalEntity.id).where(
-                    HierarchicalEntity.id == child_uuid,
-                    HierarchicalEntity.company_id == company_id,
-                )
+            query = select(HierarchicalEntity.id).where(
+                HierarchicalEntity.id == child_uuid,
             )
+            # app_admin can reference entities from any company
+            if user_role != "app_admin":
+                query = query.where(HierarchicalEntity.company_id == company_id)
+            result = await self.db.execute(query)
             if not result.scalar_one_or_none():
                 missing.append(
                     f"Step '{step.get('name', '?')}' references entity {target_id} "
@@ -344,6 +345,9 @@ class AIService:
                         except (ValueError, AttributeError):
                             continue
                         result = await self.db.execute(
+                            select(HierarchicalEntity.id).where(
+                                HierarchicalEntity.id == child_uuid,
+                            ) if user_role == "app_admin" else
                             select(HierarchicalEntity.id).where(
                                 HierarchicalEntity.id == child_uuid,
                                 HierarchicalEntity.company_id == company_id,
@@ -620,34 +624,16 @@ class AIService:
         from src.ai.models import DocumentChunk
         from sqlalchemy import text
         
-        # Get query embedding via Vertex AI
-        from src.ai.constants import EMBEDDING_MODEL
-        model_name = EMBEDDING_MODEL
-        
-        from google import genai
-        from google.genai import types
-        from src.common.genai_factory import build_vertex_genai_client
+        # Get query embedding via centralized EmbeddingService
+        from src.ai.embedding_service import EmbeddingService
+        embedding_service = EmbeddingService(self.db, company_id)
 
-        try:
-            client = await build_vertex_genai_client(
-                self.db, company_id,
-                http_options={'api_version': 'v1beta'}
-            )
-        except (RuntimeError, ValueError) as e:
+        query_embedding = await embedding_service.embed_query(query)
+        if not query_embedding:
             raise HTTPException(
                 status_code=500,
-                detail=f"Vertex AI not configured: {e}. Please add a Google Vertex AI integration."
+                detail="Embedding generation failed. Please check your AI integration configuration."
             )
-
-        try:
-            response = client.models.embed_content(
-                model=model_name,
-                contents=query,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
-            )
-            query_embedding = response.embeddings[0].values
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Vertex AI Embedding API Error: {str(e)}")
         
         # Search using cosine similarity
         sql = text("""

@@ -117,9 +117,9 @@ export const BillingReport: React.FC = () => {
             {/* Summary Cards */}
             <div className="summary-grid">
                 <SummaryCard accent label="Total Billed" value={formatUSD(totals.total_revenue || 0)} />
-                <SummaryCard label="Telephony Cost" value={formatUSD(totals.total_telephony_charge || 0)} />
-                <SummaryCard label="Intelligence Cost (LLM & API)" value={formatUSD((totals.total_llm_charge || 0) + (totals.total_api_charge || 0))} />
-                <SummaryCard label="Media Content Cost" value={formatUSD((totals.total_image_charge || 0) + (totals.total_video_charge || 0))} />
+                <SummaryCard label="Telephony Charge" value={formatUSD(totals.total_telephony_charge || 0)} />
+                <SummaryCard label="Intelligence Charge (LLM & API)" value={formatUSD((totals.total_llm_charge || 0) + (totals.total_api_charge || 0))} />
+                <SummaryCard label="Media Content Charge" value={formatUSD((totals.total_image_charge || 0) + (totals.total_video_charge || 0))} />
             </div>
 
             {error && <div className="error-banner">{error}</div>}
@@ -140,10 +140,10 @@ export const BillingReport: React.FC = () => {
                                 <th>Period</th>
                                 {groupingType && <th>Grouping</th>}
                                 <th>Telephony Use</th>
-                                <th>Telephony Cost</th>
+                                <th>Telephony Charge</th>
                                 <th>Media Gen Use</th>
-                                <th>Media Gen Cost</th>
-                                <th>Intelligence Cost</th>
+                                <th>Media Gen Charge</th>
+                                <th>Intelligence Charge</th>
                                 <th className="highlight-col">Total Billing</th>
                             </tr>
                         </thead>
