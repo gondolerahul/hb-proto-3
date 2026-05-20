@@ -50,6 +50,11 @@ INTERNAL_CONTEXT_KEYS: FrozenSet[str] = frozenset({
     "__experience__",
     "__episodic__",
     "__knowledge_refs__",
+    # --- Phase 10D/10E: New internal keys ---
+    "__execution_metadata__",
+    "__intelligence_rules__",
+    "__alignment_correction__",
+    "__goal_check_counter__",
 })
 
 # ---------------------------------------------------------------------------

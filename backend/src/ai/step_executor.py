@@ -11,7 +11,7 @@ import copy
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 from uuid import UUID
@@ -31,40 +31,10 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 
-# Lazy imports to avoid circular dependencies with worker.py
-def _get_worker_helpers():
-    from src.ai.worker import (
-        parse_variables, build_sandwich_prompt,
-        filter_context_for_step, UncertaintySignal,
-        DEFAULT_REVIEW_PROMPT,
-    )
-    return parse_variables, build_sandwich_prompt, filter_context_for_step, UncertaintySignal, DEFAULT_REVIEW_PROMPT
-
-
-# Module-level lazy cache
-_helpers = None
-
-def _helpers_cached():
-    global _helpers
-    if _helpers is None:
-        _helpers = _get_worker_helpers()
-    return _helpers
-
-
-def parse_variables(text, variables):
-    return _helpers_cached()[0](text, variables)
-
-def build_sandwich_prompt(**kwargs):
-    return _helpers_cached()[1](**kwargs)
-
-def filter_context_for_step(step, context, policy):
-    return _helpers_cached()[2](step, context, policy)
-
-def _get_uncertainty_signal():
-    return _helpers_cached()[3]
-
-def _get_review_prompt():
-    return _helpers_cached()[4]
+# Phase 10A: Direct imports — no circular dependency after extraction to ai.core
+from src.ai.core.prompt_utils import parse_variables, build_sandwich_prompt, filter_context_for_step
+from src.ai.core.exceptions import UncertaintySignal
+from src.ai.schemas import DEFAULT_REVIEW_SYSTEM_PROMPT as DEFAULT_REVIEW_PROMPT
 
 
 class StepExecutorService:
@@ -119,7 +89,8 @@ class StepExecutorService:
             result_data = await asyncio.wait_for(_wait_for_result(), timeout=max_wait)
 
             if result_data and result_data.get("status") == "FAILED":
-                raise Exception(f"Child run {child_run.id} failed: {result_data.get('error', 'Unknown')}")
+                from src.ai.core.exceptions import AgentError
+                raise AgentError(f"Child run {child_run.id} failed: {result_data.get('error', 'Unknown')}")
 
             # Reload child_run to get result_data
             await self.db.refresh(child_run)
@@ -211,7 +182,8 @@ class StepExecutorService:
                     )
 
         if not entity_id:
-            raise Exception(f"Child invocation missing entity_id for step {step.name}")
+            from src.ai.core.exceptions import AgentError
+            raise AgentError(f"Child invocation missing entity_id for step {step.name}")
         
         # Ensure entity_id is a UUID
         if isinstance(entity_id, str):
@@ -229,10 +201,13 @@ class StepExecutorService:
             )
         )
         if not child_entity_check.scalar_one_or_none():
-            raise Exception(
-                f"Child entity {entity_id} not found or has been deleted. "
-                f"The process template may not have been fully cloned. "
-                f"Please re-clone the template to create all child entities."
+            from src.ai.core.exceptions import EntityNotFoundError
+            raise EntityNotFoundError(
+                str(entity_id),
+                context=(
+                    f"not found or deleted. "
+                    f"The process template may not have been fully cloned."
+                ),
             )
 
         # Fix E: Propagate CORTEX tree ID so all entities share one tree
@@ -361,9 +336,10 @@ class StepExecutorService:
     async def _execute_tool_call(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         tool_id = step.target.tool_id if step.target else None
         if not tool_id:
-            raise Exception(f"Tool call missing tool_id for step {step.name}")
+            from src.ai.core.exceptions import ToolExecutionError
+            raise ToolExecutionError(step.name, "missing tool_id")
         
-        start_time = datetime.utcnow()
+        start_time = datetime.now(tz=timezone.utc)
         try:
             # Prepare inputs from context/variables
             # Internal keys that should never be passed as tool input
@@ -526,7 +502,7 @@ class StepExecutorService:
                     logger.error(f"Tool '{tool_id}' produced no output after all retry attempts")
             # ─────────────────────────────────────────────────────────────
             
-            latency = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            latency = int((datetime.now(tz=timezone.utc) - start_time).total_seconds() * 1000)
             
             # Log Tool Call — tool_result is a ToolResult dataclass, not a dict
             log = ToolInteractionLog(
@@ -552,7 +528,8 @@ class StepExecutorService:
                 # Map built-in tool IDs → known integration registry service_skus
                 _TOOL_SKU_MAP = {
                     "web_search": ["serp-api-key"],
-                    "scraper_tool": ["firecrawl"],
+                    "batch_web_search": ["serp-api-key"],
+                    "scraper_tool": ["firecrawl-api", "firecrawl"],
                     "headless_browser": ["headless-browser"],
                     "pdf_generator": ["pdf-generator"],
                     "image_generation": ["imagen-4.0-generate-001"],
@@ -991,7 +968,6 @@ class StepExecutorService:
                 output = output + "\n\n=== Tool Execution Results ===\n" + tool_summary
 
         # Detect UncertaintySignal from LLM output
-        UncertaintySignal = _get_uncertainty_signal()
         if output and '"needs_clarification": true' in output.lower():
             try:
                 _parsed = json.loads(output)
@@ -1326,7 +1302,7 @@ Step 2: [your analysis]
 
         custom_criteria = review_config.get("review_prompt", "")
         # Use entity-configured review system prompt, falling back to the schema default
-        base_review_prompt = review_config.get("review_system_prompt") or _get_review_prompt()
+        base_review_prompt = review_config.get("review_system_prompt") or DEFAULT_REVIEW_PROMPT
         if custom_criteria:
             review_prompt = base_review_prompt + f"\n\n## Additional Review Criteria\nAlso evaluate the output against these criteria:\n{custom_criteria}"
         else:
@@ -1364,7 +1340,7 @@ Step 2: [your analysis]
         )
         MAX_RUN_SECONDS = min(int(entity_timeout), 7200)  # capped at global ceiling
         BUDGET_PCT = 0.80
-        elapsed = (datetime.utcnow() - run.started_at).total_seconds() if run.started_at else 0
+        elapsed = (datetime.now(tz=timezone.utc) - run.started_at).total_seconds() if run.started_at else 0
         if elapsed > MAX_RUN_SECONDS * BUDGET_PCT:
             logger.warning(
                 f"Skipping critic review for step '{step.name}' — "
@@ -1459,7 +1435,8 @@ Step 2: [your analysis]
                     current_result["requires_human_review"] = True
                     current_result["review_failure_reason"] = reason
                 elif on_failure == "ABORT":
-                    raise Exception(f"Step {step.name} failed verification after {max_retries} attempts: {reason}")
+                    from src.ai.core.exceptions import AgentError
+                    raise AgentError(f"Step {step.name} failed verification after {max_retries} attempts: {reason}")
         
         return current_result
 

@@ -10,7 +10,7 @@ Storage path convention:
 """
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 from uuid import UUID
@@ -38,7 +38,7 @@ def get_storage_path(
     Build the daily storage directory for an artifact.
     Format: artifact/{origin}/{company_id}/{YYYY-MM-DD}/
     """
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     return ARTIFACT_BASE_DIR / origin / str(company_id) / date_str
 
 

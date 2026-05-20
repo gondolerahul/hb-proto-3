@@ -9,7 +9,7 @@ Priority order:
 Raises InsufficientCreditsError if all buckets are zero.
 """
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -48,7 +48,7 @@ class CreditService:
         wallet = result.scalar_one_or_none()
 
         if not wallet:
-            tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            tomorrow = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             tomorrow = tomorrow + timedelta(days=1)
             
             billing_svc = BillingService(self.db)
@@ -73,7 +73,7 @@ class CreditService:
         is not stuck at 0 between cron runs).
         """
         wallet = await self.get_or_create_wallet(company_id)
-        now = datetime.utcnow()
+        now = datetime.now(tz=timezone.utc)
 
         # Auto-renew expired daily credits in place (no cron needed)
         if wallet.daily_expires_at and wallet.daily_expires_at < now:
@@ -113,7 +113,7 @@ class CreditService:
         Raises InsufficientCreditsError if total available < amount.
         """
         wallet = await self.get_or_create_wallet(company_id)
-        now = datetime.utcnow()
+        now = datetime.now(tz=timezone.utc)
         remaining = amount
         deductions = {"daily": Decimal("0"), "wallet": Decimal("0"), "subscription": Decimal("0")}
 
@@ -171,7 +171,7 @@ class CreditService:
                 deductions["subscription"] += take
                 remaining -= take
 
-        wallet.updated_at = datetime.utcnow()
+        wallet.updated_at = datetime.now(tz=timezone.utc)
         await self.db.commit()
         return deductions
 
@@ -184,8 +184,8 @@ class CreditService:
         """Credit the wallet balance bucket (PAYG top-up)."""
         wallet = await self.get_or_create_wallet(company_id)
         wallet.wallet_balance = Decimal(str(wallet.wallet_balance)) + amount
-        wallet.wallet_expires_at = datetime.utcnow() + timedelta(days=validity_days)
-        wallet.updated_at = datetime.utcnow()
+        wallet.wallet_expires_at = datetime.now(tz=timezone.utc) + timedelta(days=validity_days)
+        wallet.updated_at = datetime.now(tz=timezone.utc)
         await self.db.commit()
         await self.db.refresh(wallet)
         return wallet
@@ -209,11 +209,11 @@ class CreditService:
         wallet.account_model = "subscription"
 
         # Expire at end of this month
-        now = datetime.utcnow()
+        now = datetime.now(tz=timezone.utc)
         import calendar
         last_day = calendar.monthrange(now.year, now.month)[1]
         wallet.sub_credits_expire_at = datetime(now.year, now.month, last_day, 23, 59, 59)
-        wallet.updated_at = datetime.utcnow()
+        wallet.updated_at = datetime.now(tz=timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(wallet)
@@ -231,10 +231,10 @@ class CreditService:
         daily_amount = Decimal(str(config.default_daily_credits)) if config and config.default_daily_credits else Decimal("0")
         
         wallet.daily_credits = daily_amount
-        tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = tomorrow + timedelta(days=1)
         wallet.daily_expires_at = tomorrow
-        wallet.updated_at = datetime.utcnow()
+        wallet.updated_at = datetime.now(tz=timezone.utc)
         await self.db.commit()
         await self.db.refresh(wallet)
         return wallet
@@ -292,7 +292,7 @@ class CreditService:
         Returns dict with deduction breakdown and a boolean `exhausted` flag.
         """
         wallet = await self.get_or_create_wallet(company_id)
-        now = datetime.utcnow()
+        now = datetime.now(tz=timezone.utc)
         remaining = amount
         deductions = {
             "daily": Decimal("0"),
@@ -342,7 +342,7 @@ class CreditService:
                 deductions["subscription"] += take
                 remaining -= take
 
-        wallet.updated_at = datetime.utcnow()
+        wallet.updated_at = datetime.now(tz=timezone.utc)
         await self.db.commit()
 
         exhausted = remaining > 0

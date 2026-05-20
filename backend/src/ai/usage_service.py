@@ -85,11 +85,11 @@ class UsageService:
         # registry_entry.internal_cost is Decimal(18,6)
         # raw_quantity is float (e.g. number of tokens)
         
-        # Support unit-based costing (e.g., 1M Tokens)
+        # Support unit-based costing (e.g., 1M Tokens, per_million_tokens)
         divisor = Decimal("1.0")
         if registry_entry.cost_unit:
             unit_lower = registry_entry.cost_unit.lower()
-            if "1m token" in unit_lower:
+            if "1m token" in unit_lower or "per_million" in unit_lower or "million" in unit_lower:
                 divisor = Decimal("1000000.0")
             elif "1k token" in unit_lower:
                 divisor = Decimal("1000.0")

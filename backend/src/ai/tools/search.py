@@ -147,46 +147,72 @@ class WebSearchTool(Tool):
     # ---------------------------------------------------------------------------
 
     async def _search_serpapi(self, query: str, api_key: str) -> Optional[List[Dict]]:
-        """Search using SerpAPI (Google results)."""
-        try:
-            async with httpx.AsyncClient(timeout=self._TIMEOUT) as client:
-                response = await client.get(
-                    self._SERP_API_URL,
-                    params={
-                        "q": query,
-                        "api_key": api_key,
-                        "engine": "google",
-                        "num": 10,
-                        "hl": "en",
-                    }
-                )
-                response.raise_for_status()
-                data = response.json()
+        """Search using SerpAPI (Google results) with retry for rate limits."""
+        import asyncio
+        max_retries = 3
+        base_delay = 2.0  # seconds
 
-            results = []
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self._TIMEOUT) as client:
+                    response = await client.get(
+                        self._SERP_API_URL,
+                        params={
+                            "q": query,
+                            "api_key": api_key,
+                            "engine": "google",
+                            "num": 10,
+                            "hl": "en",
+                        }
+                    )
+                    # Retry on 429 Too Many Requests
+                    if response.status_code == 429:
+                        if attempt < max_retries:
+                            delay = base_delay * (2 ** attempt)
+                            logger.info(f"[WebSearch] SerpAPI 429 rate-limited, retry {attempt+1}/{max_retries} in {delay}s")
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            logger.warning(f"[WebSearch] SerpAPI 429 after {max_retries} retries for: {query[:60]}")
+                            return None
 
-            # Answer box
-            answer_box = data.get("answer_box", {})
-            if answer_box.get("answer") or answer_box.get("snippet"):
-                results.append({
-                    "title": "Direct Answer",
-                    "url": answer_box.get("link", ""),
-                    "snippet": answer_box.get("answer") or answer_box.get("snippet", ""),
-                })
+                    response.raise_for_status()
+                    data = response.json()
 
-            for item in data.get("organic_results", [])[:8]:
-                results.append({
-                    "title": item.get("title", ""),
-                    "url": item.get("link", ""),
-                    "snippet": item.get("snippet", ""),
-                })
+                results = []
 
-            logger.info(f"[WebSearch] SerpAPI returned {len(results)} results for: {query[:60]}")
-            return results if results else None
+                # Answer box
+                answer_box = data.get("answer_box", {})
+                if answer_box.get("answer") or answer_box.get("snippet"):
+                    results.append({
+                        "title": "Direct Answer",
+                        "url": answer_box.get("link", ""),
+                        "snippet": answer_box.get("answer") or answer_box.get("snippet", ""),
+                    })
 
-        except Exception as e:
-            logger.warning(f"[WebSearch] SerpAPI failed: {e}")
-            return None
+                for item in data.get("organic_results", [])[:8]:
+                    results.append({
+                        "title": item.get("title", ""),
+                        "url": item.get("link", ""),
+                        "snippet": item.get("snippet", ""),
+                    })
+
+                logger.info(f"[WebSearch] SerpAPI returned {len(results)} results for: {query[:60]}")
+                return results if results else None
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    logger.info(f"[WebSearch] SerpAPI 429 rate-limited, retry {attempt+1}/{max_retries} in {delay}s")
+                    await asyncio.sleep(delay)
+                    continue
+                logger.warning(f"[WebSearch] SerpAPI failed: {e}")
+                return None
+            except Exception as e:
+                logger.warning(f"[WebSearch] SerpAPI failed: {e}")
+                return None
+
+        return None
 
     # ---------------------------------------------------------------------------
     # Backend 2: duckduckgo-search library (handles bot detection)
@@ -196,10 +222,14 @@ class WebSearchTool(Tool):
         """Search using the ddgs Python library (handles bot detection)."""
         try:
             # Try new ddgs package first, fall back to duckduckgo_search
+            import warnings
             try:
                 from ddgs import DDGS
             except ImportError:
-                from duckduckgo_search import DDGS
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", DeprecationWarning)
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    from duckduckgo_search import DDGS
             import asyncio
 
             def _sync_search():
@@ -207,7 +237,7 @@ class WebSearchTool(Tool):
                     return list(ddgs.text(query, max_results=8))
 
             # Run in threadpool since ddgs is sync
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             items = await loop.run_in_executor(None, _sync_search)
 
             results = []

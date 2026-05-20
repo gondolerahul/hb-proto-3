@@ -1,0 +1,591 @@
+"""
+ai.core.arq_jobs — Background job functions for the arq worker.
+
+Contains all arq-registered functions: execution, gateway event processing,
+document processing, dreaming, graph maintenance, and CORTEX scheduling.
+
+Extracted from worker.py during Phase 10A restructuring.
+"""
+import json
+import logging
+from datetime import datetime, timezone
+from uuid import UUID
+
+from sqlalchemy import select
+
+from src.common.database import AsyncSessionLocal
+from src.ai.models import ExecutionRun, HierarchicalEntity, RunStatus
+from src.ai.core.execution_engine import ExecutionEngine
+
+logger = logging.getLogger(__name__)
+
+# --- Arq Jobs ---
+
+async def run_execution_recursive(ctx, run_id_str: str):
+    run_id = UUID(run_id_str)
+    import redis.asyncio as redis
+    from src.common.config import settings
+    
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+    
+    async with AsyncSessionLocal() as db:
+        engine = ExecutionEngine(db, redis_pool)
+        await engine.execute_run(run_id)
+    
+    await redis_pool.close()
+
+
+async def process_gateway_event(ctx, envelope_dict: dict):
+    """Process a gateway event (webhook/internal) by routing to the correct handler.
+
+    This is the arq job function invoked by the CentralDispatcher when a webhook
+    event arrives at the gateway.
+
+    Routing:
+      - sheet.row_inserted → Campaign-based outbound call pipeline
+      - other events        → ExecutionRun via ExecutionEngine (text agents)
+    """
+    import redis.asyncio as redis
+    from src.common.config import settings
+    from src.ai.models import HierarchicalEntity, ExecutionRun, RunStatus
+
+    client_id = envelope_dict.get("client_id", "")
+    if not client_id:
+        logger.warning("[process_gateway_event] No client_id in envelope — skipping")
+        return
+
+    raw_data = envelope_dict.get("raw_data", {})
+    event_type = envelope_dict.get("event_type", "generic_event")
+    source = envelope_dict.get("source", "unknown")
+    correlation_id = envelope_dict.get("id", "")
+
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # ── Entity resolution: prefer explicit entity_id from payload ────
+            entity = None
+            payload_entity_id = raw_data.get("raw", {}).get("entity_id") if isinstance(raw_data, dict) else None
+
+            if payload_entity_id:
+                try:
+                    result = await db.execute(
+                        select(HierarchicalEntity).where(
+                            HierarchicalEntity.id == UUID(payload_entity_id),
+                            HierarchicalEntity.company_id == UUID(client_id),
+                            HierarchicalEntity.status != 'ARCHIVED',
+                        )
+                    )
+                    entity = result.scalar_one_or_none()
+                except Exception as e:
+                    logger.warning(f"[process_gateway_event] entity_id lookup failed: {e}")
+
+            # Fallback: first active entity for the company
+            if not entity:
+                result = await db.execute(
+                    select(HierarchicalEntity).where(
+                        HierarchicalEntity.company_id == UUID(client_id),
+                        HierarchicalEntity.status != 'ARCHIVED',
+                    ).limit(1)
+                )
+                entity = result.scalar_one_or_none()
+
+            if not entity:
+                logger.warning(
+                    f"[process_gateway_event] No active entity for company {client_id}"
+                )
+                return
+
+            logger.info(
+                f"[process_gateway_event] Resolved entity '{entity.name}' "
+                f"({entity.id}) — event={event_type} source={source}"
+            )
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # APPROACH C: Sheet row → Campaign-based outbound voice call
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            if event_type == "sheet.row_inserted":
+                await _handle_sheet_row_campaign(
+                    db=db,
+                    entity=entity,
+                    client_id=client_id,
+                    raw_data=raw_data,
+                    correlation_id=correlation_id,
+                    redis_pool=redis_pool,
+                )
+                return
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Default: ExecutionRun path (text-based agents)
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            run = ExecutionRun(
+                company_id=UUID(client_id),
+                entity_id=entity.id,
+                input_data={
+                    "input": json.dumps(raw_data),
+                    "channel": envelope_dict.get("channel", "webhook"),
+                    "source": source,
+                    "event_type": event_type,
+                    "correlation_id": correlation_id,
+                },
+                status=RunStatus.PENDING,
+            )
+            db.add(run)
+            await db.commit()
+            await db.refresh(run)
+
+            logger.info(
+                f"[process_gateway_event] ExecutionRun {run.id} created — executing..."
+            )
+
+            engine = ExecutionEngine(db, redis_pool)
+            await engine.execute_run(run.id)
+
+            logger.info(
+                f"[process_gateway_event] ExecutionRun {run.id} finished "
+                f"(status={run.status})"
+            )
+    except Exception as exc:
+        logger.error(
+            f"[process_gateway_event] Failed for correlation={correlation_id}: {exc}",
+            exc_info=True,
+        )
+    finally:
+        await redis_pool.close()
+
+
+async def _handle_sheet_row_campaign(
+    db,
+    entity,
+    client_id: str,
+    raw_data: dict,
+    correlation_id: str,
+    redis_pool,
+):
+    """Create a single-contact Campaign from a Google Sheets row and trigger outbound call.
+
+    Pipeline: Campaign → CampaignExecutor._place_tata_call() → Tata Tele webhook
+    → TataStreamHandler → GeminiLiveClient (speech-to-speech conversation)
+    """
+    from src.ai.campaign_models import Campaign, CampaignCall
+    from arq.connections import RedisSettings, create_pool
+    from src.common.config import settings as app_settings
+    from src.auth.models import User
+
+    # ── 1. Extract lead data from the webhook payload ───────────────────
+    raw_payload = raw_data.get("raw", {}) if isinstance(raw_data, dict) else {}
+    row_data = raw_payload.get("data", {})
+
+    # Try common column names for phone number
+    phone = (
+        row_data.get("Phone")
+        or row_data.get("phone")
+        or row_data.get("Mobile")
+        or row_data.get("mobile")
+        or row_data.get("Phone Number")
+        or row_data.get("phone_number")
+        or row_data.get("Contact")
+        or row_data.get("contact")
+        or row_data.get("Number")
+        or row_data.get("number")
+    )
+
+    if not phone:
+        logger.warning(
+            f"[sheet_campaign] No phone number found in row data. "
+            f"Available columns: {list(row_data.keys())}. Skipping."
+        )
+        return
+
+    # Normalize phone to string
+    phone = str(phone).strip()
+    # Remove .0 suffix from numeric cells (e.g. 9876543210.0)
+    if phone.endswith(".0"):
+        phone = phone[:-2]
+
+    name = (
+        row_data.get("Name")
+        or row_data.get("name")
+        or row_data.get("Lead Name")
+        or row_data.get("Full Name")
+        or "Lead"
+    )
+
+    logger.info(
+        f"[sheet_campaign] Lead detected: name='{name}', phone='{phone}', "
+        f"entity='{entity.name}', correlation={correlation_id}"
+    )
+
+    # ── 2. Resolve created_by (Campaign.created_by is NOT NULL) ─────────
+    created_by_id = entity.created_by
+    if not created_by_id:
+        # Fallback: find any user in the company
+        user_result = await db.execute(
+            select(User.id).where(
+                User.company_id == UUID(client_id),
+            ).limit(1)
+        )
+        user_row = user_result.scalar_one_or_none()
+        if user_row:
+            created_by_id = user_row
+        else:
+            logger.error(
+                f"[sheet_campaign] No users found for company {client_id}. "
+                f"Cannot create campaign."
+            )
+            return
+
+    # ── 3. Determine telephony provider from entity config ──────────────
+    entity_meta = entity.metadata_extensions or {}
+    provider = entity_meta.get("telephony_provider", "tata_tele")
+
+    # ── 4. Create single-contact Campaign ───────────────────────────────
+    from datetime import datetime as _dt
+    campaign = Campaign(
+        company_id=UUID(client_id),
+        created_by=created_by_id,
+        agent_id=entity.id,
+        name=f"Auto: {name} ({_dt.utcnow().strftime('%Y-%m-%d %H:%M')})",
+        description=(
+            f"Auto-generated campaign from Google Sheets webhook. "
+            f"Lead: {name}, Phone: {phone}. "
+            f"Correlation: {correlation_id}"
+        ),
+        total_contacts=1,
+        contact_list=[{"phone": phone, "name": str(name), **{k: str(v) for k, v in row_data.items()}}],
+        provider=provider,
+        max_concurrent_calls=1,
+        status="draft",
+        campaign_metadata={
+            "source": "google_sheets_webhook",
+            "correlation_id": correlation_id,
+            "sheet_name": raw_payload.get("sheet_name"),
+            "spreadsheet_id": raw_payload.get("spreadsheet_id"),
+            "row_index": raw_payload.get("row_index"),
+        },
+    )
+    db.add(campaign)
+    await db.commit()
+    await db.refresh(campaign)
+
+    # ── 5. Create CampaignCall ──────────────────────────────────────────
+    campaign_call = CampaignCall(
+        campaign_id=campaign.id,
+        contact_data={"phone": phone, "name": str(name), **{k: str(v) for k, v in row_data.items()}},
+        status="pending",
+    )
+    db.add(campaign_call)
+    await db.commit()
+
+    logger.info(
+        f"[sheet_campaign] Campaign {campaign.id} created with 1 contact. "
+        f"Enqueuing execute_campaign_task..."
+    )
+
+    # ── 6. Enqueue campaign execution via arq ───────────────────────────
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(app_settings.REDIS_URL or "redis://localhost:6379")
+        redis_settings = RedisSettings(
+            host=parsed.hostname or "localhost",
+            port=parsed.port or 6379,
+        )
+        arq_pool = await create_pool(redis_settings)
+        job = await arq_pool.enqueue_job(
+            "execute_campaign_task",
+            str(campaign.id),
+        )
+        await arq_pool.aclose()
+
+        job_id = job.job_id if job else "queued"
+        logger.info(
+            f"[sheet_campaign] Campaign {campaign.id} enqueued as arq job {job_id}. "
+            f"Call will be placed to {phone} via {provider}."
+        )
+    except Exception as enq_err:
+        logger.error(
+            f"[sheet_campaign] Failed to enqueue campaign {campaign.id}: {enq_err}",
+            exc_info=True,
+        )
+        # Fallback: execute in-process
+        try:
+            from src.ai.campaign_executor import CampaignExecutor
+            executor = CampaignExecutor(db)
+            await executor.start_campaign(campaign.id)
+            logger.info(f"[sheet_campaign] In-process fallback completed for campaign {campaign.id}")
+        except Exception as exec_err:
+            logger.error(
+                f"[sheet_campaign] In-process fallback also failed: {exec_err}",
+                exc_info=True,
+            )
+
+
+async def process_document(ctx, document_id_str: str, file_content: bytes, file_type: str, filename: str):
+    from src.ai.models import Document, DocumentChunk
+    import io
+    
+    document_id = UUID(document_id_str)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Document).where(Document.id == document_id))
+        document = result.scalar_one_or_none()
+        if not document:
+            return
+            
+        try:
+            if file_type == "txt":
+                text = file_content.decode("utf-8")
+            elif file_type == "pdf":
+                import PyPDF2
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text() + "\n"
+            elif file_type == "docx":
+                import docx
+                doc = docx.Document(io.BytesIO(file_content))
+                text = "\n".join([p.text for p in doc.paragraphs])
+            else:
+                text = file_content.decode("utf-8", errors="ignore")
+                
+            chunk_size = 500
+            chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+            
+            # Use centralized EmbeddingService (admin-configurable model)
+            from src.ai.embedding_service import EmbeddingService
+            embedding_service = EmbeddingService(db, document.company_id)
+            
+            total_chunks = len(chunks)
+            success_count = 0
+            failed_count = 0
+            
+            for idx, chunk_text in enumerate(chunks):
+                embedding = await embedding_service.embed_text(
+                    chunk_text, task_type="RETRIEVAL_DOCUMENT"
+                )
+                
+                if embedding is None:
+                    failed_count += 1
+                    logger.warning(f"Embedding failed for chunk {idx}/{total_chunks} of doc {document_id}")
+                    # Still create the chunk without embedding
+                    chunk = DocumentChunk(
+                        document_id=document.id,
+                        chunk_index=str(idx),
+                        content=chunk_text,
+                        embedding=None,
+                    )
+                else:
+                    success_count += 1
+                    chunk = DocumentChunk(
+                        document_id=document.id,
+                        chunk_index=str(idx),
+                        content=chunk_text,
+                        embedding=embedding,
+                    )
+                db.add(chunk)
+            
+            # Set upload_status based on embedding results
+            if failed_count == total_chunks:
+                document.upload_status = "failed"
+                logger.error(
+                    f"All {total_chunks} chunks failed embedding for document "
+                    f"{document.id} ({document.filename})"
+                )
+            elif failed_count > 0:
+                document.upload_status = "partial"
+                logger.warning(
+                    f"{failed_count}/{total_chunks} chunks failed embedding for document "
+                    f"{document.id} ({document.filename})"
+                )
+            else:
+                document.upload_status = "completed"
+                logger.info(
+                    f"Document {document.id} ({document.filename}): "
+                    f"all {total_chunks} chunks embedded successfully"
+                )
+            
+            await db.commit()
+            
+            # --- v2: Dual-write into Knowledge Tree ---
+            # Ingest the document into the entity's persistent Knowledge Tree
+            # alongside the legacy document_chunks table (Phase B dual-write).
+            if document.entity_id:
+                try:
+                    from src.ai.knowledge_tree_service import KnowledgeTreeService
+                    kt_service = KnowledgeTreeService(db, document.company_id)
+                    tree = await kt_service.get_or_create_knowledge_tree(
+                        entity_id=document.entity_id
+                    )
+                    kt_node_count = await kt_service.ingest_document(
+                        tree_id=tree.id,
+                        document_id=document.id,
+                        content=text,
+                        filename=filename,
+                        entity_id=document.entity_id,
+                    )
+                    await db.commit()
+                    logger.info(
+                        f"Knowledge Tree v2: ingested {kt_node_count} nodes for "
+                        f"document {document.id} ({document.filename})"
+                    )
+                except Exception as kt_err:
+                    logger.warning(
+                        f"Knowledge Tree v2 ingestion failed (non-fatal): {kt_err}"
+                    )
+            
+        except Exception as e:
+            document.upload_status = "failed"
+            await db.commit()
+            logger.error(f"Doc processing failed: {e}")
+
+# Import campaign worker functions
+from src.ai.campaign_worker import execute_campaign_task, pause_campaign_task, stop_campaign_task
+
+
+# ---------------------------------------------------------------------------
+# Phase D: dreaming_worker — Background learning pipeline
+# ---------------------------------------------------------------------------
+async def dreaming_worker(ctx: dict, entity_id_str: str, company_id_str: str, force: bool = False) -> dict:
+    """
+    Background worker task for the Dreaming Engine.
+    Runs the three-phase learning pipeline for an entity:
+      Phase 1: Extract observations from episodes
+      Phase 2: Recognize patterns across observations
+      Phase 3: Distill intelligence rules from patterns
+
+    Scheduled to run after execution completion or on a timer.
+    """
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        try:
+            from src.ai.dreaming_engine import DreamingEngine
+            engine = DreamingEngine(db, UUID(company_id_str))
+            result = await engine.dream(
+                entity_id=UUID(entity_id_str),
+                force=force,
+            )
+            await db.commit()
+            return result
+        except Exception as e:
+            logger.error(f"Dreaming worker failed for entity {entity_id_str}: {e}")
+            return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Phase E: graph_maintenance_worker — Periodic graph maintenance
+# ---------------------------------------------------------------------------
+async def graph_maintenance_worker(ctx: dict) -> dict:
+    """
+    Periodic maintenance for the semantic graph.
+    Run daily via scheduler. Decays stale edge weights and prunes weak edges.
+    """
+    from src.common.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
+
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(_text(
+                "SELECT DISTINCT company_id FROM cortex_trees WHERE status = 'active'"
+            ))
+            companies = result.fetchall()
+
+            total_decayed = 0
+            total_pruned = 0
+
+            for row in companies:
+                from src.ai.graph_service import SemanticGraphService
+                graph = SemanticGraphService(db, row[0])
+                decayed = await graph.decay_weights(days_inactive=30)
+                pruned = await graph.prune_weak_edges()
+                total_decayed += decayed
+                total_pruned += pruned
+
+            await db.commit()
+            logger.info(f"Graph maintenance: {total_decayed} edges decayed, {total_pruned} pruned")
+            return {"decayed": total_decayed, "pruned": total_pruned}
+        except Exception as e:
+            logger.error(f"Graph maintenance worker failed: {e}")
+            return {"error": str(e)}
+
+# ---------------------------------------------------------------------------
+# Ph-C: resume_execution — Arq job to resume a checkpointed run
+# ---------------------------------------------------------------------------
+async def resume_execution(ctx: dict, run_id_str: str) -> dict:
+    """
+    Resume a previously checkpointed execution run.
+    Reloads `run.context_state` and skips steps that are already completed.
+    """
+    from src.common.database import AsyncSessionLocal
+    
+    run_id = UUID(run_id_str)
+    async with AsyncSessionLocal() as db:
+        redis = ctx.get('redis')
+        engine = ExecutionEngine(db, redis)
+        logger.info(f"Resuming ExecutionRun: {run_id}")
+        return await engine.execute_run(run_id)
+
+
+# ---------------------------------------------------------------------------
+# Gap #5: Scheduled CORTEX wake-ups — Arq cron job
+# ---------------------------------------------------------------------------
+async def cortex_resume_scheduled(ctx: dict) -> dict:
+    """
+    Periodic cron job that wakes up suspended CORTEX trees whose
+    next_resume_at timestamp has arrived. Creates a new execution run
+    for each tree and enqueues it.
+    """
+    from src.common.database import AsyncSessionLocal
+    from src.ai.cortex_models import CortexTree, CortexTreeStatus
+    from sqlalchemy import select
+
+    resumed = 0
+    try:
+        async with AsyncSessionLocal() as db:
+            # Find trees scheduled for resumption
+            result = await db.execute(
+                select(CortexTree).where(
+                    CortexTree.status == CortexTreeStatus.SUSPENDED,
+                    CortexTree.next_resume_at != None,
+                    CortexTree.next_resume_at <= datetime.now(tz=timezone.utc),
+                )
+            )
+            trees = result.scalars().all()
+
+            for tree in trees:
+                try:
+                    # Create a new execution run to resume this tree
+                    from src.ai.models import ExecutionRun
+                    resume_run = ExecutionRun(
+                        entity_id=tree.entity_id,
+                        company_id=tree.company_id,
+                        user_id=tree.user_id,
+                        input_data={"cortex_tree_id": str(tree.id)},
+                        status="PENDING",
+                    )
+                    db.add(resume_run)
+                    await db.flush()
+
+                    # Clear the schedule to prevent re-triggering
+                    tree.next_resume_at = None
+
+                    # Enqueue to Arq
+                    redis = ctx.get('redis')
+                    if redis:
+                        from arq.connections import ArqRedis
+                        arq = ArqRedis(redis)
+                        await arq.enqueue_job("execute_run", str(resume_run.id))
+                        resumed += 1
+                        logger.info(f"CORTEX scheduled resume: tree {tree.id} → run {resume_run.id}")
+
+                except Exception as e:
+                    logger.error(f"CORTEX scheduled resume failed for tree {tree.id}: {e}")
+
+            await db.commit()
+    except Exception as e:
+        logger.error(f"CORTEX scheduled wake-up cron error: {e}")
+
+    return {"resumed": resumed}
+
+
+# ---------------------------------------------------------------------------
+# Ph-A: RecursiveReasoningEngine — extends ExecutionEngine with Goal Trees

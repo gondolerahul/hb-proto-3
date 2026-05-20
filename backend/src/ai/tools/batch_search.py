@@ -52,6 +52,9 @@ class BatchWebSearchTool(Tool):
 
     _MAX_QUERIES = 25  # Hard cap to prevent runaway API costs
     _MAX_QUERY_LEN = 500
+    _BATCH_SIZE = 3    # Max concurrent queries per batch (SerpAPI rate limit)
+    _INTER_QUERY_DELAY = 1.5  # Seconds between queries within a batch
+    _INTER_BATCH_DELAY = 3.0  # Seconds between batches
 
     def _strip_markdown(self, text: str) -> str:
         """Strip markdown formatting from LLM output to extract raw JSON.
@@ -246,9 +249,14 @@ class BatchWebSearchTool(Tool):
                 failed_queries.append(query)
                 logger.warning(f"[BatchWebSearch] Query failed: {query[:60]} — {e}")
 
-            # Small delay between queries to avoid rate limiting
+            # Rate-limit delay to avoid 429 from SerpAPI
             if i < len(queries) - 1:
-                await asyncio.sleep(0.5)
+                # Longer delay between batches (every _BATCH_SIZE queries)
+                if (i + 1) % self._BATCH_SIZE == 0:
+                    logger.info(f"[BatchWebSearch] Rate-limit pause ({self._INTER_BATCH_DELAY}s between batches)")
+                    await asyncio.sleep(self._INTER_BATCH_DELAY)
+                else:
+                    await asyncio.sleep(self._INTER_QUERY_DELAY)
 
         if not all_results:
             return (
