@@ -5,6 +5,7 @@ import {
     X, Play, Pause, ZoomIn, FileText, File, Bot, User2, Info
 } from 'lucide-react';
 import { artifactService, Artifact, ArtifactListFilters } from '@/services/artifact.service';
+import { apiClient } from '@/services/api.client';
 import './Artifacts.css';
 
 const FILE_CATEGORY_OPTIONS = [
@@ -170,16 +171,10 @@ export const Artifacts: React.FC = () => {
 
     const handleDownload = async (artifact: Artifact) => {
         try {
-            const response = await fetch(
-                `${import.meta.env.VITE_API_URL || ''}/api/v1/artifacts/${artifact.id}/download`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`,
-                    },
-                }
-            );
-            if (!response.ok) throw new Error('Download failed');
-            const blob = await response.blob();
+            const response = await apiClient.get(`/artifacts/${artifact.id}/download`, {
+                responseType: 'blob',
+            });
+            const blob = response.data as Blob;
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

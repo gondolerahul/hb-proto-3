@@ -351,7 +351,7 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
             chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
             
             # Use centralized EmbeddingService (admin-configurable model)
-            from src.ai.embedding_service import EmbeddingService
+            from src.ai.memory.embedding_service import EmbeddingService
             embedding_service = EmbeddingService(db, document.company_id)
             
             total_chunks = len(chunks)
@@ -410,7 +410,7 @@ async def process_document(ctx, document_id_str: str, file_content: bytes, file_
             # alongside the legacy document_chunks table (Phase B dual-write).
             if document.entity_id:
                 try:
-                    from src.ai.knowledge_tree_service import KnowledgeTreeService
+                    from src.ai.memory.knowledge_tree_service import KnowledgeTreeService
                     kt_service = KnowledgeTreeService(db, document.company_id)
                     tree = await kt_service.get_or_create_knowledge_tree(
                         entity_id=document.entity_id
@@ -458,7 +458,7 @@ async def dreaming_worker(ctx: dict, entity_id_str: str, company_id_str: str, fo
 
     async with AsyncSessionLocal() as db:
         try:
-            from src.ai.dreaming_engine import DreamingEngine
+            from src.ai.memory.dreaming_engine import DreamingEngine
             engine = DreamingEngine(db, UUID(company_id_str))
             result = await engine.dream(
                 entity_id=UUID(entity_id_str),
@@ -469,6 +469,52 @@ async def dreaming_worker(ctx: dict, entity_id_str: str, company_id_str: str, fo
         except Exception as e:
             logger.error(f"Dreaming worker failed for entity {entity_id_str}: {e}")
             return {"error": str(e)}
+
+# ---------------------------------------------------------------------------
+# Phase 10C: dreaming_cron_trigger — Auto-schedule dreaming for entities
+# ---------------------------------------------------------------------------
+async def dreaming_cron_trigger(ctx: dict) -> dict:
+    """
+    Periodic cron job that auto-discovers entities with dreaming enabled
+    and enqueues a dreaming_worker job for each.
+
+    Entity selection: entities with `capabilities.dreaming.enabled == true`
+    that haven't been consolidated in the last CONSOLIDATION_INTERVAL_HOURS.
+    """
+    from src.common.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
+
+    enqueued = 0
+    try:
+        async with AsyncSessionLocal() as db:
+            # Find entities with dreaming enabled via JSONB query
+            result = await db.execute(_text(
+                "SELECT id, company_id FROM hierarchical_entities "
+                "WHERE status != 'ARCHIVED' "
+                "AND capabilities->'dreaming'->>'enabled' = 'true'"
+            ))
+            entities = result.fetchall()
+
+            for row in entities:
+                entity_id, company_id = str(row[0]), str(row[1])
+                try:
+                    redis = ctx.get('redis')
+                    if redis:
+                        from arq.connections import ArqRedis
+                        arq = ArqRedis(redis)
+                        await arq.enqueue_job(
+                            "dreaming_worker", entity_id, company_id, False
+                        )
+                        enqueued += 1
+                        logger.info(f"Dreaming cron: enqueued for entity {entity_id}")
+                except Exception as e:
+                    logger.warning(f"Dreaming cron: failed to enqueue entity {entity_id}: {e}")
+
+            logger.info(f"Dreaming cron: enqueued {enqueued}/{len(entities)} entities")
+    except Exception as e:
+        logger.error(f"Dreaming cron trigger failed: {e}")
+
+    return {"enqueued": enqueued}
 
 
 # ---------------------------------------------------------------------------
@@ -493,7 +539,7 @@ async def graph_maintenance_worker(ctx: dict) -> dict:
             total_pruned = 0
 
             for row in companies:
-                from src.ai.graph_service import SemanticGraphService
+                from src.ai.memory.graph_service import SemanticGraphService
                 graph = SemanticGraphService(db, row[0])
                 decayed = await graph.decay_weights(days_inactive=30)
                 pruned = await graph.prune_weak_edges()
@@ -535,7 +581,7 @@ async def cortex_resume_scheduled(ctx: dict) -> dict:
     for each tree and enqueues it.
     """
     from src.common.database import AsyncSessionLocal
-    from src.ai.cortex_models import CortexTree, CortexTreeStatus
+    from src.ai.memory.cortex_models import CortexTree, CortexTreeStatus
     from sqlalchemy import select
 
     resumed = 0
@@ -546,7 +592,7 @@ async def cortex_resume_scheduled(ctx: dict) -> dict:
                 select(CortexTree).where(
                     CortexTree.status == CortexTreeStatus.SUSPENDED,
                     CortexTree.next_resume_at != None,
-                    CortexTree.next_resume_at <= datetime.now(tz=timezone.utc),
+                    CortexTree.next_resume_at <= datetime.utcnow(),
                 )
             )
             trees = result.scalars().all()

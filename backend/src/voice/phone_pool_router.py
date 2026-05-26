@@ -26,7 +26,7 @@ from sqlalchemy import or_
 from src.common.database import get_db
 from src.auth.models import User
 from src.auth.dependencies import get_current_user, RoleChecker
-from src.voice.phone_pool_models import PhoneNumberPool
+from src.voice.phone_pool_models import PhoneNumber
 from src.config.models import IntegrationRegistry
 from src.common.security import decrypt_api_key
 
@@ -81,12 +81,12 @@ async def add_number_to_pool(
     """Add a single phone number to the pool (app_admin only)."""
     # Check for duplicate
     existing = await db.execute(
-        select(PhoneNumberPool).where(PhoneNumberPool.phone_number == body.phone_number)
+        select(PhoneNumber).where(PhoneNumber.phone_number == body.phone_number)
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail=f"Number {body.phone_number} already exists in pool")
 
-    entry = PhoneNumberPool(
+    entry = PhoneNumber(
         phone_number=body.phone_number,
         provider=body.provider,
         country_code=body.country_code,
@@ -117,13 +117,13 @@ async def bulk_add_numbers(
 
     for item in body.numbers:
         existing = await db.execute(
-            select(PhoneNumberPool).where(PhoneNumberPool.phone_number == item.phone_number)
+            select(PhoneNumber).where(PhoneNumber.phone_number == item.phone_number)
         )
         if existing.scalar_one_or_none():
             skipped.append(item.phone_number)
             continue
 
-        entry = PhoneNumberPool(
+        entry = PhoneNumber(
             phone_number=item.phone_number,
             provider=item.provider,
             country_code=item.country_code,
@@ -256,7 +256,6 @@ async def _sync_twilio(
     Also cross-checks customer_phone_numbers table so numbers already
     assigned to agents are imported into the pool as 'claimed'.
     """
-    from src.voice.models import CustomerPhoneNumber
 
     added, skipped = [], []
     page_url = (
@@ -277,7 +276,7 @@ async def _sync_twilio(
                     continue
 
                 existing = await db.execute(
-                    select(PhoneNumberPool).where(PhoneNumberPool.phone_number == phone)
+                    select(PhoneNumber).where(PhoneNumber.phone_number == phone)
                 )
                 if existing.scalar_one_or_none():
                     skipped.append(phone)
@@ -295,9 +294,9 @@ async def _sync_twilio(
 
                 # Check if already assigned in customer_phone_numbers
                 assigned_check = await db.execute(
-                    select(CustomerPhoneNumber).where(
-                        CustomerPhoneNumber.phone_number.in_([phone, f"+{phone}", raw]),
-                        CustomerPhoneNumber.is_active == True,
+                    select(PhoneNumber).where(
+                        PhoneNumber.phone_number.in_([phone, f"+{phone}", raw]),
+                        PhoneNumber.is_active == True,
                     )
                 )
                 assignment = assigned_check.scalar_one_or_none()
@@ -306,7 +305,7 @@ async def _sync_twilio(
 
                 if assignment:
                     # Import as claimed
-                    entry = PhoneNumberPool(
+                    entry = PhoneNumber(
                         phone_number=phone,
                         provider="twilio",
                         country_code=country_code,
@@ -325,7 +324,7 @@ async def _sync_twilio(
                     db.add(entry)
                     skipped.append(phone)
                 else:
-                    entry = PhoneNumberPool(
+                    entry = PhoneNumber(
                         phone_number=phone,
                         provider="twilio",
                         country_code=country_code,
@@ -361,7 +360,6 @@ async def _sync_tata_tele(db: AsyncSession, api_key: str, added_by_user_id, serv
     Also cross-checks customer_phone_numbers table so numbers already
     assigned to agents are imported into the pool as 'claimed'.
     """
-    from src.voice.models import CustomerPhoneNumber
 
     added, skipped, imported_from_assignments = [], [], []
     base_url = (service_metadata or {}).get("api_url", "https://api-smartflo.tatateleservices.com")
@@ -427,9 +425,9 @@ async def _sync_tata_tele(db: AsyncSession, api_key: str, added_by_user_id, serv
     # These are numbers assigned to agents (on the Phone Numbers screen) but
     # not yet present in the phone_number_pool table.
     assigned_result = await db.execute(
-        select(CustomerPhoneNumber).where(
-            CustomerPhoneNumber.provider == "tata_tele",
-            CustomerPhoneNumber.is_active == True,
+        select(PhoneNumber).where(
+            PhoneNumber.provider == "tata_tele",
+            PhoneNumber.is_active == True,
         )
     )
     assigned_numbers = assigned_result.scalars().all()
@@ -440,13 +438,13 @@ async def _sync_tata_tele(db: AsyncSession, api_key: str, added_by_user_id, serv
 
         # Check if already in pool
         existing = await db.execute(
-            select(PhoneNumberPool).where(PhoneNumberPool.phone_number == phone)
+            select(PhoneNumber).where(PhoneNumber.phone_number == phone)
         )
         if existing.scalar_one_or_none():
             continue  # already in pool, nothing to do
 
         # Import as a claimed entry in the pool
-        entry = PhoneNumberPool(
+        entry = PhoneNumber(
             phone_number=phone,
             provider="tata_tele",
             country_code="+91",
@@ -486,7 +484,7 @@ async def _sync_tata_tele(db: AsyncSession, api_key: str, added_by_user_id, serv
 
         # Check phone_number_pool (including numbers just imported above)
         existing = await db.execute(
-            select(PhoneNumberPool).where(PhoneNumberPool.phone_number == phone)
+            select(PhoneNumber).where(PhoneNumber.phone_number == phone)
         )
         if existing.scalar_one_or_none():
             skipped.append(phone)
@@ -494,16 +492,16 @@ async def _sync_tata_tele(db: AsyncSession, api_key: str, added_by_user_id, serv
 
         # Also check customer_phone_numbers with both formats (with and without '+')
         assigned_check = await db.execute(
-            select(CustomerPhoneNumber).where(
-                CustomerPhoneNumber.phone_number.in_([phone, f"+{phone}", f"+91{phone}"]),
-                CustomerPhoneNumber.is_active == True,
+            select(PhoneNumber).where(
+                PhoneNumber.phone_number.in_([phone, f"+{phone}", f"+91{phone}"]),
+                PhoneNumber.is_active == True,
             )
         )
         assignment = assigned_check.scalar_one_or_none()
 
         if assignment:
             # Number is assigned to an agent — import as claimed
-            entry = PhoneNumberPool(
+            entry = PhoneNumber(
                 phone_number=phone,
                 provider="tata_tele",
                 country_code="+91",
@@ -518,7 +516,7 @@ async def _sync_tata_tele(db: AsyncSession, api_key: str, added_by_user_id, serv
             db.add(entry)
             skipped.append(phone)
         else:
-            entry = PhoneNumberPool(
+            entry = PhoneNumber(
                 phone_number=phone,
                 provider="tata_tele",
                 country_code="+91",
@@ -566,23 +564,23 @@ async def list_pool_numbers(
     - app_admin: sees all numbers
     - tenant_admin: sees available + own claimed numbers
     """
-    query = select(PhoneNumberPool)
+    query = select(PhoneNumber)
 
     if current_user.role not in ("app_admin",):
         # Tenant sees available numbers + their own claimed numbers
         query = query.where(
             or_(
-                PhoneNumberPool.status == "available",
-                PhoneNumberPool.claimed_by_company_id == current_user.company_id,
+                PhoneNumber.status == "available",
+                PhoneNumber.claimed_by_company_id == current_user.company_id,
             )
         )
 
     if status:
-        query = query.where(PhoneNumberPool.status == status)
+        query = query.where(PhoneNumber.status == status)
     if provider:
-        query = query.where(PhoneNumberPool.provider == provider)
+        query = query.where(PhoneNumber.provider == provider)
 
-    query = query.order_by(PhoneNumberPool.created_at.desc())
+    query = query.order_by(PhoneNumber.created_at.desc())
     result = await db.execute(query)
     numbers = result.scalars().all()
 
@@ -600,7 +598,7 @@ async def claim_number(
         raise HTTPException(status_code=403, detail="Only admins can claim phone numbers")
 
     result = await db.execute(
-        select(PhoneNumberPool).where(PhoneNumberPool.id == number_id)
+        select(PhoneNumber).where(PhoneNumber.id == number_id)
     )
     entry = result.scalar_one_or_none()
     if not entry:
@@ -631,7 +629,7 @@ async def release_number(
 ):
     """Release a claimed number back to the pool."""
     result = await db.execute(
-        select(PhoneNumberPool).where(PhoneNumberPool.id == number_id)
+        select(PhoneNumber).where(PhoneNumber.id == number_id)
     )
     entry = result.scalar_one_or_none()
     if not entry:
@@ -666,7 +664,7 @@ async def remove_from_pool(
 ):
     """Remove a number from the pool entirely (app_admin only)."""
     result = await db.execute(
-        select(PhoneNumberPool).where(PhoneNumberPool.id == number_id)
+        select(PhoneNumber).where(PhoneNumber.id == number_id)
     )
     entry = result.scalar_one_or_none()
     if not entry:
@@ -685,7 +683,7 @@ async def remove_from_pool(
 
 # --- Helpers ---
 
-def _to_response(entry: PhoneNumberPool) -> dict:
+def _to_response(entry: PhoneNumber) -> dict:
     return {
         "id": str(entry.id),
         "phone_number": entry.phone_number,

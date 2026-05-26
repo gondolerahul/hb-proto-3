@@ -151,13 +151,19 @@ class PptxTool(Tool):
         file_path = output_dir / filename
         prs.save(str(file_path))
 
-        await self._register_artifact(file_path, filename, company_id, params)
+        artifact_id = await self._register_artifact(file_path, filename, company_id, params)
 
-        return json.dumps({
+        result = {
             "status": "success",
             "file_path": str(file_path),
             "message": f"Created {filename} with {len(slides_data) + 1} slides",
-        })
+        }
+        if artifact_id:
+            result["artifact_id"] = artifact_id
+            result["download_url"] = f"/api/v1/artifacts/{artifact_id}/download"
+            result["document_path"] = f"/api/v1/artifacts/{artifact_id}/download"
+
+        return json.dumps(result)
 
     # ------------------------------------------------------------------
     # READ
@@ -290,7 +296,8 @@ class PptxTool(Tool):
     @staticmethod
     async def _register_artifact(
         file_path: Path, filename: str, company_id: str, params: Dict[str, Any]
-    ) -> None:
+    ) -> str | None:
+        """Register file as an artifact. Returns artifact ID or None."""
         if company_id and company_id != "default":
             try:
                 from uuid import UUID as _UUID
@@ -301,7 +308,7 @@ class PptxTool(Tool):
                     art_svc = ArtifactService(_db)
                     with open(file_path, "rb") as f:
                         file_bytes = f.read()
-                    await art_svc.save_artifact(
+                    artifact = await art_svc.save_artifact(
                         file_bytes=file_bytes,
                         file_name=filename,
                         mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -311,8 +318,10 @@ class PptxTool(Tool):
                         purpose=params.get("purpose", "AI-generated PowerPoint presentation"),
                         generated_by=params.get("generated_by", "pptx_tool"),
                     )
+                    return str(artifact.id)
             except Exception:
                 pass  # Non-fatal
+        return None
 
     def get_function_schema(self) -> Dict[str, Any]:
         return {

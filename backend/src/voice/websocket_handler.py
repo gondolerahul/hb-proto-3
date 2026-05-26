@@ -39,7 +39,7 @@ from src.voice.number_router import NumberRouter
 from src.voice.usage_logger import VoiceUsageLogger
 from src.billing.credit_service import CreditService
 from src.billing.billing_service import BillingService
-from src.database import AsyncSessionLocal
+from src.common.database import AsyncSessionLocal
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,9 @@ class BaseStreamHandler:
         self._recording_tmp_path: Optional[str] = None
         self._recording_tmp_file = None          # raw binary file handle
         self._outbound_recording_buffer = bytearray()   # small rolling buffer for mix
+
+        # Issue #7: Configurable call duration limit
+        self.max_call_duration_seconds: int = 300  # Default 5 min, overridden by agent config
 
     # ------------------------------------------------------------------
     # Recording helpers (P0.4)
@@ -188,6 +191,42 @@ class BaseStreamHandler:
         LiveClientFactory, connect to the live session, and launch the pipeline.
         Supports both Gemini Live and Azure OpenAI Realtime providers.
         """
+        # ── Credit gate-check ─────────────────────────────────────────
+        # Block outbound calls when credits are exhausted.
+        # Inbound calls are allowed through with a warning (so users
+        # don't miss important calls), but we still deduct at end.
+        try:
+            from src.billing.credit_service import CreditService, InsufficientCreditsError
+            credit_svc = CreditService(self.db)
+            await credit_svc.check_sufficient_for_execution(
+                company_id=self.voice_session.company_id,
+                entity_type="AGENT",
+            )
+        except InsufficientCreditsError as e:
+            direction = getattr(self.voice_session, 'direction', 'unknown')
+            if direction == "outbound":
+                logger.warning(
+                    f"Blocking outbound call {self.session_id} — insufficient credits: {e}"
+                )
+                try:
+                    await self.websocket.send_json({
+                        "event": "error",
+                        "error": "insufficient_credits",
+                        "message": str(e),
+                    })
+                    await self.websocket.close(code=4002, reason="Insufficient credits")
+                except Exception:
+                    pass
+                return
+            else:
+                # Allow inbound calls through with a warning
+                logger.warning(
+                    f"Inbound call {self.session_id} proceeding with $0 balance: {e}"
+                )
+        except Exception as e:
+            # Don't block calls if the credit check itself fails
+            logger.error(f"Credit check error (non-blocking): {e}")
+
         # Open recording temp file before audio starts flowing
         self._open_recording_file()
 
@@ -195,6 +234,7 @@ class BaseStreamHandler:
             agent_id=self.voice_session.agent_id,
             customer_id=self.voice_session.customer_id,
             channel="voice",
+            session_metadata=self.voice_session.session_metadata,
         )
 
         # Resolve the correct live streaming client from task defaults
@@ -227,6 +267,11 @@ class BaseStreamHandler:
             self.gemini_session = await session_cm.__aenter__()
 
         self.started_at = self.voice_session.started_at
+
+        # Issue #7: Read max call duration from agent config
+        self.max_call_duration_seconds = getattr(
+            agent_context, 'max_call_duration_seconds', 300
+        )
             
         # Send greeting trigger immediately
         greeting = (
@@ -248,6 +293,7 @@ class BaseStreamHandler:
             asyncio.create_task(self._receive_from_live_client()),
             asyncio.create_task(self._send_to_provider()),
             asyncio.create_task(self._flush_transcripts()),
+            asyncio.create_task(self._call_duration_watchdog()),
         ]
         try:
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -665,6 +711,203 @@ class BaseStreamHandler:
         except Exception as e:
             logger.error(f"Error flushing transcripts: {e}")
 
+    async def _call_duration_watchdog(self):
+        """
+        Auto-disconnect after max_call_duration_seconds.
+
+        Issue #7: Sends a wind-down prompt to Gemini 15s before the hard
+        cut so the agent can say goodbye gracefully.
+        """
+        try:
+            limit = self.max_call_duration_seconds
+            if limit <= 0:
+                return  # 0 = no limit
+
+            # Phase 1: wait until (limit - 15) seconds, then send wind-down
+            warn_at = max(limit - 15, 0)
+            await asyncio.sleep(warn_at)
+
+            if not self.is_running:
+                return
+
+            logger.info(
+                f"[WATCHDOG] Call approaching duration limit ({limit}s) "
+                f"for session {self.session_id} — sending wind-down prompt"
+            )
+
+            # Ask the agent to wrap up naturally
+            try:
+                if self.gemini_session:
+                    await self.gemini_session.send_realtime_input(
+                        text=(
+                            "[SYSTEM: This call has reached its maximum duration. "
+                            "Politely wrap up the conversation now. Thank the caller "
+                            "and say goodbye.]"
+                        )
+                    )
+            except Exception as e:
+                logger.warning(f"[WATCHDOG] Failed to send wind-down: {e}")
+
+            # Phase 2: give 15s for goodbye, then force-disconnect
+            remaining = limit - warn_at
+            await asyncio.sleep(remaining)
+
+            if self.is_running:
+                logger.info(
+                    f"[WATCHDOG] Hard disconnect after {limit}s "
+                    f"for session {self.session_id}"
+                )
+                self.call_ended_at = datetime.utcnow()
+                self.is_running = False
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning(f"[WATCHDOG] Error in duration watchdog: {e}")
+
+    async def _generate_call_summary(self, transcript: list, db_session) -> Optional[str]:
+        """
+        Generate an AI call summary from the transcript and persist it.
+
+        Uses the same Vertex AI client factory as the rest of the codebase
+        (build_vertex_genai_client) instead of raw API keys. Falls back to
+        AI Studio with API key if Vertex AI is not configured.
+
+        Also extracts and persists next_action alongside the summary.
+        """
+        if not transcript or len(transcript) < 2:
+            return None
+
+        try:
+            formatted = "\n".join(
+                f"{t.get('speaker', 'unknown').capitalize()}: {t.get('content', '')}"
+                for t in transcript
+                if t.get('content')
+            )
+
+            if not formatted.strip():
+                return None
+
+            prompt = (
+                "Analyze this phone call transcript and provide:\n\n"
+                "SUMMARY:\n"
+                "A concise summary of the call in 3-5 sentences covering: "
+                "purpose of the call, key discussion points, outcome, and "
+                "any agreements or commitments made.\n\n"
+                "NEXT ACTIONS:\n"
+                "List specific follow-up actions as bullet points. If no "
+                "actions were agreed upon, write 'No follow-up actions identified.'\n\n"
+                f"Transcript:\n{formatted[:8000]}"
+            )
+
+            # Try multiple strategies — each includes client creation AND model call
+            # so that if one fails, we fall through to the next.
+            summary = None
+            SUMMARY_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash"]
+
+            import asyncio
+            import functools
+
+            # Strategy 1: Vertex AI (same path as all other LLM calls)
+            try:
+                from src.common.genai_factory import build_vertex_genai_client
+                vertex_client = await build_vertex_genai_client(db_session, self.voice_session.company_id)
+                logger.info(f"Using Vertex AI client for summary generation (session {self.session_id})")
+
+                for model_name in SUMMARY_MODELS:
+                    try:
+                        response = await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            functools.partial(
+                                vertex_client.models.generate_content,
+                                model=model_name,
+                                contents=prompt,
+                            ),
+                        )
+                        summary = response.text if response else None
+                        if summary:
+                            logger.info(f"Vertex AI summary generated with model {model_name}")
+                            break
+                    except Exception as model_err:
+                        logger.info(f"Vertex AI model {model_name} failed: {model_err}")
+                        continue
+            except Exception as vertex_err:
+                logger.info(f"Vertex AI not available for summary: {vertex_err}")
+
+            # Strategy 2: Fall back to AI Studio with API key
+            if not summary:
+                try:
+                    from src.config.service import ConfigService
+                    config_svc = ConfigService(db_session)
+                    api_key = await config_svc.resolve_api_key(
+                        company_id=self.voice_session.company_id,
+                        provider="google",
+                    )
+                    if api_key:
+                        from src.common.genai_factory import build_ai_studio_genai_client_sync
+                        studio_client = build_ai_studio_genai_client_sync(api_key=api_key)
+                        logger.info(f"Using AI Studio client for summary generation (session {self.session_id})")
+
+                        for model_name in SUMMARY_MODELS:
+                            try:
+                                response = await asyncio.get_event_loop().run_in_executor(
+                                    None,
+                                    functools.partial(
+                                        studio_client.models.generate_content,
+                                        model=model_name,
+                                        contents=prompt,
+                                    ),
+                                )
+                                summary = response.text if response else None
+                                if summary:
+                                    logger.info(f"AI Studio summary generated with model {model_name}")
+                                    break
+                            except Exception as model_err:
+                                logger.info(f"AI Studio model {model_name} failed: {model_err}")
+                                continue
+                    else:
+                        logger.warning(f"No API key available for AI Studio fallback (session {self.session_id})")
+                except Exception as key_err:
+                    logger.warning(f"API key fallback also failed: {key_err}")
+
+            if not summary:
+                logger.warning(f"All summary generation strategies failed for session {self.session_id}")
+                return None
+
+            # Extract next_action from the structured summary
+            next_action = None
+            if "NEXT ACTIONS:" in summary:
+                actions_part = summary.split("NEXT ACTIONS:")[-1].strip()
+                # Filter out the "no actions" placeholder
+                if "no follow-up" not in actions_part.lower():
+                    next_action = actions_part
+            elif "NEXT ACTION:" in summary:
+                next_action = summary.split("NEXT ACTION:")[-1].strip()
+
+            # Persist in context_state
+            from sqlalchemy import update as sa_update
+            from src.voice.models import VoiceSession as VS
+
+            existing_ctx = self.voice_session.context_state or {}
+            existing_ctx["call_summary"] = summary
+            if next_action:
+                existing_ctx["next_action"] = next_action
+
+            await db_session.execute(
+                sa_update(VS)
+                .where(VS.id == self.session_id)
+                .values(context_state=existing_ctx)
+            )
+            await db_session.commit()
+
+            logger.info(f"Persisted call summary for session {self.session_id} ({len(summary)} chars)")
+
+            return summary
+
+        except Exception as e:
+            logger.warning(f"Failed to generate call summary for {self.session_id}: {e}")
+            return None
+
     # ------------------------------------------------------------------
     # Logging — isolated sessions to avoid concurrent-commit errors
     # ------------------------------------------------------------------
@@ -724,6 +967,12 @@ class BaseStreamHandler:
 
                     # Persist recording artifact (P0.4)
                     await self._save_recording_artifact(session)
+
+                    # Issue #2: Generate and persist AI call summary
+                    try:
+                        await self._generate_call_summary(convo_log, session)
+                    except Exception as _sum_err:
+                        logger.warning(f"Post-call summary generation failed: {_sum_err}")
 
                     # Usage + billing
                     usage_logger = VoiceUsageLogger(session)
@@ -813,6 +1062,13 @@ class BaseStreamHandler:
                 except Exception as lq_err:
                     logger.warning(f"Lead queue post-call update failed: {lq_err}")
 
+                # --- Post-call: update CampaignCall if this was a campaign call ---
+                try:
+                    if self.voice_session and self.session_id:
+                        await self._update_campaign_call_post_cleanup(session, duration)
+                except Exception as cc_err:
+                    logger.warning(f"Campaign call post-cleanup update failed: {cc_err}")
+
             except Exception as e:
                 logger.error(f"Error during cleanup DB update: {e}")
 
@@ -865,6 +1121,85 @@ class BaseStreamHandler:
             pass  # lead_queue_model not available — skip silently
         except Exception as e:
             logger.warning(f"[LeadQueue] Post-call update error: {e}")
+
+    async def _update_campaign_call_post_cleanup(self, db_session, duration: int) -> None:
+        """
+        Update the CampaignCall linked to this voice session after cleanup.
+
+        Belt-and-suspenders: the primary update path is via provider status
+        webhooks (Twilio/Tata). This method acts as a fallback to ensure
+        CampaignCall records are updated even if the webhook is delayed or
+        fails.
+
+        Uses conditional UPDATE (WHERE status = 'calling') so that if the
+        webhook already updated the record, this is a no-op.
+        """
+        try:
+            from src.ai.campaign_models import Campaign, CampaignCall
+            from sqlalchemy import select, update as sa_update
+
+            # Find CampaignCall linked to this voice session
+            cc_result = await db_session.execute(
+                select(CampaignCall).where(
+                    CampaignCall.voice_session_id == self.session_id
+                )
+            )
+            campaign_call = cc_result.scalar_one_or_none()
+
+            if not campaign_call:
+                return  # Not a campaign call
+
+            # Only update if status is still "calling" (webhook hasn't arrived yet)
+            if campaign_call.status != "calling":
+                logger.debug(
+                    f"[Campaign] CampaignCall {campaign_call.id} already updated "
+                    f"(status={campaign_call.status}), skipping cleanup update"
+                )
+                return
+
+            call_outcome = "completed" if duration > 0 else "failed"
+            outcome_detail = "answered" if duration > 0 else "no_media"
+
+            await db_session.execute(
+                sa_update(CampaignCall)
+                .where(
+                    CampaignCall.id == campaign_call.id,
+                    CampaignCall.status == "calling",  # Conditional: don't overwrite webhook data
+                )
+                .values(
+                    status=call_outcome,
+                    outcome=outcome_detail,
+                    outcome_notes="updated_by=websocket_cleanup",
+                    completed_at=datetime.utcnow(),
+                    duration_seconds=duration if duration > 0 else None,
+                )
+            )
+
+            # Increment campaign counter
+            if campaign_call.campaign_id:
+                stat_field = "calls_completed" if call_outcome == "completed" else "calls_failed"
+                camp_result = await db_session.execute(
+                    select(Campaign).where(Campaign.id == campaign_call.campaign_id)
+                )
+                campaign = camp_result.scalar_one_or_none()
+                if campaign:
+                    current_val = getattr(campaign, stat_field, 0) or 0
+                    await db_session.execute(
+                        sa_update(Campaign)
+                        .where(Campaign.id == campaign.id)
+                        .values({stat_field: current_val + 1})
+                    )
+
+            await db_session.commit()
+            logger.info(
+                f"[Campaign] Cleanup updated CampaignCall {campaign_call.id}: "
+                f"calling → {call_outcome} ({outcome_detail}, duration={duration}s)"
+            )
+
+        except ImportError:
+            pass  # campaign_models not available — skip silently
+        except Exception as e:
+            logger.warning(f"[Campaign] Post-cleanup update error: {e}")
 
 
 # ---------------------------------------------------------------------------

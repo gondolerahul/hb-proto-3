@@ -4,13 +4,14 @@ Webhook router for Twilio and Tata Tele voice/WhatsApp integrations.
 Handles incoming call webhooks and generates appropriate TwiML/JSON responses.
 """
 import logging
+from datetime import datetime
 from fastapi import APIRouter, Request, Response, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update as sa_update
 from uuid import UUID
 import os
 
-from src.database import get_db
-from src.voice.session_manager import SessionManager
+from src.common.database import get_db
 from src.voice.session_manager import SessionManager
 from src.voice.number_router import NumberRouter
 from src.common.config import settings
@@ -148,58 +149,168 @@ async def twilio_status_callback(
 ):
     """
     Webhook called by Twilio for call status updates.
-    
+
     Twilio sends:
     - CallSid: Call identifier
     - CallStatus: completed, busy, failed, no-answer, canceled
     - CallDuration: Duration in seconds
+
+    This handler:
+    1. Finds the VoiceSession (using status-agnostic lookup, since the
+       WebSocket cleanup may have already marked the session completed)
+    2. Stores any recording URL as an artifact
+    3. Updates the VoiceSession with final status/duration
+    4. Updates the linked CampaignCall status, outcome, duration
+    5. Increments the campaign counter (completed/failed)
     """
     form_data = await request.form()
-    
+
     call_sid = form_data.get("CallSid")
     call_status = form_data.get("CallStatus")
     call_duration = form_data.get("CallDuration")
     recording_url = form_data.get("RecordingUrl")
-    
-    logger.info(f"Twilio status callback: {call_sid} status={call_status} duration={call_duration} recording={bool(recording_url)}")
-    
-    # Find session by call_sid
-    session = await session_manager.get_voice_session_by_call_sid(call_sid)
-    
-    if session:
-        # Save recording reference if available
-        if recording_url:
-            try:
-                from src.ai.artifact_models import Artifact
-                db = session_manager.db
-                # Store the Twilio recording URL as an artifact record (actual audio bytes
-                # are hosted by Twilio — we store the metadata and URL)
-                recording_artifact = Artifact(
-                    company_id=session.company_id,
-                    origin="system-generated",
-                    file_category="recordings",
-                    file_name=f"recording_{call_sid}.wav",
-                    file_path=recording_url,  # Twilio-hosted URL
-                    mime_type="audio/wav",
-                    purpose=f"Call recording for session {session.id}",
-                    generated_by="twilio:recording",
-                    artifact_metadata={"session_id": str(session.id), "call_sid": call_sid, "source": "twilio"}
-                )
-                db.add(recording_artifact)
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"Failed to save recording artifact: {e}")
-                await db.rollback()
-                
-        # Update session with final status
-        if call_status in ["completed", "busy", "failed", "no-answer", "canceled"]:
-            await session_manager.end_voice_session(
-                session.id,
-                duration_seconds=int(call_duration) if call_duration else None
+
+    logger.info(
+        f"Twilio status callback: {call_sid} status={call_status} "
+        f"duration={call_duration} recording={bool(recording_url)}"
+    )
+
+    # ── Step 1: Find session (status-agnostic to handle race with cleanup) ──
+    session = await session_manager.get_voice_session_by_call_sid_any_status(call_sid)
+
+    if not session:
+        logger.warning(f"No VoiceSession found for Twilio status callback: call_sid={call_sid}")
+        return {"status": "ok", "message": "No matching session found"}
+
+    db = session_manager.db
+    duration = int(call_duration) if call_duration else None
+
+    # ── Step 2: Save recording reference if available ───────────────────
+    if recording_url:
+        try:
+            from src.ai.artifact_models import Artifact
+            recording_artifact = Artifact(
+                company_id=session.company_id,
+                origin="system-generated",
+                file_category="recordings",
+                file_name=f"recording_{call_sid}.wav",
+                file_path=recording_url,  # Twilio-hosted URL
+                mime_type="audio/wav",
+                purpose=f"Call recording for session {session.id}",
+                generated_by="twilio:recording",
+                artifact_metadata={"session_id": str(session.id), "call_sid": call_sid, "source": "twilio"}
             )
-    
-    # Twilio doesn't expect a response, but we return 200 OK
-    return {"status": "ok"}
+            db.add(recording_artifact)
+        except Exception as e:
+            logger.warning(f"Failed to save recording artifact: {e}")
+
+    # ── Step 3: Update VoiceSession with final status ───────────────────
+    if call_status in ["completed", "busy", "failed", "no-answer", "canceled"]:
+        # Only update if the session hasn't already been ended by cleanup
+        if session.status not in ["ended", "completed"]:
+            from src.voice.models import VoiceSession
+            session_updates = {
+                "status": "ended",
+                "ended_at": datetime.utcnow(),
+            }
+            if duration and duration > 0:
+                session_updates["duration_seconds"] = duration
+            try:
+                await db.execute(
+                    sa_update(VoiceSession)
+                    .where(VoiceSession.id == session.id)
+                    .values(**session_updates)
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update VoiceSession status: {e}")
+
+    # ── Step 4: Determine call outcome ──────────────────────────────────
+    status_lower = (call_status or "").lower()
+    if status_lower == "completed":
+        if duration and duration > 0:
+            call_outcome = "completed"
+            outcome_detail = "answered"
+        else:
+            # completed with 0 duration = call ended before being answered
+            call_outcome = "failed"
+            outcome_detail = "no_answer"
+    elif status_lower == "busy":
+        call_outcome = "failed"
+        outcome_detail = "busy"
+    elif status_lower == "no-answer":
+        call_outcome = "failed"
+        outcome_detail = "no_answer"
+    elif status_lower == "canceled":
+        # canceled = caller or callee rejected/hung up before answering
+        call_outcome = "failed"
+        outcome_detail = "rejected"
+    elif status_lower == "failed":
+        call_outcome = "failed"
+        outcome_detail = "failed"
+    else:
+        # Non-terminal statuses (initiated, ringing, in-progress) — skip CampaignCall update
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+        return {"status": "ok"}
+
+    # ── Step 5: Update linked CampaignCall ──────────────────────────────
+    try:
+        from src.ai.campaign_models import Campaign, CampaignCall
+
+        cc_result = await db.execute(
+            select(CampaignCall).where(
+                CampaignCall.voice_session_id == session.id
+            )
+        )
+        campaign_call = cc_result.scalar_one_or_none()
+
+        if campaign_call:
+            old_status = campaign_call.status
+
+            await db.execute(
+                sa_update(CampaignCall)
+                .where(CampaignCall.id == campaign_call.id)
+                .values(
+                    status=call_outcome,
+                    outcome=outcome_detail,
+                    outcome_notes=f"twilio_status={call_status}",
+                    completed_at=datetime.utcnow(),
+                    duration_seconds=duration if duration and duration > 0 else None,
+                )
+            )
+
+            # Increment campaign counter only if transitioning from "calling"
+            if old_status == "calling" and campaign_call.campaign_id:
+                stat_field = "calls_completed" if call_outcome == "completed" else "calls_failed"
+                camp_result = await db.execute(
+                    select(Campaign).where(Campaign.id == campaign_call.campaign_id)
+                )
+                campaign = camp_result.scalar_one_or_none()
+                if campaign:
+                    current_val = getattr(campaign, stat_field, 0) or 0
+                    await db.execute(
+                        sa_update(Campaign)
+                        .where(Campaign.id == campaign.id)
+                        .values({stat_field: current_val + 1})
+                    )
+
+            logger.info(
+                f"Updated CampaignCall {campaign_call.id}: "
+                f"{old_status} → {call_outcome} ({outcome_detail})"
+            )
+    except Exception as e:
+        logger.warning(f"Failed to update CampaignCall: {e}")
+
+    # Commit all changes
+    try:
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to commit Twilio status updates: {e}")
+        await db.rollback()
+
+    return {"status": "ok", "session_id": str(session.id), "outcome": call_outcome}
 
 
 @router.post("/twilio/outbound-twiml")
@@ -474,6 +585,315 @@ async def tata_incoming_call(
         "sucess": True,
         "wss_url": ws_url
     }
+
+
+@router.get("/tata/status")
+async def tata_status_callback_get(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    GET handler for Tata Tele status webhook.
+
+    Tata Tele sends call status updates as GET requests with query parameters
+    (not POST). This handler parses the query params and delegates to the
+    shared processing logic.
+    """
+    data = dict(request.query_params)
+    logger.info(f"Tata Tele status GET callback: {len(data)} params")
+    return await _process_tata_status(data, db)
+
+
+@router.post("/tata/status")
+async def tata_status_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    POST handler for Tata Tele call status webhooks.
+    Parses body (JSON or form-encoded) and delegates to shared processor.
+    """
+    content_type = request.headers.get("content-type", "")
+    raw_body = await request.body()
+    logger.info(f"Tata Tele status POST: content-type={content_type}, body_len={len(raw_body)}")
+
+    try:
+        if "json" in content_type:
+            data = await request.json()
+        elif "form" in content_type:
+            form = await request.form()
+            data = dict(form)
+        elif raw_body:
+            import json as _json
+            try:
+                data = _json.loads(raw_body)
+            except Exception:
+                from urllib.parse import parse_qs
+                parsed = parse_qs(raw_body.decode("utf-8", errors="replace"))
+                data = {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
+        else:
+            data = {}
+    except Exception as e:
+        logger.error(f"Failed to parse Tata status POST body: {e}")
+        data = {}
+
+    return await _process_tata_status(data, db)
+
+
+async def _process_tata_status(data: dict, db: AsyncSession):
+    """
+    Shared Tata Tele status processing logic used by both GET and POST handlers.
+
+    Tata Tele sends call status data with fields including:
+    - call_status / $call_status: "answered" or "missed"
+    - hangup_cause_key / hangup_cause / $hangup_cause: Reason for hangup
+    - custom_identifier / ref_id / $ref_id: VoiceSession UUID
+    - call_id / $call_id: Tata's internal call ID
+    - uuid / $uuid: Connection-level identifier
+    - duration / $duration: Call duration in seconds
+    - call_connected / $call_connected: Boolean (1 or 0)
+    - recording_url: URL to call recording
+
+    This handler:
+    1. Correlates the event to a VoiceSession via custom_identifier / ref_id / call_id
+    2. Updates the linked CampaignCall status and outcome
+    3. Stores the recording URL as an artifact
+    4. Increments the correct campaign counter (completed/failed)
+    """
+    logger.info(f"Tata Tele status callback data keys: {list(data.keys())}")
+
+    # Extract relevant fields — Tata uses varying field names between
+    # GET query params and POST body. We check all known variants.
+    ref_id = (
+        data.get("custom_identifier") or data.get("ref_id")
+        or data.get("$ref_id") or data.get("refId")
+    )
+    call_id = data.get("call_id") or data.get("$call_id") or data.get("callId")
+    uuid_field = data.get("uuid") or data.get("$uuid")
+    call_status = data.get("call_status") or data.get("$call_status") or ""
+    hangup_cause = (
+        data.get("hangup_cause_key") or data.get("hangup_cause")
+        or data.get("$hangup_cause") or ""
+    )
+    recording_url = data.get("recording_url") or data.get("$recording_url") or ""
+    duration_str = data.get("duration") or data.get("$duration") or "0"
+    billsec_str = data.get("billsec") or data.get("$billsec") or "0"
+    call_connected = data.get("call_connected") or data.get("$call_connected")
+    customer_number = data.get("customer_number") or data.get("$customer_number") or ""
+    direction = data.get("direction") or data.get("$direction") or ""
+
+    logger.info(
+        f"Tata Tele status: ref_id={ref_id}, call_id={call_id}, "
+        f"status={call_status}, hangup={hangup_cause}, "
+        f"connected={call_connected}, duration={duration_str}"
+    )
+
+    # Try to parse duration as integer
+    try:
+        duration = int(duration_str)
+    except (ValueError, TypeError):
+        duration = 0
+
+    # ── Step 1: Find the VoiceSession ────────────────────────────────────
+    # custom_identifier / ref_id from Tata corresponds to our VoiceSession UUID.
+    from src.voice.models import VoiceSession
+    from sqlalchemy import or_
+
+    voice_session = None
+
+    # Strategy 1: custom_identifier/ref_id matches VoiceSession UUID
+    if ref_id:
+        try:
+            session_uuid = UUID(ref_id)
+            result = await db.execute(
+                select(VoiceSession).where(VoiceSession.id == session_uuid)
+            )
+            voice_session = result.scalar_one_or_none()
+        except (ValueError, Exception):
+            pass
+
+    # Strategy 2: Match by call_sid (call_id or uuid from Tata)
+    if not voice_session and (call_id or uuid_field):
+        search_sids = [s for s in [call_id, uuid_field] if s]
+        for sid in search_sids:
+            result = await db.execute(
+                select(VoiceSession).where(
+                    VoiceSession.call_sid == sid,
+                    VoiceSession.provider == "tata_tele"
+                ).order_by(VoiceSession.started_at.desc()).limit(1)
+            )
+            voice_session = result.scalar_one_or_none()
+            if voice_session:
+                break
+
+    if not voice_session:
+        logger.warning(
+            f"No VoiceSession found for Tata status callback: "
+            f"ref_id={ref_id}, call_id={call_id}, uuid={uuid_field}"
+        )
+        return {"status": "ok", "message": "No matching session found"}
+
+    logger.info(f"Matched Tata status to VoiceSession {voice_session.id}")
+
+    # ── Step 2: Determine call outcome ──────────────────────────────────
+    status_lower = call_status.lower() if call_status else ""
+    is_connected = call_connected in (True, "true", "True", "1", 1)
+
+    if status_lower == "answered" or (is_connected and duration > 0):
+        call_outcome = "completed"
+        outcome_detail = "answered"
+    elif status_lower == "missed":
+        call_outcome = "failed"
+        outcome_detail = hangup_cause or "missed"
+    elif hangup_cause:
+        # Map common hangup causes — covers Tata Tele, Twilio, and SIP causes
+        cause_lower = hangup_cause.lower()
+        if any(x in cause_lower for x in ["busy", "user_busy"]):
+            call_outcome = "failed"
+            outcome_detail = "busy"
+        elif any(x in cause_lower for x in [
+            "no_answer", "no answer", "originator_cancel",
+            "no_user_response", "recovery_on_timer_expire",
+        ]):
+            call_outcome = "failed"
+            outcome_detail = "no_answer"
+        elif any(x in cause_lower for x in [
+            "call_rejected", "call_declined", "rejected",
+        ]):
+            call_outcome = "failed"
+            outcome_detail = "rejected"
+        elif any(x in cause_lower for x in [
+            "subscriber_absent", "destination_out_of_order",
+            "network_out_of_order", "temporary_failure",
+        ]):
+            call_outcome = "failed"
+            outcome_detail = "unreachable"
+        elif any(x in cause_lower for x in ["unallocated", "invalid", "unassigned"]):
+            call_outcome = "failed"
+            outcome_detail = "invalid_number"
+        elif any(x in cause_lower for x in ["normal_clearing", "normal"]):
+            # normal_clearing with duration > 0 means call was answered and ended normally
+            if duration > 0:
+                call_outcome = "completed"
+                outcome_detail = "normal_clearing"
+            else:
+                # normal_clearing with 0 duration = call ended before being answered
+                call_outcome = "failed"
+                outcome_detail = "no_answer"
+        elif any(x in cause_lower for x in ["normal_unspecified"]):
+            call_outcome = "failed" if duration == 0 else "completed"
+            outcome_detail = "unspecified" if duration == 0 else "answered"
+        else:
+            call_outcome = "failed"
+            outcome_detail = hangup_cause
+    else:
+        # No hangup cause — fallback based on whether call connected and had duration
+        if is_connected and duration > 0:
+            call_outcome = "completed"
+            outcome_detail = "answered"
+        else:
+            call_outcome = "failed"
+            outcome_detail = "no_answer"
+
+    # ── Step 3: Update VoiceSession ─────────────────────────────────────
+    try:
+        session_updates = {
+            "status": "ended",
+            "ended_at": datetime.utcnow(),
+        }
+        if duration > 0:
+            session_updates["duration_seconds"] = duration
+
+        await db.execute(
+            sa_update(VoiceSession)
+            .where(VoiceSession.id == voice_session.id)
+            .values(**session_updates)
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update VoiceSession status: {e}")
+
+    # ── Step 4: Update linked CampaignCall ──────────────────────────────
+    try:
+        from src.ai.campaign_models import Campaign, CampaignCall
+
+        # Find CampaignCall linked to this voice session
+        cc_result = await db.execute(
+            select(CampaignCall).where(
+                CampaignCall.voice_session_id == voice_session.id
+            )
+        )
+        campaign_call = cc_result.scalar_one_or_none()
+
+        if campaign_call:
+            old_status = campaign_call.status
+
+            await db.execute(
+                sa_update(CampaignCall)
+                .where(CampaignCall.id == campaign_call.id)
+                .values(
+                    status=call_outcome,
+                    outcome=outcome_detail,
+                    outcome_notes=f"hangup_cause={hangup_cause}, call_status={call_status}",
+                    completed_at=datetime.utcnow(),
+                    duration_seconds=duration if duration > 0 else None,
+                )
+            )
+
+            # Increment campaign counter only if transitioning from "calling"
+            if old_status == "calling" and campaign_call.campaign_id:
+                stat_field = "calls_completed" if call_outcome == "completed" else "calls_failed"
+                camp_result = await db.execute(
+                    select(Campaign).where(Campaign.id == campaign_call.campaign_id)
+                )
+                campaign = camp_result.scalar_one_or_none()
+                if campaign:
+                    current_val = getattr(campaign, stat_field, 0) or 0
+                    await db.execute(
+                        sa_update(Campaign)
+                        .where(Campaign.id == campaign.id)
+                        .values({stat_field: current_val + 1})
+                    )
+
+            logger.info(
+                f"Updated CampaignCall {campaign_call.id}: "
+                f"{old_status} → {call_outcome} ({outcome_detail})"
+            )
+    except Exception as e:
+        logger.warning(f"Failed to update CampaignCall: {e}")
+
+    # ── Step 5: Store recording URL as artifact ─────────────────────────
+    if recording_url and recording_url.strip():
+        try:
+            from src.ai.artifact_models import Artifact
+            recording_artifact = Artifact(
+                company_id=voice_session.company_id,
+                origin="system-generated",
+                file_category="recordings",
+                file_name=f"recording_{voice_session.id}.wav",
+                file_path=recording_url,  # Tata-hosted URL
+                mime_type="audio/wav",
+                purpose=f"Call recording for session {voice_session.id}",
+                generated_by="tata_tele:recording",
+                artifact_metadata={
+                    "session_id": str(voice_session.id),
+                    "call_id": call_id or "",
+                    "ref_id": ref_id or "",
+                    "source": "tata_tele_webhook",
+                }
+            )
+            db.add(recording_artifact)
+            logger.info(f"Stored recording artifact for session {voice_session.id}")
+        except Exception as e:
+            logger.warning(f"Failed to save recording artifact: {e}")
+
+    # Commit all changes
+    try:
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to commit Tata status updates: {e}")
+        await db.rollback()
+
+    return {"status": "ok", "session_id": str(voice_session.id), "outcome": call_outcome}
 
 
 @router.post("/whatsapp/incoming")

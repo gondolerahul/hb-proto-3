@@ -16,7 +16,7 @@ from src.ai.schemas import (
     EntityType, PlanStep,
     DEFAULT_PLANNING_SYSTEM_PROMPT,
 )
-from src.ai.llm_router import LLMRouter
+from src.ai.llm.router import LLMRouter
 from src.ai.usage_service import UsageService
 
 logger = logging.getLogger(__name__)

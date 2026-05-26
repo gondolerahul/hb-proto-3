@@ -3,7 +3,7 @@ Unit tests for src.ai.rate_limiter
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from src.ai.rate_limiter import RedisRateLimiter
+from src.ai.governance.rate_limiter import RedisRateLimiter
 
 
 def _make_pipe_mock(execute_return):

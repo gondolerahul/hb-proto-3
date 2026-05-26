@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from src.database import Base
+from src.common.database import Base
 
 
 class LeadQueueEntry(Base):

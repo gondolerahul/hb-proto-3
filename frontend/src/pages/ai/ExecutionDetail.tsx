@@ -4,20 +4,30 @@ import { GlassCard, JellyButton } from '@/components/ui';
 import {
     ArrowLeft, ChevronDown, ChevronRight, Zap, Cpu, MessageSquare, Wrench,
     DollarSign, Database, Brain, Layers, Activity, Download, RefreshCw,
-    Clock, CheckCircle, XCircle, AlertTriangle, Eye, EyeOff, GitBranch
+    Clock, CheckCircle, XCircle, AlertTriangle, Eye, EyeOff, GitBranch,
+    Sparkles, Send, SkipForward
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus, EntityType, LLMInteractionLog, ToolInteractionLog } from '@/types';
 import './ExecutionDetail.css';
 
-// Authenticated file download — fetches via API with JWT token
+// Authenticated file download — uses apiClient (with auto token-refresh)
+// for /api/ routes, falls back to direct fetch for static artifact paths.
 const downloadArtifactFile = async (fileUrl: string, filename?: string) => {
     try {
-        const response = await fetch(fileUrl, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}` },
-        });
-        if (!response.ok) throw new Error('Download failed');
-        const blob = await response.blob();
+        let blob: Blob;
+        if (fileUrl.startsWith('/api/')) {
+            // Use apiClient which has the 401→refresh interceptor
+            const response = await apiClient.get(fileUrl.replace(/^\/api\/v1/, ''), {
+                responseType: 'blob',
+            });
+            blob = response.data as Blob;
+        } else {
+            // Static file path (e.g. /artifact/system-generated/...) — no auth needed
+            const response = await fetch(fileUrl);
+            if (!response.ok) throw new Error('Download failed');
+            blob = await response.blob();
+        }
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -54,6 +64,7 @@ const StepTimeline: React.FC<{
 }> = ({ steps, llmLogs, toolLogs, selectedStep, onSelectStep }) => {
     const getStepIcon = (step: StepResult) => {
         if (step.error) return <XCircle size={16} className="text-error" />;
+        if ((step as any).reused) return <SkipForward size={16} className="text-amber-400" />;
         if (step.type === 'TOOL_CALL') return <Wrench size={16} className="text-info" />;
         if (step.type === 'NAVIGATE' || step.type === 'READ' || step.type === 'WRITE')
             return <Brain size={16} className="text-secondary" />;
@@ -97,6 +108,7 @@ const StepTimeline: React.FC<{
                                         <span className="step-number">#{idx + 1}</span>
                                         <span className="step-name">{step.step || `Step ${idx + 1}`}</span>
                                         {step.type && <span className="step-type-badge">{step.type}</span>}
+                                        {(step as any).reused && <span className="step-reused-badge">REUSED</span>}
                                     </div>
                                     <div className="step-stats">
                                         {stepLogs.length > 0 && (
@@ -237,15 +249,24 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
         // Scan any string for embedded document paths (absolute or relative artifact paths)
         const scanStr = (s: string): string | null => {
             if (!s) return null;
+            // Pattern 1: Auto-registered artifact download URL: /api/v1/artifacts/{uuid}/download or /api/v1/ai/artifacts/{uuid}/download
+            // Also try to extract filename from surrounding context like "• filename.ext (size) — [Download](/api/...)"
+            const apiArtifactMatch = s.match(/\/api\/v1\/(?:ai\/)?artifacts\/([0-9a-f-]{36})\/download/);
+            if (apiArtifactMatch) {
+                // Try to extract filename from nearby text: "• filename.ext" before the URL
+                const fnMatch = s.match(/[•\-]\s*([\w][\w .()-]+\.(?:pptx|docx|xlsx|pdf|csv|html|png|jpg|svg))\s*\(/i);
+                const filename = fnMatch ? fnMatch[1].trim() : 'document';
+                return `__artifact_api__${apiArtifactMatch[1]}__${filename}`;
+            }
+            // Pattern 2: Absolute path: /some/path/artifact/uuid/uuid/file.ext
             const extPattern = new RegExp(`\\/[^\\s"']*\\/artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
-            // Absolute path: /some/path/artifact/uuid/uuid/file.ext
             const absMatch = s.match(extPattern);
             if (absMatch) return `artifact/${absMatch[1]}`;
-            // Relative: artifact/uuid/uuid/file.ext
+            // Pattern 3: Relative: artifact/uuid/uuid/file.ext
             const relPattern = new RegExp(`artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
             const relMatch = s.match(relPattern);
             if (relMatch) return `artifact/${relMatch[1]}`;
-            // Legacy /tmp path
+            // Pattern 4: Legacy /tmp path
             const tmpMatch = s.match(/\/tmp\/research_reports\/[a-zA-Z0-9_.-]+\.pdf/);
             if (tmpMatch) return tmpMatch[0];
             return null;
@@ -309,6 +330,12 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
     // Convert file path to URL accessible via the backend static files server
     const getPdfUrl = (filePath: string | null): string | null => {
         if (!filePath) return null;
+        // Auto-registered artifact via /api/v1/artifacts/{id}/download
+        if (filePath.startsWith('__artifact_api__')) {
+            const parts = filePath.replace('__artifact_api__', '').split('__');
+            const artifactId = parts[0];
+            return `/api/v1/artifacts/${artifactId}/download`;
+        }
         // Already a relative artifact path (normalised by extractPdfPath)
         if (filePath.startsWith('artifact/')) return `/${filePath}`;
         // Absolute server path – strip everything before "artifact/"
@@ -426,23 +453,33 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
                     )}
 
                     {/* Document Download Button */}
-                    {pdfUrl && (
-                        <div className="node-result" style={{ marginBottom: '1rem' }}>
-                            <label>Generated Document</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
-                                <code style={{ flex: 1, padding: '0.5rem', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
-                                    {pdfPath?.split('/').pop() || 'document'}
-                                </code>
-                                <JellyButton
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => downloadArtifactFile(pdfUrl!, pdfPath?.split('/').pop() || 'document')}
-                                >
-                                    <Download size={16} /> Download
-                                </JellyButton>
+                    {pdfUrl && (() => {
+                        // Extract clean filename from pdfPath token
+                        let displayName = 'document';
+                        if (pdfPath?.startsWith('__artifact_api__')) {
+                            const parts = pdfPath.replace('__artifact_api__', '').split('__');
+                            displayName = parts[1] || 'document';
+                        } else {
+                            displayName = pdfPath?.split('/').pop() || 'document';
+                        }
+                        return (
+                            <div className="node-result" style={{ marginBottom: '1rem' }}>
+                                <label>Generated Document</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
+                                    <code style={{ flex: 1, padding: '0.5rem', background: 'var(--color-bg-secondary)', borderRadius: '4px' }}>
+                                        {displayName}
+                                    </code>
+                                    <JellyButton
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => downloadArtifactFile(pdfUrl!, displayName)}
+                                    >
+                                        <Download size={16} /> Download
+                                    </JellyButton>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Result */}
                     {run.result_data && (
@@ -485,6 +522,12 @@ export const ExecutionDetail: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'steps' | 'tree'>('steps');
     const runRef = useRef<ExecutionRun | null>(null);
 
+    // Refinement state
+    const [showRefinePanel, setShowRefinePanel] = useState(false);
+    const [refineFeedback, setRefineFeedback] = useState('');
+    const [refining, setRefining] = useState(false);
+    const [refineError, setRefineError] = useState('');
+
     // Update ref whenever run changes
     useEffect(() => {
         runRef.current = run;
@@ -497,7 +540,7 @@ export const ExecutionDetail: React.FC = () => {
     // Set up polling interval only once
     useEffect(() => {
         const interval = setInterval(() => {
-            if (runRef.current?.status === RunStatus.RUNNING || runRef.current?.status === RunStatus.PENDING || (runRef.current?.status as string) === 'PAUSED' || (runRef.current?.status as string) === 'RESUMING') {
+            if (runRef.current?.status === RunStatus.RUNNING || runRef.current?.status === RunStatus.PENDING || (runRef.current?.status as string) === 'PAUSED' || (runRef.current?.status as string) === 'RESUMING' || runRef.current?.status === RunStatus.REFINING) {
                 fetchRun();
             }
         }, 3000);
@@ -529,16 +572,43 @@ export const ExecutionDetail: React.FC = () => {
         }
     };
 
+    const handleRefine = async () => {
+        if (!run || refining || !refineFeedback.trim()) return;
+        setRefining(true);
+        setRefineError('');
+        try {
+            const { data } = await apiClient.post<ExecutionRun>(`/ai/executions/${run.id}/refine`, {
+                feedback: refineFeedback.trim(),
+            });
+            navigate(`/ai/executions/${data.id}`);
+        } catch (error: any) {
+            console.error('Refine failed:', error);
+            setRefineError(error.response?.data?.detail || 'Refinement failed. See console for details.');
+        } finally {
+            setRefining(false);
+        }
+    };
+
     // Helper to extract artifact path from a run (delegates to shared function in TraceNode)
     const getArtifactPath = (run: ExecutionRun): string | null => {
         const scanStr = (s: string): string | null => {
             if (!s) return null;
+            // Pattern 1: Auto-registered artifact download URL: /api/v1/artifacts/{uuid}/download or /api/v1/ai/artifacts/{uuid}/download
+            const apiArtifactMatch = s.match(/\/api\/v1\/(?:ai\/)?artifacts\/([0-9a-f-]{36})\/download/);
+            if (apiArtifactMatch) {
+                const fnMatch = s.match(/[•\-]\s*([\w][\w .()-]+\.(?:pptx|docx|xlsx|pdf|csv|html|png|jpg|svg))\s*\(/i);
+                const filename = fnMatch ? fnMatch[1].trim() : 'document';
+                return `__artifact_api__${apiArtifactMatch[1]}__${filename}`;
+            }
+            // Pattern 2: Absolute path with artifact/
             const extPattern = new RegExp(`\\/[^\\s"']*\\/artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
             const absMatch = s.match(extPattern);
             if (absMatch) return `artifact/${absMatch[1]}`;
+            // Pattern 3: Relative artifact path
             const relPattern = new RegExp(`artifact\\/([^\\s"']+\\.${DOCUMENT_EXTENSIONS})`);
             const relMatch = s.match(relPattern);
             if (relMatch) return `artifact/${relMatch[1]}`;
+            // Pattern 4: Legacy /tmp path
             const tmpMatch = s.match(/\/tmp\/research_reports\/[a-zA-Z0-9_.-]+\.pdf/);
             if (tmpMatch) return tmpMatch[0];
             return null;
@@ -557,6 +627,8 @@ export const ExecutionDetail: React.FC = () => {
                         : JSON.stringify(log.output_result);
                     try {
                         const parsed = JSON.parse(raw);
+                        if (parsed.download_url) return scanStr(parsed.download_url) || parsed.download_url;
+                        if (parsed.document_path) return scanStr(parsed.document_path) || parsed.document_path;
                         if (parsed.pdf_path) return scanStr(parsed.pdf_path) || parsed.pdf_path;
                         if (parsed.file_path) return scanStr(parsed.file_path) || parsed.file_path;
                     } catch { }
@@ -593,13 +665,25 @@ export const ExecutionDetail: React.FC = () => {
 
     const globalArtifactPath = run ? findArtifactInTree(run) : null;
     const globalArtifactUrl = globalArtifactPath
-        ? globalArtifactPath.startsWith('artifact/')
-            ? `/${globalArtifactPath}`
-            : globalArtifactPath.includes('/artifact/')
-                ? `/artifact/${globalArtifactPath.split('/artifact/')[1]}`
-                : `/reports/${globalArtifactPath.split('/').pop()}`
+        ? globalArtifactPath.startsWith('__artifact_api__')
+            ? (() => {
+                const parts = globalArtifactPath.replace('__artifact_api__', '').split('__');
+                return `/api/v1/artifacts/${parts[0]}/download`;
+              })()
+            : globalArtifactPath.startsWith('artifact/')
+                ? `/${globalArtifactPath}`
+                : globalArtifactPath.includes('/artifact/')
+                    ? `/artifact/${globalArtifactPath.split('/artifact/')[1]}`
+                    : `/reports/${globalArtifactPath.split('/').pop()}`
         : null;
-    const globalArtifactFilename = globalArtifactPath?.split('/').pop() || 'document';
+    const globalArtifactFilename = (() => {
+        if (!globalArtifactPath) return 'document';
+        if (globalArtifactPath.startsWith('__artifact_api__')) {
+            const parts = globalArtifactPath.replace('__artifact_api__', '').split('__');
+            return parts[1] || 'document';
+        }
+        return globalArtifactPath.split('/').pop() || 'document';
+    })();
 
     // ── Issue 2: Flatten child entity steps into the Step Timeline ──────────
     // Recursively collect steps from child_runs with entity context
@@ -699,6 +783,19 @@ export const ExecutionDetail: React.FC = () => {
                         </JellyButton>
                     )}
 
+                    {/* Refine Button for COMPLETED runs */}
+                    {run.status === RunStatus.COMPLETED && (
+                        <JellyButton
+                            variant="secondary"
+                            size="md"
+                            onClick={() => setShowRefinePanel(!showRefinePanel)}
+                            className="flex items-center gap-2 refine-trigger-btn"
+                        >
+                            <Sparkles size={18} />
+                            {showRefinePanel ? 'Cancel Refine' : 'Refine Output'}
+                        </JellyButton>
+                    )}
+
                     {/* CORTEX Tree Link */}
                     {cortexTreeId && (
                         <JellyButton
@@ -727,6 +824,62 @@ export const ExecutionDetail: React.FC = () => {
                     </div>
                 </div>
             </header>
+
+            {/* ── Refine Panel ─────────────────────────────────────────── */}
+            {showRefinePanel && run.status === RunStatus.COMPLETED && (
+                <div className="refine-panel-wrapper">
+                    <GlassCard className="refine-panel">
+                        <div className="refine-panel-header">
+                            <div className="refine-panel-title">
+                                <Sparkles size={20} className="text-amber-400" />
+                                <h3>Refine This Output</h3>
+                            </div>
+                            <p className="refine-panel-desc">
+                                Describe what you'd like to change. The system will intelligently
+                                determine which steps need re-running and reuse cached results for the rest.
+                            </p>
+                        </div>
+                        <div className="refine-input-area">
+                            <textarea
+                                className="refine-textarea"
+                                placeholder="e.g., 'Make the title font bigger and use a blue color scheme' or 'Add a summary section at the beginning'..."
+                                value={refineFeedback}
+                                onChange={(e) => setRefineFeedback(e.target.value)}
+                                rows={3}
+                            />
+                            <JellyButton
+                                roseGold
+                                onClick={handleRefine}
+                                disabled={refining || !refineFeedback.trim()}
+                                className="refine-submit-btn"
+                            >
+                                {refining ? (
+                                    <><RefreshCw size={16} className="spin" /> Analyzing...</>
+                                ) : (
+                                    <><Send size={16} /> Refine</>
+                                )}
+                            </JellyButton>
+                        </div>
+                        {refineError && (
+                            <div className="refine-error">
+                                <AlertTriangle size={14} />
+                                {refineError}
+                            </div>
+                        )}
+                        {/* Show reused vs re-run info */}
+                        {run.result_data?.steps && (
+                            <div className="refine-step-info">
+                                <span className="refine-info-label">Pipeline steps:</span>
+                                {(run.result_data.steps as any[]).map((s: any, i: number) => (
+                                    <span key={i} className={`refine-step-chip ${s.reused ? 'reused' : ''}`}>
+                                        {s.step || `Step ${i + 1}`}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </GlassCard>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-3">

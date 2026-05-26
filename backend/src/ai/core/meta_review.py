@@ -49,7 +49,7 @@ class MetaReviewer:
             }
         """
         try:
-            from src.ai.llm_router import LLMRouter
+            from src.ai.llm.router import LLMRouter
             llm = LLMRouter(db=self.db, company_id=self.company_id)
 
             completed_summary = "\n".join([

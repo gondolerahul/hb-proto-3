@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.database import get_db
+from src.common.database import get_db
 from src.auth.models import User
 from src.ai.email_models import EmailConnection
 from src.common.security import encrypt_api_key, decrypt_api_key

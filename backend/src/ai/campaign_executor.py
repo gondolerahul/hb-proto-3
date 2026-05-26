@@ -7,13 +7,16 @@ Handles:
 - Throttling and rate limiting
 - Twilio/Tata Tele API integration for outbound calls
 - Call status monitoring
+
+NOTE: All database operations use isolated AsyncSessionLocal sessions
+to avoid cross-session ORM state conflicts in the ARQ worker.
 """
 import logging
 import asyncio
 import httpx
 from datetime import datetime
 from uuid import UUID, uuid4
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update
 
@@ -24,6 +27,8 @@ from src.config.service import ConfigService
 from src.config.models import IntegrationRegistry
 from src.common.security import decrypt_api_key
 from src.common.config import settings
+from src.common.database import AsyncSessionLocal
+from src.billing.credit_service import CreditService, InsufficientCreditsError
 
 logger = logging.getLogger(__name__)
 
@@ -31,179 +36,229 @@ logger = logging.getLogger(__name__)
 class CampaignExecutor:
     """
     Executes voice calling campaigns.
-    
+
     Manages call queues, throttling, and status tracking.
+
+    All public entry points create their own database sessions to avoid
+    cross-session ORM conflicts that cause IllegalStateChangeError.
     """
-    
+
     def __init__(self, db: AsyncSession):
         """
         Initialize campaign executor.
-        
+
         Args:
-            db: Database session
+            db: Database session (used only for non-worker operations)
         """
         self.db = db
         self.number_router = NumberRouter(db)
         self.active_campaigns: Dict[UUID, asyncio.Task] = {}
-    
-    async def start_campaign(self, campaign_id: UUID):
-        """
-        Start executing a campaign.
-        
-        Args:
-            campaign_id: Campaign UUID
-        """
-        # Check if already running
-        if campaign_id in self.active_campaigns:
-            logger.warning(f"Campaign {campaign_id} is already running")
-            return
-        
-        # Load campaign
-        campaign = await self._get_campaign(campaign_id)
-        if not campaign:
-            raise ValueError(f"Campaign {campaign_id} not found")
-        
-        # Validate campaign can start
-        if campaign.status not in ["draft", "scheduled", "paused", "running"]:
-            raise ValueError(f"Campaign cannot be started from status: {campaign.status}")
-        
-        # Update status to running
-        await self._update_campaign_status(campaign_id, "running")
-        
-        # Create execution task
-        task = asyncio.create_task(self._execute_campaign(campaign_id))
-        self.active_campaigns[campaign_id] = task
-        
-        logger.info(f"Started campaign {campaign_id}")
-    
-    async def pause_campaign(self, campaign_id: UUID):
-        """
-        Pause a running campaign.
-        
-        Args:
-            campaign_id: Campaign UUID
-        """
-        if campaign_id not in self.active_campaigns:
-            logger.warning(f"Campaign {campaign_id} is not running")
-            return
-        
-        # Cancel execution task
-        task = self.active_campaigns.pop(campaign_id)
-        task.cancel()
-        
-        # Update status
-        await self._update_campaign_status(campaign_id, "paused")
-        
-        logger.info(f"Paused campaign {campaign_id}")
-    
-    async def stop_campaign(self, campaign_id: UUID):
-        """
-        Stop a campaign completely.
-        
-        Args:
-            campaign_id: Campaign UUID
-        """
-        if campaign_id in self.active_campaigns:
-            task = self.active_campaigns.pop(campaign_id)
-            task.cancel()
-        
-        # Update status
-        await self._update_campaign_status(campaign_id, "completed")
-        
-        logger.info(f"Stopped campaign {campaign_id}")
-    
-    async def _execute_campaign(self, campaign_id: UUID):
-        """
-        Main execution loop for a campaign.
 
-        Processes all pending calls sequentially to avoid DB session
-        concurrency issues. Each call uses its own isolated DB session.
+    # ── Standalone entry point for ARQ worker ──────────────────────────
+    @classmethod
+    async def start_campaign_standalone(cls, campaign_id: UUID):
         """
+        Entry point for the ARQ background worker.
+
+        Manages its own DB sessions — never accepts an external session.
+        This prevents the IllegalStateChangeError caused by cross-session
+        ORM object usage between the worker's session and inner call sessions.
+        """
+        logger.info(f"Starting standalone campaign execution for {campaign_id}")
+
         try:
-            campaign = await self._get_campaign(campaign_id)
+            # Phase 1: Load campaign + pending calls and extract primitives
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Campaign).where(Campaign.id == campaign_id)
+                )
+                campaign = result.scalar_one_or_none()
 
-            # Get pending calls
-            pending_calls = await self._get_pending_calls(campaign_id)
+                if not campaign:
+                    raise ValueError(f"Campaign {campaign_id} not found")
 
-            logger.info(f"Executing campaign {campaign_id} with {len(pending_calls)} pending calls")
+                if campaign.status not in ["draft", "scheduled", "paused", "running"]:
+                    raise ValueError(f"Campaign cannot be started from status: {campaign.status}")
 
-            # Process calls sequentially — each call gets its own DB session
-            # to avoid the "another operation is in progress" concurrency error.
-            for call in pending_calls:
+                # Update to running
+                await db.execute(
+                    update(Campaign)
+                    .where(Campaign.id == campaign_id)
+                    .values(status="running", started_at=datetime.utcnow(), updated_at=datetime.utcnow())
+                )
+                await db.commit()
+
+                # Load pending calls
+                calls_result = await db.execute(
+                    select(CampaignCall)
+                    .where(
+                        and_(
+                            CampaignCall.campaign_id == campaign_id,
+                            CampaignCall.status == "pending"
+                        )
+                    )
+                    .order_by(CampaignCall.created_at.asc())
+                )
+                pending_calls = calls_result.scalars().all()
+
+                # Extract ALL data as primitives before closing this session.
+                # This is critical — ORM objects must NOT be used outside their session.
+                campaign_data = {
+                    "id": campaign.id,
+                    "company_id": campaign.company_id,
+                    "agent_id": campaign.agent_id,
+                    "provider": campaign.provider,
+                    "name": campaign.name,
+                }
+
+                calls_data = [
+                    {
+                        "id": call.id,
+                        "contact_data": dict(call.contact_data) if call.contact_data else {},
+                    }
+                    for call in pending_calls
+                ]
+
+            # Session is now closed — we work only with primitives from here
+
+            logger.info(
+                f"Executing campaign {campaign_id} ({campaign_data['name']}) "
+                f"with {len(calls_data)} pending calls"
+            )
+
+            # ── Pre-campaign credit gate ───────────────────────────────
+            # Block the entire campaign if the company has zero credits.
+            try:
+                async with AsyncSessionLocal() as db:
+                    credit_svc = CreditService(db)
+                    await credit_svc.check_sufficient_for_execution(
+                        company_id=campaign_data["company_id"],
+                        entity_type="AGENT",
+                    )
+            except InsufficientCreditsError as e:
+                logger.warning(
+                    f"Campaign {campaign_id} blocked — insufficient credits: {e}"
+                )
+                async with AsyncSessionLocal() as db:
+                    await db.execute(
+                        update(Campaign)
+                        .where(Campaign.id == campaign_id)
+                        .values(
+                            status="failed",
+                            updated_at=datetime.utcnow(),
+                        )
+                    )
+                    # Mark all pending calls as skipped
+                    for call_info in calls_data:
+                        await db.execute(
+                            update(CampaignCall)
+                            .where(CampaignCall.id == call_info["id"])
+                            .values(
+                                status="failed",
+                                outcome="insufficient_credits",
+                                outcome_notes=str(e),
+                            )
+                        )
+                    await db.commit()
+                return
+
+            # Phase 2: Process calls sequentially, each with its own session
+            for call_info in calls_data:
                 try:
-                    await self._place_call_isolated(campaign, call)
+                    await cls._place_call_safe(campaign_data, call_info)
                 except Exception as e:
-                    logger.error(f"Error placing call {call.id}: {e}", exc_info=True)
+                    logger.error(
+                        f"Error placing call {call_info['id']}: {e}",
+                        exc_info=True
+                    )
                 # Delay between calls to respect rate limits
                 await asyncio.sleep(2)
 
-            # Mark campaign as completed
-            await self._update_campaign_status(campaign_id, "completed")
+            # Phase 3: Mark campaign as completed
+            async with AsyncSessionLocal() as db:
+                await db.execute(
+                    update(Campaign)
+                    .where(Campaign.id == campaign_id)
+                    .values(
+                        status="completed",
+                        completed_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                )
+                await db.commit()
 
             logger.info(f"Campaign {campaign_id} completed")
 
-        except asyncio.CancelledError:
-            logger.info(f"Campaign {campaign_id} was cancelled")
         except Exception as e:
             logger.error(f"Error executing campaign {campaign_id}: {e}", exc_info=True)
-            await self._update_campaign_status(campaign_id, "failed")
-        finally:
-            # Remove from active campaigns
-            if campaign_id in self.active_campaigns:
-                self.active_campaigns.pop(campaign_id)
-
-    async def _call_worker(self, campaign: Campaign, call_queue: asyncio.Queue):
-        """
-        Worker task that processes calls from the queue.
-        
-        Args:
-            campaign: Campaign object
-            call_queue: Queue of CampaignCall objects
-        """
-        while True:
+            # Try to mark as failed
             try:
-                # Get next call (with timeout to allow graceful shutdown)
-                try:
-                    call = await asyncio.wait_for(call_queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    # Check if queue is empty
-                    if call_queue.empty():
-                        break
-                    continue
-                
-                # Place the call
-                await self._place_call(campaign, call)
-                
-                # Mark task as done
-                call_queue.task_done()
-                
-                # Small delay to respect rate limits
-                await asyncio.sleep(0.5)
-                
-            except Exception as e:
-                logger.error(f"Error in call worker: {e}", exc_info=True)
-    
-    async def _place_call_isolated(self, campaign: Campaign, campaign_call: CampaignCall):
-        """
-        Place an outbound call using an isolated DB session.
+                async with AsyncSessionLocal() as db:
+                    await db.execute(
+                        update(Campaign)
+                        .where(Campaign.id == campaign_id)
+                        .values(status="failed", updated_at=datetime.utcnow())
+                    )
+                    await db.commit()
+            except Exception:
+                logger.error(f"Failed to mark campaign {campaign_id} as failed")
 
-        Each call gets its own session to prevent the
-        'another operation is in progress' concurrency error that occurs
-        when multiple workers share a single async DB session.
+    @classmethod
+    async def _place_call_safe(
+        cls,
+        campaign_data: Dict[str, Any],
+        call_info: Dict[str, Any]
+    ):
         """
-        from src.database import AsyncSessionLocal
+        Place an outbound call using a fully isolated DB session.
+
+        Receives only primitive data — no ORM objects cross session boundaries.
+
+        Args:
+            campaign_data: Dict with campaign primitives (id, company_id, agent_id, provider)
+            call_info: Dict with call primitives (id, contact_data)
+        """
+        call_id = call_info["id"]
+        contact = call_info["contact_data"]
+        phone = contact.get("phone")
+        campaign_id = campaign_data["id"]
+        company_id = campaign_data["company_id"]
+        agent_id = campaign_data["agent_id"]
+        provider = campaign_data["provider"]
+
+        logger.info(f"Placing call to {phone} for campaign {campaign_id}")
 
         async with AsyncSessionLocal() as db:
-            contact = campaign_call.contact_data
-            phone = contact.get("phone")
-
-            logger.info(f"Placing call to {phone} for campaign {campaign.id}")
-
             try:
+                # ── Per-call credit gate ───────────────────────────────
+                # Re-check balance before each call — credits may have been
+                # exhausted by earlier calls in this campaign.
+                try:
+                    credit_svc = CreditService(db)
+                    await credit_svc.check_sufficient_for_execution(
+                        company_id=company_id,
+                        entity_type="AGENT",
+                    )
+                except InsufficientCreditsError as e:
+                    logger.warning(
+                        f"Skipping call {call_id} — insufficient credits: {e}"
+                    )
+                    await db.execute(
+                        update(CampaignCall)
+                        .where(CampaignCall.id == call_id)
+                        .values(
+                            status="failed",
+                            outcome="insufficient_credits",
+                            outcome_notes=str(e),
+                        )
+                    )
+                    await db.commit()
+                    return
+
                 # Update call status to "calling"
                 await db.execute(
                     update(CampaignCall)
-                    .where(CampaignCall.id == campaign_call.id)
+                    .where(CampaignCall.id == call_id)
                     .values(status="calling")
                 )
                 await db.commit()
@@ -211,34 +266,36 @@ class CampaignExecutor:
                 # Resolve the number assigned to the campaign's agent
                 number_router = NumberRouter(db)
                 assignment = await number_router.get_company_number(
-                    company_id=campaign.company_id,
-                    provider=campaign.provider,
-                    agent_id=campaign.agent_id,
+                    company_id=company_id,
+                    provider=provider,
+                    agent_id=agent_id,
                 )
 
                 if not assignment:
-                    logger.error(f"No phone number assigned for company {campaign.company_id}")
+                    logger.error(f"No phone number assigned for company {company_id}")
                     await db.execute(
                         update(CampaignCall)
-                        .where(CampaignCall.id == campaign_call.id)
+                        .where(CampaignCall.id == call_id)
                         .values(status="failed")
                     )
                     await db.commit()
                     return
 
+                from_number = assignment.phone_number
+
                 # Create voice session
                 voice_session = VoiceSession(
-                    company_id=campaign.company_id,
+                    company_id=company_id,
                     customer_id=uuid4(),
-                    agent_id=campaign.agent_id,
-                    phone_number=assignment.phone_number,
-                    provider=campaign.provider,
+                    agent_id=agent_id,
+                    phone_number=from_number,
+                    provider=provider,
                     direction="outbound",
                     status="initiated",
                     call_sid=f"pending_{uuid4()}",
                     session_metadata={
-                        "campaign_id": str(campaign.id),
-                        "campaign_call_id": str(campaign_call.id),
+                        "campaign_id": str(campaign_id),
+                        "campaign_call_id": str(call_id),
                         "contact_data": contact,
                     },
                 )
@@ -250,7 +307,7 @@ class CampaignExecutor:
                 # Link voice session to campaign call
                 await db.execute(
                     update(CampaignCall)
-                    .where(CampaignCall.id == campaign_call.id)
+                    .where(CampaignCall.id == call_id)
                     .values(
                         voice_session_id=voice_session.id,
                         called_at=datetime.utcnow(),
@@ -259,35 +316,37 @@ class CampaignExecutor:
                 await db.commit()
 
                 # Place actual call via provider
-                if campaign.provider == "twilio":
-                    call_sid = await self._place_twilio_call(
+                if provider == "twilio":
+                    call_sid = await cls._place_twilio_call_static(
+                        db=db,
                         to=phone,
-                        from_=assignment.phone_number,
+                        from_=from_number,
                         voice_session_id=voice_session.id,
-                        agent_id=campaign.agent_id,
-                        company_id=campaign.company_id,
+                        agent_id=agent_id,
+                        company_id=company_id,
                     )
-                elif campaign.provider == "tata_tele":
-                    call_sid = await self._place_tata_call(
+                elif provider == "tata_tele":
+                    call_sid = await cls._place_tata_call_static(
+                        db=db,
                         to=phone,
-                        from_=assignment.phone_number,
+                        from_=from_number,
                         voice_session_id=voice_session.id,
-                        agent_id=campaign.agent_id,
-                        company_id=campaign.company_id,
+                        agent_id=agent_id,
+                        company_id=company_id,
                     )
                 else:
-                    raise ValueError(f"Unknown provider: {campaign.provider}")
+                    raise ValueError(f"Unknown provider: {provider}")
 
                 # Update call_sid
                 await db.execute(
                     update(CampaignCall)
-                    .where(CampaignCall.id == campaign_call.id)
+                    .where(CampaignCall.id == call_id)
                     .values(call_sid=call_sid)
                 )
                 await db.commit()
 
                 # Update campaign stats
-                await self._increment_campaign_stat_safe(db, campaign.id, "calls_initiated")
+                await cls._increment_stat(db, campaign_id, "calls_initiated")
 
                 logger.info(f"Call placed successfully: {call_sid}")
 
@@ -297,20 +356,19 @@ class CampaignExecutor:
                     await db.rollback()
                     await db.execute(
                         update(CampaignCall)
-                        .where(CampaignCall.id == campaign_call.id)
+                        .where(CampaignCall.id == call_id)
                         .values(status="failed")
                     )
                     await db.commit()
-                    await self._increment_campaign_stat_safe(db, campaign.id, "calls_failed")
+                    await cls._increment_stat(db, campaign_id, "calls_failed")
                 except Exception:
-                    logger.error(f"Failed to mark call {campaign_call.id} as failed")
+                    logger.error(f"Failed to mark call {call_id} as failed")
 
-    async def _place_call(self, campaign: Campaign, campaign_call: CampaignCall):
-        """Legacy method — delegates to _place_call_isolated."""
-        await self._place_call_isolated(campaign, campaign_call)
-    
-    async def _place_twilio_call(
-        self,
+    # ── Provider call methods (static — no self.db dependency) ─────────
+
+    @staticmethod
+    async def _place_twilio_call_static(
+        db: AsyncSession,
         to: str,
         from_: str,
         voice_session_id: UUID,
@@ -319,25 +377,26 @@ class CampaignExecutor:
     ) -> str:
         """
         Place outbound call via Twilio REST API.
-        
+
         Uses Twilio's Calls resource to initiate an outbound call.
         The call connects to a TwiML webhook that returns <Connect><Stream>
         to establish a WebSocket for bidirectional audio streaming.
-        
+
         API: POST https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Calls.json
-        
+
         Args:
+            db: Database session for credential lookup
             to: Destination phone number (E.164 format, e.g. +14155551234)
             from_: Caller ID (Twilio number, E.164 format)
             voice_session_id: VoiceSession UUID
             agent_id: Agent UUID
             company_id: Company UUID for credential lookup
-            
+
         Returns:
             Call SID from Twilio
         """
         # 1. Retrieve Twilio credentials from Integration Registry
-        result = await self.db.execute(
+        result = await db.execute(
             select(IntegrationRegistry).where(
                 IntegrationRegistry.company_id == company_id,
                 IntegrationRegistry.provider_name == "twilio",
@@ -345,24 +404,24 @@ class CampaignExecutor:
             )
         )
         entry = result.scalars().first()
-        
+
         # Extract credentials from registry entry
         account_sid = None
         auth_token = None
-        
+
         if entry:
             auth_token = decrypt_api_key(entry.encrypted_api_key) if entry.encrypted_api_key else None
             # Look for account_sid in service_metadata
             if entry.service_metadata:
                 account_sid = entry.service_metadata.get("account_sid")
-        
+
         if not account_sid or not auth_token:
             raise ValueError(
                 "Twilio credentials not found. Please register a 'twilio' "
                 "integration in the Integration Registry with account_sid "
                 "in service_metadata and auth_token as the api_key."
             )
-        
+
         # 2. Build the TwiML webhook URL
         # When Twilio connects the call, it will request this URL.
         # The webhook returns TwiML with <Connect><Stream> to establish
@@ -371,16 +430,16 @@ class CampaignExecutor:
         # Use HTTPS for production domains, HTTP only for localhost
         protocol = "http" if streaming_host.startswith("localhost") else "https"
         ws_protocol = "ws" if streaming_host.startswith("localhost") else "wss"
-        
+
         # The TwiML URL that Twilio will fetch when the call connects
         twiml_url = (
             f"{protocol}://{streaming_host}/webhooks/voice/twilio/outbound-twiml"
             f"?session_id={voice_session_id}"
         )
-        
+
         # Status callback URL for call completion events
         status_callback_url = f"{protocol}://{streaming_host}/webhooks/voice/twilio/status"
-        
+
         # 3. Build request payload for Twilio REST API
         payload = {
             "To": to,
@@ -395,15 +454,15 @@ class CampaignExecutor:
             "AsyncAmdStatusCallback": status_callback_url,
             "AsyncAmdStatusCallbackMethod": "POST",
         }
-        
+
         # 4. Make API call to Twilio
         api_url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Calls.json"
-        
+
         logger.info(
             f"Twilio outbound call: {from_} → {to}, "
             f"session={voice_session_id}, twiml_url={twiml_url}"
         )
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 api_url,
@@ -411,11 +470,11 @@ class CampaignExecutor:
                 auth=(account_sid, auth_token),
                 timeout=30.0
             )
-        
+
         # 5. Parse response
         response_data = response.json()
         logger.info(f"Twilio API response: {response.status_code} - {response_data}")
-        
+
         if response.status_code in [200, 201]:
             call_sid = response_data.get("sid")
             logger.info(f"Twilio call initiated successfully: {call_sid}")
@@ -429,9 +488,10 @@ class CampaignExecutor:
             raise Exception(
                 f"Twilio API error (HTTP {response.status_code}): {error_msg}"
             )
-    
-    async def _place_tata_call(
-        self,
+
+    @staticmethod
+    async def _place_tata_call_static(
+        db: AsyncSession,
         to: str,
         from_: str,
         voice_session_id: UUID,
@@ -440,41 +500,42 @@ class CampaignExecutor:
     ) -> str:
         """
         Place outbound call via Tata Tele Click-to-Call Support API.
-        
+
         The Click-to-Call Support API works in reverse:
         1. Customer receives the call first
         2. Once customer answers, a second call connects to the destination/agent
-        
+
         API: POST https://api-smartflo.tatateleservices.com/v1/click_to_call_support
-        
+
         Args:
+            db: Database session for API key lookup
             to: Destination phone number (customer)
             from_: Caller ID (DID number)
             voice_session_id: VoiceSession UUID
             agent_id: Agent UUID
             company_id: Company UUID for API key lookup
-            
+
         Returns:
             Call SID/reference from Tata Tele
         """
         # 1. Retrieve Tata Tele API key from integration registry
-        config_service = ConfigService(self.db)
+        config_service = ConfigService(db)
         api_key = await config_service.get_api_key_by_provider(
             company_id=company_id,
             provider_name="tata_tele"
         )
-        
+
         if not api_key:
             raise ValueError(
                 "Tata Tele API key not found. Please ensure you have a 'tata_tele' "
                 "integration configured in the Integration Registry."
             )
-        
+
         # 2. Clean phone numbers
         # Remove '+' prefix and country code formatting if present
         customer_number = to.lstrip("+")
         caller_id = from_.lstrip("+")
-        
+
         # 3. Build request payload
         payload = {
             "customer_number": customer_number,
@@ -484,20 +545,20 @@ class CampaignExecutor:
             "caller_id": caller_id,
             "custom_identifier": str(voice_session_id),  # For correlating callbacks
         }
-        
+
         # 4. Make API call
         api_url = "https://api-smartflo.tatateleservices.com/v1/click_to_call_support"
-        
+
         headers = {
             "Authorization": api_key,
             "Content-Type": "application/json"
         }
-        
+
         logger.info(
             f"Tata Tele Click-to-Call Support: {from_} → {to}, "
             f"session={voice_session_id}"
         )
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 api_url,
@@ -505,11 +566,11 @@ class CampaignExecutor:
                 headers=headers,
                 timeout=30.0
             )
-        
+
         # 5. Parse response
         response_data = response.json()
         logger.info(f"Tata Tele API response: {response.status_code} - {response_data}")
-        
+
         if response.status_code in [200, 201]:
             # Extract call reference/SID from response
             # When async=1, the API returns ref_id (call_id comes later via webhook)
@@ -528,75 +589,9 @@ class CampaignExecutor:
                 f"Tata Tele Click-to-Call Support API error "
                 f"(HTTP {response.status_code}): {error_msg}"
             )
-    
-    async def _get_campaign(self, campaign_id: UUID) -> Optional[Campaign]:
-        """Get campaign by ID."""
-        result = await self.db.execute(
-            select(Campaign).where(Campaign.id == campaign_id)
-        )
-        return result.scalar_one_or_none()
-    
-    async def _get_pending_calls(self, campaign_id: UUID):
-        """Get all pending calls for a campaign."""
-        result = await self.db.execute(
-            select(CampaignCall)
-            .where(
-                and_(
-                    CampaignCall.campaign_id == campaign_id,
-                    CampaignCall.status == "pending"
-                )
-            )
-            .order_by(CampaignCall.created_at.asc())
-        )
-        return result.scalars().all()
-    
-    async def _update_campaign_status(self, campaign_id: UUID, status: str):
-        """Update campaign status."""
-        updates = {"status": status, "updated_at": datetime.utcnow()}
-        
-        if status == "running":
-            updates["started_at"] = datetime.utcnow()
-        elif status == "completed":
-            updates["completed_at"] = datetime.utcnow()
-        
-        await self.db.execute(
-            update(Campaign)
-            .where(Campaign.id == campaign_id)
-            .values(**updates)
-        )
-        await self.db.commit()
-    
-    async def _update_call_status(self, call_id: UUID, status: str):
-        """Update campaign call status."""
-        updates = {"status": status}
-        
-        if status == "completed":
-            updates["completed_at"] = datetime.utcnow()
-        
-        await self.db.execute(
-            update(CampaignCall)
-            .where(CampaignCall.id == call_id)
-            .values(**updates)
-        )
-        await self.db.commit()
-    
-    async def _increment_campaign_stat(self, campaign_id: UUID, stat: str):
-        """Increment a campaign statistic counter."""
-        result = await self.db.execute(
-            select(Campaign).where(Campaign.id == campaign_id)
-        )
-        campaign = result.scalar_one_or_none()
-        
-        if campaign:
-            current_value = getattr(campaign, stat, 0)
-            await self.db.execute(
-                update(Campaign)
-                .where(Campaign.id == campaign_id)
-                .values({stat: current_value + 1})
-            )
-            await self.db.commit()
 
-    async def _increment_campaign_stat_safe(self, db: AsyncSession, campaign_id: UUID, stat: str):
+    @staticmethod
+    async def _increment_stat(db: AsyncSession, campaign_id: UUID, stat: str):
         """Increment a campaign statistic counter using the given DB session."""
         result = await db.execute(
             select(Campaign).where(Campaign.id == campaign_id)
@@ -604,7 +599,7 @@ class CampaignExecutor:
         campaign = result.scalar_one_or_none()
 
         if campaign:
-            current_value = getattr(campaign, stat, 0)
+            current_value = getattr(campaign, stat, 0) or 0
             await db.execute(
                 update(Campaign)
                 .where(Campaign.id == campaign_id)
@@ -612,3 +607,58 @@ class CampaignExecutor:
             )
             await db.commit()
 
+    # ── Instance methods (for non-worker use, e.g. pause/stop from API) ──
+
+    async def start_campaign(self, campaign_id: UUID):
+        """
+        Start executing a campaign (instance method for backward compat).
+
+        Delegates to the standalone classmethod for actual execution.
+        """
+        await self.start_campaign_standalone(campaign_id)
+
+    async def pause_campaign(self, campaign_id: UUID):
+        """
+        Pause a running campaign.
+
+        Args:
+            campaign_id: Campaign UUID
+        """
+        await self._update_campaign_status(campaign_id, "paused")
+        logger.info(f"Paused campaign {campaign_id}")
+
+    async def stop_campaign(self, campaign_id: UUID):
+        """
+        Stop a campaign completely.
+
+        Args:
+            campaign_id: Campaign UUID
+        """
+        await self._update_campaign_status(campaign_id, "completed")
+        logger.info(f"Stopped campaign {campaign_id}")
+
+    async def _update_campaign_status(self, campaign_id: UUID, status: str):
+        """Update campaign status."""
+        updates = {"status": status, "updated_at": datetime.utcnow()}
+
+        if status == "running":
+            updates["started_at"] = datetime.utcnow()
+        elif status == "completed":
+            updates["completed_at"] = datetime.utcnow()
+
+        await self.db.execute(
+            update(Campaign)
+            .where(Campaign.id == campaign_id)
+            .values(**updates)
+        )
+        await self.db.commit()
+
+    # ── Legacy wrappers (kept for backward compat) ─────────────────────
+
+    async def _place_twilio_call(self, **kwargs) -> str:
+        """Legacy wrapper — delegates to static method."""
+        return await self._place_twilio_call_static(db=self.db, **kwargs)
+
+    async def _place_tata_call(self, **kwargs) -> str:
+        """Legacy wrapper — delegates to static method."""
+        return await self._place_tata_call_static(db=self.db, **kwargs)

@@ -15,8 +15,9 @@ from sqlalchemy import select, and_, desc
 from uuid import UUID
 from typing import Optional
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 
-from src.database import get_db
+from src.common.database import get_db
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.voice.models import VoiceSession, WhatsAppSession, ConversationHistory
@@ -179,8 +180,12 @@ async def get_voice_session(
             transcript = session.conversation_log or []
         
         # Generate a brief AI call summary from the transcript if turns are available
-        call_summary = None
-        if transcript and len(transcript) >= 2 and _GENAI_AVAILABLE and _genai:
+        # First, check for a persisted summary in context_state (set by post-call cleanup)
+        persisted_summary = (session.context_state or {}).get("call_summary")
+        call_summary = persisted_summary
+        
+        # If no persisted summary, generate on-demand as fallback
+        if not call_summary and transcript and len(transcript) >= 2:
             try:
                 formatted = "\n".join(
                     f"{t['speaker'].capitalize()}: {t['content']}"
@@ -188,37 +193,86 @@ async def get_voice_session(
                     if t.get("content")
                 )
                 if formatted:
-                    from src.common.genai_factory import build_vertex_genai_client
+                    _client = None
+
+                    # Strategy 1: Vertex AI
                     try:
+                        from src.common.genai_factory import build_vertex_genai_client
                         _client = await build_vertex_genai_client(db, current_user.company_id)
                     except (RuntimeError, ValueError) as _cfg_err:
                         logger.debug(f"Vertex AI client not available for summary: {_cfg_err}")
-                        _client = None
+
+                    # Strategy 2: AI Studio with API key
+                    if not _client:
+                        try:
+                            from src.config.service import ConfigService
+                            _config_svc = ConfigService(db)
+                            _api_key = await _config_svc.resolve_api_key(
+                                company_id=current_user.company_id,
+                                provider="google",
+                            )
+                            if _api_key:
+                                from src.common.genai_factory import build_ai_studio_genai_client_sync
+                                _client = build_ai_studio_genai_client_sync(api_key=_api_key)
+                        except Exception as _key_err:
+                            logger.debug(f"API key fallback also failed: {_key_err}")
 
                     if _client:
                         _prompt = (
-                            "You are a helpful assistant. Analyze the following call transcript and provide:\n"
-                            "1. A 2-3 sentence summary highlighting key topics discussed and outcomes.\n"
-                            "2. A bullet list of 'Next Actions' the caller/agent should take.\n\n"
-                            "Format your response as:\n"
-                            "SUMMARY: <your summary>\n\n"
+                            "Analyze this phone call transcript and provide:\n\n"
+                            "SUMMARY:\n"
+                            "A concise summary in 2-3 sentences highlighting key topics and outcomes.\n\n"
                             "NEXT ACTIONS:\n"
-                            "- <action 1>\n"
-                            "- <action 2>\n\n"
-                            f"Transcript:\n{formatted}"
+                            "List specific follow-up actions as bullet points. If none, "
+                            "write 'No follow-up actions identified.'\n\n"
+                            f"Transcript:\n{formatted[:8000]}"
                         )
                         import asyncio
-                        # Use run_in_executor to avoid blocking the event loop
-                        # since the genai client's generate_content is synchronous
                         loop = asyncio.get_event_loop()
-                        _resp = await loop.run_in_executor(
-                            None,
-                            lambda: _client.models.generate_content(
-                                model="gemini-2.0-flash",
-                                contents=_prompt,
-                            ),
-                        )
-                        call_summary = _resp.text.strip() if _resp and _resp.text else None
+                        _MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash"]
+                        for _model in _MODELS:
+                            try:
+                                _resp = await loop.run_in_executor(
+                                    None,
+                                    lambda m=_model: _client.models.generate_content(
+                                        model=m,
+                                        contents=_prompt,
+                                    ),
+                                )
+                                call_summary = _resp.text.strip() if _resp and _resp.text else None
+                                if call_summary:
+                                    logger.info(f"On-demand summary generated with model {_model}")
+                                    break
+                            except Exception as _model_err:
+                                logger.info(f"On-demand model {_model} failed: {_model_err}")
+                                continue
+
+                        # Persist summary + next_action back to context_state
+                        if call_summary:
+                            try:
+                                _next_action = None
+                                if "NEXT ACTIONS:" in call_summary:
+                                    _actions_part = call_summary.split("NEXT ACTIONS:")[-1].strip()
+                                    if "no follow-up" not in _actions_part.lower():
+                                        _next_action = _actions_part
+                                elif "NEXT ACTION:" in call_summary:
+                                    _next_action = call_summary.split("NEXT ACTION:")[-1].strip()
+
+                                _ctx = session.context_state or {}
+                                _ctx["call_summary"] = call_summary
+                                if _next_action:
+                                    _ctx["next_action"] = _next_action
+
+                                from sqlalchemy import update as _sa_update
+                                await db.execute(
+                                    _sa_update(VoiceSession)
+                                    .where(VoiceSession.id == session_id)
+                                    .values(context_state=_ctx)
+                                )
+                                await db.commit()
+                                logger.info(f"Persisted on-demand summary for session {session_id}")
+                            except Exception as _persist_err:
+                                logger.warning(f"Failed to persist on-demand summary: {_persist_err}")
             except Exception as _se:
                 logger.warning(f"Summary generation failed for session {session_id}: {_se}")
 
@@ -279,11 +333,41 @@ async def get_voice_session(
             mf, pf, spf, d_val = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
         billed = float(calculate_tb(raw_cost, mf, pf, spf, d_val)["total_billing"])
 
+        # Derive from/to numbers from session metadata and direction
+        meta = session.session_metadata or {}
+        if session.direction == "inbound":
+            # Inbound: from=caller, to=our DID (phone_number on the session)
+            from_number = (
+                meta.get("from") or meta.get("From")
+                or meta.get("fromNumber") or meta.get("from_number")
+                or meta.get("caller_id_number") or meta.get("source")
+                or meta.get("customer_number")
+            )
+            to_number = (
+                meta.get("to") or meta.get("To")
+                or meta.get("toNumber") or meta.get("to_number")
+                or meta.get("destination") or meta.get("did_number")
+                or session.phone_number
+            )
+        else:
+            # Outbound: from=our DID, to=customer number
+            from_number = session.phone_number
+            # Try to get the destination from contact_data or metadata
+            contact_data = meta.get("contact_data", {})
+            to_number = (
+                contact_data.get("phone")
+                or meta.get("to") or meta.get("To")
+                or meta.get("toNumber") or meta.get("to_number")
+                or meta.get("customer_number") or meta.get("destination")
+            )
+
         return {
             "id": str(session.id),
             "customer_id": str(session.customer_id),
             "agent_id": str(session.agent_id),
             "phone_number": session.phone_number,
+            "from_number": from_number,
+            "to_number": to_number,
             "provider": session.provider,
             "call_sid": session.call_sid,
             "stream_sid": session.stream_sid,
@@ -301,12 +385,60 @@ async def get_voice_session(
             "session_metadata": session.session_metadata or {},
             "recording_url": f"/api/v1/artifacts/{recording_artifact.id}/download" if recording_artifact else None,
             "recording_file_name": recording_artifact.file_name if recording_artifact else None,
+            "next_action": (session.context_state or {}).get("next_action"),
         }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting voice session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class NextActionUpdate(BaseModel):
+    """Request body for updating session next action."""
+    next_action: str
+
+
+@router.patch("/voice-sessions/{session_id}/next-action")
+async def update_next_action(
+    session_id: UUID,
+    body: NextActionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Save a manual 'Next Action' note for a voice session.
+
+    Persists in the session's context_state JSONB under the ``next_action`` key.
+    """
+    try:
+        result = await db.execute(
+            select(VoiceSession).where(
+                and_(
+                    VoiceSession.id == session_id,
+                    VoiceSession.company_id == current_user.company_id
+                )
+            )
+        )
+        session = result.scalar_one_or_none()
+
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Merge into existing context_state
+        ctx = dict(session.context_state or {})
+        ctx["next_action"] = body.next_action
+        session.context_state = ctx
+
+        await db.commit()
+
+        return {"status": "ok", "next_action": body.next_action}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating next action: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

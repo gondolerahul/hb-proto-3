@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal
 from uuid import uuid4
 
-from src.ai.governance_service import GovernanceService
+from src.ai.governance.governance_service import GovernanceService
 from src.billing.credit_service import InsufficientCreditsError
 
 

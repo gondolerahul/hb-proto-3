@@ -157,7 +157,7 @@ async def _run_audio_adapter(
     Twilio, Tata Tele, Exotel all share the same wire format (base64 mulaw JSON events).
     Web adapter handles raw PCM16 from browser clients.
     """
-    from src.database import get_db
+    from src.common.database import get_db
     from src.voice.session_manager import SessionManager
     from uuid import UUID
 

@@ -3,6 +3,7 @@ Agent Context Loader for streaming sessions.
 
 Loads agent configuration and conversation history for each session.
 Integrates with existing HierarchicalEntity system.
+Supports campaign contact data injection via {{variable}} templates.
 """
 import logging
 from uuid import UUID
@@ -31,6 +32,7 @@ class AgentContext:
         api_key: Optional[str] = None,
         voice_config: Optional[Any] = None,   # VoiceConfig from AgentPersona
         live_model: Optional[str] = None,      # Per-agent Live model override
+        max_call_duration_seconds: int = 300,  # Default 5 minutes, configurable per agent
     ):
         self.agent_id = agent_id
         self.system_instruction = system_instruction
@@ -42,6 +44,7 @@ class AgentContext:
         # P2.4 — voice / model overrides from AgentPersona
         self.voice_config = voice_config
         self.task_type = "speech_to_speech"
+        self.max_call_duration_seconds = max_call_duration_seconds
 
 
 class AgentContextLoader:
@@ -54,10 +57,18 @@ class AgentContextLoader:
         self,
         agent_id: UUID,
         customer_id: UUID,
-        channel: str = "voice"
+        channel: str = "voice",
+        session_metadata: Optional[Dict[str, Any]] = None,
     ) -> AgentContext:
         """
         Load agent context for a streaming session.
+
+        Args:
+            agent_id: Agent UUID
+            customer_id: Customer UUID
+            channel: 'voice' or 'whatsapp'
+            session_metadata: Optional session metadata containing campaign
+                contact_data for template variable injection.
         """
         # 1. Load HierarchicalEntity from database
         result = await self.db.execute(
@@ -135,6 +146,16 @@ class AgentContextLoader:
                     f"({len(context_text)} chars) into voice system instruction"
                 )
         
+        # 5c. Inject campaign contact data (CSV fields) into system instruction.
+        # This enables two features:
+        #   1. {{variable}} template replacement in the system prompt
+        #   2. A "Call Context" section so the agent knows who it's calling
+        contact_data = (session_metadata or {}).get("contact_data", {})
+        if contact_data:
+            system_instruction = self._inject_contact_data(
+                system_instruction, contact_data
+            )
+        
         # 6. Load tools if configured (future)
         tools = await self._load_agent_tools(entity)
         
@@ -165,6 +186,17 @@ class AgentContextLoader:
             or "gemini-3.1-flash-live-preview"
         )
         
+        # 9. Resolve max call duration (configurable at agent level)
+        #    Check capabilities → metadata → default (300s = 5 min)
+        max_call_duration = (
+            capabilities.get("max_call_duration_seconds")
+            or (entity.metadata_extensions or {}).get("max_call_duration_seconds") if hasattr(entity, 'metadata_extensions') else None
+        )
+        if not max_call_duration:
+            max_call_duration = 300  # Default: 5 minutes
+        else:
+            max_call_duration = int(max_call_duration)
+
         return AgentContext(
             agent_id=agent_id,
             system_instruction=system_instruction,
@@ -175,6 +207,7 @@ class AgentContextLoader:
             api_key=api_key,
             voice_config=voice_config,
             live_model=live_model,
+            max_call_duration_seconds=max_call_duration,
         )
     
     def _build_system_instruction(
@@ -430,3 +463,56 @@ Avoid repeating yourself or being overly formal."""
             logger.warning(f"Text extraction failed for {file_path}: {e}")
             return ""
 
+    @staticmethod
+    def _inject_contact_data(
+        system_instruction: str,
+        contact_data: Dict[str, Any],
+    ) -> str:
+        """
+        Inject campaign CSV contact data into the agent's system instruction.
+
+        Two mechanisms:
+        1. **Template replacement**: Replaces ``{{key}}`` placeholders in the
+           prompt with the corresponding value from contact_data.  This lets
+           the agent admin write prompts like "Greet the customer by name:
+           {{contact}}" and have it filled automatically.
+        2. **Context section**: Appends a structured "Call Context" section
+           listing all contact fields so the agent is always aware of who
+           it is calling, even without explicit {{}} usage.
+
+        Args:
+            system_instruction: The current system prompt text.
+            contact_data: Dict of CSV column -> value for this lead.
+
+        Returns:
+            Updated system instruction with contact data injected.
+        """
+        import re
+
+        # 1. Replace {{key}} templates (case-insensitive, allows spaces)
+        for key, value in contact_data.items():
+            if value is None:
+                continue
+            # Match {{key}} with optional whitespace inside braces
+            pattern = r"\{\{\s*" + re.escape(key) + r"\s*\}\}"
+            system_instruction = re.sub(
+                pattern, str(value), system_instruction, flags=re.IGNORECASE
+            )
+
+        # 2. Append structured context section (skip internal fields)
+        display_fields = {
+            k: v for k, v in contact_data.items()
+            if v is not None and k.lower() not in ("phone",)
+        }
+        if display_fields:
+            lines = [f"- **{k}**: {v}" for k, v in display_fields.items()]
+            system_instruction += (
+                "\n\n## Call Context (Lead Information)\n"
+                "Use the following information about the person you are calling:\n"
+                + "\n".join(lines)
+            )
+            logger.info(
+                f"Injected {len(display_fields)} contact field(s) into system prompt"
+            )
+
+        return system_instruction

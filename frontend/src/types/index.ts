@@ -76,6 +76,7 @@ export enum RunStatus {
     COMPLETED = 'COMPLETED',
     FAILED = 'FAILED',
     REPAIRING = 'REPAIRING',
+    REFINING = 'REFINING',
 }
 
 // ---------------------------------------------------------------------------

@@ -158,7 +158,7 @@ async def twilio_websocket(websocket: WebSocket, session_id: str):
     - Sends AI responses back to Twilio
     """
     from uuid import UUID
-    from src.database import get_db
+    from src.common.database import get_db
     from src.voice.websocket_handler import TwilioStreamHandler
     
     await websocket.accept()
@@ -194,7 +194,7 @@ async def twilio_websocket(websocket: WebSocket, session_id: str):
 @app.websocket("/webhooks/voice/tata/incoming")
 async def tata_main_websocket(websocket: WebSocket):
     """Main endpoint for Tata Tele WebSocket connection."""
-    from src.database import get_db
+    from src.common.database import get_db
     from src.voice.websocket_handler import TataStreamHandler
     
     await websocket.accept()
@@ -224,7 +224,7 @@ async def tata_websocket(websocket: WebSocket, session_id: str):
     Uses TwilioStreamHandler as the protocols are compatible.
     """
     from uuid import UUID
-    from src.database import get_db
+    from src.common.database import get_db
     from src.voice.websocket_handler import TwilioStreamHandler
     
     await websocket.accept()

@@ -217,7 +217,7 @@ class CortexBridge:
     ) -> str:
         """Generate an LLM summary for a knowledge node, with cost tracking."""
         try:
-            from src.ai.llm_router import LLMRouter as _LLMRouter
+            from src.ai.llm.router import LLMRouter as _LLMRouter
             _llm = _LLMRouter(db=self.db, company_id=run.company_id)
             _resp = await _llm.call_llm(
                 task_type="text_generation",

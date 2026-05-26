@@ -30,7 +30,6 @@ const CallDetailPage = lazy(() => import('@/pages/streaming').then(m => ({ defau
 
 const Artifacts = lazy(() => import('@/pages/artifacts/Artifacts').then(m => ({ default: m.Artifacts })));
 const CostingReport = lazy(() => import('@/pages/reports/CostingReport').then(m => ({ default: m.CostingReport })));
-const BillingReport = lazy(() => import('@/pages/reports/BillingReport').then(m => ({ default: m.BillingReport })));
 const AppAdminReports = lazy(() => import('@/pages/reports/AppAdminReports').then(m => ({ default: m.AppAdminReports })));
 const AppUserReports = lazy(() => import('@/pages/reports/AppUserReports').then(m => ({ default: m.AppUserReports })));
 const PartnerAdminReports = lazy(() => import('@/pages/reports/PartnerAdminReports').then(m => ({ default: m.PartnerAdminReports })));
@@ -432,17 +431,6 @@ export const AppRouter: React.FC = () => {
                         }
                     />
 
-                    {/* Reports - Billing */}
-                    <Route
-                        path="/reports/billing"
-                        element={
-                            <ProtectedRoute>
-                                <MainLayout>
-                                    <BillingReport />
-                                </MainLayout>
-                            </ProtectedRoute>
-                        }
-                    />
 
                     {/* Analytics Reports — Role-gated */}
                     <Route

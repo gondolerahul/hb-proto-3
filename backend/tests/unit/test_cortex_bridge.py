@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from src.ai.cortex_bridge import CortexBridge
+from src.ai.memory.cortex_bridge import CortexBridge
 
 
 @pytest.fixture

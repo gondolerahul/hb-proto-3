@@ -93,7 +93,7 @@ class GoalAlignmentVerifier:
             return {"aligned": True, "confidence": 1.0, "issues": [], "correction_hint": ""}
 
         try:
-            from src.ai.llm_router import LLMRouter
+            from src.ai.llm.router import LLMRouter
             llm = LLMRouter(db=self.db, company_id=self.company_id)
 
             prompt = VERIFICATION_PROMPT.format(

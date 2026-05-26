@@ -11,7 +11,8 @@ from src.ai.models import (
     ToolInteractionLog, HumanApproval, Document, EntityType
 )
 from src.ai.schemas import (
-    HierarchicalEntityCreate, HierarchicalEntityUpdate, ExecutionRunCreate
+    HierarchicalEntityCreate, HierarchicalEntityUpdate, ExecutionRunCreate,
+    ExecutionRefineRequest,
 )
 from datetime import datetime
 import json
@@ -82,8 +83,28 @@ class AIService:
             HierarchicalEntity.status != "DELETED",  # Hide soft-deleted entities
         )
         
-        # Platform administrators can view any entity; templates are public
-        if user_role != "app_admin":
+        # Access control:
+        #   app_admin        → can access any entity
+        #   partner_admin/user → own company + child tenant companies + templates
+        #   tenant_admin/user  → own company + templates
+        if user_role == "app_admin":
+            pass  # No company filter
+        elif user_role in ("partner_admin", "partner_user"):
+            from sqlalchemy import or_
+            from src.auth.models import Company
+            # Fetch child tenant company IDs for this partner
+            child_result = await self.db.execute(
+                select(Company.id).where(Company.parent_id == company_id)
+            )
+            child_ids = [row[0] for row in child_result.fetchall()]
+            allowed_ids = [company_id] + child_ids
+            query = query.where(
+                or_(
+                    HierarchicalEntity.company_id.in_(allowed_ids),
+                    HierarchicalEntity.is_template == True,
+                )
+            )
+        else:
             from sqlalchemy import or_
             query = query.where(
                 or_(
@@ -504,6 +525,211 @@ class AIService:
 
         return retry_run
 
+    async def refine_execution(
+        self,
+        execution_id: UUID,
+        refine_in: 'ExecutionRefineRequest',
+        company_id: UUID,
+        user_id: UUID,
+    ) -> ExecutionRun:
+        """
+        Refine a COMPLETED execution by analysing the user's feedback,
+        determining which pipeline steps are affected, and creating a new
+        run that reuses cached outputs for unchanged steps.
+        """
+        from sqlalchemy.orm import selectinload
+
+        # 1. Load the original run
+        result = await self.db.execute(
+            select(ExecutionRun).where(
+                ExecutionRun.id == execution_id,
+                ExecutionRun.company_id == company_id,
+            )
+        )
+        original_run = result.scalar_one_or_none()
+        if not original_run:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        if original_run.status != "COMPLETED":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only COMPLETED runs can be refined (current: {original_run.status})",
+            )
+
+        # 2. Gather step information from the original run
+        result_data = original_run.result_data or {}
+        step_results = result_data.get("steps", [])
+        ctx = original_run.context_state or {}
+
+        # Resolve the entity to get the static plan
+        entity_result = await self.db.execute(
+            select(HierarchicalEntity).where(HierarchicalEntity.id == original_run.entity_id)
+        )
+        entity = entity_result.scalar_one_or_none()
+        if not entity:
+            raise HTTPException(status_code=404, detail="Entity not found for this run")
+
+        planning = entity.planning or {}
+        static_steps = (planning.get("static_plan") or {}).get("steps", [])
+
+        # 3. Use LLM to determine which steps need re-execution
+        steps_to_rerun = await self._analyze_refinement_feedback(
+            refine_in.feedback, static_steps, step_results, entity, company_id
+        )
+
+        # 4. Build reuse outputs and skip steps
+        all_step_ids = [s.get("step_id", f"step_{i+1}") for i, s in enumerate(static_steps)]
+        reuse_outputs: dict[str, str] = {}
+        skip_steps: list[str] = []
+
+        # Build a map of step_id -> output from the original run
+        step_output_map: dict[str, str] = {}
+        for sr in step_results:
+            sid = sr.get("step_id") or sr.get("step", "")
+            output = sr.get("output", "")
+            step_output_map[sid] = output if isinstance(output, str) else json.dumps(output, default=str)
+
+        # Also check context_state for step outputs (keyed by step name or step_id)
+        for s in static_steps:
+            sid = s.get("step_id", "")
+            sname = s.get("name", "")
+            if sid not in step_output_map:
+                val = ctx.get(sname) or ctx.get(sid)
+                if val:
+                    step_output_map[sid] = val if isinstance(val, str) else json.dumps(val, default=str)
+
+        # Determine which steps to skip vs re-run (including downstream cascade)
+        rerun_set = set(steps_to_rerun)
+        # Cascade: if a step is re-run, all downstream dependent steps must also re-run
+        for i, s in enumerate(static_steps):
+            sid = s.get("step_id", f"step_{i+1}")
+            deps = (s.get("target") or {}).get("input_dependencies", [])
+            if any(d in rerun_set for d in deps):
+                rerun_set.add(sid)
+
+        for sid in all_step_ids:
+            if sid not in rerun_set and sid in step_output_map:
+                skip_steps.append(sid)
+                reuse_outputs[sid] = step_output_map[sid]
+
+        logger.info(
+            f"Refinement analysis: re-run={list(rerun_set)}, "
+            f"skip={skip_steps}, feedback='{refine_in.feedback[:100]}'"
+        )
+
+        # 5. Build input_data for the refinement run
+        refine_input = dict(original_run.input_data or {})
+        refine_input["__refinement_feedback__"] = refine_in.feedback
+        refine_input["__reuse_outputs__"] = reuse_outputs
+        refine_input["__skip_steps__"] = skip_steps
+
+        # Pass CORTEX tree ID for tree reuse
+        if "__cortex_tree_id__" in ctx:
+            refine_input["cortex_tree_id"] = ctx["__cortex_tree_id__"]
+
+        # 6. Create the refinement run
+        refine_run = ExecutionRun(
+            company_id=company_id,
+            user_id=user_id,
+            entity_id=original_run.entity_id,
+            input_data=refine_input,
+            context_state={},  # Fresh context — reused outputs will be injected at execution time
+            parent_run_id=original_run.id,
+            status="PENDING",
+            trace_id=uuid4(),
+        )
+        self.db.add(refine_run)
+        await self.db.commit()
+
+        # 7. Reload with relationships
+        result = await self.db.execute(
+            select(ExecutionRun)
+            .options(
+                selectinload(ExecutionRun.entity),
+                selectinload(ExecutionRun.child_runs),
+                selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.tool_logs),
+                selectinload(ExecutionRun.human_approvals),
+            )
+            .where(ExecutionRun.id == refine_run.id)
+        )
+        refine_run = result.scalar_one()
+
+        # 8. Enqueue to arq
+        redis = await create_pool(RedisSettings())
+        await redis.enqueue_job("run_execution_recursive", str(refine_run.id))
+        await redis.close()
+
+        return refine_run
+
+    async def _analyze_refinement_feedback(
+        self,
+        feedback: str,
+        static_steps: list[dict],
+        step_results: list[dict],
+        entity: HierarchicalEntity,
+        company_id: UUID,
+    ) -> list[str]:
+        """
+        Use a lightweight LLM call to determine which steps in the pipeline
+        need re-execution based on the user's refinement feedback.
+        
+        Returns a list of step_ids that must be re-run.
+        """
+        # Build step summary for the LLM
+        step_summaries = []
+        for i, s in enumerate(static_steps):
+            sid = s.get("step_id", f"step_{i+1}")
+            name = s.get("name", f"Step {i+1}")
+            desc = s.get("description", "")
+            stype = s.get("type", "")
+            deps = (s.get("target") or {}).get("input_dependencies", [])
+            step_summaries.append(
+                f"  {sid}: \"{name}\" (type={stype}) — {desc}"
+                + (f" [depends on: {', '.join(deps)}]" if deps else "")
+            )
+
+        analysis_prompt = (
+            f"You are analyzing a user's refinement request for a document generation pipeline.\n\n"
+            f"PIPELINE STEPS:\n" + "\n".join(step_summaries) + "\n\n"
+            f"USER FEEDBACK:\n\"{feedback}\"\n\n"
+            f"RULES:\n"
+            f"1. Return ONLY a JSON array of step_ids that MUST be re-executed.\n"
+            f"2. Content/structure changes → re-run from the content planning step onward.\n"
+            f"3. Visual/image changes → re-run from the visual asset step onward.\n"
+            f"4. Formatting/rendering changes (fonts, layout, colors) → re-run from the rendering step onward.\n"
+            f"5. If a step is re-run, ALL downstream steps that depend on it must ALSO be re-run.\n"
+            f"6. When in doubt, err on the side of re-running more steps rather than fewer.\n\n"
+            f"Return ONLY a JSON array, e.g. [\"step_3\", \"step_4\", \"step_5\"]\n"
+        )
+
+        try:
+            from src.ai.llm.router import LLMRouter
+            router = LLMRouter(self.db, company_id)
+            response = await router.call_llm(
+                task_type="text_generation",
+                system_prompt="You are a pipeline analysis assistant. Output only valid JSON arrays.",
+                user_prompt=analysis_prompt,
+                temperature=0.1,
+                max_tokens=256,
+            )
+
+            # Parse the JSON array from the response
+            import re as _re
+            # Extract JSON array from response (LLMResponse has .text attribute)
+            text = response.text if hasattr(response, "text") else str(response)
+            match = _re.search(r'\[.*?\]', text, _re.DOTALL)
+            if match:
+                step_ids = json.loads(match.group())
+                if isinstance(step_ids, list):
+                    # Validate step_ids against actual steps
+                    valid_ids = {s.get("step_id", f"step_{i+1}") for i, s in enumerate(static_steps)}
+                    return [sid for sid in step_ids if sid in valid_ids]
+        except Exception as e:
+            logger.warning(f"Refinement LLM analysis failed, falling back to full re-run: {e}")
+
+        # Fallback: re-run all steps
+        return [s.get("step_id", f"step_{i+1}") for i, s in enumerate(static_steps)]
+
     # HITL Management
     async def get_pending_approvals(self, company_id: UUID) -> list[HumanApproval]:
         result = await self.db.execute(
@@ -625,7 +851,7 @@ class AIService:
         from sqlalchemy import text
         
         # Get query embedding via centralized EmbeddingService
-        from src.ai.embedding_service import EmbeddingService
+        from src.ai.memory.embedding_service import EmbeddingService
         embedding_service = EmbeddingService(self.db, company_id)
 
         query_embedding = await embedding_service.embed_query(query)

@@ -205,6 +205,20 @@ class SessionManager:
 
         return session
 
+    async def get_voice_session_by_call_sid_any_status(self, call_sid: str) -> Optional[VoiceSession]:
+        """
+        Get voice session by call_sid regardless of session status.
+
+        Unlike get_voice_session_by_call_sid(), this does NOT filter by
+        status == "active".  It is intended for provider status-callback
+        handlers (Twilio / Tata Tele) that fire *after* the WebSocket
+        cleanup has already marked the session as completed/ended.
+        """
+        result = await self.db.execute(
+            select(VoiceSession).where(VoiceSession.call_sid == call_sid)
+        )
+        return result.scalar_one_or_none()
+
     async def update_voice_session(
         self,
         session_id: UUID,
@@ -252,7 +266,7 @@ class SessionManager:
         conversation_log: Optional[Dict[str, Any]] = None
     ) -> None:
         """End a voice session, save final state, and purge cache."""
-        updates = {"status": "completed", "ended_at": datetime.utcnow()}
+        updates = {"status": "ended", "ended_at": datetime.utcnow()}
         if duration_seconds is not None:
             updates["duration_seconds"] = duration_seconds
         if conversation_log is not None:

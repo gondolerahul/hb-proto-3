@@ -173,7 +173,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
     async def _assess_confidence(self, entity, node: GoalNode, context: dict) -> float:
         """Ask the LLM to self-assess confidence for this goal."""
         try:
-            from src.ai.llm_router import LLMRouter
+            from src.ai.llm.router import LLMRouter
             llm = LLMRouter(db=self.db, company_id=entity.company_id)
 
             prompt = (
@@ -203,7 +203,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
         """Decompose a goal into sub-goals via LLM."""
         self._expansion_count += 1
 
-        from src.ai.llm_router import LLMRouter
+        from src.ai.llm.router import LLMRouter
         llm = LLMRouter(db=self.db, company_id=entity.company_id)
 
         prompt = (
@@ -275,7 +275,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
 
     async def _synthesize(self, entity, node: GoalNode, results: list, context: dict) -> str:
         """Synthesize child results into a unified answer for the parent goal."""
-        from src.ai.llm_router import LLMRouter
+        from src.ai.llm.router import LLMRouter
         llm = LLMRouter(db=self.db, company_id=entity.company_id)
 
         results_text = "\n\n".join([f"Sub-result {i+1}: {r[:2000]}" for i, r in enumerate(results)])

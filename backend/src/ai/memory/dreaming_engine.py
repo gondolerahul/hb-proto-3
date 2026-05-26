@@ -57,9 +57,18 @@ class DreamingEngine:
     OBSERVATION_CONFIDENCE_THRESHOLD = 0.5
     PATTERN_STRENGTH_THRESHOLD = 0.7
 
-    def __init__(self, db: AsyncSession, company_id: UUID):
+    def __init__(self, db: AsyncSession, company_id: UUID, llm_router=None):
         self.db = db
         self.company_id = company_id
+        # Phase 10B: Optional LLM dependency injection (lazy fallback)
+        self._llm_router = llm_router
+
+    def _get_llm(self):
+        """Return injected LLMRouter or lazily create one."""
+        if self._llm_router:
+            return self._llm_router
+        from src.ai.llm.router import LLMRouter
+        return LLMRouter(db=self.db, company_id=self.company_id)
 
     # ===================================================================
     # Main Entry Point
@@ -147,10 +156,8 @@ class DreamingEngine:
                 "execution_time_ms": meta.get("execution_time_ms", 0),
             })
 
-        # LLM Analysis
         try:
-            from src.ai.llm_router import LLMRouter
-            llm = LLMRouter(db=self.db, company_id=self.company_id)
+            llm = self._get_llm()
             response = await llm.call_llm(
                 task_type="text_generation",
                 system_prompt=OBSERVATION_EXTRACTION_PROMPT,
@@ -162,7 +169,8 @@ class DreamingEngine:
             logger.warning(f"LLM call failed in observation extraction: {e}")
             return []
 
-        observations = self._parse_json_array(response.output)
+        from src.ai.shared.json_utils import parse_json_array
+        observations = parse_json_array(response.output)
         if not observations:
             return []
 
@@ -242,8 +250,7 @@ class DreamingEngine:
             # LLM synthesis
             cluster_texts = [obs.summary for obs in cluster]
             try:
-                from src.ai.llm_router import LLMRouter
-                llm = LLMRouter(db=self.db, company_id=self.company_id)
+                llm = self._get_llm()
                 response = await llm.call_llm(
                     task_type="text_generation",
                     system_prompt=PATTERN_RECOGNITION_PROMPT,
@@ -255,7 +262,8 @@ class DreamingEngine:
                 logger.warning(f"LLM call failed in pattern recognition: {e}")
                 continue
 
-            pattern = self._parse_json_object(response.output)
+            from src.ai.shared.json_utils import parse_json_object
+            pattern = parse_json_object(response.output)
             if not pattern:
                 continue
 
@@ -331,10 +339,8 @@ class DreamingEngine:
         existing_rules = await intelligence_svc.get_all_rules(entity_id)
         existing_summaries = [r.summary for r in existing_rules]
 
-        # LLM Distillation
         try:
-            from src.ai.llm_router import LLMRouter
-            llm = LLMRouter(db=self.db, company_id=self.company_id)
+            llm = self._get_llm()
             response = await llm.call_llm(
                 task_type="text_generation",
                 system_prompt=INTELLIGENCE_DISTILLATION_PROMPT,
@@ -355,7 +361,8 @@ class DreamingEngine:
             logger.warning(f"LLM call failed in intelligence distillation: {e}")
             return []
 
-        rules = self._parse_json_array(response.output)
+        from src.ai.shared.json_utils import parse_json_array
+        rules = parse_json_array(response.output)
         if not rules:
             return []
 
@@ -503,54 +510,6 @@ class DreamingEngine:
             return 0.0
         return dot / (norm_a * norm_b)
 
-    # ===================================================================
-    # JSON Parsing Helpers
-    # ===================================================================
-
-    def _parse_json_array(self, text_output: str) -> List[Dict]:
-        """Parse a JSON array from LLM output (handles markdown fences)."""
-        text_output = text_output.strip()
-        # Strip markdown code fences
-        if text_output.startswith("```"):
-            lines = text_output.split("\n")
-            text_output = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-        try:
-            result = json.loads(text_output)
-            if isinstance(result, list):
-                return result
-        except json.JSONDecodeError:
-            # Try to find JSON array in the text
-            import re
-            match = re.search(r'\[.*\]', text_output, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-        logger.warning(f"Failed to parse JSON array from LLM output: {text_output[:200]}")
-        return []
-
-    def _parse_json_object(self, text_output: str) -> Optional[Dict]:
-        """Parse a JSON object from LLM output."""
-        text_output = text_output.strip()
-        if text_output.startswith("```"):
-            lines = text_output.split("\n")
-            text_output = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-        try:
-            result = json.loads(text_output)
-            if isinstance(result, dict):
-                return result
-        except json.JSONDecodeError:
-            import re
-            match = re.search(r'\{.*\}', text_output, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-        logger.warning(f"Failed to parse JSON object from LLM output: {text_output[:200]}")
-        return None
-
     async def _next_sibling_order(self, parent_id: UUID) -> int:
         """Get next sibling order for children of a node."""
         from sqlalchemy import func
@@ -559,3 +518,4 @@ class DreamingEngine:
             .where(CortexNode.parent_id == parent_id)
         )
         return result.scalar() + 1
+

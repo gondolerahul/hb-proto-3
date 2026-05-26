@@ -245,12 +245,12 @@ class ImageGenerationTool(Tool):
 
             # ── Imagen models use generate_image API ──────────────────────────
             if "imagen" in model_name.lower():
-                imagen_config = types.GenerateImageConfig(
+                imagen_config = types.GenerateImagesConfig(
                     number_of_images=1,
                     output_mime_type="image/png",
                 )
 
-                response = client.models.generate_image(
+                response = client.models.generate_images(
                     model=model_name,
                     prompt=prompt,
                     config=imagen_config,

@@ -81,7 +81,7 @@ from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")
 
 # CORTEX Memory Architecture
-from src.ai.cortex_router import router as cortex_router
+from src.ai.memory.cortex_router import router as cortex_router
 app.include_router(cortex_router)
 
 # Artifact management (replaces legacy /assets routes)

@@ -31,6 +31,7 @@ from src.ai.core.arq_jobs import (
     process_gateway_event,
     process_document,
     dreaming_worker,
+    dreaming_cron_trigger,
     graph_maintenance_worker,
     resume_execution,
     cortex_resume_scheduled,
@@ -100,11 +101,13 @@ class WorkerSettings:
     redis_settings = RedisSettings(host=_host, port=_port)
 
 
-# Register the cron job after class definition (arq pattern)
 try:
     from arq.cron import cron
     WorkerSettings.cron_jobs = [
         cron(cortex_resume_scheduled, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
+        # Phase 10C: Auto-schedule dreaming every 6 hours
+        cron(dreaming_cron_trigger, hour={0, 6, 12, 18}, minute={15}),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions
+

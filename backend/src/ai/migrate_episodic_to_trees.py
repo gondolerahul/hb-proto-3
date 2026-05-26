@@ -27,8 +27,8 @@ async def run_migration():
     """Migrate episodic_memories → Episodic Trees."""
     from src.common.database import AsyncSessionLocal
     from src.ai.models import EpisodicMemory
-    from src.ai.episodic_tree_service import EpisodicTreeService
-    from src.ai.cortex_models import CortexTree, CortexNode, MemoryDomain, ScopeLevel, CortexNodeType
+    from src.ai.memory.episodic_tree_service import EpisodicTreeService
+    from src.ai.memory.cortex_models import CortexTree, CortexNode, MemoryDomain, ScopeLevel, CortexNodeType
 
     logger.info("=" * 60)
     logger.info("Episodic Tree Migration — episodic_memories → Episodic Trees")
@@ -99,7 +99,7 @@ async def run_migration():
                         f"📅 {ts.strftime('%A, %B %d, %Y')}", depth=2,
                     )
 
-                    from src.ai.cortex_models import CortexNodeStatus
+                    from src.ai.memory.cortex_models import CortexNodeStatus
                     from uuid import uuid4
 
                     sibling_order = await svc._next_sibling_order(day_id)

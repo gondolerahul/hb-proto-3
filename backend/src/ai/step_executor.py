@@ -23,9 +23,9 @@ from src.ai.models import (
 )
 from src.ai.schemas import StepType, PlanStep
 from src.ai.tool_executor import ToolExecutor
-from src.ai.llm_router import LLMRouter
+from src.ai.llm.router import LLMRouter
 from src.ai.usage_service import UsageService
-from src.billing.credit_service import CreditService, InsufficientCreditsError
+from src.billing.credit_service import InsufficientCreditsError
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class StepExecutorService:
     dependencies via constructor; does NOT own the DB session or run lifecycle.
     """
 
-    def __init__(self, db, redis, company_id: UUID, usage_service: UsageService, cortex_bridge=None, execute_run_fn=None):
+    def __init__(self, db, redis, company_id: UUID, usage_service: UsageService, cortex_bridge=None, execute_run_fn=None, governance=None):
         self.db = db
         self.redis = redis
         self.company_id = company_id
@@ -52,6 +52,8 @@ class StepExecutorService:
         self._cortex_bridge = cortex_bridge
         # Callback to ExecutionEngine.execute_run — avoids circular import
         self._execute_run_fn = execute_run_fn
+        # Phase 10E: GovernanceService dependency for credit gates
+        self._governance = governance
 
     # ------------------------------------------------------------------
     # Phase B: Async child entity dispatch via Arq + Redis pub/sub
@@ -258,6 +260,7 @@ class StepExecutorService:
         _parent_only_keys = [
             "__memory__", "__episodic_memory__", "__semantic_context__",
             "__memory_context__", "__context_sources__",
+            "__completed_steps__", "__goal_check_counter__",
         ]
         stripped_parent_keys = [k for k in _parent_only_keys if k in child_input]
         for k in stripped_parent_keys:
@@ -271,24 +274,14 @@ class StepExecutorService:
         # ── Credit gate before spawning child run ─────────────────────────
         # Check that the parent still has credits remaining before launching
         # a potentially expensive child entity (e.g. Research Director).
-        try:
-            _child_credit_svc = CreditService(self.db)
-            _parent_accumulated = Decimal(str(run.total_cost_usd or 0))
-            _child_effective = await _child_credit_svc.get_effective_balance(
-                run.company_id, _parent_accumulated
+        # Phase 10E: Route through GovernanceService instead of direct CreditService
+        _parent_accumulated = Decimal(str(run.total_cost_usd or 0))
+        if self._governance:
+            await self._governance.check_child_credit_gate(
+                run.company_id, _parent_accumulated, child_entity_id=str(entity_id)
             )
-            if _child_effective <= 0:
-                raise InsufficientCreditsError(
-                    f"Cannot spawn child entity {entity_id}: parent run has accumulated "
-                    f"${_parent_accumulated:.4f} cost with no remaining credits. "
-                    f"Please top up credits and retry."
-                )
-            logger.info(f"Child run credit gate passed: ${_child_effective:.4f} remaining "
-                  f"(parent accumulated: ${_parent_accumulated:.4f})")
-        except InsufficientCreditsError:
-            raise
-        except Exception as _child_credit_err:
-            logger.warning(f"Child run credit gate check failed: {_child_credit_err}")
+        else:
+            logger.warning("GovernanceService not injected — skipping child credit gate")
 
         # Create Child Run
         child_run = ExecutionRun(
@@ -315,6 +308,11 @@ class StepExecutorService:
             # Legacy recursive path — uses callback to ExecutionEngine.execute_run
             child_result = await self._execute_run_fn(child_run.id)
         
+        # Refresh both run objects after long child execution to prevent
+        # MissingGreenlet from stale ORM state / recycled DB connections
+        await self.db.refresh(run)
+        await self.db.refresh(child_run)
+
         # rollup metrics
         run.total_cost_usd = (run.total_cost_usd or Decimal("0")) + Decimal(str(child_run.total_cost_usd or 0))
         run.total_tokens = (run.total_tokens or 0) + (child_run.total_tokens or 0)
@@ -339,7 +337,7 @@ class StepExecutorService:
             from src.ai.core.exceptions import ToolExecutionError
             raise ToolExecutionError(step.name, "missing tool_id")
         
-        start_time = datetime.now(tz=timezone.utc)
+        start_time = datetime.utcnow()
         try:
             # Prepare inputs from context/variables
             # Internal keys that should never be passed as tool input
@@ -502,7 +500,7 @@ class StepExecutorService:
                     logger.error(f"Tool '{tool_id}' produced no output after all retry attempts")
             # ─────────────────────────────────────────────────────────────
             
-            latency = int((datetime.now(tz=timezone.utc) - start_time).total_seconds() * 1000)
+            latency = int((datetime.utcnow() - start_time).total_seconds() * 1000)
             
             # Log Tool Call — tool_result is a ToolResult dataclass, not a dict
             log = ToolInteractionLog(
@@ -911,6 +909,53 @@ class StepExecutorService:
                     ))
                     all_tool_results.append(_tr.to_dict())
                     results.append({"tool": _tr.tool, "output": _tr.output, "success": _tr.success})
+
+                    # ── Track tool cost in run.total_cost_usd (AFC path) ──
+                    try:
+                        from src.config.models import IntegrationRegistry as _IR
+                        from sqlalchemy import select as _sel, or_ as _or
+                        from decimal import Decimal as _Dec
+                        _TOOL_SKU_MAP = {
+                            "web_search": ["serp-api-key"],
+                            "batch_web_search": ["serp-api-key"],
+                            "scraper_tool": ["firecrawl-api", "firecrawl"],
+                            "headless_browser": ["headless-browser"],
+                            "pdf_generator": ["pdf-generator"],
+                            "image_generation": ["imagen-4.0-generate-001"],
+                        }
+                        _TOOL_FIXED_COST = {
+                            "image_generation": _Dec("0.04"),
+                            "video_generation": _Dec("0.05"),
+                        }
+                        _afc_sku_matches = _TOOL_SKU_MAP.get(_tr.tool, [])
+                        _afc_or = [
+                            _IR.service_sku == _tr.tool,
+                            _IR.service_category == "CUSTOM_API",
+                        ]
+                        for _s in _afc_sku_matches:
+                            _afc_or.append(_IR.service_sku == _s)
+                        _afc_ir = await self.db.execute(
+                            _sel(_IR).where(
+                                _IR.company_id == run.company_id,
+                                _or(*_afc_or),
+                                _IR.status == "active",
+                                _IR.internal_cost.isnot(None),
+                                _IR.service_category != "LLM",
+                            ).limit(1)
+                        )
+                        _afc_entry = _afc_ir.scalar_one_or_none()
+                        if _afc_entry and _afc_entry.internal_cost:
+                            _tc = _Dec(str(_afc_entry.internal_cost))
+                            run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tc
+                            logger.info(f"Tool cost for '{_tr.tool}': ${_tc} (via {_afc_entry.provider_name}/{_afc_entry.service_sku})")
+                        elif _tr.tool in _TOOL_FIXED_COST:
+                            _tc = _TOOL_FIXED_COST[_tr.tool]
+                            run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tc
+                            logger.info(f"Tool cost for '{_tr.tool}': ${_tc} (fixed fallback)")
+                    except Exception as _tc_err:
+                        logger.debug(f"AFC tool cost tracking skipped for '{_tr.tool}': {_tc_err}")
+                    # ──────────────────────────────────────────────────────
+
                     # CORTEX: ingest scraper/browser results as knowledge nodes
                     if _tr.tool in ("scraper_tool", "headless_browser") and _tr.success:
                         await self._ingest_tool_result_to_cortex(
@@ -1340,7 +1385,7 @@ Step 2: [your analysis]
         )
         MAX_RUN_SECONDS = min(int(entity_timeout), 7200)  # capped at global ceiling
         BUDGET_PCT = 0.80
-        elapsed = (datetime.now(tz=timezone.utc) - run.started_at).total_seconds() if run.started_at else 0
+        elapsed = (datetime.utcnow() - run.started_at).total_seconds() if run.started_at else 0
         if elapsed > MAX_RUN_SECONDS * BUDGET_PCT:
             logger.warning(
                 f"Skipping critic review for step '{step.name}' — "

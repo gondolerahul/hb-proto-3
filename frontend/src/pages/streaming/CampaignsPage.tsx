@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { Plus, Play, Pause, Square, Info, RefreshCw, PhoneForwarded, X } from 'lucide-react';
+import { Plus, Play, Pause, Square, Info, RefreshCw, PhoneForwarded, X, Download } from 'lucide-react';
 import { CampaignCreateModal } from './CampaignCreateModal';
 import './CampaignsPage.css';
 
@@ -22,6 +23,7 @@ interface Campaign {
 
 export const CampaignsPage: React.FC = () => {
     const { token } = useAuth();
+    const navigate = useNavigate();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
@@ -75,6 +77,29 @@ export const CampaignsPage: React.FC = () => {
             setSelectedCampaign(data);
         } catch (error) {
             console.error('Error fetching campaign details:', error);
+        }
+    };
+
+    const downloadReport = async (campaignId: string, campaignName: string) => {
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/campaigns/${campaignId}/download`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Failed to download report');
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Campaign_Report_${campaignName.replace(/\s+/g, '_')}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Error downloading report:', error);
+            alert('Failed to download campaign report');
         }
     };
 
@@ -324,14 +349,15 @@ export const CampaignsPage: React.FC = () => {
                                                     <td>{call.called_at ? new Date(call.called_at).toLocaleString() : '—'}</td>
                                                     <td>
                                                         {call.voice_session_id && (
-                                                            <a
-                                                                href={`/streaming/calls/${call.voice_session_id}`}
+                                                            <button
                                                                 className="btn-view"
-                                                                target="_blank"
-                                                                rel="noreferrer"
+                                                                onClick={() => {
+                                                                    setSelectedCampaign(null);
+                                                                    navigate(`/streaming/calls/${call.voice_session_id}`);
+                                                                }}
                                                             >
                                                                 <Info size={14} /> View Call
-                                                            </a>
+                                                            </button>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -370,6 +396,13 @@ export const CampaignsPage: React.FC = () => {
                         )}
 
                         <div className="modal-footer">
+                            <JellyButton
+                                variant="secondary"
+                                onClick={() => downloadReport(selectedCampaign.id, selectedCampaign.name)}
+                            >
+                                <Download size={16} />
+                                Download Report
+                            </JellyButton>
                             <JellyButton variant="primary" onClick={() => setSelectedCampaign(null)}>
                                 Close Monitor
                             </JellyButton>

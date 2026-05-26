@@ -9,7 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from src.database import Base
+from src.common.database import Base
 from src.ai.models import HierarchicalEntity
 
 
@@ -112,16 +112,8 @@ class ConversationHistory(Base):
 
 
 
-# Backward-compatible re-export: CustomerPhoneNumber has been unified into
-# PhoneNumber in phone_pool_models.py.  Existing imports like
-#     from src.voice.models import CustomerPhoneNumber
-# will continue to work.
-from src.voice.phone_pool_models import PhoneNumber as CustomerPhoneNumber
-
 __all__ = [
     "VoiceSession",
     "WhatsAppSession",
     "ConversationHistory",
-    "CustomerPhoneNumber",
 ]
-

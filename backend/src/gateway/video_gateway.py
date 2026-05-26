@@ -152,7 +152,7 @@ class VideoSession:
         logger.info(f"[VideoSession] Starting audio pipeline for session {self.session_id}")
 
         try:
-            from src.database import get_db
+            from src.common.database import get_db
             from src.voice.live_client_factory import LiveClientFactory
             from src.voice.agent_loader import AgentContextLoader
             from src.voice.audio_processor import AudioProcessor
@@ -301,7 +301,7 @@ class VideoSession:
         try:
             import base64
             from src.common.database import AsyncSessionLocal
-            from src.ai.llm_router import LLMRouter
+            from src.ai.llm.router import LLMRouter
             from uuid import UUID
 
             async with AsyncSessionLocal() as db:

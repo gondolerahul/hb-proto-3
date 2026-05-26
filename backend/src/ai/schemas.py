@@ -20,16 +20,18 @@ class RunStatus(str, Enum):
     FAILED = "FAILED"
     PARTIAL_COMPLETE = "PARTIAL_COMPLETE"  # Some steps OK, others failed
     REPAIRING = "REPAIRING"
+    REFINING = "REFINING"                  # Selective re-execution with user feedback
 
 
 # Phase 3: Execution state machine — valid transitions
 VALID_TRANSITIONS: dict[str, set[str]] = {
-    "PENDING": {"RUNNING"},
+    "PENDING": {"RUNNING", "REFINING"},
     "RUNNING": {"PAUSED", "COMPLETED", "FAILED", "PARTIAL_COMPLETE"},
     "PAUSED": {"RUNNING", "RESUMING", "FAILED"},
     "RESUMING": {"RUNNING", "FAILED"},
     "PARTIAL_COMPLETE": {"RUNNING", "COMPLETED", "FAILED"},
     "REPAIRING": {"RUNNING", "FAILED"},
+    "REFINING": {"RUNNING", "COMPLETED", "FAILED"},
 }
 
 
@@ -626,6 +628,15 @@ class HierarchicalEntityResponse(HierarchicalEntityBase):
 class ExecutionRunCreate(BaseModel):
     entity_id: UUID
     input_data: Dict[str, Any]
+
+
+class ExecutionRefineRequest(BaseModel):
+    """Request to refine a completed execution run with user feedback.
+    
+    The system uses an LLM to auto-detect which pipeline steps need
+    re-execution based on the feedback. Unchanged steps reuse cached outputs.
+    """
+    feedback: str  # Natural language description of desired changes
 
 class LLMInteractionLogResponse(BaseModel):
     id: UUID

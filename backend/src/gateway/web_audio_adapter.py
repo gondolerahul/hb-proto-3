@@ -31,7 +31,7 @@ from src.voice.audio_processor import AudioProcessor
 from src.voice.live_client_factory import LiveClientFactory
 from src.voice.conversation_logger import ConversationLogger
 from src.voice.models import VoiceSession
-from src.database import AsyncSessionLocal
+from src.common.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 

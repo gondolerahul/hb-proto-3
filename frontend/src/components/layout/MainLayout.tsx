@@ -28,7 +28,6 @@ import {
     TrendingUp,
     CreditCard,
     Wallet,
-    Receipt,
     PiggyBank,
     Settings,
     Route,
@@ -121,7 +120,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             icon: CreditCard,
             items: [
                 { path: '/wallet', label: 'Wallet & Credits', icon: Wallet },
-                { path: '/reports/billing', label: 'Billing Report', icon: Receipt },
                 ...(([UserRole.APP_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/reports/costing', label: 'Costing Report', icon: PiggyBank }] : []),
                 ...(([UserRole.APP_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/settings/billing', label: 'Billing Settings', icon: Settings }] : []),
             ]

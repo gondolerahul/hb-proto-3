@@ -9,7 +9,7 @@ from src.auth.models import User
 from src.ai.schemas import (
     HierarchicalEntityCreate, HierarchicalEntityUpdate, HierarchicalEntityResponse, 
     ExecutionRunCreate, ExecutionRunResponse, ExecutionRunSummary, EntityType,
-    DocumentResponse, DocumentSearchResult
+    DocumentResponse, DocumentSearchResult, ExecutionRefineRequest
 )
 from src.ai.service import AIService
 
@@ -241,6 +241,26 @@ async def retry_execution(
     """
     service = AIService(db)
     return await service.retry_execution(execution_id, current_user.company_id, current_user.id)
+
+# --- Refine (Iterative Refinement) ---
+@router.post("/executions/{execution_id}/refine", response_model=ExecutionRunResponse)
+async def refine_execution(
+    execution_id: UUID,
+    refine_in: ExecutionRefineRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Refine a COMPLETED execution by providing feedback.
+
+    Creates a new run that selectively re-executes only the steps
+    affected by the user's feedback, reusing cached outputs for unchanged steps.
+    The system uses an LLM to auto-detect which steps need re-running.
+    """
+    service = AIService(db)
+    return await service.refine_execution(
+        execution_id, refine_in, current_user.company_id, current_user.id
+    )
 
 # --- HITL (Human-In-The-Loop) ---
 @router.get("/approvals/pending", response_model=List[dict])

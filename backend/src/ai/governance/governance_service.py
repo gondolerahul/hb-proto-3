@@ -116,6 +116,37 @@ class GovernanceService:
         except Exception:
             pass  # Non-fatal: continue if balance check fails
 
+    async def check_child_credit_gate(
+        self, company_id: UUID, parent_accumulated_cost: 'Decimal', child_entity_id: str = ""
+    ) -> None:
+        """Pre-spawn credit gate for child entities.
+
+        Checks that the parent wallet still has credits remaining before
+        launching a potentially expensive child entity. Raises
+        InsufficientCreditsError if the wallet is drained.
+
+        Phase 10E: Extracted from step_executor.py to route all billing
+        through GovernanceService.
+        """
+        try:
+            effective = await self.credit_service.get_effective_balance(
+                company_id, parent_accumulated_cost
+            )
+            if effective <= 0:
+                raise InsufficientCreditsError(
+                    f"Cannot spawn child entity {child_entity_id}: parent run has accumulated "
+                    f"${parent_accumulated_cost:.4f} cost with no remaining credits. "
+                    f"Please top up credits and retry."
+                )
+            logger.info(
+                f"Child run credit gate passed: ${effective:.4f} remaining "
+                f"(parent accumulated: ${parent_accumulated_cost:.4f})"
+            )
+        except InsufficientCreditsError:
+            raise
+        except Exception as e:
+            logger.warning(f"Child run credit gate check failed: {e}")
+
     # ------------------------------------------------------------------
     # TB Billing Settlement
     # ------------------------------------------------------------------

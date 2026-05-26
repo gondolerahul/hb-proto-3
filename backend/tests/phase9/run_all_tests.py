@@ -81,39 +81,39 @@ async def run_all():
     # PHASE B: Knowledge Trees
     # ============================================================
     async def b1(db):
-        from src.ai.embedding_service import EmbeddingService
+        from src.ai.memory.embedding_service import EmbeddingService
         svc = EmbeddingService(db, COMPANY_ID)
         vec = await svc.embed_text('Hello world test embedding')
         assert vec and len(vec) > 0; return f"dim={len(vec)}, model={svc.get_model_name()}"
 
     async def b2(db):
-        from src.ai.embedding_service import EmbeddingService
+        from src.ai.memory.embedding_service import EmbeddingService
         svc = EmbeddingService(db, COMPANY_ID)
         qvec = await svc.embed_query('test query')
         assert qvec; return f"dim={len(qvec)}"
 
     async def b3(db):
-        from src.ai.embedding_service import EmbeddingService
+        from src.ai.memory.embedding_service import EmbeddingService
         svc = EmbeddingService(db, COMPANY_ID)
         vecs = await svc.embed_batch(['Text one', 'Text two'])
         valid = [v for v in vecs if v]
         assert len(valid) == 2; return f"{len(valid)}/2 success"
 
     async def b4(db):
-        from src.ai.knowledge_tree_service import KnowledgeTreeService
+        from src.ai.memory.knowledge_tree_service import KnowledgeTreeService
         kt = KnowledgeTreeService(db, COMPANY_ID)
         tree = await kt.get_or_create_knowledge_tree(ENTITY_ID)
         assert tree; return f"tree_id={str(tree.id)[:8]}"
 
     async def b5(db):
-        from src.ai.knowledge_tree_service import KnowledgeTreeService
+        from src.ai.memory.knowledge_tree_service import KnowledgeTreeService
         kt = KnowledgeTreeService(db, COMPANY_ID)
         t1 = await kt.get_or_create_knowledge_tree(ENTITY_ID)
         t2 = await kt.get_or_create_knowledge_tree(ENTITY_ID)
         assert t1.id == t2.id; return "idempotent"
 
     async def b6(db):
-        from src.ai.knowledge_tree_service import KnowledgeTreeService
+        from src.ai.memory.knowledge_tree_service import KnowledgeTreeService
         kt = KnowledgeTreeService(db, COMPANY_ID)
         tree = await kt.get_or_create_knowledge_tree(ENTITY_ID)
         count = await kt.ingest_document(
@@ -125,7 +125,7 @@ async def run_all():
         assert count > 0; return f"{count} nodes created"
 
     async def b7(db):
-        from src.ai.knowledge_tree_service import KnowledgeTreeService
+        from src.ai.memory.knowledge_tree_service import KnowledgeTreeService
         kt = KnowledgeTreeService(db, COMPANY_ID)
         r = await kt.search(ENTITY_ID, 'deep learning', top_k=3)
         return f"{len(r)} results"
@@ -144,26 +144,26 @@ async def run_all():
     # PHASE C: Episodic Trees
     # ============================================================
     async def c1(db):
-        from src.ai.episodic_tree_service import EpisodicTreeService
+        from src.ai.memory.episodic_tree_service import EpisodicTreeService
         ep = EpisodicTreeService(db, COMPANY_ID)
         t = await ep.get_or_create_episodic_tree(ENTITY_ID)
         assert t; return f"tree_id={str(t.id)[:8]}, nodes={t.total_nodes}"
 
     async def c2(db):
-        from src.ai.episodic_tree_service import EpisodicTreeService
+        from src.ai.memory.episodic_tree_service import EpisodicTreeService
         ep = EpisodicTreeService(db, COMPANY_ID)
         r = await ep.get_recent_episodes(ENTITY_ID, limit=5)
         return f"{len(r)} episodes"
 
     async def c3(db):
-        from src.ai.episodic_tree_service import EpisodicTreeService
+        from src.ai.memory.episodic_tree_service import EpisodicTreeService
         ep = EpisodicTreeService(db, COMPANY_ID)
         now = datetime.now(timezone.utc)
         r = await ep.query_by_time(ENTITY_ID, start_date=now - timedelta(days=90), end_date=now, limit=5)
         return f"{len(r)} results"
 
     async def c4(db):
-        from src.ai.episodic_tree_service import EpisodicTreeService
+        from src.ai.memory.episodic_tree_service import EpisodicTreeService
         ep = EpisodicTreeService(db, COMPANY_ID)
         r = await ep.query_by_topic(ENTITY_ID, 'research analysis', top_k=3)
         return f"{len(r)} results"
@@ -191,14 +191,14 @@ async def run_all():
     # PHASE D: Experience/Intelligence/Dreaming
     # ============================================================
     async def d1(db):
-        from src.ai.experience_tree_service import ExperienceTreeService
+        from src.ai.memory.experience_tree_service import ExperienceTreeService
         ex = ExperienceTreeService(db, COMPANY_ID)
         t = await ex.get_or_create_experience_tree(ENTITY_ID)
         await db.commit()
         assert t; return f"tree_id={str(t.id)[:8]}, nodes={t.total_nodes}"
 
     async def d2(db):
-        from src.ai.experience_tree_service import ExperienceTreeService
+        from src.ai.memory.experience_tree_service import ExperienceTreeService
         ex = ExperienceTreeService(db, COMPANY_ID)
         o = await ex.get_observations_root(ENTITY_ID)
         p = await ex.get_patterns_root(ENTITY_ID)
@@ -206,39 +206,39 @@ async def run_all():
         return f"obs={str(o)[:8]}, pat={str(p)[:8]}, sug={str(s)[:8]}"
 
     async def d3(db):
-        from src.ai.intelligence_tree_service import IntelligenceTreeService
+        from src.ai.memory.intelligence_tree_service import IntelligenceTreeService
         it = IntelligenceTreeService(db, COMPANY_ID)
         t = await it.get_or_create_intelligence_tree(ENTITY_ID)
         await db.commit()
         assert t; return f"tree_id={str(t.id)[:8]}, nodes={t.total_nodes}"
 
     async def d4(db):
-        from src.ai.intelligence_tree_service import IntelligenceTreeService
+        from src.ai.memory.intelligence_tree_service import IntelligenceTreeService
         it = IntelligenceTreeService(db, COMPANY_ID)
         for rtype in ['instruction', 'strategy', 'preference']:
             await it.get_section_root(ENTITY_ID, rtype)
         return "all 3 roots found"
 
     async def d5(db):
-        from src.ai.intelligence_tree_service import IntelligenceTreeService
+        from src.ai.memory.intelligence_tree_service import IntelligenceTreeService
         it = IntelligenceTreeService(db, COMPANY_ID)
         r = await it.get_all_rules(ENTITY_ID)
         return f"{len(r)} rules"
 
     async def d6(db):
-        from src.ai.intelligence_tree_service import IntelligenceTreeService
+        from src.ai.memory.intelligence_tree_service import IntelligenceTreeService
         it = IntelligenceTreeService(db, COMPANY_ID)
         p = await it.get_rules_for_prompt(ENTITY_ID, 'analyze data')
         return f"{len(p)} chars"
 
     async def d7(db):
-        from src.ai.dreaming_engine import DreamingEngine
+        from src.ai.memory.dreaming_engine import DreamingEngine
         engine = DreamingEngine(db, COMPANY_ID)
         should = await engine._should_run(ENTITY_ID)
         return f"should_run={should}"
 
     async def d8(db):
-        from src.ai.dreaming_engine import DreamingEngine
+        from src.ai.memory.dreaming_engine import DreamingEngine
         engine = DreamingEngine(db, COMPANY_ID)
         r = await engine.dream(ENTITY_ID, force=True)
         await db.commit()
@@ -259,13 +259,13 @@ async def run_all():
     # PHASE E: Semantic Graph
     # ============================================================
     async def e1(db):
-        from src.ai.graph_service import SemanticGraphService
+        from src.ai.memory.graph_service import SemanticGraphService
         g = SemanticGraphService(db, COMPANY_ID)
         s = await g.get_graph_stats()
         return str(s) if s else "empty graph"
 
     async def e2(db):
-        from src.ai.graph_service import SemanticGraphService
+        from src.ai.memory.graph_service import SemanticGraphService
         g = SemanticGraphService(db, COMPANY_ID)
         r = await g.semantic_graph_search('deep learning analysis', ENTITY_ID, top_k=5)
         details = f"{len(r)} results"
@@ -278,14 +278,14 @@ async def run_all():
         row = r.fetchone()
         if not row:
             record("E3", "Auto similarity edges", "SKIP", "no embedded nodes"); return "skipped"
-        from src.ai.graph_service import SemanticGraphService
+        from src.ai.memory.graph_service import SemanticGraphService
         g = SemanticGraphService(db, COMPANY_ID)
         c = await g.create_similarity_edges(row[0])
         await db.commit()
         return f"{c} edges for '{row[1][:30]}'"
 
     async def e4(db):
-        from src.ai.graph_service import SemanticGraphService
+        from src.ai.memory.graph_service import SemanticGraphService
         g = SemanticGraphService(db, COMPANY_ID)
         d = await g.decay_weights(days_inactive=30)
         p = await g.prune_weak_edges()
@@ -303,13 +303,13 @@ async def run_all():
     # PHASE F: Memory Assembly
     # ============================================================
     async def f1(db):
-        from src.ai.memory_assembly_service import MemoryAssemblyService
+        from src.ai.memory.memory_assembly_service import MemoryAssemblyService
         a = MemoryAssemblyService(db, COMPANY_ID)
         m = await a.assemble_runtime_memory(ENTITY_ID, task_description='Analyze quarterly revenue trends')
         return f"knowledge={len(m.knowledge_refs)}, experience={len(m.experience_suggestions)}, intelligence={len(m.intelligence_rules)}, episodic={len(m.episodic_context)}, prompt={len(m.formatted_prompt)} chars"
 
     async def f2(db):
-        from src.ai.memory_service import MemoryRouter
+        from src.ai.memory.memory_service import MemoryRouter
         r = MemoryRouter(db)
         s = await r.search_semantic(ENTITY_ID, 'data analysis', top_k=3)
         return f"{len(s)} results"

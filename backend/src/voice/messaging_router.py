@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
-from src.database import get_db
+from src.common.database import get_db
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.voice.whatsapp_messaging import (

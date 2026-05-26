@@ -35,8 +35,8 @@ async def migrate_entity_documents(
 ) -> int:
     """Migrate all documents for an entity into a Knowledge Tree."""
     from src.ai.models import Document, DocumentChunk
-    from src.ai.knowledge_tree_service import KnowledgeTreeService
-    from src.ai.cortex_models import CortexTree, CortexNode, MemoryDomain, ScopeLevel
+    from src.ai.memory.knowledge_tree_service import KnowledgeTreeService
+    from src.ai.memory.cortex_models import CortexTree, CortexNode, MemoryDomain, ScopeLevel
 
     # Check if entity already has a knowledge tree with document nodes
     existing = await db.execute(

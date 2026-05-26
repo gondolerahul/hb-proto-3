@@ -36,7 +36,7 @@ from src.billing.credit_service import CreditService, InsufficientCreditsError
 from src.billing.billing_service import BillingService, calculate_tb
 from src.ai.tool_executor import ToolExecutor
 from src.ai.memory.memory_service import MemoryRouter
-from src.ai.llm_router import LLMRouter
+from src.ai.llm.router import LLMRouter
 from src.ai.governance.governance_service import GovernanceService
 from src.ai.planning.planner_service import PlannerService
 from src.ai.memory.cortex_bridge import CortexBridge
@@ -77,6 +77,7 @@ class ExecutionEngine:
             db, redis_pool, company_id, self.usage_service,
             cortex_bridge=self._cortex_bridge,
             execute_run_fn=self.execute_run,
+            governance=self._governance,
         ) if company_id else None
 
     def _ensure_services(self, company_id: UUID):
@@ -90,6 +91,7 @@ class ExecutionEngine:
                 self.db, self.redis, company_id, self.usage_service,
                 cortex_bridge=self._cortex_bridge,
                 execute_run_fn=self.execute_run,
+                governance=self._governance,
             )
 
     async def _execute_steps_dag(self, run, entity, steps: List[dict], context_state: dict) -> List[dict]:
@@ -282,7 +284,7 @@ class ExecutionEngine:
         try:
             try:
                 step_result = await asyncio.wait_for(
-                    self._execute_step(run, entity, step_obj, context_state),
+                    self._step_executor._execute_step(run, entity, step_obj, context_state),
                     timeout=timeout_ms / 1000.0,
                 )
             except asyncio.TimeoutError:
@@ -315,7 +317,7 @@ class ExecutionEngine:
 
         # Review Mechanism
         if (entity.logic_gate or {}).get("review_mechanism", {}).get("enabled"):
-            step_result = await self._review_step_output(run, entity, step_obj, step_result, context_state)
+            step_result = await self._step_executor._review_step_output(run, entity, step_obj, step_result, context_state)
 
         # ── Phase 10D: GoalGuard step-level alignment check ─────────────
         # Replaces the 50-line inline goal alignment block from Phase 9.
@@ -352,7 +354,7 @@ class ExecutionEngine:
                             )
                             logger.info(f"GoalGuard: re-executing step '{step_obj.name}'")
                             step_result = await asyncio.wait_for(
-                                self._execute_step(run, entity, step_obj, context_state),
+                                self._step_executor._execute_step(run, entity, step_obj, context_state),
                                 timeout=timeout_ms / 1000.0,
                             )
                             context_state.pop("__alignment_correction__", None)
@@ -412,7 +414,7 @@ class ExecutionEngine:
             entity.name, entity.type, entity.description, entity.goal,
             entity.identity, entity.governance, entity.observability,
             entity.logic_gate, entity.planning, entity.hierarchy,
-            entity.memory_config, entity.tools_config, entity.company_id,
+            entity.capabilities, entity.io_contract, entity.company_id,
             entity.parent_id, entity.status,
         )
         from sqlalchemy.orm import make_transient
@@ -437,19 +439,30 @@ class ExecutionEngine:
 
         # 3. Update Status and Initialize Trace
         run.status = RunStatus.RUNNING
-        run.started_at = datetime.now(tz=timezone.utc)
+        run.started_at = datetime.utcnow()
         if not run.trace_id:
             run.trace_id = run.id
         await self.db.commit()
+
+        # Cache immutable run IDs to prevent MissingGreenlet after session commits
+        # expire ORM attributes during the long-running step execution loop.
+        # Even with expire_on_commit=False, pool_pre_ping=True can trigger a
+        # synchronous connection ping inside an ORM lazy-load if the DB connection
+        # was recycled — which crashes without a greenlet.
+        await self.db.refresh(run)  # eagerly load ALL columns into instance dict
+        _run_id = run.id
+        _run_user_id = run.user_id
+        _run_company_id = run.company_id
+        _run_parent_run_id = run.parent_run_id
         
         # Publish Update
-        channel = f"execution:{run.id}"
-        await self.redis.publish(channel, json.dumps({"status": "RUNNING", "run_id": str(run.id)}))
+        channel = f"execution:{_run_id}"
+        await self.redis.publish(channel, json.dumps({"status": "RUNNING", "run_id": str(_run_id)}))
 
         # ── Pre-execution credit balance gate (delegated to GovernanceService) ─
         entity_type_str = entity.type.value if hasattr(entity.type, 'value') else str(entity.type)
         await self._governance.check_credit_gate(
-            run.company_id, entity_type_str, is_child=bool(run.parent_run_id)
+            _run_company_id, entity_type_str, is_child=bool(_run_parent_run_id)
         )
 
         try:
@@ -486,7 +499,7 @@ class ExecutionEngine:
                 task_desc = self._build_task_description(entity, input_data)
                 tree = await cortex.create_tree(
                     entity_id=entity.id,
-                    user_id=run.user_id,
+                    user_id=_run_user_id,
                     task_description=task_desc,
                 )
                 viewport = await cortex.navigate(tree.root_node_id)
@@ -503,7 +516,7 @@ class ExecutionEngine:
                 db=self.db,
                 company_id=entity.company_id,
                 entity_id=entity.id,
-                user_id=run.user_id,
+                user_id=_run_user_id,
                 tree_id=tree.id,
                 task_description=self._build_task_description(entity, input_data),
                 memory_pipeline=_memory_pipeline,
@@ -523,12 +536,15 @@ class ExecutionEngine:
             # Inject CORTEX viewport as the primary context
             context_state["__cortex_viewport__"] = viewport.to_prompt_text()
             context_state["__cortex_tree_id__"] = str(tree.id)
+            # Cache immutable tree IDs to prevent MissingGreenlet after session commits
+            _tree_id = tree.id
+            _tree_output_root_id = tree.output_root_id
 
             # M5: Inject knowledge subtree summary for entities sharing a tree
             # This is critical for the synthesizer: it needs to READ the director's
             # accumulated knowledge nodes from the shared tree.
             try:
-                knowledge_root = await cortex.get_knowledge_root(tree.id)
+                knowledge_root = await cortex.get_knowledge_root(_tree_id)
                 if knowledge_root:
                     knowledge_viewport = await cortex.navigate(knowledge_root.id)
                     context_state["__cortex_knowledge__"] = knowledge_viewport.to_prompt_text()
@@ -639,7 +655,7 @@ class ExecutionEngine:
 
                     # Auto-ingest all loaded sources into CORTEX knowledge root
                     try:
-                        _knowledge_root = await cortex.get_knowledge_root(tree.id)
+                        _knowledge_root = await cortex.get_knowledge_root(_tree_id)
                         if _knowledge_root:
                             for _src_text in loaded_sources:
                                 _title = _src_text.split("\n")[0][:100].replace("## Context Source: ", "").replace("## Context Source", "")
@@ -670,16 +686,16 @@ class ExecutionEngine:
                     self.db, self.redis, company_id=entity.company_id
                 )
                 recursive_result = await recursive.execute_tree(
-                    run_id=run.id,
+                    run_id=_run_id,
                     root_goal=entity.goal or entity.name,
                     context=context_state,
-                    tree_id=tree.id,
+                    tree_id=_tree_id,
                 )
                 # Finalize the run with recursive result
                 run.status = RunStatus.COMPLETED
                 run.result_data = recursive_result
                 run.context_state = _sanitize_context_for_persistence(context_state)
-                run.completed_at = datetime.now(tz=timezone.utc)
+                run.completed_at = datetime.utcnow()
                 run.execution_time_ms = int(
                     (run.completed_at - run.started_at).total_seconds() * 1000
                 )
@@ -699,7 +715,7 @@ class ExecutionEngine:
             # ── End RECURSIVE routing ──────────────────────────────────
 
             # 4. Plan Generation/Reconciliation (DAG mode — default)
-            logger.info(f"--- Starting CORTEX Execution {run.id} for Entity {entity.name} ---")
+            logger.info(f"--- Starting CORTEX Execution {_run_id} for Entity {entity.name} ---")
             plan = await self._get_reconciled_plan(run, entity, context_state)
             steps = plan.get("steps", [])
             logger.info(f"[RUN:{run_id}] Phase 5/7: Plan reconciled ({len(steps)} steps)")
@@ -718,10 +734,13 @@ class ExecutionEngine:
             }
 
             # C4: Get working memory root for writing step outputs
-            working_root = await cortex.get_working_root(tree.id)
+            working_root = await cortex.get_working_root(_tree_id)
             if not working_root:
-                logger.warning(f"CORTEX: Working memory root not found for tree {tree.id}")
-                raise CortexError(f"CORTEX tree {tree.id} has no working memory root")
+                logger.warning(f"CORTEX: Working memory root not found for tree {_tree_id}")
+                raise CortexError(f"CORTEX tree {_tree_id} has no working memory root")
+            # Cache the UUID to prevent MissingGreenlet when ORM attributes expire
+            # after session commits during long step execution loops
+            working_root_id = working_root.id
 
             # 5. Execute Plan Steps with CORTEX
             governance = entity.governance or {}
@@ -732,7 +751,7 @@ class ExecutionEngine:
                 # Write DAG results to tree
                 for sr in all_step_results:
                     await self._write_step_to_cortex(
-                        cortex, working_root.id, sr, run.id
+                        cortex, working_root_id, sr, _run_id
                     )
             else:
                 # Phase 5: Autonomous mode configuration
@@ -751,7 +770,22 @@ class ExecutionEngine:
                 # from the previous run's __completed_steps__.
                 completed_steps: set = set(context_state.get("__completed_steps__", []))
 
+                # ── Refinement mode detection ──────────────────────────────
+                refinement_feedback = input_data.get("__refinement_feedback__")
+                reuse_outputs = input_data.get("__reuse_outputs__", {})
+                skip_steps_set = set(input_data.get("__skip_steps__", []))
+                is_refinement = bool(refinement_feedback)
+                if is_refinement:
+                    logger.info(
+                        f"[RUN:{run_id}] Refinement mode: {len(skip_steps_set)} steps to skip, "
+                        f"feedback='{refinement_feedback[:80]}...'"
+                    )
+
                 for step_idx, step in enumerate(steps):
+                    # Refresh run to prevent MissingGreenlet from pool_pre_ping
+                    # during long-running pipelines where DB connections may be recycled
+                    await self.db.refresh(run)
+
                     step_obj_check = PlanStep(**step)
                     if step_obj_check.step_id and step_obj_check.step_id in completed_steps:
                         logger.debug(f"Skipping already-completed step: {step_obj_check.name}")
@@ -759,11 +793,48 @@ class ExecutionEngine:
 
                     step_obj = PlanStep(**step)
 
+                    # ── Refinement: skip steps that don't need re-execution ──
+                    if is_refinement and step_obj.step_id and step_obj.step_id in skip_steps_set:
+                        cached_output = reuse_outputs.get(step_obj.step_id)
+                        if cached_output is not None:
+                            _store_step_output(
+                                context_state, step_obj.name,
+                                step_obj.step_id, cached_output
+                            )
+                            all_step_results.append({
+                                "step": step_obj.name,
+                                "step_id": step_obj.step_id,
+                                "type": step_obj.type,
+                                "output": cached_output,
+                                "reused": True,
+                            })
+                            completed_steps.add(step_obj.step_id)
+                            context_state["__completed_steps__"] = list(completed_steps)
+                            logger.info(f"Refinement: reused cached output for '{step_obj.name}'")
+
+                            # Publish step progress for SSE
+                            await self.redis.publish(channel, json.dumps({
+                                "status": "STEP_REUSED",
+                                "step": step_obj.name,
+                                "step_id": step_obj.step_id,
+                            }))
+                            continue
+
+                    # ── Refinement: inject feedback into context for re-executed steps ──
+                    if is_refinement and refinement_feedback:
+                        context_state["__refinement_feedback__"] = (
+                            f"\n⚠️ REFINEMENT REQUEST from user:\n"
+                            f"{refinement_feedback}\n\n"
+                            f"Apply the above changes while preserving all other "
+                            f"aspects of the original output. Focus ONLY on the "
+                            f"requested modifications.\n"
+                        )
+
                     # ── Phase 5: Self-reflection — inject prior knowledge ──
                     if is_autonomous and self_reflect and step_obj.type == StepType.THOUGHT:
                         try:
                             knowledge = await self._cortex_bridge.get_relevant_knowledge(
-                                tree.id, step_obj.description or step_obj.name
+                                _tree_id, step_obj.description or step_obj.name
                             )
                             if knowledge:
                                 context_state["__cortex_knowledge__"] = knowledge
@@ -818,7 +889,7 @@ class ExecutionEngine:
 
                     # Write step result as a finding node in the CORTEX tree
                     await self._write_step_to_cortex(
-                        cortex, working_root.id, step_result, run.id
+                        cortex, working_root_id, step_result, _run_id
                     )
 
                     # ── Phase 5: Write reflection node ──
@@ -827,8 +898,8 @@ class ExecutionEngine:
                             output_summary = str(step_result.get("output", ""))[:500] if isinstance(step_result, dict) else ""
                             if output_summary:
                                 await self._cortex_bridge.write_reflection(
-                                    tree.id,
-                                    tree.resume_cursor_id or working_root.id,
+                                    _tree_id,
+                                    tree.resume_cursor_id or working_root_id,
                                     step_obj.name,
                                     f"Step completed. Output summary: {output_summary}",
                                 )
@@ -919,10 +990,11 @@ class ExecutionEngine:
                         except Exception as _gv_err:
                             logger.debug(f"GoalGuard validation failed: {_gv_err}")
 
-                    if self._should_exit(step_obj, context_state):
+                    if self._step_executor._should_exit(step_obj, context_state):
                         break
 
             # 6. Finalize
+            await self.db.refresh(run)  # ensure all attrs loaded before final writes
             run.status = RunStatus.COMPLETED
             # Use full output from all_step_results (not context_state which
             # may be capped at MAX_CONTEXT_VALUE_SIZE for prompt injection).
@@ -937,14 +1009,14 @@ class ExecutionEngine:
             run.result_data = {"output": final_output, "steps": all_step_results}
             # SEC-1 fix: sanitize context before persisting to DB
             run.context_state = _sanitize_context_for_persistence(context_state)
-            run.completed_at = datetime.now(tz=timezone.utc)
+            run.completed_at = datetime.utcnow()
             run.execution_time_ms = int((run.completed_at - run.started_at).total_seconds() * 1000)
             
             # Write final output to the CORTEX output subtree
-            if tree.output_root_id and final_output:
+            if _tree_output_root_id and final_output:
                 try:
                     await cortex.write(
-                        parent_id=tree.output_root_id,
+                        parent_id=_tree_output_root_id,
                         node_type="output",
                         title="Final Output",
                         summary=str(final_output)[:300],
@@ -960,15 +1032,16 @@ class ExecutionEngine:
             await _MemRouter(self.db).write_episodic(run)
 
             # Tree stays ACTIVE for future resumption (not COMPLETE)
-            tree.last_active_at = datetime.now(tz=timezone.utc)
+            tree.last_active_at = datetime.utcnow()
+            _result_data = run.result_data  # cache before commit expires ORM attrs
             
             await self.db.commit()
 
             # 7. Final Billing Settlement (delegated to GovernanceService)
             await self._governance.settle_billing(run, entity.name)
 
-            await self.redis.publish(channel, json.dumps({"status": "COMPLETED", "result": run.result_data}))
-            return run.result_data
+            await self.redis.publish(channel, json.dumps({"status": "COMPLETED", "result": _result_data}))
+            return _result_data
 
         except CreditExhaustedError as e:
             # Credit exhaustion — expected during billing-gated runs
@@ -981,7 +1054,7 @@ class ExecutionEngine:
                     failed_run = result.scalar_one()
                     failed_run.status = RunStatus.FAILED
                     failed_run.error_message = f"Credits exhausted: {str(e)[:500]}"
-                    failed_run.completed_at = datetime.now(tz=timezone.utc)
+                    failed_run.completed_at = datetime.utcnow()
                     if context_state:
                         failed_run.context_state = _sanitize_context_for_persistence(context_state)
                     await fresh_db.commit()
@@ -1001,7 +1074,7 @@ class ExecutionEngine:
                     failed_run = result.scalar_one()
                     failed_run.status = RunStatus.FAILED
                     failed_run.error_message = f"Meta-Agent abort: {str(e)[:500]}"
-                    failed_run.completed_at = datetime.now(tz=timezone.utc)
+                    failed_run.completed_at = datetime.utcnow()
                     if context_state:
                         failed_run.context_state = _sanitize_context_for_persistence(context_state)
                     await fresh_db.commit()
@@ -1021,7 +1094,7 @@ class ExecutionEngine:
                     failed_run = result.scalar_one()
                     failed_run.status = RunStatus.FAILED
                     failed_run.error_message = f"{type(e).__name__}: {str(e)[:500]}"
-                    failed_run.completed_at = datetime.now(tz=timezone.utc)
+                    failed_run.completed_at = datetime.utcnow()
                     if context_state:
                         failed_run.context_state = _sanitize_context_for_persistence(context_state)
                     await fresh_db.commit()
@@ -1042,7 +1115,7 @@ class ExecutionEngine:
                     failed_run.status = RunStatus.FAILED
                     err_type = type(e).__name__
                     failed_run.error_message = f"Infrastructure: {err_type}: {str(e)[:500]}"
-                    failed_run.completed_at = datetime.now(tz=timezone.utc)
+                    failed_run.completed_at = datetime.utcnow()
                     if context_state:
                         failed_run.context_state = _sanitize_context_for_persistence(context_state)
                     await fresh_db.commit()
@@ -1110,34 +1183,4 @@ class ExecutionEngine:
         """Delegate to PlannerService (Phase 3 extraction)."""
         return await self._planner.reconcile(run, entity, input_data)
 
-    async def _execute_step(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return await self._step_executor._execute_step(run, entity, step, context)
 
-    async def _execute_child_invocation(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return await self._step_executor._execute_child_invocation(run, entity, step, context)
-
-    async def _execute_tool_call(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return await self._step_executor._execute_tool_call(run, entity, step, context)
-
-    async def _execute_thought(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return await self._step_executor._execute_thought(run, entity, step, context)
-
-    async def _log_usage(self, run, model_name: str, prompt_tokens: int, completion_tokens: int, log):
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return await self._step_executor._log_usage(run, model_name, prompt_tokens, completion_tokens, log)
-
-    async def _maybe_summarize_context(self, run, entity, context_state: dict) -> dict:
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return await self._step_executor._maybe_summarize_context(run, entity, context_state)
-
-    async def _review_step_output(self, run, entity, step, result, context_state: dict = None) -> dict:
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return await self._step_executor._review_step_output(run, entity, step, result, context_state)
-
-    def _should_exit(self, step: PlanStep, context: dict) -> bool:
-        """Delegate to StepExecutorService (Phase 6 extraction)."""
-        return self._step_executor._should_exit(step, context)

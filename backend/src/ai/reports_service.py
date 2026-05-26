@@ -337,8 +337,8 @@ class ReportsService:
         since = datetime.utcnow() - timedelta(days=days)
 
         q = select(
-            IntegrationRegistry.service_name,
-            IntegrationRegistry.category,
+            IntegrationRegistry.model_name,
+            IntegrationRegistry.service_category,
             func.count(UsageLog.id).label("calls"),
             func.sum(UsageLog.raw_quantity).label("total_qty"),
             func.sum(UsageLog.calculated_cost).label("total_cost"),
@@ -347,7 +347,7 @@ class ReportsService:
             UsageLog.company_id == company_id,
             UsageLog.timestamp >= since,
         ) \
-         .group_by(IntegrationRegistry.service_name, IntegrationRegistry.category) \
+         .group_by(IntegrationRegistry.model_name, IntegrationRegistry.service_category) \
          .order_by(desc("total_cost"))
 
         result = await self.db.execute(q)
@@ -355,8 +355,8 @@ class ReportsService:
 
         channels = [
             {
-                "service": r.service_name,
-                "category": r.category,
+                "service": r.model_name,
+                "category": r.service_category,
                 "calls": r.calls,
                 "total_quantity": float(r.total_qty or 0),
                 "total_cost_usd": round(float(r.total_cost or 0), 6),

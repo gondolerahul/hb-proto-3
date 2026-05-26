@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from src.database import AsyncSessionLocal
+from src.common.database import AsyncSessionLocal
 from src.ai.lead_queue_service import LeadQueueService
 from src.ai.lead_queue_model import LeadQueueEntry
 

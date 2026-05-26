@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from src.ai.tools import ToolRegistry
 from src.ai.tools.base import Tool as _BaseTool, ToolParams as _BaseToolParams
-import re
 import json
 
 # Phase 6: Cache base references for introspection in execute_from_function_calls
@@ -45,44 +44,6 @@ class ToolResult:
 
 class ToolExecutor:
     """Handles parsing and execution of tool calls from LLM responses."""
-
-    @staticmethod
-    async def parse_tool_calls(text: str) -> List[Dict[str, str]]:
-        """
-        Parse tool calls from LLM output (legacy regex-based parsing).
-
-        .. deprecated::
-            This method is deprecated and will be removed in a future major version.
-            All tool dispatch now uses native Gemini function calling via
-            execute_from_function_calls(). This path is retained for backward
-            compatibility only — do not call it in new code.
-
-        Supports multiple formats:
-        1. TOOL:tool_name:input - Simple format
-        2. JSON format: {"tool": "tool_name", "input": "input_data"}
-        """
-        import warnings
-        warnings.warn(
-            "parse_tool_calls() is deprecated. Use execute_from_function_calls() "
-            "with native Gemini function calling instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        tool_calls = []
-
-        # Pattern 1: TOOL:tool_name:input
-        pattern1 = r'TOOL:(\w+):(.+?)(?=TOOL:|$)'
-        matches = re.findall(pattern1, text, re.DOTALL)
-        for tool, inp in matches:
-            tool_calls.append({"tool": tool.strip(), "input": inp.strip()})
-
-        # Pattern 2: JSON format
-        pattern2 = r'\{[^}]*"tool"\s*:\s*"([^"]+)"[^}]*"input"\s*:\s*"([^"]+)"[^}]*\}'
-        json_matches = re.findall(pattern2, text)
-        for tool, inp in json_matches:
-            tool_calls.append({"tool": tool.strip(), "input": inp.strip()})
-
-        return tool_calls
 
     @staticmethod
     async def execute_from_function_calls(
@@ -280,14 +241,6 @@ class ToolExecutor:
                     error=f"Tool '{call['tool']}' not registered",
                 ))
         return results
-
-    @staticmethod
-    def get_gemini_function_declarations(
-        tool_ids: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
-        """Get function declarations for specified tools (Gemini format).
-        Deprecated name — use get_tool_schemas instead."""
-        return ToolExecutor.get_tool_schemas(tool_ids)
 
     @staticmethod
     def get_tool_schemas(

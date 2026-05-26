@@ -291,7 +291,7 @@ class CortexRouter:
             raise ValueError(f"Tree {tree_id} is {tree.status}, cannot resume")
 
         tree.status = CortexTreeStatus.ACTIVE
-        tree.last_active_at = datetime.now(tz=timezone.utc)
+        tree.last_active_at = datetime.utcnow()
 
         cursor_id = tree.resume_cursor_id or tree.root_node_id
         viewport = await self.navigate(cursor_id)
@@ -344,7 +344,7 @@ class CortexRouter:
         # Update resume cursor on the tree
         tree = await self._get_tree(node.tree_id)
         tree.resume_cursor_id = node_id
-        tree.last_active_at = datetime.now(tz=timezone.utc)
+        tree.last_active_at = datetime.utcnow()
 
         # Build current node DTO
         current = self._node_to_dto(node)
@@ -393,7 +393,7 @@ class CortexRouter:
             node.status = CortexNodeStatus.ACTIVE
         tree = await self._get_tree(node.tree_id)
         tree.resume_cursor_id = node_id
-        tree.last_active_at = datetime.now(tz=timezone.utc)
+        tree.last_active_at = datetime.utcnow()
 
         # Page the content
         page_size_chars = tree.page_size_tokens * self.CHARS_PER_TOKEN
@@ -494,7 +494,7 @@ class CortexRouter:
         # Update tree
         tree.total_nodes = (tree.total_nodes or 0) + 1
         tree.resume_cursor_id = new_node.id
-        tree.last_active_at = datetime.now(tz=timezone.utc)
+        tree.last_active_at = datetime.utcnow()
 
         await self.db.flush()
         return new_node.id
@@ -619,7 +619,7 @@ class CortexRouter:
         # Gap #12: Calculate time elapsed and nodes written
         time_elapsed = 0.0
         if tree.created_at:
-            time_elapsed = (datetime.now(tz=timezone.utc) - tree.created_at).total_seconds() / 3600
+            time_elapsed = (datetime.utcnow() - tree.created_at).total_seconds() / 3600
 
         nodes_written = await self._get_recent_node_ids(tree_id, cursor_id)
 
@@ -639,7 +639,7 @@ class CortexRouter:
             summary=progress_summary[:500],
             status="complete",
             metadata_extra={
-                "checkpoint_at": datetime.now(tz=timezone.utc).isoformat(),
+                "checkpoint_at": datetime.utcnow().isoformat(),
                 "key_facts_count": len(key_facts),
                 "nodes_written_count": len(nodes_written),
                 "time_elapsed_hours": round(time_elapsed, 2),
@@ -1068,7 +1068,7 @@ class CortexRouter:
         paragraph generation is no longer an invisible cost.
         """
         try:
-            from src.ai.llm_router import LLMRouter
+            from src.ai.llm.router import LLMRouter
             llm = LLMRouter(db=self.db, company_id=self.company_id)
 
             # Build a summary of each section (first 200 chars)

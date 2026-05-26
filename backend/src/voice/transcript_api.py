@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import List, Dict, Any
 
-from src.database import get_db
+from src.common.database import get_db
 from src.voice.conversation_logger import ConversationLogger
 from src.voice.session_manager import SessionManager
 

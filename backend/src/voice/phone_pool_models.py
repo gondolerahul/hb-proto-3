@@ -73,9 +73,3 @@ class PhoneNumber(Base):
         Index('idx_phone_numbers_provider', 'provider'),
     )
 
-
-# Backward-compatible alias — NumberRouter and other consumers previously
-# imported CustomerPhoneNumber from voice.models.  After the migration they
-# can import PhoneNumber from here (or via the alias kept in voice.models).
-CustomerPhoneNumber = PhoneNumber
-PhoneNumberPool = PhoneNumber

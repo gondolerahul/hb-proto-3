@@ -48,7 +48,7 @@ async def summarize_text(db, company_id, text: str, max_tokens: int = 200) -> st
         Summarized text string
     """
     try:
-        from src.ai.llm_router import LLMRouter
+        from src.ai.llm.router import LLMRouter
         llm = LLMRouter(db=db, company_id=company_id)
         response = await llm.call_llm(
             task_type="text_generation",

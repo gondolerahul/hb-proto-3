@@ -5,7 +5,7 @@ import { GlassCard } from '@/components/ui';
 import {
   ArrowLeft, Phone, PhoneOutgoing, PhoneIncoming, Clock,
   Download, Play, Pause, FileText, Sparkles, CheckCircle2,
-  AlertCircle, Loader2, User, Bot, Calendar, Hash
+  AlertCircle, Loader2, User, Bot, Calendar, Hash, Save
 } from 'lucide-react';
 import './CallDetailPage.css';
 
@@ -23,6 +23,8 @@ interface SessionDetail {
   customer_id: string;
   agent_id: string;
   phone_number: string;
+  from_number?: string | null;
+  to_number?: string | null;
   provider: string;
   call_sid: string;
   stream_sid?: string;
@@ -40,6 +42,7 @@ interface SessionDetail {
   session_metadata?: any;
   recording_url?: string | null;
   recording_file_name?: string | null;
+  next_action?: string | null;
 }
 
 export const CallDetailPage: React.FC = () => {
@@ -50,6 +53,9 @@ export const CallDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [manualNextAction, setManualNextAction] = useState('');
+  const [savingAction, setSavingAction] = useState(false);
+  const [actionSaved, setActionSaved] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -67,6 +73,10 @@ export const CallDetailPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to fetch session');
       const data = await response.json();
       setSession(data);
+      // Initialize manual next action from persisted state
+      if (data.next_action) {
+        setManualNextAction(data.next_action);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -92,7 +102,9 @@ export const CallDetailPage: React.FC = () => {
   const getRecordingUrl = () => {
     if (!session?.recording_url) return null;
     const base = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') || '';
-    return `${base}${session.recording_url}`;
+    const url = `${base}${session.recording_url}`;
+    // Append JWT token for authentication (the download endpoint supports ?token=)
+    return token ? `${url}${url.includes('?') ? '&' : '?'}token=${token}` : url;
   };
 
   const togglePlayback = () => {
@@ -120,6 +132,33 @@ export const CallDetailPage: React.FC = () => {
       }
     }
     return actionLines;
+  };
+
+  const saveNextAction = async () => {
+    if (!sessionId || !token) return;
+    setSavingAction(true);
+    setActionSaved(false);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/streaming/voice-sessions/${sessionId}/next-action`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ next_action: manualNextAction }),
+        }
+      );
+      if (response.ok) {
+        setActionSaved(true);
+        setTimeout(() => setActionSaved(false), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to save next action:', err);
+    } finally {
+      setSavingAction(false);
+    }
   };
 
   if (loading) {
@@ -182,10 +221,19 @@ export const CallDetailPage: React.FC = () => {
       <div className="overview-grid">
         <GlassCard>
           <div className="overview-card">
-            <Phone size={20} className="card-icon" />
+            <PhoneOutgoing size={20} className="card-icon" />
             <div>
-              <span className="card-label">Phone Number</span>
-              <span className="card-value">{session.phone_number}</span>
+              <span className="card-label">From Number</span>
+              <span className="card-value">{session.from_number || session.phone_number || '—'}</span>
+            </div>
+          </div>
+        </GlassCard>
+        <GlassCard>
+          <div className="overview-card">
+            <PhoneIncoming size={20} className="card-icon" />
+            <div>
+              <span className="card-label">To Number</span>
+              <span className="card-value">{session.to_number || '—'}</span>
             </div>
           </div>
         </GlassCard>
@@ -241,22 +289,50 @@ export const CallDetailPage: React.FC = () => {
             </div>
           </GlassCard>
 
-          {/* Next Actions */}
-          {nextActions.length > 0 && (
-            <GlassCard>
-              <div className="section-card">
-                <div className="section-header">
-                  <CheckCircle2 size={20} className="accent-icon green" />
-                  <h2>Next Actions</h2>
-                </div>
+          {/* Next Actions — always visible */}
+          <GlassCard>
+            <div className="section-card">
+              <div className="section-header">
+                <CheckCircle2 size={20} className="accent-icon green" />
+                <h2>Next Actions</h2>
+              </div>
+              {nextActions.length > 0 && (
                 <ul className="actions-list">
                   {nextActions.map((action, i) => (
                     <li key={i}>{action}</li>
                   ))}
                 </ul>
+              )}
+              <div className="next-action-input-group">
+                <textarea
+                  className="next-action-textarea"
+                  placeholder="Add a follow-up action or note..."
+                  value={manualNextAction}
+                  onChange={(e) => setManualNextAction(e.target.value)}
+                  rows={3}
+                />
+                <div className="next-action-footer">
+                  {actionSaved && (
+                    <span className="saved-indicator">
+                      <CheckCircle2 size={14} /> Saved
+                    </span>
+                  )}
+                  <button
+                    className="save-action-btn"
+                    onClick={saveNextAction}
+                    disabled={savingAction}
+                  >
+                    {savingAction ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Save size={14} />
+                    )}
+                    {savingAction ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
               </div>
-            </GlassCard>
-          )}
+            </div>
+          </GlassCard>
 
           {/* Recording */}
           <GlassCard>

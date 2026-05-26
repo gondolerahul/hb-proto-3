@@ -42,13 +42,18 @@ class CreditService:
         self.db = db
 
     async def get_or_create_wallet(self, company_id: UUID) -> CreditWallet:
-        """Return credit wallet for company, creating with config-defined daily credit if not found."""
+        """Return credit wallet for company, creating with config-defined daily credit if not found.
+        
+        Also handles the case where a wallet exists but was never properly
+        initialized (daily_expires_at is None) — triggers a fresh daily
+        credit injection so the wallet doesn't stay stuck at $0.
+        """
         stmt = select(CreditWallet).where(CreditWallet.company_id == company_id)
         result = await self.db.execute(stmt)
         wallet = result.scalar_one_or_none()
 
         if not wallet:
-            tomorrow = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             tomorrow = tomorrow + timedelta(days=1)
             
             billing_svc = BillingService(self.db)
@@ -63,6 +68,10 @@ class CreditService:
             self.db.add(wallet)
             await self.db.commit()
             await self.db.refresh(wallet)
+        elif wallet.daily_expires_at is None:
+            # Wallet exists but daily credits were never initialized.
+            # Trigger a fresh injection so it doesn't stay at $0 forever.
+            wallet = await self.flush_and_inject_daily_credits(company_id)
 
         return wallet
 
@@ -73,10 +82,12 @@ class CreditService:
         is not stuck at 0 between cron runs).
         """
         wallet = await self.get_or_create_wallet(company_id)
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.utcnow()
 
-        # Auto-renew expired daily credits in place (no cron needed)
-        if wallet.daily_expires_at and wallet.daily_expires_at < now:
+        # Auto-renew expired daily credits in place (no cron needed).
+        # Also handles wallets where daily_expires_at was never set (None)
+        # — these need their first injection.
+        if wallet.daily_expires_at is None or wallet.daily_expires_at < now:
             wallet = await self.flush_and_inject_daily_credits(company_id)
 
         daily = Decimal(str(wallet.daily_credits))
@@ -113,12 +124,12 @@ class CreditService:
         Raises InsufficientCreditsError if total available < amount.
         """
         wallet = await self.get_or_create_wallet(company_id)
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.utcnow()
         remaining = amount
         deductions = {"daily": Decimal("0"), "wallet": Decimal("0"), "subscription": Decimal("0")}
 
         # Auto-renew expired daily credits (same as get_balance)
-        if wallet.daily_expires_at and wallet.daily_expires_at < now:
+        if wallet.daily_expires_at is None or wallet.daily_expires_at < now:
             wallet = await self.flush_and_inject_daily_credits(company_id)
         if wallet.wallet_expires_at and wallet.wallet_expires_at < now:
             wallet.wallet_balance = Decimal("0")
@@ -171,7 +182,7 @@ class CreditService:
                 deductions["subscription"] += take
                 remaining -= take
 
-        wallet.updated_at = datetime.now(tz=timezone.utc)
+        wallet.updated_at = datetime.utcnow()
         await self.db.commit()
         return deductions
 
@@ -184,8 +195,8 @@ class CreditService:
         """Credit the wallet balance bucket (PAYG top-up)."""
         wallet = await self.get_or_create_wallet(company_id)
         wallet.wallet_balance = Decimal(str(wallet.wallet_balance)) + amount
-        wallet.wallet_expires_at = datetime.now(tz=timezone.utc) + timedelta(days=validity_days)
-        wallet.updated_at = datetime.now(tz=timezone.utc)
+        wallet.wallet_expires_at = datetime.utcnow() + timedelta(days=validity_days)
+        wallet.updated_at = datetime.utcnow()
         await self.db.commit()
         await self.db.refresh(wallet)
         return wallet
@@ -209,11 +220,11 @@ class CreditService:
         wallet.account_model = "subscription"
 
         # Expire at end of this month
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.utcnow()
         import calendar
         last_day = calendar.monthrange(now.year, now.month)[1]
         wallet.sub_credits_expire_at = datetime(now.year, now.month, last_day, 23, 59, 59)
-        wallet.updated_at = datetime.now(tz=timezone.utc)
+        wallet.updated_at = datetime.utcnow()
 
         await self.db.commit()
         await self.db.refresh(wallet)
@@ -222,19 +233,31 @@ class CreditService:
     async def flush_and_inject_daily_credits(self, company_id: UUID) -> CreditWallet:
         """
         Flush expired daily credits and inject fresh amount from config.
-        Called daily at 00:00:00 by cron job.
+        Called daily at 00:00:00 by cron job, and also triggered when
+        daily_expires_at is None (uninitialised wallet).
+
+        NOTE: Queries wallet directly via SELECT (not get_or_create_wallet)
+        to avoid infinite recursion when daily_expires_at is None.
         """
-        wallet = await self.get_or_create_wallet(company_id)
+        # Direct query — do NOT call get_or_create_wallet here (recursion risk)
+        stmt = select(CreditWallet).where(CreditWallet.company_id == company_id)
+        result = await self.db.execute(stmt)
+        wallet = result.scalar_one_or_none()
+
+        if not wallet:
+            # Should not happen if called from get_or_create_wallet,
+            # but handle defensively
+            return await self.get_or_create_wallet(company_id)
         
         billing_svc = BillingService(self.db)
         config = await billing_svc.get_billing_config(company_id)
         daily_amount = Decimal(str(config.default_daily_credits)) if config and config.default_daily_credits else Decimal("0")
         
         wallet.daily_credits = daily_amount
-        tomorrow = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = tomorrow + timedelta(days=1)
         wallet.daily_expires_at = tomorrow
-        wallet.updated_at = datetime.now(tz=timezone.utc)
+        wallet.updated_at = datetime.utcnow()
         await self.db.commit()
         await self.db.refresh(wallet)
         return wallet
@@ -292,7 +315,7 @@ class CreditService:
         Returns dict with deduction breakdown and a boolean `exhausted` flag.
         """
         wallet = await self.get_or_create_wallet(company_id)
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.utcnow()
         remaining = amount
         deductions = {
             "daily": Decimal("0"),
@@ -301,7 +324,7 @@ class CreditService:
         }
 
         # Auto-renew expired daily credits (same as get_balance)
-        if wallet.daily_expires_at and wallet.daily_expires_at < now:
+        if wallet.daily_expires_at is None or wallet.daily_expires_at < now:
             wallet = await self.flush_and_inject_daily_credits(company_id)
         if wallet.wallet_expires_at and wallet.wallet_expires_at < now:
             wallet.wallet_balance = Decimal("0")
@@ -342,7 +365,7 @@ class CreditService:
                 deductions["subscription"] += take
                 remaining -= take
 
-        wallet.updated_at = datetime.now(tz=timezone.utc)
+        wallet.updated_at = datetime.utcnow()
         await self.db.commit()
 
         exhausted = remaining > 0

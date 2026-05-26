@@ -113,11 +113,16 @@ class EmbeddingService:
                 return integration.model_name
 
             # Priority 3: Google integration with embed in model name
+            # Exclude non-embedding categories to avoid selecting LLM models
+            # whose name happens to contain "embed" (e.g. gemini-embedding-2).
             result = await self.db.execute(
                 select(IntegrationRegistry).where(
                     IntegrationRegistry.company_id == self.company_id,
                     IntegrationRegistry.provider_name.in_(["google", "gemini"]),
                     IntegrationRegistry.model_name.ilike("%embed%"),
+                    IntegrationRegistry.service_category.notin_(
+                        ["LLM", "IMAGE_GENERATION", "VOICE"]
+                    ),
                     IntegrationRegistry.status == "active",
                 )
             )

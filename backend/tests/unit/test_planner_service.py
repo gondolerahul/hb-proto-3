@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from src.ai.planner_service import PlannerService
+from src.ai.planning.planner_service import PlannerService
 
 
 @pytest.fixture
@@ -62,22 +62,34 @@ class TestReconcile:
 
 class TestHasParallelSteps:
 
-    def test_no_deps_returns_false(self, service):
-        """Steps without input_dependencies are sequential by default."""
+    def test_independent_steps_returns_true(self, service):
+        """Independent steps without dependencies can run in parallel."""
         steps = [
             {"step_id": "s1", "name": "a", "target": {}},
             {"step_id": "s2", "name": "b", "target": {}},
         ]
-        # No input_dependencies means the heuristic returns False
-        assert service.has_parallel_steps(steps) is False
+        # Both steps are immediately ready, so genuine parallelism exists
+        assert service.has_parallel_steps(steps) is True
 
-    def test_with_deps_returns_true(self, service):
-        """Should return True when steps have input_dependencies."""
+    def test_sequential_chain_returns_false(self, service):
+        """A purely sequential chain cannot run steps in parallel initially."""
         steps = [
             {"step_id": "s1", "name": "a", "target": {}},
             {"step_id": "s2", "name": "b", "target": {"input_dependencies": ["s1"]}},
         ]
+        # Only s1 is initially ready, so no initial parallelism
+        assert service.has_parallel_steps(steps) is False
+
+    def test_genuine_parallelism_with_deps_returns_true(self, service):
+        """Should return True when multiple independent starting waves exist."""
+        steps = [
+            {"step_id": "s1", "name": "a", "target": {}},
+            {"step_id": "s2", "name": "b", "target": {}},
+            {"step_id": "s3", "name": "c", "target": {"input_dependencies": ["s1"]}},
+        ]
+        # s1 and s2 are both initially ready, so returns True
         assert service.has_parallel_steps(steps) is True
+
 
 
 class TestValidateGoalProgress:

@@ -205,7 +205,7 @@ async def tata_websocket_incoming(websocket: WebSocket):
     After click-to-call-support places a call and the customer answers,
     Tata Tele opens a WebSocket connection here to stream audio.
     """
-    from src.database import get_db
+    from src.common.database import get_db
     from src.voice.websocket_handler import TataStreamHandler
 
     await websocket.accept()
@@ -243,7 +243,7 @@ async def twilio_stream_websocket(websocket: WebSocket, session_id: str):
     webhook returns TwiML with <Connect><Stream url="wss://…/stream/twilio/…"/>.
     """
     from uuid import UUID
-    from src.database import get_db
+    from src.common.database import get_db
     from src.voice.websocket_handler import TwilioStreamHandler
 
     await websocket.accept()
@@ -280,7 +280,7 @@ async def tata_stream_websocket(websocket: WebSocket, session_id: str):
     Uses TwilioStreamHandler since Tata's wire protocol is Twilio-compatible.
     """
     from uuid import UUID
-    from src.database import get_db
+    from src.common.database import get_db
     from src.voice.websocket_handler import TwilioStreamHandler
 
     await websocket.accept()
