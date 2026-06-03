@@ -19,21 +19,21 @@ async def test_default_when_no_db_no_env() -> None:
 
 @pytest.mark.asyncio
 async def test_env_override_truthy(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PHASE11_FLAG_AGENT_LOOP_ENABLED", "true")
+    monkeypatch.setenv("AI_FLAG_AGENT_LOOP_ENABLED", "true")
     f = FeatureFlags(db=None)
     assert await f.is_on("agent_loop.enabled") is True
 
 
 @pytest.mark.asyncio
 async def test_env_override_falsy(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PHASE11_FLAG_MEMORY_V2_CANONICAL", "no")
+    monkeypatch.setenv("AI_FLAG_MEMORY_V2_CANONICAL", "no")
     f = FeatureFlags(db=None)
     assert await f.is_on("memory_v2.canonical") is False
 
 
 @pytest.mark.asyncio
 async def test_entity_override_flat_key_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PHASE11_FLAG_AGENT_LOOP_ENABLED", raising=False)
+    monkeypatch.delenv("AI_FLAG_AGENT_LOOP_ENABLED", raising=False)
     f = FeatureFlags(db=None)
     extras = {"feature_flags": {"agent_loop.enabled": True}}
     assert await f.is_on("agent_loop.enabled", entity_extras=extras) is True
@@ -41,7 +41,7 @@ async def test_entity_override_flat_key_wins(monkeypatch: pytest.MonkeyPatch) ->
 
 @pytest.mark.asyncio
 async def test_entity_override_namespaced_form(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PHASE11_FLAG_AGENT_LOOP_ENABLED", raising=False)
+    monkeypatch.delenv("AI_FLAG_AGENT_LOOP_ENABLED", raising=False)
     f = FeatureFlags(db=None)
     extras = {"feature_flags": {"agent_loop": {"enabled": True}}}
     assert await f.is_on("agent_loop.enabled", entity_extras=extras) is True

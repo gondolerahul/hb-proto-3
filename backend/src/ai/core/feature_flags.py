@@ -6,8 +6,8 @@ Resolution order (first hit wins):
   1. Per-entity override (``entity.metadata_extensions.feature_flags``).
   2. Per-company row in the ``feature_flags`` table.
   3. Global row (``company_id IS NULL``) in the ``feature_flags`` table.
-  4. Environment variable: ``PHASE11_FLAG_<KEY>`` (e.g.
-     ``PHASE11_FLAG_AGENT_LOOP_ENABLED=true``).
+  4. Environment variable: ``AI_FLAG_<KEY>`` (e.g.
+     ``AI_FLAG_AGENT_LOOP_ENABLED=true``).
   5. Hard-coded default from ``DEFAULTS`` below.
 
 Track 13 owns the formal admin-UI + audit-log story. This module is the
@@ -112,7 +112,7 @@ NUMERIC_DEFAULTS: dict[str, float] = {
 
 
 def _env_lookup(key: str) -> Optional[bool]:
-    env_key = "PHASE11_FLAG_" + key.upper().replace(".", "_")
+    env_key = "AI_FLAG_" + key.upper().replace(".", "_")
     raw = os.environ.get(env_key)
     if raw is None:
         return None

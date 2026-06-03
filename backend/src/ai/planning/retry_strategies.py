@@ -6,7 +6,7 @@ The critic returns a verdict + structured FailureTags; this module
 maps those tags into one of seven retry strategies and provides a
 helper to materialise the resulting follow-up move.
 
-Reference: ``docs/phase11/plan/05_track_3_critic_pipeline.md §3.4``.
+Reference: the critic pipeline design notes, §3.4.
 """
 from __future__ import annotations
 

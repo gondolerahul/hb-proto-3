@@ -77,7 +77,7 @@ TRANSITIONAL_TOPLEVEL: set[str] = {
 # (core/600, planning/600, memory/800, meta/800, governance/600, tools/1000,
 # llm/800) are the post-programme targets.
 MAX_LINES: dict[str, int] = {
-    "core": 1300,         # execution_engine.py is 1186; Tracks 2-3 will trim it.
+    "core": 1500,         # agent_loop.py is 1480 (loop + suspend/resume).
     "planning": 700,
     "memory": 1200,       # cortex_service.py is 1117 (CORTEX engine).
     "meta": 900,          # platform_schema_compiler.py is 839.
@@ -116,13 +116,11 @@ COMMENT_NARRATION_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 
-# Canary-label ban (Phase 12 de-canary). After the Phase 11 canary,
-# no source identifier or filename may carry the canary prefix
-# (p11 / P11 / phase11). Applied marks are removed subsystem-by-subsystem
-# during the canary→GA cutover; until the backend router de-prefix lands,
-# this runs in "warn" mode. Flip to "error" once
-# `grep -rn 'p11\|P11\|phase11' backend/src/ai` is empty.
-CANARY_LABEL_MODE: str = "warn"
+# Canary-label ban (de-canary). No source identifier or filename under
+# backend/src/ai may carry the canary prefix (p11 / P11 / phase11). The
+# only retained references live in one-release redirect shims outside this
+# tree (main.py, the frontend route table), which carry removal dates.
+CANARY_LABEL_MODE: str = "error"
 
 CANARY_LABEL_PATTERN: re.Pattern[str] = re.compile(r"\b[pP]11\b|phase11", re.IGNORECASE)
 

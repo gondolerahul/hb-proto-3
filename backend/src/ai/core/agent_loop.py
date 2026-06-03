@@ -7,8 +7,7 @@ This file is the new entry point for entities whose
 is OFF and continues to be reachable indefinitely (Track 9 deletes
 it).
 
-Per-iteration sequence (mirrors
-``docs/phase11/plan/01_overview_and_principles.md §2``):
+Per-iteration sequence (mirrors the agent kernel overview, §2):
 
     perceive → strategize → pre-critic → act → observe →
     post-critic → alignment → supervisor → reflect → decide

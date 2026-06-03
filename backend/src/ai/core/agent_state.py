@@ -3,8 +3,7 @@ ai.core.agent_state — Typed envelope for the AgentLoop (Phase 11 Track 2).
 
 The state types here are the *vocabulary* of the new loop. Tracks 3-9
 extend them but cannot rename or replace them. Their canonical
-signatures are pinned in
-``docs/phase11/plan/01_overview_and_principles.md §4``.
+signatures are pinned in the agent kernel overview, §4.
 
 The legacy ``context_state: dict`` survives only for prompt-variable
 substitution and is bridged via ``materialise_context_dict`` /

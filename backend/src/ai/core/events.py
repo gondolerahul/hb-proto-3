@@ -20,7 +20,7 @@ Public surface:
     emit(event, severity=, ...)    — explicit form returning a TelemetryEvent
 
 Naming convention:
-    ``agent.<layer>.<verb>[_<qualifier>]`` — see docs/phase11/EVENTS.md.
+    ``agent.<layer>.<verb>[_<qualifier>]`` — see the agent kernel EVENTS reference.
 
 Structured kwargs accepted by every emit:
     company_id, user_id, run_id, entity_id, iteration, severity.

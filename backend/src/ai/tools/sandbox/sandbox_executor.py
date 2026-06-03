@@ -237,7 +237,7 @@ class SandboxCodeTool(Tool):
                 # register exactly ONE final output explicitly via the
                 # ``document_save`` tool. Auto-registering scratch files is what
                 # produced ~15 artifacts (incl. throwaway test.xlsx) for a single
-                # request — see docs/phase11/DOC_FACTORY_REDESIGN.md §4.5.
+                # request — see the document-factory redesign notes §4.5.
                 rel_root = os.path.relpath(root, sandbox_dir)
                 if any(skip in rel_root
                        for skip in ("venv", "__pycache__", "node_modules", "scripts", ".git", "scratch")):
