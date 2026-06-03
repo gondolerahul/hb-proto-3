@@ -34,13 +34,20 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULTS: dict[str, bool] = {
-    "agent_loop.enabled": False,
+    # Master switch defaults ON in this pre-production/development build; the
+    # 30-day canary-telemetry gate is intentionally skipped (nothing ships to
+    # prod). The AgentLoop is the default execution path; the legacy
+    # ExecutionEngine path is reachable only by setting this flag OFF via a
+    # per-company / global / env override.
+    "agent_loop.enabled": True,
     "agent_loop.perception_bounded_viewport": True,
     "agent_loop.snapshot_every_iteration": True,
     "agent_loop.executor_dialog_enabled": False,
     "agent_loop.executor_skill_enabled": False,
     "agent_loop.executor_tool_burst_enabled": False,
-    "meta_agent.board_routing": False,
+    # Meta-Agent board is the default routing path (see the canonical entry
+    # below; this alias kept ON for consistency).
+    "meta_agent.board_routing": True,
     # Critic pipeline v2 defaults.
     "critic_pipeline.v2_enabled": True,
     "critic_pipeline.different_model_critic": True,
@@ -54,11 +61,11 @@ DEFAULTS: dict[str, bool] = {
     "meta_review.fast_path_enabled": True,
     "bandit.enabled": True,
     "task_classifier.v2_enabled": False,
-    # Meta-Agent v4 Board defaults.
-    # `board_routing` starts OFF; flipped to ON per company once the
-    # canary completes (see Track 5 §11). The downstream gates default
-    # ON so that flipping the master switch wires everything up cleanly.
-    "meta_agent.board_routing": False,
+    # Meta-Agent Board defaults.
+    # `board_routing` defaults ON in this pre-production/development build
+    # (30-day canary gate skipped); the board is the default Meta-Agent path.
+    # Downstream gates already default ON so the master flip wires up cleanly.
+    "meta_agent.board_routing": True,
     "meta_agent.spec_critic_required": True,
     "meta_agent.draft_lifecycle": True,
     "meta_agent.testdriver_suite_enabled": True,

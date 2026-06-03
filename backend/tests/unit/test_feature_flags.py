@@ -12,8 +12,9 @@ from src.ai.core.feature_flags import DEFAULTS, FeatureFlags
 @pytest.mark.asyncio
 async def test_default_when_no_db_no_env() -> None:
     f = FeatureFlags(db=None)
-    assert await f.is_on("agent_loop.enabled") is False
-    assert DEFAULTS["agent_loop.enabled"] is False
+    # Phase 12 Stage 0: agent_loop.enabled now defaults ON.
+    assert await f.is_on("agent_loop.enabled") is True
+    assert DEFAULTS["agent_loop.enabled"] is True
 
 
 @pytest.mark.asyncio
@@ -51,7 +52,7 @@ async def test_resolve_returns_source() -> None:
     f = FeatureFlags(db=None)
     res = await f.resolve("agent_loop.enabled")
     assert res.source == "default"
-    assert res.value is False
+    assert res.value is DEFAULTS["agent_loop.enabled"]
 
 
 @pytest.mark.asyncio
@@ -62,8 +63,11 @@ async def test_db_lookup_safe_degraded_when_table_missing() -> None:
         async def execute(self, *args, **kwargs):
             raise RuntimeError("relation feature_flags does not exist")
     f = FeatureFlags(db=_RaisingDB())
-    # Should not raise.
-    assert await f.is_on("agent_loop.enabled", company_id=uuid4()) is False
+    # Should not raise; falls through to the hard default.
+    assert (
+        await f.is_on("agent_loop.enabled", company_id=uuid4())
+        is DEFAULTS["agent_loop.enabled"]
+    )
 
 
 @pytest.mark.asyncio
