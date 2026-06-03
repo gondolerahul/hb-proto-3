@@ -201,6 +201,13 @@ class AgentState:
     plan_steps: list[dict[str, Any]] = field(default_factory=list)
     completed_step_ids: set[str] = field(default_factory=set)
 
+    # Per-step result summary, mirroring the legacy engine's
+    # ``result_data["steps"]``. Each entry is ``{"step", "step_id", "type",
+    # "output"[, "child_run_id"]}``. Snapshotted so it survives suspend/resume
+    # (a PROCESS folds child results across resumes). The refine flow
+    # (``service.py``) reads this back to reuse unchanged steps' outputs.
+    step_results: list[dict[str, Any]] = field(default_factory=list)
+
     # Async child dispatch: child runs spawned this run that the loop is waiting
     # on. Each entry is ``{"run_id": str, "step_id": str, "status": str}``.
     # Snapshotted, so a resumed parent knows which children to fold. ``status``
@@ -400,6 +407,7 @@ class AgentState:
             "chosen_executor": self.chosen_executor,
             "plan_steps": list(self.plan_steps),
             "completed_step_ids": sorted(self.completed_step_ids),
+            "step_results": list(self.step_results),
             "awaiting_children": list(self.awaiting_children),
             "context_state": dict(self.context_state),
             "done": self.done,
@@ -435,6 +443,7 @@ class AgentState:
             chosen_executor=snapshot.get("chosen_executor"),
             plan_steps=list(snapshot.get("plan_steps", [])),
             completed_step_ids=set(snapshot.get("completed_step_ids", [])),
+            step_results=list(snapshot.get("step_results", [])),
             awaiting_children=list(snapshot.get("awaiting_children", [])),
             context_state=dict(snapshot.get("context_state", {})),
             done=bool(snapshot.get("done", False)),

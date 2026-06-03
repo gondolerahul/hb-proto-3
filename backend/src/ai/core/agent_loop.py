@@ -43,6 +43,7 @@ from src.ai.core.observer import Observer
 from src.ai.core.perceiver import Perceiver
 from src.ai.core.reflector import Reflector
 from src.ai.core.strategist import Strategist
+from src.ai.core.step_results import record_step_result, record_child_step_result
 from src.ai.core.trace import current_recorder, span
 from src.ai.orm.execution import ExecutionRun
 from src.ai.planning.critic_pipeline import (
@@ -344,6 +345,9 @@ class AgentLoop:
             if step_id:
                 state.mark_step_complete(step_id)
                 state.context_state[step_id] = output
+                record_child_step_result(
+                    state, step_id, output, child.get("run_id"),
+                )
             # Fold child cost into the parent budget (child billed its own row).
             try:
                 state.budget.consume(usd=Decimal(str(child_run.total_cost_usd or 0)),
@@ -567,6 +571,7 @@ class AgentLoop:
         )
         for sid in action_result.completed_step_ids:
             state.mark_step_complete(sid)
+            record_step_result(state, move, sid, action_result)
 
         # 5. Observe
         observation = self.observer.parse(action_result, state)
@@ -1098,8 +1103,16 @@ class AgentLoop:
             )
             if error:
                 fresh.error_message = error[:1000]
-            if output and not fresh.result_data:
-                fresh.result_data = {"output": output[:8000]}
+            # Mirror the legacy engine's result_data shape
+            # ({"output", "steps":[...]}) so downstream consumers (the refine
+            # flow in service.py reads result_data["steps"]) don't regress when
+            # the loop becomes the sole engine. Don't clobber a nested engine's
+            # result_data (e.g. a recursive child run set its own).
+            if not fresh.result_data and (output or state.step_results):
+                result_data: dict[str, Any] = {"output": (output or "")[:8000]}
+                if state.step_results:
+                    result_data["steps"] = list(state.step_results)
+                fresh.result_data = result_data
             await self.db.commit()
         except Exception:
             await self.db.rollback()
