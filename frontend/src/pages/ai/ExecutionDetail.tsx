@@ -10,7 +10,7 @@ import {
 import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus, EntityType, LLMInteractionLog, ToolInteractionLog } from '@/types';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
-import { P11AgentLoopExecutionDetail } from '@/components/agent/P11AgentLoopExecutionDetail';
+import { AgentLoopExecutionDetail } from '@/components/agent/AgentLoopExecutionDetail';
 import './ExecutionDetail.css';
 
 const _API_BASE = (import.meta.env.VITE_API_BASE_URL as string)
@@ -787,7 +787,7 @@ export const ExecutionDetail: React.FC = () => {
                         </div>
                     </div>
                 </header>
-                <P11AgentLoopExecutionDetail runId={run.id} streamUrl={streamUrl} />
+                <AgentLoopExecutionDetail runId={run.id} streamUrl={streamUrl} />
             </div>
         );
     }

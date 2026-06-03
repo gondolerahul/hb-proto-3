@@ -1,7 +1,7 @@
 /**
  * services/agent.service.ts — Phase 11 agent-level admin endpoints.
  *
- * Thin typed wrappers around /api/v1/ai/phase11/* routes.
+ * Thin typed wrappers around /api/v1/ai/admin/* routes.
  */
 import { apiClient } from './api.client';
 import type {
@@ -11,7 +11,7 @@ import type {
     HealthRecordRow,
     PlanCandidatesResponse,
     TraceSpan,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
 export const agentService = {
     async getAgentState(runId: string): Promise<AgentStateSnapshot | null> {
@@ -26,7 +26,7 @@ export const agentService = {
 
     async getHealthRecords(runId: string): Promise<HealthRecordRow[]> {
         const { data } = await apiClient.get(
-            `/ai/phase11/executions/${runId}/health_records`,
+            `/ai/admin/executions/${runId}/health_records`,
         );
         return Array.isArray(data) ? data : [];
     },
@@ -34,7 +34,7 @@ export const agentService = {
     /**
      * Full execution trace (steps → child invocations → tool calls → LLM
      * calls). Backfills the per-iteration span tree for finished runs; merged
-     * with the live SSE span stream in P11AgentLoopExecutionDetail.
+     * with the live SSE span stream in AgentLoopExecutionDetail.
      */
     async getTrace(runId: string): Promise<TraceSpan[]> {
         const { data } = await apiClient.get(
@@ -45,14 +45,14 @@ export const agentService = {
 
     async getPlanCandidates(runId: string): Promise<PlanCandidatesResponse> {
         const { data } = await apiClient.get(
-            `/ai/phase11/executions/${runId}/plan_candidates`,
+            `/ai/admin/executions/${runId}/plan_candidates`,
         );
         return data ?? { chosen: null, alternates: [], judge_reasoning: '' };
     },
 
     async getRunCostAttribution(runId: string): Promise<CostAttributionRow[]> {
         const { data } = await apiClient.get(
-            `/ai/phase11/executions/${runId}/cost_attribution`,
+            `/ai/admin/executions/${runId}/cost_attribution`,
         );
         return Array.isArray(data) ? data : [];
     },
@@ -62,7 +62,7 @@ export const agentService = {
         taskClass = 'general',
     ): Promise<BanditTable> {
         const { data } = await apiClient.get(
-            `/ai/phase11/entities/${entityId}/bandit_state`,
+            `/ai/admin/entities/${entityId}/bandit_state`,
             { params: { task_class: taskClass } },
         );
         return data ?? { entity_id: entityId, task_class: taskClass, arms: {} };

@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { featureFlagsService } from '@/services/feature_flags.service';
-import type { FeatureFlagRow, FeatureFlagsResponse } from '@/types/phase11';
+import type { FeatureFlagRow, FeatureFlagsResponse } from '@/types/agentKernel';
 import { UserRole } from '@/types';
 
 import './FeatureFlagsPage.css';

@@ -14,7 +14,7 @@ import {
     type ExecutionEventState,
     executionEventReducer,
 } from './useExecutionEvents';
-import type { AgentEvent } from '@/types/phase11';
+import type { AgentEvent } from '@/types/agentKernel';
 
 const _INITIAL: ExecutionEventState = {
     iterations: {},

@@ -1,5 +1,5 @@
 /**
- * types/phase11.ts — Typed Phase 11 contracts.
+ * types/agentKernel.ts — Typed agent kernel contracts.
  *
  * Mirrors the backend dataclasses in
  *   - backend/src/ai/core/agent_state.py
@@ -442,7 +442,7 @@ export interface TraceResponse {
     spans: TraceSpan[];
 }
 
-/** A span with its resolved children — the shape P11SpanTree renders. */
+/** A span with its resolved children — the shape SpanTree renders. */
 export interface SpanNode extends TraceSpan {
     children: SpanNode[];
 }

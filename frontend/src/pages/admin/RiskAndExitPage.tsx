@@ -16,7 +16,7 @@ import { kpiService } from '@/services/kpi.service';
 import type {
     DecisionRow, ExitChecklistResponse, RiskIndicator,
     RiskIndicatorsResponse, RiskStatus,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
 import './RiskAndExitPage.css';
 

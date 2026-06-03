@@ -2,7 +2,7 @@
  * components/agent/cortex-helpers — utility extractors for legacy
  * CORTEX UI to opt-in to Phase 11 widgets (Provenance ribbon, etc.).
  */
-import type { ProvenanceBlock } from '@/types/phase11';
+import type { ProvenanceBlock } from '@/types/agentKernel';
 
 /**
  * Pull a typed Provenance block out of a CORTEX node's source_ref.

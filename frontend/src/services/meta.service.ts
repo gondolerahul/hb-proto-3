@@ -6,11 +6,11 @@ import type {
     AntiPatternRow,
     PromptCandidate,
     SkillCandidate,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
 export const metaService = {
     async listSkillCandidates(limit = 25): Promise<SkillCandidate[]> {
-        const { data } = await apiClient.get('/ai/phase11/meta/skill_candidates', {
+        const { data } = await apiClient.get('/ai/admin/meta/skill_candidates', {
             params: { limit },
         });
         return Array.isArray(data) ? data : [];
@@ -20,7 +20,7 @@ export const metaService = {
         opts: { entityType?: string; tags?: string[]; topK?: number } = {},
     ): Promise<AntiPatternRow[]> {
         const { data } = await apiClient.get(
-            '/ai/phase11/meta/intelligence/anti_patterns',
+            '/ai/admin/meta/intelligence/anti_patterns',
             {
                 params: {
                     entity_type: opts.entityType,
@@ -34,7 +34,7 @@ export const metaService = {
 
     async listPromptCandidates(opts: { onlyPending?: boolean; limit?: number } = {}): Promise<PromptCandidate[]> {
         const { data } = await apiClient.get(
-            '/ai/phase11/meta/intelligence/prompt_candidates',
+            '/ai/admin/meta/intelligence/prompt_candidates',
             {
                 params: {
                     only_pending: opts.onlyPending ?? true,
@@ -47,7 +47,7 @@ export const metaService = {
 
     async approvePromptCandidate(nodeId: string): Promise<{ approved: boolean }> {
         const { data } = await apiClient.post(
-            `/ai/phase11/meta/intelligence/prompt_candidates/${nodeId}/approve`,
+            `/ai/admin/meta/intelligence/prompt_candidates/${nodeId}/approve`,
         );
         return data ?? { approved: false };
     },
@@ -57,7 +57,7 @@ export const metaService = {
         enabled: boolean,
     ): Promise<{ flag_key: string; enabled: boolean }> {
         const { data } = await apiClient.post(
-            `/ai/phase11/admin/tools/${toolId}/experimental`,
+            `/ai/admin/admin/tools/${toolId}/experimental`,
             null,
             { params: { enabled } },
         );
@@ -75,7 +75,7 @@ export const metaService = {
         status: string;
     }> {
         const { data } = await apiClient.post(
-            `/ai/phase11/meta/skill_candidates/${nodeId}/promote`,
+            `/ai/admin/meta/skill_candidates/${nodeId}/promote`,
             null,
             opts.name ? { params: { name: opts.name } } : undefined,
         );
@@ -86,7 +86,7 @@ export const metaService = {
         entityId: string,
     ): Promise<{ promoted: boolean; entity_id: string; status: string }> {
         const { data } = await apiClient.post(
-            `/ai/phase11/meta/entities/${entityId}/promote`,
+            `/ai/admin/meta/entities/${entityId}/promote`,
         );
         return data;
     },
@@ -104,7 +104,7 @@ export const metaService = {
         raw?: string;
     }> {
         const { data } = await apiClient.post(
-            `/ai/phase11/meta/spec_critic`,
+            `/ai/admin/meta/spec_critic`,
             payload,
         );
         return data;

@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { kpiService } from '@/services/kpi.service';
-import type { CostAttributionRow } from '@/types/phase11';
+import type { CostAttributionRow } from '@/types/agentKernel';
 
 import './CostAttributionDashboard.css';
 

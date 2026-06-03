@@ -39,7 +39,7 @@ const TenantUserReports = lazy(() => import('@/pages/reports/TenantUserReports')
 const WalletPage = lazy(() => import('@/pages/billing/WalletPage').then(m => ({ default: m.WalletPage })));
 const BillingSettings = lazy(() => import('@/pages/billing/BillingSettings').then(m => ({ default: m.BillingSettings })));
 // Phase 11 admin / KPI pages.
-const Phase11KPI = lazy(() => import('@/pages/dashboards/Phase11KPI'));
+const KPIDashboard = lazy(() => import('@/pages/dashboards/KPIDashboard'));
 const MetaIntelligencePage = lazy(() => import('@/pages/admin/MetaIntelligencePage'));
 const CostAttributionDashboard = lazy(() => import('@/pages/admin/CostAttributionDashboard'));
 const FeatureFlagsPage = lazy(() => import('@/pages/admin/FeatureFlagsPage'));
@@ -524,18 +524,18 @@ export const AppRouter: React.FC = () => {
                         }
                     />
 
-                    {/* Phase 11 admin / KPI routes — admin-gated to match
+                    {/* Agent kernel admin / KPI routes — admin-gated to match
                         the backend `_require_admin` check on every endpoint. */}
                     <Route
-                        path="/admin/phase11/kpi"
+                        path="/admin/agent-kernel/kpi"
                         element={
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
-                                <MainLayout><Phase11KPI /></MainLayout>
+                                <MainLayout><KPIDashboard /></MainLayout>
                             </ProtectedRoute>
                         }
                     />
                     <Route
-                        path="/admin/phase11/meta-intelligence"
+                        path="/admin/agent-kernel/meta-intelligence"
                         element={
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
                                 <MainLayout><MetaIntelligencePage /></MainLayout>
@@ -543,7 +543,7 @@ export const AppRouter: React.FC = () => {
                         }
                     />
                     <Route
-                        path="/admin/phase11/cost"
+                        path="/admin/agent-kernel/cost"
                         element={
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
                                 <MainLayout><CostAttributionDashboard /></MainLayout>
@@ -551,7 +551,7 @@ export const AppRouter: React.FC = () => {
                         }
                     />
                     <Route
-                        path="/admin/phase11/feature-flags"
+                        path="/admin/agent-kernel/feature-flags"
                         element={
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
                                 <MainLayout><FeatureFlagsPage /></MainLayout>
@@ -559,13 +559,21 @@ export const AppRouter: React.FC = () => {
                         }
                     />
                     <Route
-                        path="/admin/phase11/risks"
+                        path="/admin/agent-kernel/risks"
                         element={
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
                                 <MainLayout><RiskAndExitPage /></MainLayout>
                             </ProtectedRoute>
                         }
                     />
+
+                    {/* De-prefix compat: old /admin/phase11/* bookmarks
+                        redirect to /admin/agent-kernel/*. Remove after 2026-09-01. */}
+                    <Route path="/admin/phase11/kpi" element={<Navigate to="/admin/agent-kernel/kpi" replace />} />
+                    <Route path="/admin/phase11/meta-intelligence" element={<Navigate to="/admin/agent-kernel/meta-intelligence" replace />} />
+                    <Route path="/admin/phase11/cost" element={<Navigate to="/admin/agent-kernel/cost" replace />} />
+                    <Route path="/admin/phase11/feature-flags" element={<Navigate to="/admin/agent-kernel/feature-flags" replace />} />
+                    <Route path="/admin/phase11/risks" element={<Navigate to="/admin/agent-kernel/risks" replace />} />
 
                     {/* Legacy Management Redirects */}
                     <Route path="/partners" element={<Navigate to="/platform-management" replace />} />

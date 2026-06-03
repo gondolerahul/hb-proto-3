@@ -134,11 +134,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             title: 'Agent Kernel',
             icon: BrainCircuit,
             items: [
-                { path: '/admin/phase11/kpi', label: 'KPI Dashboard', icon: Gauge },
-                { path: '/admin/phase11/meta-intelligence', label: 'Meta-Agent Intelligence', icon: Sparkles },
-                { path: '/admin/phase11/cost', label: 'Cost Attribution', icon: Receipt },
-                { path: '/admin/phase11/feature-flags', label: 'Feature Flags', icon: Flag },
-                { path: '/admin/phase11/risks', label: 'Risk & Exit', icon: ShieldAlert },
+                { path: '/admin/agent-kernel/kpi', label: 'KPI Dashboard', icon: Gauge },
+                { path: '/admin/agent-kernel/meta-intelligence', label: 'Meta-Agent Intelligence', icon: Sparkles },
+                { path: '/admin/agent-kernel/cost', label: 'Cost Attribution', icon: Receipt },
+                { path: '/admin/agent-kernel/feature-flags', label: 'Feature Flags', icon: Flag },
+                { path: '/admin/agent-kernel/risks', label: 'Risk & Exit', icon: ShieldAlert },
             ]
         }] : [])
     ];

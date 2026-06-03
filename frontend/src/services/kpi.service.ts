@@ -10,7 +10,7 @@ import type {
     RiskIndicatorsResponse,
     ExitChecklistResponse,
     DecisionRow,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
 export interface KPISince {
     since?: string;          // e.g. "7d", "30d", "24h"
@@ -26,28 +26,28 @@ function _params({ since, companyId }: KPISince = {}): Record<string, string> {
 
 export const kpiService = {
     async getRunHealth(opts: KPISince = {}): Promise<KPIRunRow[]> {
-        const { data } = await apiClient.get('/ai/phase11/admin/kpi/runs', {
+        const { data } = await apiClient.get('/ai/admin/admin/kpi/runs', {
             params: _params(opts),
         });
         return Array.isArray(data) ? data : [];
     },
 
     async getCostBreakdown(opts: KPISince = {}): Promise<CostAttributionRow[]> {
-        const { data } = await apiClient.get('/ai/phase11/admin/kpi/cost', {
+        const { data } = await apiClient.get('/ai/admin/admin/kpi/cost', {
             params: _params(opts),
         });
         return Array.isArray(data) ? data : [];
     },
 
     async getCriticHealth(opts: KPISince = {}): Promise<KPICriticResponse> {
-        const { data } = await apiClient.get('/ai/phase11/admin/kpi/critic', {
+        const { data } = await apiClient.get('/ai/admin/admin/kpi/critic', {
             params: _params(opts),
         });
         return data ?? { verdict_distribution: [], cost_share: 0 };
     },
 
     async getMetaAgentHealth(opts: KPISince = {}): Promise<KPIMetaAgentResponse> {
-        const { data } = await apiClient.get('/ai/phase11/admin/kpi/meta_agent', {
+        const { data } = await apiClient.get('/ai/admin/admin/kpi/meta_agent', {
             params: _params(opts),
         });
         return data ?? { intelligence_growth: [] };
@@ -57,7 +57,7 @@ export const kpiService = {
         companyId: string, since = '7d',
     ): Promise<CostAttributionRow[]> {
         const { data } = await apiClient.get(
-            `/ai/phase11/companies/${companyId}/cost_attribution`,
+            `/ai/admin/companies/${companyId}/cost_attribution`,
             { params: { since } },
         );
         return Array.isArray(data) ? data : [];
@@ -65,19 +65,19 @@ export const kpiService = {
 
     // Track 15 — risk register / exit checklist / decision log.
     async getRiskIndicators(opts: KPISince = {}): Promise<RiskIndicatorsResponse> {
-        const { data } = await apiClient.get('/ai/phase11/admin/risks', {
+        const { data } = await apiClient.get('/ai/admin/admin/risks', {
             params: _params(opts),
         });
         return data ?? { as_of: '', overall: 'ok', indicators: [], since: '7d' };
     },
 
     async getExitChecklist(): Promise<ExitChecklistResponse> {
-        const { data } = await apiClient.get('/ai/phase11/admin/exit_checklist');
+        const { data } = await apiClient.get('/ai/admin/admin/exit_checklist');
         return data ?? { as_of: '', total: 0, satisfied: 0, percent_complete: 0, items: [] };
     },
 
     async listDecisions(limit = 50): Promise<DecisionRow[]> {
-        const { data } = await apiClient.get('/ai/phase11/admin/decisions', {
+        const { data } = await apiClient.get('/ai/admin/admin/decisions', {
             params: { limit },
         });
         return Array.isArray(data) ? data : [];
@@ -86,7 +86,7 @@ export const kpiService = {
     async appendDecision(body: {
         summary: string; rationale?: string; kind?: string;
     }): Promise<{ appended: boolean; date: string; summary: string }> {
-        const { data } = await apiClient.post('/ai/phase11/admin/decisions', body);
+        const { data } = await apiClient.post('/ai/admin/admin/decisions', body);
         return data;
     },
 };

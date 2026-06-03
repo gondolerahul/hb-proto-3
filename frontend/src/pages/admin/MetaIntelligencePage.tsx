@@ -13,7 +13,7 @@ import type {
     AntiPatternRow,
     PromptCandidate,
     SkillCandidate,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
 import './MetaIntelligencePage.css';
 

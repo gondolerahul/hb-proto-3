@@ -1,5 +1,5 @@
 /**
- * components/agent/P11AgentLoopExecutionDetail — Phase 11 ExecutionDetail layout.
+ * components/agent/AgentLoopExecutionDetail — Phase 11 ExecutionDetail layout.
  *
  * Composes the typed AgentState (via REST one-shot) + the live SSE event
  * stream (via `useExecutionEvents`) + the per-iteration timeline cards.
@@ -17,12 +17,12 @@ import type {
     HealthRecordRow,
     SpanNode,
     TraceSpan,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
-import { P11AgentStatePanel } from './P11AgentStatePanel';
-import { P11IterationCard } from './P11IterationCard';
+import { AgentStatePanel } from './AgentStatePanel';
+import { IterationCard } from './IterationCard';
 
-import './P11AgentLoopExecutionDetail.css';
+import './AgentLoopExecutionDetail.css';
 
 interface Props {
     runId: string;
@@ -30,7 +30,7 @@ interface Props {
     headerBlock?: React.ReactNode;
 }
 
-export const P11AgentLoopExecutionDetail: React.FC<Props> = ({
+export const AgentLoopExecutionDetail: React.FC<Props> = ({
     runId,
     streamUrl,
     headerBlock,
@@ -156,16 +156,16 @@ export const P11AgentLoopExecutionDetail: React.FC<Props> = ({
     }, [events.iterationOrder, mergedIterations, spansByIteration]);
 
     return (
-        <div className="p11-agentloop-detail">
-            <div className="p11-agentloop-detail__main">
+        <div className="agentk-agentloop-detail">
+            <div className="agentk-agentloop-detail__main">
                 {headerBlock}
 
-                <h2 className="p11-agentloop-detail__title">
+                <h2 className="agentk-agentloop-detail__title">
                     Iteration timeline
                 </h2>
 
                 {events.replans.length > 0 && (
-                    <div className="p11-agentloop-detail__replan-banner">
+                    <div className="agentk-agentloop-detail__replan-banner">
                         <strong>{events.replans.length}</strong> replan
                         {events.replans.length > 1 ? 's' : ''} triggered during this
                         run.
@@ -173,13 +173,13 @@ export const P11AgentLoopExecutionDetail: React.FC<Props> = ({
                 )}
 
                 {orderedIters.length === 0 ? (
-                    <p className="p11-agentloop-detail__empty">
+                    <p className="agentk-agentloop-detail__empty">
                         No iterations yet. Waiting for the worker…
                     </p>
                 ) : (
-                    <div className="p11-agentloop-detail__timeline">
+                    <div className="agentk-agentloop-detail__timeline">
                         {orderedIters.map((iter) => (
-                            <P11IterationCard
+                            <IterationCard
                                 key={iter}
                                 slice={
                                     mergedIterations[iter] ?? { iteration: iter }
@@ -191,8 +191,8 @@ export const P11AgentLoopExecutionDetail: React.FC<Props> = ({
                 )}
             </div>
 
-            <div className="p11-agentloop-detail__rail">
-                <P11AgentStatePanel state={snapshot} loading={loading} />
+            <div className="agentk-agentloop-detail__rail">
+                <AgentStatePanel state={snapshot} loading={loading} />
             </div>
         </div>
     );

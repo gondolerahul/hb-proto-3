@@ -17,7 +17,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import { featureFlagsService } from '@/services/feature_flags.service';
-import type { FeatureFlagsResponse } from '@/types/phase11';
+import type { FeatureFlagsResponse } from '@/types/agentKernel';
 
 interface FeatureFlagsContextValue {
     loaded: boolean;

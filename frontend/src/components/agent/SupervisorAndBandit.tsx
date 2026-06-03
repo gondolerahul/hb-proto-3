@@ -1,10 +1,10 @@
 /**
- * components/agent/P11SupervisorAndBandit — Track 4 widgets.
+ * components/agent/SupervisorAndBandit — Track 4 widgets.
  *
- *   - P11SupervisorVerdictCard — recommendation + confidence + reasoning
+ *   - SupervisorVerdictCard — recommendation + confidence + reasoning
  *                                 + proposed subgoals (REPLAN only).
- *   - P11BanditArmsPanel       — per-(entity, task_class) arm table.
- *   - P11CriticCostShareGauge  — small ring showing critic-cost share.
+ *   - BanditArmsPanel       — per-(entity, task_class) arm table.
+ *   - CriticCostShareGauge  — small ring showing critic-cost share.
  */
 import React, { useEffect, useState } from 'react';
 
@@ -14,9 +14,9 @@ import type {
     BanditTable,
     Subgoal,
     SupervisorRecommendation,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
-import './P11SupervisorAndBandit.css';
+import './SupervisorAndBandit.css';
 
 // ---------------------------------------------------------------------------
 // Supervisor verdict card
@@ -36,7 +36,7 @@ interface SupervisorCardProps {
     proposedSubgoals?: Subgoal[];
 }
 
-export const P11SupervisorVerdictCard: React.FC<SupervisorCardProps> = ({
+export const SupervisorVerdictCard: React.FC<SupervisorCardProps> = ({
     recommendation,
     confidence,
     reasoning,
@@ -44,25 +44,25 @@ export const P11SupervisorVerdictCard: React.FC<SupervisorCardProps> = ({
 }) => {
     const color = _REC_COLORS[recommendation] ?? '#888';
     return (
-        <div className="p11-super-card" style={{ borderLeftColor: color }}>
-            <div className="p11-super-card__header">
-                <span className="p11-super-card__rec" style={{ color }}>
+        <div className="agentk-super-card" style={{ borderLeftColor: color }}>
+            <div className="agentk-super-card__header">
+                <span className="agentk-super-card__rec" style={{ color }}>
                     Supervisor: <strong>{recommendation}</strong>
                 </span>
-                <span className="p11-super-card__conf">
+                <span className="agentk-super-card__conf">
                     confidence {(confidence * 100).toFixed(0)}%
                 </span>
             </div>
-            {reasoning && <p className="p11-super-card__reasoning">{reasoning}</p>}
+            {reasoning && <p className="agentk-super-card__reasoning">{reasoning}</p>}
             {recommendation === 'REPLAN' && proposedSubgoals && proposedSubgoals.length > 0 && (
-                <div className="p11-super-card__subgoals">
+                <div className="agentk-super-card__subgoals">
                     <h5>Proposed subgoals</h5>
                     <ul>
                         {proposedSubgoals.map((sg) => (
                             <li key={sg.id}>
                                 {sg.description}
                                 {typeof sg.priority === 'number' && (
-                                    <span className="p11-super-card__priority">
+                                    <span className="agentk-super-card__priority">
                                         priority {sg.priority}
                                     </span>
                                 )}
@@ -79,7 +79,7 @@ export const P11SupervisorVerdictCard: React.FC<SupervisorCardProps> = ({
 // Critic cost share gauge
 // ---------------------------------------------------------------------------
 
-export const P11CriticCostShareGauge: React.FC<{ share: number; cap?: number }> = ({
+export const CriticCostShareGauge: React.FC<{ share: number; cap?: number }> = ({
     share,
     cap = 0.25,
 }) => {
@@ -87,23 +87,23 @@ export const P11CriticCostShareGauge: React.FC<{ share: number; cap?: number }> 
     const over = pct > cap;
     const color = over ? '#d33' : pct > cap * 0.8 ? '#d80' : '#2a8';
     return (
-        <div className="p11-critic-gauge" title={`Critic cost share ${(pct * 100).toFixed(1)}% (cap ${(cap * 100).toFixed(0)}%)`}>
-            <svg viewBox="0 0 36 36" className="p11-critic-gauge__ring">
+        <div className="agentk-critic-gauge" title={`Critic cost share ${(pct * 100).toFixed(1)}% (cap ${(cap * 100).toFixed(0)}%)`}>
+            <svg viewBox="0 0 36 36" className="agentk-critic-gauge__ring">
                 <path
-                    className="p11-critic-gauge__bg"
+                    className="agentk-critic-gauge__bg"
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
                 <path
-                    className="p11-critic-gauge__fill"
+                    className="agentk-critic-gauge__fill"
                     strokeDasharray={`${pct * 100}, 100`}
                     style={{ stroke: color }}
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
-                <text x="18" y="20.35" className="p11-critic-gauge__text">
+                <text x="18" y="20.35" className="agentk-critic-gauge__text">
                     {(pct * 100).toFixed(0)}%
                 </text>
             </svg>
-            <div className="p11-critic-gauge__label">critic cost share</div>
+            <div className="agentk-critic-gauge__label">critic cost share</div>
         </div>
     );
 };
@@ -117,7 +117,7 @@ interface BanditPanelProps {
     taskClass?: string;
 }
 
-export const P11BanditArmsPanel: React.FC<BanditPanelProps> = ({
+export const BanditArmsPanel: React.FC<BanditPanelProps> = ({
     entityId,
     taskClass = 'general',
 }) => {
@@ -141,19 +141,19 @@ export const P11BanditArmsPanel: React.FC<BanditPanelProps> = ({
 
     if (error) {
         return (
-            <div className="p11-bandit-panel p11-bandit-panel--error">
+            <div className="agentk-bandit-panel agentk-bandit-panel--error">
                 bandit unavailable: {error}
             </div>
         );
     }
-    if (!table) return <div className="p11-bandit-panel">loading bandit…</div>;
+    if (!table) return <div className="agentk-bandit-panel">loading bandit…</div>;
     const armEntries = Object.entries(table.arms);
 
     return (
-        <div className="p11-bandit-panel">
+        <div className="agentk-bandit-panel">
             <h4>Plan-style bandit · {table.task_class}</h4>
             {armEntries.length === 0 ? (
-                <p className="p11-bandit-panel__empty">no pulls yet</p>
+                <p className="agentk-bandit-panel__empty">no pulls yet</p>
             ) : (
                 <table>
                     <thead>
@@ -173,12 +173,12 @@ export const P11BanditArmsPanel: React.FC<BanditPanelProps> = ({
                                 const wr = st.pulls ? st.successes / st.pulls : 0;
                                 return (
                                     <tr key={arm}>
-                                        <td className="p11-bandit-panel__arm">{arm}</td>
+                                        <td className="agentk-bandit-panel__arm">{arm}</td>
                                         <td>{st.pulls}</td>
                                         <td>{st.successes}</td>
                                         <td>{(wr * 100).toFixed(0)}%</td>
                                         <td>${st.avg_cost_usd.toFixed(4)}</td>
-                                        <td className="p11-bandit-panel__ts">
+                                        <td className="agentk-bandit-panel__ts">
                                             {st.last_pull_at?.slice(0, 16) ?? '—'}
                                         </td>
                                     </tr>

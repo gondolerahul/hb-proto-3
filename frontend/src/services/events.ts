@@ -12,7 +12,7 @@
  */
 import { useEffect, useRef } from 'react';
 
-import type { AgentEvent } from '@/types/phase11';
+import type { AgentEvent } from '@/types/agentKernel';
 
 export type AgentEventListener = (event: AgentEvent) => void;
 

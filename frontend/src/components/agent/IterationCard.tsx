@@ -1,5 +1,5 @@
 /**
- * components/agent/P11IterationCard — One row per iteration on the
+ * components/agent/IterationCard — One row per iteration on the
  * AgentLoop timeline.
  *
  * Shows the executor, decision, the four critic verdicts (Track 3),
@@ -11,18 +11,18 @@ import React from 'react';
 import type {
     IterationSlice,
 } from '@/hooks/useExecutionEvents';
-import type { SpanNode } from '@/types/phase11';
+import type { SpanNode } from '@/types/agentKernel';
 
 import {
-    P11CriticVerdictChip,
-    P11ExecutorBadge,
-    P11FailureTagChip,
-    P11ResumeIndicator,
-    P11RetryStrategyBadge,
-} from './P11AgentKernel';
-import { P11SpanTree } from './P11SpanTree';
+    CriticVerdictChip,
+    ExecutorBadge,
+    FailureTagChip,
+    ResumeIndicator,
+    RetryStrategyBadge,
+} from './AgentKernel';
+import { SpanTree } from './SpanTree';
 
-import './P11IterationCard.css';
+import './IterationCard.css';
 
 interface Props {
     slice: IterationSlice;
@@ -30,29 +30,29 @@ interface Props {
     spans?: SpanNode[];
 }
 
-export const P11IterationCard: React.FC<Props> = ({ slice, spans }) => {
+export const IterationCard: React.FC<Props> = ({ slice, spans }) => {
     const cost = Number(slice.cost_iter_usd ?? 0);
     return (
-        <div className={`p11-iter-card p11-iter-card--${slice.outcome ?? 'pending'}`}>
-            <div className="p11-iter-card__header">
-                <span className="p11-iter-card__num">iter #{slice.iteration}</span>
-                <P11ExecutorBadge executor={slice.executor as never} />
+        <div className={`agentk-iter-card agentk-iter-card--${slice.outcome ?? 'pending'}`}>
+            <div className="agentk-iter-card__header">
+                <span className="agentk-iter-card__num">iter #{slice.iteration}</span>
+                <ExecutorBadge executor={slice.executor as never} />
                 {typeof slice.resumed_from === 'number' && (
-                    <P11ResumeIndicator fromIteration={slice.resumed_from} />
+                    <ResumeIndicator fromIteration={slice.resumed_from} />
                 )}
-                <span className="p11-iter-card__decision">
+                <span className="agentk-iter-card__decision">
                     {slice.decision ?? (slice.outcome ? slice.outcome : 'running…')}
                 </span>
                 {cost > 0 && (
-                    <span className="p11-iter-card__cost" title="iteration cost">
+                    <span className="agentk-iter-card__cost" title="iteration cost">
                         ${cost.toFixed(4)}
                     </span>
                 )}
             </div>
 
-            <div className="p11-iter-card__verdicts">
+            <div className="agentk-iter-card__verdicts">
                 {slice.pre_critic && (
-                    <P11CriticVerdictChip
+                    <CriticVerdictChip
                         label="pre"
                         verdict={slice.pre_critic.verdict}
                         title={
@@ -63,39 +63,39 @@ export const P11IterationCard: React.FC<Props> = ({ slice, spans }) => {
                     />
                 )}
                 {slice.post_critic && (
-                    <P11CriticVerdictChip
+                    <CriticVerdictChip
                         label="post"
                         verdict={slice.post_critic.verdict}
                     />
                 )}
                 {slice.alignment && (
-                    <P11CriticVerdictChip
+                    <CriticVerdictChip
                         label="align"
                         verdict={slice.alignment.aligned ? 'PASS' : 'REVISE'}
                         title={`drift ${(slice.alignment.drift * 100).toFixed(0)}%`}
                     />
                 )}
                 {slice.supervisor && (
-                    <P11CriticVerdictChip
+                    <CriticVerdictChip
                         label="super"
                         verdict={slice.supervisor.recommendation}
                         title={`conf ${(slice.supervisor.confidence * 100).toFixed(0)}%`}
                     />
                 )}
                 {slice.retry && (
-                    <P11RetryStrategyBadge strategy={slice.retry.strategy} />
+                    <RetryStrategyBadge strategy={slice.retry.strategy} />
                 )}
             </div>
 
             {slice.post_critic?.tags?.length ? (
-                <div className="p11-iter-card__tags">
+                <div className="agentk-iter-card__tags">
                     {slice.post_critic.tags.map((t) => (
-                        <P11FailureTagChip key={t} tag={t} />
+                        <FailureTagChip key={t} tag={t} />
                     ))}
                 </div>
             ) : null}
 
-            {spans && spans.length > 0 && <P11SpanTree roots={spans} />}
+            {spans && spans.length > 0 && <SpanTree roots={spans} />}
         </div>
     );
 };

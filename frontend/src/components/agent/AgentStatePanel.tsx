@@ -1,35 +1,35 @@
 /**
- * components/agent/P11AgentStatePanel — Sticky right-rail of
+ * components/agent/AgentStatePanel — Sticky right-rail of
  * ExecutionDetail. Renders live AgentState: budget, subgoals,
  * blockers, last action / observation, recent reflections.
  */
 import React from 'react';
 
-import type { AgentStateSnapshot } from '@/types/phase11';
+import type { AgentStateSnapshot } from '@/types/agentKernel';
 
-import { P11BudgetBar, P11ExecutorBadge } from './P11AgentKernel';
+import { BudgetBar, ExecutorBadge } from './AgentKernel';
 
-import './P11AgentStatePanel.css';
+import './AgentStatePanel.css';
 
 interface Props {
     state: AgentStateSnapshot | null;
     loading?: boolean;
 }
 
-export const P11AgentStatePanel: React.FC<Props> = ({ state, loading }) => {
+export const AgentStatePanel: React.FC<Props> = ({ state, loading }) => {
     if (loading && !state) {
         return (
-            <aside className="p11-state-panel">
+            <aside className="agentk-state-panel">
                 <h3>Agent State</h3>
-                <p className="p11-state-panel__loading">loading…</p>
+                <p className="agentk-state-panel__loading">loading…</p>
             </aside>
         );
     }
     if (!state) {
         return (
-            <aside className="p11-state-panel">
+            <aside className="agentk-state-panel">
                 <h3>Agent State</h3>
-                <p className="p11-state-panel__empty">No snapshot yet.</p>
+                <p className="agentk-state-panel__empty">No snapshot yet.</p>
             </aside>
         );
     }
@@ -40,30 +40,30 @@ export const P11AgentStatePanel: React.FC<Props> = ({ state, loading }) => {
     const blockers = state.blockers ?? [];
 
     return (
-        <aside className="p11-state-panel">
+        <aside className="agentk-state-panel">
             <h3>Agent State</h3>
 
-            <section className="p11-state-panel__section">
+            <section className="agentk-state-panel__section">
                 <h4>Budget · iter #{state.iteration}</h4>
-                <P11BudgetBar budget={state.budget} />
+                <BudgetBar budget={state.budget} />
                 {state.task_class && (
-                    <div className="p11-state-panel__taskclass">
+                    <div className="agentk-state-panel__taskclass">
                         task class: <code>{state.task_class}</code>
                     </div>
                 )}
             </section>
 
-            <section className="p11-state-panel__section">
+            <section className="agentk-state-panel__section">
                 <h4>Open subgoals ({openSubgoals.length})</h4>
                 {openSubgoals.length === 0 ? (
-                    <p className="p11-state-panel__empty">none</p>
+                    <p className="agentk-state-panel__empty">none</p>
                 ) : (
-                    <ul className="p11-state-panel__list">
+                    <ul className="agentk-state-panel__list">
                         {openSubgoals.map((sg) => (
                             <li key={sg.id}>
                                 <strong>{sg.description}</strong>
                                 {sg.blocked_on ? (
-                                    <span className="p11-state-panel__blocked">
+                                    <span className="agentk-state-panel__blocked">
                                         blocked: {sg.blocked_on}
                                     </span>
                                 ) : null}
@@ -74,9 +74,9 @@ export const P11AgentStatePanel: React.FC<Props> = ({ state, loading }) => {
             </section>
 
             {achieved.length > 0 && (
-                <section className="p11-state-panel__section">
+                <section className="agentk-state-panel__section">
                     <h4>Achieved ({achieved.length})</h4>
-                    <ul className="p11-state-panel__list p11-state-panel__list--muted">
+                    <ul className="agentk-state-panel__list agentk-state-panel__list--muted">
                         {achieved.map((sg) => (
                             <li key={sg.id}>✓ {sg.description}</li>
                         ))}
@@ -85,12 +85,12 @@ export const P11AgentStatePanel: React.FC<Props> = ({ state, loading }) => {
             )}
 
             {blockers.length > 0 && (
-                <section className="p11-state-panel__section">
+                <section className="agentk-state-panel__section">
                     <h4>Blockers</h4>
-                    <ul className="p11-state-panel__list">
+                    <ul className="agentk-state-panel__list">
                         {blockers.map((b, i) => (
-                            <li key={i} className="p11-state-panel__blocker">
-                                <span className="p11-state-panel__blocker-kind">{b.kind}</span>{' '}
+                            <li key={i} className="agentk-state-panel__blocker">
+                                <span className="agentk-state-panel__blocker-kind">{b.kind}</span>{' '}
                                 {b.detail}
                             </li>
                         ))}
@@ -99,19 +99,19 @@ export const P11AgentStatePanel: React.FC<Props> = ({ state, loading }) => {
             )}
 
             {(state.last_action || state.last_observation) && (
-                <section className="p11-state-panel__section">
+                <section className="agentk-state-panel__section">
                     <h4>Last activity</h4>
                     {state.last_action && (
                         <div>
-                            <P11ExecutorBadge executor={state.last_action.executor} />{' '}
-                            <span className="p11-state-panel__muted">
+                            <ExecutorBadge executor={state.last_action.executor} />{' '}
+                            <span className="agentk-state-panel__muted">
                                 iter {state.last_action.iteration}
                             </span>
                         </div>
                     )}
                     {state.last_observation && (
-                        <p className="p11-state-panel__obs">
-                            <span className={`p11-state-panel__outcome p11-state-panel__outcome--${state.last_observation.outcome}`}>
+                        <p className="agentk-state-panel__obs">
+                            <span className={`agentk-state-panel__outcome agentk-state-panel__outcome--${state.last_observation.outcome}`}>
                                 {state.last_observation.outcome}
                             </span>{' '}
                             {state.last_observation.summary?.slice(0, 200) || ''}
@@ -120,21 +120,21 @@ export const P11AgentStatePanel: React.FC<Props> = ({ state, loading }) => {
                 </section>
             )}
 
-            <P11ReflectionsList state={state} />
+            <ReflectionsList state={state} />
         </aside>
     );
 };
 
-const P11ReflectionsList: React.FC<{ state: AgentStateSnapshot }> = ({ state }) => {
+const ReflectionsList: React.FC<{ state: AgentStateSnapshot }> = ({ state }) => {
     const recent = (state.reflections ?? []).slice(-5).reverse();
     if (!recent.length) return null;
     return (
-        <section className="p11-state-panel__section">
+        <section className="agentk-state-panel__section">
             <h4>Reflections (last {recent.length})</h4>
-            <ul className="p11-state-panel__list">
+            <ul className="agentk-state-panel__list">
                 {recent.map((r, i) => (
-                    <li key={i} className="p11-state-panel__refl">
-                        <span className={`p11-state-panel__refl-scope p11-state-panel__refl-scope--${r.scope}`}>
+                    <li key={i} className="agentk-state-panel__refl">
+                        <span className={`agentk-state-panel__refl-scope agentk-state-panel__refl-scope--${r.scope}`}>
                             {r.scope}
                         </span>
                         {r.proposed_change ? (

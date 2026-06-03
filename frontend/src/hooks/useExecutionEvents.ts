@@ -17,7 +17,7 @@ import type {
     RetryStrategy,
     SupervisorRecommendation,
     TraceSpan,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
 // ---------------------------------------------------------------------------
 // Derived state shape

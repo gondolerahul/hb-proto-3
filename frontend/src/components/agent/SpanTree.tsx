@@ -1,5 +1,5 @@
 /**
- * components/agent/P11SpanTree — Collapsible execution trace tree.
+ * components/agent/SpanTree — Collapsible execution trace tree.
  *
  * Renders the nested span forest for one iteration:
  *   executor → step → { child, tool, llm }
@@ -9,15 +9,15 @@
  * prompt/response, errors). `child` nodes deep-link to the sub-run's own
  * execution detail page.
  *
- * Fed by P11IterationCard with the roots resolved (by parent_span_id) from the
+ * Fed by IterationCard with the roots resolved (by parent_span_id) from the
  * merged live-SSE + REST-backfill span map.
  */
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import type { SpanKind, SpanNode, SpanStatus } from '@/types/phase11';
+import type { SpanKind, SpanNode, SpanStatus } from '@/types/agentKernel';
 
-import './P11SpanTree.css';
+import './SpanTree.css';
 
 const KIND_ICON: Record<SpanKind, string> = {
     iteration: '🔄',
@@ -76,40 +76,40 @@ const SpanRow: React.FC<{ node: SpanNode; depth: number }> = ({ node, depth }) =
     const expandable = orderedKeys.length > 0 || !!node.error;
 
     return (
-        <div className="p11-span" style={{ ['--depth' as string]: depth }}>
+        <div className="agentk-span" style={{ ['--depth' as string]: depth }}>
             <div
-                className={`p11-span__row p11-span__row--${node.status} ${expandable ? 'p11-span__row--clickable' : ''}`}
+                className={`agentk-span__row agentk-span__row--${node.status} ${expandable ? 'agentk-span__row--clickable' : ''}`}
                 onClick={() => expandable && setOpen((o) => !o)}
             >
-                <span className="p11-span__caret">
+                <span className="agentk-span__caret">
                     {expandable ? (open ? '▾' : '▸') : ''}
                 </span>
-                <span className="p11-span__icon">{KIND_ICON[node.kind] ?? '•'}</span>
-                <span className={`p11-span__kind p11-span__kind--${node.kind}`}>
+                <span className="agentk-span__icon">{KIND_ICON[node.kind] ?? '•'}</span>
+                <span className={`agentk-span__kind agentk-span__kind--${node.kind}`}>
                     {node.kind}
                 </span>
-                <span className="p11-span__name" title={node.name ?? ''}>
+                <span className="agentk-span__name" title={node.name ?? ''}>
                     {node.name ?? '—'}
                 </span>
-                <span className={`p11-span__status p11-span__status--${node.status}`}>
+                <span className={`agentk-span__status agentk-span__status--${node.status}`}>
                     {STATUS_LABEL[node.status]}
                 </span>
                 {node.duration_ms != null && (
-                    <span className="p11-span__metric">{fmtDuration(node.duration_ms)}</span>
+                    <span className="agentk-span__metric">{fmtDuration(node.duration_ms)}</span>
                 )}
                 {node.cost_usd != null && node.cost_usd > 0 && (
-                    <span className="p11-span__metric" title="cost">
+                    <span className="agentk-span__metric" title="cost">
                         ${node.cost_usd.toFixed(4)}
                     </span>
                 )}
                 {(node.tokens_in != null || node.tokens_out != null) && (
-                    <span className="p11-span__metric" title="tokens in/out">
+                    <span className="agentk-span__metric" title="tokens in/out">
                         {node.tokens_in ?? 0}/{node.tokens_out ?? 0} tok
                     </span>
                 )}
                 {node.child_run_id && (
                     <Link
-                        className="p11-span__childlink"
+                        className="agentk-span__childlink"
                         to={`/ai/executions/${node.child_run_id}`}
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -119,19 +119,19 @@ const SpanRow: React.FC<{ node: SpanNode; depth: number }> = ({ node, depth }) =
             </div>
 
             {open && (
-                <div className="p11-span__detail">
+                <div className="agentk-span__detail">
                     {node.error && (
-                        <div className="p11-span__field p11-span__field--error">
-                            <div className="p11-span__field-key">error</div>
-                            <pre className="p11-span__field-val">{node.error}</pre>
+                        <div className="agentk-span__field agentk-span__field--error">
+                            <div className="agentk-span__field-key">error</div>
+                            <pre className="agentk-span__field-val">{node.error}</pre>
                         </div>
                     )}
                     {orderedKeys.map((k) => (
-                        <div className="p11-span__field" key={k}>
-                            <div className="p11-span__field-key">
+                        <div className="agentk-span__field" key={k}>
+                            <div className="agentk-span__field-key">
                                 {k}
                                 <button
-                                    className="p11-span__copy"
+                                    className="agentk-span__copy"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         void navigator.clipboard?.writeText(
@@ -142,7 +142,7 @@ const SpanRow: React.FC<{ node: SpanNode; depth: number }> = ({ node, depth }) =
                                     copy
                                 </button>
                             </div>
-                            <pre className="p11-span__field-val">
+                            <pre className="agentk-span__field-val">
                                 {fmtPayloadValue(payload[k])}
                             </pre>
                         </div>
@@ -151,7 +151,7 @@ const SpanRow: React.FC<{ node: SpanNode; depth: number }> = ({ node, depth }) =
             )}
 
             {hasChildren && (
-                <div className="p11-span__children">
+                <div className="agentk-span__children">
                     {node.children.map((c) => (
                         <SpanRow key={c.span_id} node={c} depth={depth + 1} />
                     ))}
@@ -161,10 +161,10 @@ const SpanRow: React.FC<{ node: SpanNode; depth: number }> = ({ node, depth }) =
     );
 };
 
-export const P11SpanTree: React.FC<{ roots: SpanNode[] }> = ({ roots }) => {
+export const SpanTree: React.FC<{ roots: SpanNode[] }> = ({ roots }) => {
     if (!roots.length) return null;
     return (
-        <div className="p11-span-tree">
+        <div className="agentk-span-tree">
             {roots.map((r) => (
                 <SpanRow key={r.span_id} node={r} depth={0} />
             ))}

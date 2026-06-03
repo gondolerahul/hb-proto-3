@@ -1,9 +1,9 @@
 /**
- * pages/dashboards/Phase11KPI — Six-tab KPI dashboard.
+ * pages/dashboards/KPIDashboard — Six-tab KPI dashboard.
  *
  * Sourced from the Track 8/9 `kpi_daily_rollup` view + `usage_logs.attribution`
  * + the StepHealthRecord / MetaIntelligenceTree CORTEX nodes via
- * the /ai/phase11/admin/kpi/* endpoints.
+ * the /ai/admin/admin/kpi/* endpoints.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -13,24 +13,24 @@ import type {
     KPICriticResponse,
     KPIMetaAgentResponse,
     KPIRunRow,
-} from '@/types/phase11';
+} from '@/types/agentKernel';
 
-import './Phase11KPI.css';
+import './KPIDashboard.css';
 
 type Tab = 'runs' | 'cost' | 'critic' | 'meta' | 'memory' | 'loop';
 
-export const Phase11KPI: React.FC = () => {
+export const KPIDashboard: React.FC = () => {
     const [tab, setTab] = useState<Tab>('runs');
     const [since, setSince] = useState<string>('7d');
 
     return (
-        <div className="page-container p11-kpi-page">
+        <div className="page-container agentk-kpi-page">
             <header className="page-header">
                 <h1>Phase 11 KPI</h1>
                 <p>Run health, cost, critic, meta-agent, memory, loop telemetry.</p>
             </header>
 
-            <nav className="p11-kpi-page__tabs">
+            <nav className="agentk-kpi-page__tabs">
                 {([
                     ['runs', 'Run health'],
                     ['cost', 'Cost'],
@@ -48,7 +48,7 @@ export const Phase11KPI: React.FC = () => {
                     </button>
                 ))}
 
-                <span className="p11-kpi-page__window">
+                <span className="agentk-kpi-page__window">
                     window:
                     <select value={since} onChange={(e) => setSince(e.target.value)}>
                         <option value="24h">24h</option>
@@ -58,24 +58,24 @@ export const Phase11KPI: React.FC = () => {
                 </span>
             </nav>
 
-            <section className="p11-kpi-page__body">
+            <section className="agentk-kpi-page__body">
                 {tab === 'runs' && <RunsTab since={since} />}
                 {tab === 'cost' && <CostTab since={since} />}
                 {tab === 'critic' && <CriticTab since={since} />}
                 {tab === 'meta' && <MetaTab since="30d" />}
                 {tab === 'memory' && (
-                    <p className="p11-kpi-page__placeholder">
+                    <p className="agentk-kpi-page__placeholder">
                         Memory KPIs (viewport overhead, dreaming runs,
                         candidate→confirmed promotions, trust scores) — backed
-                        by SQL queries in <code>infra/dashboards/phase11/05_memory.sql</code>;
+                        by the memory KPI SQL queries under <code>infra/dashboards/</code>;
                         Grafana / Metabase panels wire-up deferred to follow-up.
                     </p>
                 )}
                 {tab === 'loop' && (
-                    <p className="p11-kpi-page__placeholder">
+                    <p className="agentk-kpi-page__placeholder">
                         Loop telemetry (iterations per run, resume events, bandit
                         arm distribution, retry strategies) — backed by SQL queries
-                        in <code>infra/dashboards/phase11/06_loop_telemetry.sql</code>.
+                        under <code>infra/dashboards/</code>.
                     </p>
                 )}
             </section>
@@ -111,14 +111,14 @@ const RunsTab: React.FC<{ since: string }> = ({ since }) => {
     if (loading) return <p>loading…</p>;
     return (
         <>
-            <div className="p11-kpi-page__cards">
+            <div className="agentk-kpi-page__cards">
                 <Card label="goal_hit_rate" value={`${(totals.hitRate * 100).toFixed(1)}%`} />
                 <Card label="runs total" value={totals.total} />
                 <Card label="failed" value={totals.failed} highlight={totals.failed > 0} />
                 <Card label="paused" value={totals.paused} />
             </div>
 
-            <table className="p11-kpi-page__table">
+            <table className="agentk-kpi-page__table">
                 <thead>
                     <tr>
                         <th>day</th>
@@ -158,7 +158,7 @@ const CostTab: React.FC<{ since: string }> = ({ since }) => {
     return (
         <>
             <Card label="total cost (USD)" value={`$${total.toFixed(4)}`} />
-            <table className="p11-kpi-page__table">
+            <table className="agentk-kpi-page__table">
                 <thead>
                     <tr>
                         <th>attribution</th>
@@ -198,8 +198,8 @@ const CriticTab: React.FC<{ since: string }> = ({ since }) => {
                 value={`${(data.cost_share * 100).toFixed(1)}%`}
                 highlight={data.cost_share > 0.25}
             />
-            <h3 className="p11-kpi-page__subhead">Post-critic verdict distribution</h3>
-            <table className="p11-kpi-page__table">
+            <h3 className="agentk-kpi-page__subhead">Post-critic verdict distribution</h3>
+            <table className="agentk-kpi-page__table">
                 <thead>
                     <tr>
                         <th>verdict</th>
@@ -230,8 +230,8 @@ const MetaTab: React.FC<{ since: string }> = ({ since }) => {
     if (!data) return <p>no data</p>;
     return (
         <>
-            <h3 className="p11-kpi-page__subhead">MetaIntelligenceTree growth (last 30d)</h3>
-            <table className="p11-kpi-page__table">
+            <h3 className="agentk-kpi-page__subhead">MetaIntelligenceTree growth (last 30d)</h3>
+            <table className="agentk-kpi-page__table">
                 <thead>
                     <tr>
                         <th>kind</th>
@@ -256,10 +256,10 @@ const Card: React.FC<{ label: string; value: React.ReactNode; highlight?: boolea
     value,
     highlight,
 }) => (
-    <div className={`p11-kpi-page__card ${highlight ? 'p11-kpi-page__card--highlight' : ''}`}>
-        <div className="p11-kpi-page__card-label">{label}</div>
-        <div className="p11-kpi-page__card-value">{value}</div>
+    <div className={`agentk-kpi-page__card ${highlight ? 'agentk-kpi-page__card--highlight' : ''}`}>
+        <div className="agentk-kpi-page__card-label">{label}</div>
+        <div className="agentk-kpi-page__card-value">{value}</div>
     </div>
 );
 
-export default Phase11KPI;
+export default KPIDashboard;
