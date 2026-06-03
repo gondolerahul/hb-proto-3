@@ -168,7 +168,14 @@ class StepExecutorService:
             return await self._execute_thought(run, entity, step, context)
         return {"error": "Unknown step type"}
 
-    async def _execute_child_invocation(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
+    async def create_child_run(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> ExecutionRun:
+        """Resolve + create (but do NOT execute) a child ExecutionRun row.
+
+        Shared by the inline path (``_execute_child_invocation``) and the
+        async-dispatch path (the loop's ``ChildEntityExecutor``, which enqueues
+        the child as its own job and suspends the parent). Returns the committed
+        PENDING child run.
+        """
         # Resolve the child entity_id through the single source of truth:
         # ai.planning.child_resolver (UUID passthrough → static-plan name
         # match → hierarchy index → entity_name_hint DB lookup). A miss
@@ -292,9 +299,17 @@ class StepExecutorService:
         self.db.add(child_run)
         await self.db.commit()
         await self.db.refresh(child_run)
-        
+        return child_run
+
+    async def _execute_child_invocation(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
+        """Inline child execution: create the child run, then drive it to
+        completion on this worker (async-dispatch-and-wait, or the legacy
+        recursive callback). The loop's ChildEntityExecutor uses the
+        suspend/resume path instead when ``async_child_dispatch`` is on."""
+        child_run = await self.create_child_run(run, entity, step, context)
+
         # Recursive Execute
-        # Phase B: Feature-flagged async child dispatch
+        # Phase B: Feature-flagged async child dispatch (inline wait variant)
         governance = entity.governance or {}
         use_async = governance.get("async_child_dispatch", False)
 

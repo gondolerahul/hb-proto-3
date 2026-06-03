@@ -42,17 +42,22 @@ class RunStatus(str, Enum):
     REPAIRING = "REPAIRING"
     REFINING = "REFINING"                  # Selective re-execution with user feedback
     CANCELLED = "CANCELLED"                # Operator-cancelled mid-flight (terminal)
+    WAITING_ON_CHILDREN = "WAITING_ON_CHILDREN"  # Suspended; child runs in flight
 
 
 # Execution state machine — valid transitions
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "PENDING": {"RUNNING", "REFINING", "CANCELLED"},
-    "RUNNING": {"PAUSED", "COMPLETED", "FAILED", "PARTIAL_COMPLETE", "CANCELLED"},
+    "RUNNING": {"PAUSED", "COMPLETED", "FAILED", "PARTIAL_COMPLETE",
+                "CANCELLED", "WAITING_ON_CHILDREN"},
     "PAUSED": {"RUNNING", "RESUMING", "FAILED", "CANCELLED"},
     "RESUMING": {"RUNNING", "FAILED", "CANCELLED"},
     "PARTIAL_COMPLETE": {"RUNNING", "COMPLETED", "FAILED"},
     "REPAIRING": {"RUNNING", "FAILED"},
     "REFINING": {"RUNNING", "COMPLETED", "FAILED"},
+    # Async child dispatch: a suspended parent resumes (RESUMING → RUNNING) once
+    # its children are terminal, or fails/cancels out of the wait.
+    "WAITING_ON_CHILDREN": {"RESUMING", "RUNNING", "FAILED", "CANCELLED"},
 }
 
 

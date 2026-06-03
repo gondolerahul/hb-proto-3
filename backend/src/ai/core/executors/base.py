@@ -47,6 +47,13 @@ class ActionResult:
     error: str = ""
     completed_step_ids: list[str] = field(default_factory=list)
     context_state_delta: dict[str, Any] = field(default_factory=dict)
+    # Async child dispatch: when non-empty, the executor dispatched child run(s)
+    # as isolated jobs instead of running them inline, and the AgentLoop must
+    # SUSPEND (snapshot + WAITING_ON_CHILDREN) rather than continue the
+    # iteration. Each entry is ``{"run_id": str, "step_id": str}``. The step is
+    # NOT in ``completed_step_ids`` yet — it completes on resume once the child
+    # is terminal.
+    awaiting_children: list[dict[str, Any]] = field(default_factory=list)
 
 
 @runtime_checkable

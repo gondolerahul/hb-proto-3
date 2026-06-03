@@ -190,15 +190,24 @@ class AgentLoop:
         # defeating the loop and re-billing (Phase 11 AgentLoop incident #2).
         await self._ensure_plan(state)
 
+        return await self._drive(run, state, run_id)
+
+    async def _drive(self, run: ExecutionRun, state: AgentState, run_id: UUID) -> dict:
+        """Run the loop to a terminal state, OR suspend if it dispatched async
+        children. Shared by ``run`` (fresh) and ``resume`` (rehydrated)."""
         outcome_status = RunStatus.FAILED.value
         last_error: Optional[str] = None
         last_output = ""
         total_cost = 0.0
         try:
             await self._loop(state)
-            outcome_status = self._final_status(state)
-            last_output = self._final_output(state)
-            total_cost = float(state.budget.usd_used)
+            if state.suspend_requested:
+                outcome_status = RunStatus.WAITING_ON_CHILDREN.value
+                total_cost = float(state.budget.usd_used)
+            else:
+                outcome_status = self._final_status(state)
+                last_output = self._final_output(state)
+                total_cost = float(state.budget.usd_used)
         except Exception as exc:                                           # noqa: BLE001
             last_error = f"{type(exc).__name__}: {exc}"
             logger.exception("AgentLoop crashed for run %s", run_id)
@@ -212,9 +221,25 @@ class AgentLoop:
                 total_cost_usd=total_cost,
             )
 
+        # Async child dispatch: suspended waiting on children. Persist the
+        # resumable snapshot + WAITING_ON_CHILDREN and return WITHOUT finalizing
+        # or settling billing. ``resume_parent_run`` re-enters via ``resume``
+        # once the children are terminal.
+        if state.suspend_requested and not last_error:
+            await self._persist_suspended(run, state)
+            return AgentLoopOutcome(
+                run_id=str(run_id),
+                status=RunStatus.WAITING_ON_CHILDREN.value,
+                iterations=state.iteration,
+                total_cost_usd=total_cost,
+                output="",
+                error=None,
+            ).to_dict()
+
         await self._finalize_bandit(state, outcome_status)
         await self._enqueue_dreaming_trigger(state, outcome_status)
         await self._persist_final(run, state, outcome_status, last_error, last_output)
+        await self._maybe_resume_parent(run)
 
         return AgentLoopOutcome(
             run_id=str(run_id),
@@ -224,6 +249,111 @@ class AgentLoop:
             output=last_output,
             error=last_error,
         ).to_dict()
+
+    async def resume(self, run_id: UUID) -> dict:
+        """Resume a parent run suspended on async child dispatch.
+
+        Rehydrates ``AgentState`` from the snapshot persisted at suspend, folds
+        in terminal child results (marking the child step complete + adding
+        child cost), and continues the loop via ``_drive``. If children are
+        still pending, re-persists WAITING and returns. A no-op if the run is
+        not actually WAITING_ON_CHILDREN (idempotent against duplicate resume
+        jobs / legacy children whose parent never suspended).
+        """
+        self._run_id = run_id
+        set_sse_redis(self.redis)
+        run = await self._reload_run(run_id)
+        if not run:
+            raise LookupError(f"Run {run_id} not found")
+        if str(run.status) != RunStatus.WAITING_ON_CHILDREN.value:
+            logger.info(
+                "resume(%s): status=%s is not WAITING_ON_CHILDREN; skipping.",
+                run_id, run.status,
+            )
+            return {"run_id": str(run_id), "status": str(run.status), "resumed": False}
+
+        snapshot = (run.context_state or {}).get("__agent_state_snapshot__")
+        if not snapshot:
+            logger.error("resume(%s): no AgentState snapshot found; failing run.", run_id)
+            await self._persist_final(run, self._bootstrap_state(run, run.entity),
+                                      RunStatus.FAILED.value,
+                                      "resume: missing AgentState snapshot", "")
+            return {"run_id": str(run_id), "status": "FAILED", "resumed": False}
+
+        state = AgentState.restore(snapshot)
+        state.redis_client = self.redis
+        self._entity = run.entity
+        await self._compose(state)
+
+        # Fold terminal children; bail back to WAITING if any are still running.
+        all_terminal, any_failed = await self._fold_children(state)
+        if not all_terminal:
+            await self._persist_suspended(run, state)
+            return {"run_id": str(run_id), "status": RunStatus.WAITING_ON_CHILDREN.value,
+                    "resumed": False}
+
+        # Children done: clear suspend, transition out of WAITING, continue.
+        state.suspend_requested = False
+        state.awaiting_children = []
+        try:
+            run.status = RunStatus.RUNNING.value
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+
+        if any_failed:
+            # Mirror the inline path: a failed child fails the parent step.
+            state.done = True
+            state.next_decision = "ABORT"
+
+        await event_async("agent.loop.resumed", run_id=str(run_id),
+                          iteration=state.iteration, any_failed=any_failed)
+        return await self._drive(run, state, run_id)
+
+    async def _fold_children(self, state: AgentState) -> tuple[bool, bool]:
+        """Reload each awaited child; fold terminal ones into context + budget.
+
+        Returns ``(all_terminal, any_failed)``. Marks the child's parent step
+        complete and folds the child output into ``context_state`` so the loop
+        advances past it on resume.
+        """
+        from decimal import Decimal
+        _TERMINAL = {
+            RunStatus.COMPLETED.value, RunStatus.FAILED.value,
+            RunStatus.PARTIAL_COMPLETE.value, RunStatus.CANCELLED.value,
+        }
+        all_terminal = True
+        any_failed = False
+        for child in state.awaiting_children:
+            if child.get("status") in _TERMINAL:
+                continue  # already folded
+            child_run = await self._reload_run(UUID(str(child["run_id"])))
+            if child_run is None:
+                child["status"] = RunStatus.FAILED.value
+                any_failed = True
+                continue
+            status = str(child_run.status)
+            if status not in _TERMINAL:
+                all_terminal = False
+                continue
+            child["status"] = status
+            step_id = str(child.get("step_id") or "")
+            # Fold output + mark the parent step complete.
+            output = ""
+            if child_run.result_data:
+                output = str(child_run.result_data.get("output", "") or child_run.result_data)
+            if step_id:
+                state.mark_step_complete(step_id)
+                state.context_state[step_id] = output
+            # Fold child cost into the parent budget (child billed its own row).
+            try:
+                state.budget.consume(usd=Decimal(str(child_run.total_cost_usd or 0)),
+                                     tokens=int(child_run.total_tokens or 0))
+            except Exception:
+                pass
+            if status in (RunStatus.FAILED.value, RunStatus.CANCELLED.value):
+                any_failed = True
+        return all_terminal, any_failed
 
     # ------------------------------------------------------------------
     # Loop body
@@ -241,6 +371,12 @@ class AgentLoop:
                 break
 
             await self._iteration(state)
+
+            # Async child dispatch: the iteration spawned children and asked to
+            # suspend. Stop the loop WITHOUT finalizing; ``run`` persists the
+            # WAITING snapshot and returns. ``resume`` re-enters here later.
+            if state.suspend_requested:
+                break
 
             if state.budget.exhausted():
                 await event_async(
@@ -401,6 +537,28 @@ class AgentLoop:
             cost_usd=float(action_result.cost_usd),
             latency_ms=action_result.latency_ms,
         )
+
+        # Async child dispatch: the executor spawned child run(s) as isolated
+        # jobs instead of running them inline. Record them, request SUSPEND, and
+        # end the iteration here — the loop snapshots + sets WAITING_ON_CHILDREN
+        # and releases the worker. The child step is NOT marked complete yet; it
+        # completes on resume once the child is terminal (``resume``).
+        if action_result.awaiting_children:
+            state.awaiting_children.extend(action_result.awaiting_children)
+            state.suspend_requested = True
+            state.last_action = Action(
+                iteration=state.iteration,
+                executor=move.executor,
+                move_id=move.move_id,
+                payload={"awaiting_children": len(action_result.awaiting_children)},
+            )
+            await event_async(
+                "agent.loop.suspended_on_children",
+                run_id=str(state.run_id),
+                iteration=state.iteration,
+                children=[c.get("run_id") for c in action_result.awaiting_children],
+            )
+            return
 
         state.last_action = Action(
             iteration=state.iteration,
@@ -983,6 +1141,59 @@ class AgentLoop:
             logger.warning(
                 "AgentLoop billing settlement failed for run %s: %s",
                 self._run_id, exc,
+            )
+
+    async def _persist_suspended(self, run: ExecutionRun, state: AgentState) -> None:
+        """Persist a resumable snapshot + WAITING_ON_CHILDREN status.
+
+        Stores ``state.snapshot()`` under ``run.context_state`` so ``resume``
+        can rehydrate. Does NOT settle billing — the run hasn't finished.
+        """
+        run_id = self._run_id or getattr(run, "id", None)
+        try:
+            try:
+                await self.db.commit()
+            except Exception:                                              # pragma: no cover
+                await self.db.rollback()
+            fresh = await self._reload_run(run_id) if run_id else None
+            if fresh is None:
+                logger.error("Persist-suspended: run %s not found", run_id)
+                return
+            cs = dict(fresh.context_state or {})
+            cs["__agent_state_snapshot__"] = state.snapshot()
+            fresh.context_state = cs
+            fresh.status = RunStatus.WAITING_ON_CHILDREN.value
+            fresh.total_cost_usd = max(
+                float(state.budget.usd_used), float(fresh.total_cost_usd or 0)
+            )
+            await self.db.commit()
+            await event_async(
+                "agent.loop.suspended",
+                run_id=str(run_id),
+                awaiting=len(state.awaiting_children),
+            )
+        except Exception:
+            await self.db.rollback()
+            logger.exception("Persist-suspended failed for run %s", run_id)
+
+    async def _maybe_resume_parent(self, run: ExecutionRun) -> None:
+        """If this run is a child, enqueue a resume for its parent.
+
+        No-op when there is no parent or no Redis. ``resume_parent_run`` guards
+        against parents that aren't actually WAITING (e.g. legacy inline
+        children), so an unconditional enqueue here is safe and idempotent.
+        """
+        parent_id = getattr(run, "parent_run_id", None)
+        if not parent_id or self.redis is None:
+            return
+        try:
+            from arq.connections import ArqRedis
+            arq_redis = ArqRedis(self.redis.connection_pool)
+            await arq_redis.enqueue_job("resume_parent_run", str(parent_id))
+            logger.info("Enqueued resume_parent_run for parent %s", parent_id)
+        except Exception as exc:                                            # noqa: BLE001
+            logger.warning(
+                "Failed to enqueue parent resume for %s: %s", parent_id, exc
             )
 
     # ------------------------------------------------------------------

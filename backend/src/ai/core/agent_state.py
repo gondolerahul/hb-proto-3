@@ -202,6 +202,17 @@ class AgentState:
     plan_steps: list[dict[str, Any]] = field(default_factory=list)
     completed_step_ids: set[str] = field(default_factory=set)
 
+    # Async child dispatch: child runs spawned this run that the loop is waiting
+    # on. Each entry is ``{"run_id": str, "step_id": str, "status": str}``.
+    # Snapshotted, so a resumed parent knows which children to fold. ``status``
+    # is updated to the child's terminal status on resume.
+    awaiting_children: list[dict[str, Any]] = field(default_factory=list)
+
+    # Transient: set during an iteration when the executor dispatched children
+    # asynchronously, signalling the loop to SUSPEND (snapshot + WAITING) rather
+    # than finalize. NOT snapshotted — recomputed each run from awaiting_children.
+    suspend_requested: bool = field(default=False, repr=False, compare=False)
+
     # Legacy bridge — only used to ferry data into adapter executors.
     context_state: dict[str, Any] = field(default_factory=dict)
 
@@ -390,6 +401,7 @@ class AgentState:
             "chosen_executor": self.chosen_executor,
             "plan_steps": list(self.plan_steps),
             "completed_step_ids": sorted(self.completed_step_ids),
+            "awaiting_children": list(self.awaiting_children),
             "context_state": dict(self.context_state),
             "done": self.done,
             "next_decision": self.next_decision,
@@ -424,6 +436,7 @@ class AgentState:
             chosen_executor=snapshot.get("chosen_executor"),
             plan_steps=list(snapshot.get("plan_steps", [])),
             completed_step_ids=set(snapshot.get("completed_step_ids", [])),
+            awaiting_children=list(snapshot.get("awaiting_children", [])),
             context_state=dict(snapshot.get("context_state", {})),
             done=bool(snapshot.get("done", False)),
             next_decision=snapshot.get("next_decision", "CONTINUE"),

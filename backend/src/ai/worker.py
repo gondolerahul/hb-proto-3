@@ -35,6 +35,7 @@ from src.ai.core.arq_jobs import (
     dreaming_outcome_trigger,
     graph_maintenance_worker,
     resume_execution,
+    resume_parent_run,
     cortex_resume_scheduled,
     critic_calibration_job,
     skill_promotion_scan,
@@ -65,6 +66,7 @@ class WorkerSettings:
         pause_campaign_task,
         stop_campaign_task,
         resume_execution,
+        resume_parent_run,
         # Outcome-triggered Dreaming.
         dreaming_outcome_trigger,
     ]

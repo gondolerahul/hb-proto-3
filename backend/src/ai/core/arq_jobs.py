@@ -710,13 +710,44 @@ async def resume_execution(ctx: dict, run_id_str: str) -> dict:
     Reloads `run.context_state` and skips steps that are already completed.
     """
     from src.common.database import AsyncSessionLocal
-    
+
     run_id = UUID(run_id_str)
     async with AsyncSessionLocal() as db:
         redis = ctx.get('redis')
         engine = ExecutionEngine(db, redis)
         logger.info(f"Resuming ExecutionRun: {run_id}")
         return await engine.execute_run(run_id)
+
+
+async def resume_parent_run(ctx: dict, parent_run_id_str: str) -> dict:
+    """Resume a parent run suspended on async child dispatch.
+
+    Enqueued by ``AgentLoop._maybe_resume_parent`` when a child run finalizes.
+    Drives ``AgentLoop.resume``, which folds terminal children and continues
+    the loop. Idempotent: a no-op when the parent is not WAITING_ON_CHILDREN
+    (so duplicate enqueues, or legacy inline children, are harmless).
+    """
+    parent_run_id = UUID(parent_run_id_str)
+    import redis.asyncio as redis
+    from src.common.config import settings
+
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+    try:
+        async with AsyncSessionLocal() as db:
+            from src.ai.core.agent_loop import AgentLoop
+            from src.ai.core.feature_flags import FeatureFlags
+            from src.ai.core.trace import TraceRecorder, set_recorder
+
+            flags = FeatureFlags(db, redis=redis_pool)
+            company_id, _entity_extras = await _resolve_run_flag_scope(db, parent_run_id)
+            recorder = TraceRecorder(parent_run_id, company_id=company_id, redis=redis_pool)
+            with set_recorder(recorder):
+                loop = AgentLoop(
+                    db, redis_pool, company_id=company_id, feature_flags=flags,
+                )
+                return await loop.resume(parent_run_id)
+    finally:
+        await redis_pool.close()
 
 
 # ---------------------------------------------------------------------------

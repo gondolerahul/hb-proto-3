@@ -43,7 +43,8 @@ class ChildEntityExecutor:
         step = move.plan_fragment[0]
         from src.ai.core.execution_engine import ExecutionEngine
 
-        engine = ExecutionEngine(db, _resolve_redis(state), state.company_id)
+        redis = _resolve_redis(state)
+        engine = ExecutionEngine(db, redis, state.company_id)
         engine._ensure_services(state.company_id)
 
         run = await self._reload_run(db, state.run_id)
@@ -52,6 +53,28 @@ class ChildEntityExecutor:
         step_obj = self._coerce_step(step)
         ctx = await state.materialise_context_dict()
         start = time.time()
+
+        # ── Async child dispatch (suspend/resume) ────────────────────────────
+        # When the entity opts in and Redis is available, create the child run,
+        # enqueue it as its OWN isolated job (own session + own budget), and
+        # return an ``awaiting_children`` marker. The AgentLoop snapshots and
+        # suspends (WAITING_ON_CHILDREN) instead of blocking this worker; the
+        # child's finalize enqueues ``resume_parent_run`` which folds the result
+        # back in. This is the mechanism that lets a PROCESS's children run
+        # without the inline-nested-loop cost amplification.
+        governance = (entity.governance or {}) if entity else {}
+        if governance.get("async_child_dispatch") and redis is not None:
+            try:
+                return await self._dispatch_async(
+                    engine, redis, run, entity, step_obj, state, start,
+                )
+            except Exception as exc:                                       # noqa: BLE001
+                # Dispatch failure must not strand the run — fall through to the
+                # inline path below so behaviour degrades to the legacy mode.
+                logger.warning(
+                    "Async child dispatch failed (%s); falling back to inline.",
+                    exc,
+                )
 
         _child_name = str(getattr(step_obj, "name", "") or getattr(step_obj, "step_id", "") or "child")
         async with span(
@@ -101,6 +124,49 @@ class ChildEntityExecutor:
             error=str((result or {}).get("error", ""))[:500],
             completed_step_ids=[step_id] if step_id else [],
             children_run_ids=child_run_ids,
+        )
+
+    async def _dispatch_async(
+        self,
+        engine: Any,
+        redis: Any,
+        run: ExecutionRun,
+        entity: Any,
+        step_obj: Any,
+        state: AgentState,
+        start: float,
+    ) -> ActionResult:
+        """Create the child run, enqueue it as its own job, return an
+        ``awaiting_children`` ActionResult so the loop suspends."""
+        from arq.connections import ArqRedis
+
+        ctx = await state.materialise_context_dict()
+        child_run = await engine._step_executor.create_child_run(
+            run, entity, step_obj, ctx
+        )
+        await state.absorb_context_dict(ctx)
+
+        step_id = str(getattr(step_obj, "step_id", None) or getattr(step_obj, "name", "") or "")
+
+        # Enqueue the child as its own isolated run job (same entry point a
+        # top-level run uses → its own session, budget, and AgentLoop).
+        arq_redis = ArqRedis(redis.connection_pool)
+        await arq_redis.enqueue_job("run_execution_recursive", str(child_run.id))
+
+        logger.info(
+            "Async-dispatched child run %s (step=%s) for parent %s; suspending.",
+            child_run.id, step_id, run.id,
+        )
+        return ActionResult(
+            success=True,
+            output="",
+            latency_ms=int((time.time() - start) * 1000),
+            children_run_ids=[child_run.id],
+            awaiting_children=[{
+                "run_id": str(child_run.id),
+                "step_id": step_id,
+                "status": "PENDING",
+            }],
         )
 
     @staticmethod

@@ -1,6 +1,26 @@
 # Design — Async Child-Entity Dispatch (the prerequisite for deleting `execute_run`)
 
-> **Status:** Design. Not implemented.
+> **Status:** **Implemented behind `governance.async_child_dispatch` (default
+> OFF).** The suspend/resume mechanism in §3–§4 is in tree; unit tests cover the
+> state machine, snapshot round-trip, child fold, and resume guard
+> (`tests/unit/test_async_child_dispatch.py`). What remains before the flag can
+> flip ON (and before C4) is the **worker-driven E2E validation**: a multi-child
+> PROCESS parity case + resumability chaos test (§7). The original design is
+> preserved below.
+>
+> **Implementation map:**
+> - `WAITING_ON_CHILDREN` status + transitions → `schemas/enums.py`
+> - `ActionResult.awaiting_children` → `core/executors/base.py`
+> - `AgentState.awaiting_children` (snapshotted) + transient `suspend_requested`
+>   → `core/agent_state.py`
+> - `StepExecutorService.create_child_run` (creation split from inline run)
+>   → `step_executor.py`
+> - `ChildEntityExecutor._dispatch_async` (create child + enqueue + return
+>   marker) → `core/executors/child_entity.py`
+> - loop suspend (`_iteration`/`_loop`/`_drive`), `resume`, `_fold_children`,
+>   `_persist_suspended`, `_maybe_resume_parent` → `core/agent_loop.py`
+> - `resume_parent_run` arq job → `core/arq_jobs.py` (+ `worker.py` registration)
+
 > **Why this exists:** Phase 12 Stage 1 cut **C4** ("delete the legacy
 > `ExecutionEngine.execute_run` plan-walker; the AgentLoop is the sole entry
 > point") is **blocked**. The loop does not replace `execute_run` — it
