@@ -105,6 +105,7 @@ all local). Earlier Phase-11/Stage-0 work (`1dd336a`..`deaabba`) is unchanged.
 | `4b762c5` | **C4 PR-2** — async suspend/resume parity (first E2E) via `worker_sim.py`; `max_concurrent_children` cap; `CHILD_RUN_QUEUE` config. |
 | `4882886` | **C4 PR-3** — resumability chaos (G2) + cost amplification guard (G3). |
 | `fbfbf00` | **docs** — C4 plan Progress section. |
+| `b17c803` | **C12 scaffold** — `mypy --strict` per-package gate (`scripts/typecheck_ai.py` + allowlist + `test_typecheck_passes` + CI fast lane + `[tool.mypy]`); **`governance/` strict-clean** (first package). |
 
 **Push status:** local only.
 ```bash
@@ -195,6 +196,9 @@ $PY -m scripts.record_golden_runs --output tests/parity/goldens
 
 # The layout/canary lint (now exits 0).
 $PY scripts/lint_ai_layout.py
+
+# The C12 mypy --strict gate over the clean-package allowlist (exits 0).
+$PY scripts/typecheck_ai.py
 ```
 
 Notes: always pass `-o addopts=""`. Parity seeds throwaway `parity-*` tenants and
@@ -210,8 +214,16 @@ Pull per-item detail from `WHATS_NEXT.md`.
 - ✅ C3-alias, C10, C11, lint→error (de-canary). `grep` of `backend/src
   frontend/src` for `p11|P11|phase11` is empty except the documented shims +
   migration names + `*.md` doc pointers.
-- ❌ **C12 — `mypy --strict`** per package (`core/ planning/ memory/ meta/
-  governance/`) as a CI gate. *(M, mechanical, not started.)*
+- 🚧→◐ **C12 — `mypy --strict`** per package as a CI gate. **Scaffold landed**
+  (`b17c803`): `scripts/typecheck_ai.py` (allowlist + `--follow-imports=silent`),
+  `test_typecheck_passes`, `run_ci_matrix.sh` fast lane, `pyproject [tool.mypy]`.
+  **`governance/` strict-clean** (first package, 32→0). Add the next package by
+  making `mypy --strict --follow-imports=silent src/ai/<pkg>` zero, then append
+  it to `CLEAN_PACKAGES`. Localized remaining counts: `planning` 87, `meta` 109,
+  `memory` 225, `core` ~1190 — incremental, not the "mechanical M" the plan
+  billed. **Gotcha:** legacy `Column(...)` ORM (no `Mapped[]`) makes every
+  package need `cast()` on reads + `# type: ignore[assignment]` on attr writes;
+  an ORM→`Mapped[]` migration removes that and is worth doing before `memory`/`core`.
 - 🚧 **C13 — drop deprecated `engine_type` / `reasoning_mode`** — **blocked, not a
   clean cut** (see §7). Needs per-step reasoning routed via the Strategist first,
   and the engine_type half is gated on C4.
