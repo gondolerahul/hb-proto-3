@@ -1,12 +1,12 @@
 """
-ai.phase11_router — Admin / debug endpoints introduced by Phase 11.
+ai.api.admin — Agent kernel admin / debug endpoints.
 
-These are the FastAPI route wrappers around the already-implemented
-Phase 11 services. Each wrapper is intentionally thin: it does
-auth + scope checks, calls the right service / ORM helper, and
-returns plain JSON the Phase 11 frontend can consume.
+These are the FastAPI route wrappers around the kernel services. Each
+wrapper is intentionally thin: it does auth + scope checks, calls the
+right service / ORM helper, and returns plain JSON the admin frontend
+can consume.
 
-Endpoints (all under ``/api/v1/ai/phase11/``):
+Endpoints (all under ``/api/v1/ai/admin/``):
 
     Execution detail (per-run)
       GET  /executions/{run_id}/health_records
@@ -57,7 +57,7 @@ from src.common.database import get_db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/ai/phase11", tags=["AI Phase 11"])
+router = APIRouter(prefix="/ai/admin", tags=["AI Kernel Admin"])
 
 
 # ---------------------------------------------------------------------------
@@ -1144,17 +1144,17 @@ async def programme_exit_checklist(
 
 
 def _decisions_log_path() -> str:
-    """Resolve docs/phase11/DECISIONS.md relative to the repo root.
+    """Resolve docs/DECISIONS.md relative to the repo root.
 
-    Repo root is the parent of the ``backend`` directory; the docs live
-    under ``docs/phase11/`` at the repo root.
+    Repo root is the parent of the ``backend`` directory; the
+    programme decision log lives at ``docs/DECISIONS.md``.
     """
     import os as _os
     here = _os.path.abspath(__file__)
-    # backend/src/ai/phase11_router.py → backend/src/ai → backend/src → backend → repo
-    for _ in range(4):
+    # backend/src/ai/api/admin.py → api → ai → src → backend → repo
+    for _ in range(5):
         here = _os.path.dirname(here)
-    return _os.path.join(here, "docs", "phase11", "DECISIONS.md")
+    return _os.path.join(here, "docs", "DECISIONS.md")
 
 
 @router.get("/admin/decisions")
@@ -1204,7 +1204,7 @@ async def append_decision(
     payload: dict,
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Append one decision entry to ``docs/phase11/DECISIONS.md``.
+    """Append one decision entry to ``docs/DECISIONS.md``.
 
     Body::
         {"summary": "...", "rationale": "...", "kind": "decision"}

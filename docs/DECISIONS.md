@@ -1,8 +1,8 @@
-# Phase 11 — Decision Log
+# Programme Decision Log
 
 > Append-only. One block per decision. Maintained via the admin API
-> (`POST /api/v1/ai/phase11/admin/decisions`) and listed via
-> `GET /api/v1/ai/phase11/admin/decisions`. Manual edits welcome too.
+> (`POST /api/v1/ai/admin/admin/decisions`) and listed via
+> `GET /api/v1/ai/admin/admin/decisions`. Manual edits welcome too.
 
 Format:
 

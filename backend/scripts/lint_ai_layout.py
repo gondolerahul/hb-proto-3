@@ -34,8 +34,6 @@ ALLOWED_TOPLEVEL: set[str] = {
 # Transitional: legacy top-level modules still tolerated. Each entry MUST be
 # removed by the Track listed in the trailing comment.
 TRANSITIONAL_TOPLEVEL: set[str] = {
-    # Phase 11 frontend admin / debug router.
-    "phase11_router.py",
     # Track 1 — schemas/ + orm/ split
     "schemas.py",
     "models.py",

@@ -77,9 +77,8 @@ from src.config.router import router as config_router
 app.include_router(config_router, prefix="/api/v1")
 from src.ai.router import router as ai_router
 app.include_router(ai_router, prefix="/api/v1")
-# Phase 11 — admin / debug endpoints (KPI, bandit, anti-patterns, …).
-from src.ai.phase11_router import router as phase11_router
-app.include_router(phase11_router, prefix="/api/v1")
+from src.ai.api.admin import router as kernel_admin_router
+app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")
 
@@ -93,12 +92,27 @@ app.include_router(artifact_router)
 
 # Legacy /assets → /artifacts redirect support (kept for backwards compatibility)
 from fastapi.responses import RedirectResponse
+from fastapi import Request
 @app.get("/api/v1/assets", include_in_schema=False)
 async def legacy_assets_list():
     return RedirectResponse(url="/api/v1/artifacts")
 @app.get("/api/v1/assets/{path:path}", include_in_schema=False)
 async def legacy_assets_path(path: str):
     return RedirectResponse(url=f"/api/v1/artifacts/{path}")
+
+# Kernel admin de-prefix compat shim. The router moved from
+# /api/v1/ai/phase11/* to /api/v1/ai/admin/*; this redirect keeps old
+# bookmarks and the unmigrated frontend working. Remove after 2026-09-01.
+@app.api_route(
+    "/api/v1/ai/phase11/{subpath:path}",
+    methods=["GET", "POST"],
+    include_in_schema=False,
+)
+async def legacy_kernel_admin_redirect(subpath: str, request: Request):
+    target = f"/api/v1/ai/admin/{subpath}"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(url=target, status_code=307)
 
 # Billing, reports, credits, and cron jobs
 try:
