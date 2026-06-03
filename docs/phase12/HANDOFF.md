@@ -3,281 +3,306 @@
 > **Read this first.** It is the single entry point for continuing Phase 12 in a
 > fresh session. It captures the current state, the non-obvious findings that
 > change the plan, how to verify, and the exact remaining sequence. Pair it with
-> [`WHATS_NEXT.md`](./WHATS_NEXT.md) (the prioritized checklist) and the eight
-> [`plans/`](./plans/) files (the original spec).
+> [`WHATS_NEXT.md`](./WHATS_NEXT.md) (the prioritized checklist), the eight
+> [`plans/`](./plans/) files (the original spec), and the two C4 design docs in
+> [`designs/`](./designs/).
 >
-> **Author:** prior implementation session · **Date:** 2026-06-03
+> **Last updated:** 2026-06-03 (Stage 1 de-canary + C4 Phase A landed)
 > **Branch:** `phase12/stage1-consolidation`
 
 ---
 
 ## 0. TL;DR — where things stand
 
-- Phase 12 plans live in `docs/phase12/plans/` (8 files, `00`–`08`). They are a
-  **plan**, mostly not yet built. The audit + progress is in `WHATS_NEXT.md`.
-- The repo is the **Phase 11 canary build** + a partial slice of Phase 12.
-- **Done this far** (committed on the branch): Stage 0 switch-flip, a hermetic
-  **parity gate**, **C1** (v1 critic delete), **C9** (retire REFLECTION/ToT),
-  the **async-child-dispatch** mechanism (flag-gated), and the **C4 blocker
-  design**. **C6** was found already-done.
-- **The headline finding:** **C4 (delete legacy `execute_run`) is NOT a deletion
-  — it's a multi-PR re-platforming.** The AgentLoop is built *on top of*
-  `ExecutionEngine`. See §3. This blocks C2/C3/C4 and is the single most
-  important thing a fresh agent must understand before touching the "legacy
-  deletion" cuts.
-- **Nothing is in production.** Stage 0's 30-day telemetry gate was deliberately
-  skipped (dev build). The two master switches default ON.
+- Phase 12 plans live in `docs/phase12/plans/` (8 files, `00`–`08`). The
+  prioritized status is in `WHATS_NEXT.md`.
+- The repo was the **Phase 11 canary build**; **Stage 1 consolidation is now
+  largely done** — the canary labels are gone and the codebase is the GA shape,
+  except for the one big gated deletion (C4) and a few trailing items.
+- **Done & committed on the branch** (newest work first):
+  - **Stage 1 de-canary**: `C3`-alias removal, `C10` backend de-prefix
+    (`phase11_router` → `ai/api/admin`), `C11` frontend de-prefix, and the
+    **layout/canary lint flipped to `error`** — `test_layout_lint_passes` is now
+    **green** (the previously-known failure is resolved).
+  - **C4 Phase A (the evidence gate)**: multi-child PROCESS parity (inline +
+    **async suspend/resume, first E2E**), resumability chaos test, and a cost
+    amplification guard — all green. See §3 + `designs/c4_replatforming_implementation_plan.md`.
+  - Earlier: Stage 0 switch-flip, the hermetic parity gate, `C1` (v1 critic
+    delete), `C9` (retire REFLECTION/ToT), the async-child-dispatch mechanism.
+- **The headline constraint still holds:** **C4 (delete legacy `execute_run`) is
+  a multi-PR re-platforming, not a deletion.** Its evidence gate (Phase A) is now
+  green; the remaining deletion chain (Phase B) is **gated on a flag soak (G4)**
+  that can only run with a live canary. See §3.
+- **C13 is blocked** (not a clean cut) — see §7.
+- **Nothing is in production.** Telemetry/soak gates are dev-skipped by policy;
+  the two master switches default ON. All commits are **local only** (no GitHub
+  creds in this env) — the human pushes.
 
 ---
 
 ## 1. CRITICAL CONTEXT — read before writing any code
 
-These are the non-obvious facts that will cost you hours if you miss them.
+1. **C4 is the only remaining gated deletion, and it is a re-platforming.** The
+   AgentLoop delegates step execution into `ExecutionEngine` internals, and every
+   child entity historically ran via the `execute_run` callback. The unblocking
+   mechanism (async suspend/resume child dispatch) is **built and now proven E2E**
+   (Phase A). The actual deletion (Phase B) is gated on a soak. Full detail in §3
+   and `designs/c4_replatforming_implementation_plan.md`.
 
-1. **The whole agent kernel was uncommitted at session start.** Phase 11's code
-   (agent_loop, executors, planning, memory, meta, …) landed as one big commit
-   `21ea5f4`. If something looks "new/untracked," it is expected.
+2. **The layout/canary lint is now `error` mode and green.** `CANARY_LABEL_MODE`
+   in `backend/scripts/lint_ai_layout.py` is `error`; any reintroduced
+   `p11/P11/phase11` identifier/filename under `backend/src/ai/**.py` fails CI.
+   The `core/` size cap is **1500** (agent_loop.py is large from suspend/resume).
+   Keep new files under their package cap or extract a module (as `step_results.py`
+   did).
 
-2. **C4 is blocked by a documented, reverted attempt.** The AgentLoop delegates
-   step execution into `ExecutionEngine` internals, and **every child entity
-   runs via the `execute_run` callback**. Routing children through the loop was
-   tried in Phase 11 and **reverted** (~$11/child cost amplification + worker
-   blocking). The evidence is verbatim in `backend/src/ai/core/execution_engine.py:97-104`.
-   **Do not try to "just delete `execute_run`."** See §3.
+3. **Residual `phase11` strings are intentional and lint-permitted.** Only: the
+   one-release redirect shims (`backend/src/main.py` and the frontend route table,
+   both with a **2026-09-01 removal date**), immutable applied-migration names
+   (`p11t02_*`, `p11_merge_2026_05_28`), and `docs/phase11/*` pointers in `*.md`
+   READMEs (the lint scans only `*.py`). Don't "clean" these without a plan.
 
-3. **The two master switches default ON in dev** (`agent_loop.enabled`,
+4. **The two master switches default ON in dev** (`agent_loop.enabled`,
    `meta_agent.board_routing`) — `backend/src/ai/core/feature_flags.py`. The
-   30-day telemetry gate the plans require is intentionally skipped because
-   nothing ships to prod. If you ever target prod, that gate is back in force.
+   feature-flag env-override prefix is now **`AI_FLAG_`** (was `PHASE11_FLAG_`).
 
-4. **There is a real parity gate, but it's hermetic and thin.** `tests/parity/`
-   runs legacy `ExecutionEngine` vs the new `AgentLoop` with a **deterministic
-   mock LLM + stubbed tools** (no API keys — there are none in this env). It has
-   one *strong* positive case (`simple_skill`); the multi-child PROCESS case
-   *fails identically on both engines* (weak). **Before any C4/C2/C3 deletion,
-   strengthen this with a multi-child PROCESS case that completes.** See
-   `backend/tests/parity/README.md`.
+5. **The parity gate is hermetic and is the C4 evidence gate.** `tests/parity/`
+   runs legacy `ExecutionEngine` vs the new `AgentLoop` with a deterministic mock
+   LLM + stubbed `web_search` (no API keys). It now has a **positive multi-child
+   PROCESS** case and the **async-dispatch + chaos + cost** checks (§3). Embeddings
+   are NOT stubbed — they hit the real Vertex endpoint (returns 200 here; cost $0
+   with no SKU rows). This is parity-neutral (both engines embed).
 
-5. **No LLM API keys, but DB + Redis are live** in this environment
-   (Postgres `localhost:5433`, Redis `localhost:6379`). That's why the parity
-   gate and any execution test must be hermetic (mock LLM). Don't assume a key.
+6. **All real-DB parity checks run inside ONE event loop** (the aggregated
+   `test_agent_loop_parity`). A standalone `@pytest.mark.asyncio` DB test **skips**
+   with "attached to a different loop" — the global `AsyncSessionLocal` engine
+   binds to the first loop it touches and asyncpg can't cross loops. **Add new
+   real-DB parity checks as helper functions called from that one test**, not as
+   new test functions. (PR-2/PR-3 follow this.)
 
-6. **`mypy --strict` (C12) is NOT set up; the layout lint has one known-failing
-   test.** `tests/unit/test_layout.py::test_layout_lint_passes` fails on HEAD —
-   this is **pre-existing de-canary debt** (the `phase11_router.py` filename +
-   the `as CortexService` alias). It goes green only after C10 (de-prefix) and
-   the `CortexRouter` alias removal. Treat that one failure as expected until
-   then; everything else is green.
+7. **No LLM API keys, but DB + Redis are live** (Postgres `localhost:5433`, Redis
+   `localhost:6379`). There is no live arq worker; the async child path is
+   exercised hermetically via the in-process drainer `tests/parity/worker_sim.py`.
+
+8. **The comment-narration lint is `error` mode.** Don't write comments matching
+   `# Phase 12`, `# Fix X:`, `# RACE-N`, etc. in `backend/src/ai/**.py`.
 
 ---
 
 ## 2. What's DONE (committed on the branch)
 
-Commits ahead of `origin/phase12/stage1-consolidation` (oldest → newest):
+Oldest → newest (this branch is ahead of `origin/phase12/stage1-consolidation`;
+all local). Earlier Phase-11/Stage-0 work (`1dd336a`..`deaabba`) is unchanged.
 
 | Commit | What |
 |--------|------|
-| `1dd336a` | **Stage 0** — flip `agent_loop.enabled` + `meta_agent.board_routing` ON (dev mode; telemetry gate skipped). Tests updated. |
-| `3051651` | **Parity gate** — hermetic legacy-vs-AgentLoop harness + recorded goldens (`tests/parity/`). The `loop ≈ legacy` evidence tool. |
-| `d70912a` | **C9** — retire `REFLECTION` + `TREE_OF_THOUGHTS` reasoning modules (D-3). Registry now REACT + CHAIN_OF_THOUGHT only. |
-| `a10130e` | **C1** — delete v1 critic body (`_review_step_output`) + retire dead `critic_pipeline.v1_compat`. |
-| `bcf2911` | **C4 design** — `designs/async_child_dispatch.md` + recorded the C4 blocker in `WHATS_NEXT.md`. |
-| `deaabba` | **Async child dispatch** — suspend/resume implementation behind `governance.async_child_dispatch` (default OFF). 11 unit tests. |
+| `7b946fb` | **C3-partial** — remove the deprecated `CortexRouter` alias. |
+| `7379d92` | **C10** — backend de-prefix: `ai/phase11_router.py` → `ai/api/admin.py` (`/api/v1/ai/admin/*`) + 307 redirect shim in `main.py`; decision log → `docs/DECISIONS.md`. |
+| `f9343b9` | **C11** — frontend de-prefix: 7 `P11*` component pairs + sub-components renamed; `types/phase11.ts`→`agentKernel.ts`; `Phase11KPI`→`KPIDashboard`; `p11-`→`agentk-` CSS; routes `/admin/agent-kernel/*` + redirect shim. |
+| `98868d4` | **de-canary** — neutralize remaining `phase11` tokens in `ai/*.py` (incl. env prefix `AI_FLAG_`); flip `CANARY_LABEL_MODE`→`error`; raise `core/` cap to 1500. `test_layout_lint_passes` green. |
+| `5aa0a25` | **C4 PR-1** — multi-child PROCESS positive parity (G1 inline) + the C4 implementation plan doc. |
+| `dd16a35` | **C4 PR-1b** — loop emits `result_data["steps"]` (snapshotted `AgentState.step_results`); fixes a real refine-flow regression. |
+| `4b762c5` | **C4 PR-2** — async suspend/resume parity (first E2E) via `worker_sim.py`; `max_concurrent_children` cap; `CHILD_RUN_QUEUE` config. |
+| `4882886` | **C4 PR-3** — resumability chaos (G2) + cost amplification guard (G3). |
+| `fbfbf00` | **docs** — C4 plan Progress section. |
 
-Also verified **already-done** (no commit needed): **C6** (REACT routes through
-`ToolResilience` in `step_executor.py`), **C7** (cost attribution + flag ON),
-**C5** (`reconcile`→v2 + static-plan-as-prior), **C8** root-layout criterion.
-
-**Push status:** these 6 commits are **local only** — the environment has no
-GitHub credentials. The human pushes from their own machine:
+**Push status:** local only.
 ```bash
 git push origin phase12/stage1-consolidation
 ```
 
 ---
 
-## 3. The C4 blocker, in full (the thing not to re-derive)
+## 3. C4 — the keystone deletion (Phase A done, Phase B gated)
 
-Plan `01` §4 assumes deleting `execute_run` is safe once the loop is the default.
-**It is not, in this codebase.** Three couplings:
+**Status: the evidence gate (Phase A) is GREEN; the deletion chain (Phase B) is
+not started, gated on a flag soak.** The full, code-grounded plan is
+[`designs/c4_replatforming_implementation_plan.md`](./designs/c4_replatforming_implementation_plan.md)
+(builds on [`designs/async_child_dispatch.md`](./designs/async_child_dispatch.md)).
 
-1. **arq dispatch** routes non-loop companies to `execute_run` (removable).
-2. **Loop executors delegate into engine internals:**
-   `single_step`→`_execute_step_wrapper`, `dag`→`_execute_steps_dag`,
-   `child_entity`→`_execute_step_wrapper`, `recursive`→`execute_run`.
-3. **Child entities execute via the `execute_run_fn` callback**
-   (`execution_engine.py:79,93` → `step_executor.py`), and routing them through
-   the loop was tried + reverted (cost amplification / worker blocking).
+**Why C4 is not a simple deletion** (still true): `execute_run` is load-bearing —
+loop executors delegate into engine step methods, and child entities ran via the
+`execute_run_fn` callback. Routing children through the loop inline was tried in
+Phase 11 and reverted (~$11/child amplification + worker blocking,
+`execution_engine.py:97-104`). The fix is async suspend/resume child dispatch.
 
-**The unblock path (designed + partly built):**
-[`designs/async_child_dispatch.md`](./designs/async_child_dispatch.md) — a
-suspend/resume mechanism so children run as isolated jobs instead of inline.
-**It is now implemented behind `governance.async_child_dispatch` (default OFF).**
+**Expanded caller inventory (a finding beyond the original design's 3):**
+`execute_run` is also called **directly, bypassing the loop and the
+`agent_loop.enabled` flag**, by the gateway dispatcher (`gateway/dispatcher.py:272`)
+and the gateway-event worker (`arq_jobs.py:290`), plus `resume_execution`
+(`arq_jobs.py:719`). PR-8 must re-route these too. Also note the dead
+`enqueue_job("execute_run", …)` calls (`cortex_bridge.py:357`, `arq_jobs.py:801`)
+reference an unregistered job name — verify/clean.
 
-**The remaining deletion chain (do strictly in order):**
-```
-1. Strengthen parity: a multi-child PROCESS case that COMPLETES (record golden).
-2. Resumability chaos test: kill worker mid-WAITING_ON_CHILDREN → new worker resumes.
-3. Flip governance.async_child_dispatch ON (canary), soak, cost-regression guard green.
-4. Drop the execute_run_fn child callback (execution_engine.py:79,93).
-5. Extract StepEngine (step methods) out of ExecutionEngine; loop executors use it.
-6. Re-platform RecursiveExecutor off execute_run.
-7. Make arq dispatch loop-only (remove the legacy branch).
-8. Delete execute_run (+ subclass).  ← this is the real "C4"
-9. C2 falls out: delete MemoryRouter (its only remaining caller was execute_run).
-10. C3: MetaReviewer STAYS (RealCriticPipeline uses it, critic_pipeline.py:490);
-    only the CortexRouter alias (cortex_service.py:1199) is safe to remove.
-```
+**Phase A — DONE (the gate):**
+- **G1** multi-child PROCESS parity, inline (PR-1) **and async suspend/resume,
+  first E2E** (PR-2). ✅
+- **G2** resumability chaos: crash before resume → durable `WAITING_ON_CHILDREN`
+  → fresh-worker recovery → idempotency (PR-3). ✅
+- **G3** cost amplification guard: async child-execution work == inline (PR-3). ✅
 
-> Steps 1–3 are the gate. **Do not do 4–8 until the parity multi-child case is
-> green and the flag has soaked.** This is irreversible and was reverted once.
+**Phase B — NOT started, gated:**
+- **G4 flag soak (PR-4)** — operational: `governance.async_child_dispatch` ON for
+  a live canary + real telemetry. Cannot run in the keyless dev env. The human
+  runs it in prod, or it is dev-skipped by explicit decision (like the Stage-0
+  telemetry gate this build skipped).
+- Then the irreversible chain: **PR-5** extract `StepEngine` → **PR-6** drop the
+  child callback → **PR-7** re-platform `RecursiveExecutor` (the hard one) →
+  **PR-8** make every entry point loop-only → **PR-9** delete `execute_run`
+  (irreversible — removes the rollback flag) → **PR-10** C2 (`MemoryRouter`
+  delete) → **PR-11** C3 finish. All MemoryRouter/MetaReviewer engine uses live
+  *inside* `execute_run`, so deleting it unblocks C2 and reduces C3.
 
----
-
-## 4. What's the async-child-dispatch mechanism (so you don't re-learn it)
-
-Implemented in `deaabba`, behind `governance.async_child_dispatch` (OFF):
-
-- **Status:** `WAITING_ON_CHILDREN` (`schemas/enums.py`).
-- **Marker:** `ActionResult.awaiting_children` (`core/executors/base.py`).
-- **State:** `AgentState.awaiting_children` (snapshotted) + transient
-  `suspend_requested` (`core/agent_state.py`).
-- **Trigger:** `ChildEntityExecutor._dispatch_async` creates the child run
-  (`StepExecutorService.create_child_run`), enqueues `run_execution_recursive`,
-  returns the marker (`core/executors/child_entity.py`).
-- **Loop:** `_iteration` detects the marker → `suspend_requested`; `_loop`
-  breaks; `_drive` (shared run/resume tail) persists `_persist_suspended` +
-  returns. `resume()` rehydrates from the snapshot, `_fold_children` folds
-  terminal children, continues. `_maybe_resume_parent` nudges the parent on a
-  child's finalize (`core/agent_loop.py`).
-- **Job:** `resume_parent_run` (`core/arq_jobs.py`, registered in `worker.py`).
-  Idempotent — no-op unless the parent is `WAITING_ON_CHILDREN`.
-- **Tests:** `tests/unit/test_async_child_dispatch.py` (11; units only).
-- **NOT YET VALIDATED end-to-end** (needs a live arq worker + multi-child
-  fixture). That is the §3 step-1/2 gate.
+> Do not start Phase B without confirming the soak decision. PR-9 is irreversible.
 
 ---
 
-## 5. How to verify (commands that actually work here)
+## 4. The async-child-dispatch mechanism (so you don't re-learn it)
+
+Behind `governance.async_child_dispatch` (default OFF), now **proven E2E**:
+
+- **Status** `WAITING_ON_CHILDREN`; **marker** `ActionResult.awaiting_children`;
+  **state** `AgentState.awaiting_children` + `step_results` (both snapshotted) +
+  transient `suspend_requested`.
+- **Dispatch** `ChildEntityExecutor._dispatch_async` creates the child run,
+  enqueues `run_execution_recursive`, returns the marker. Bounded by
+  `governance.max_concurrent_children` (default 8; over it → run inline).
+- **Loop** `_iteration` detects the marker → suspend; `_drive` persists
+  `_persist_suspended` + returns; `resume()` rehydrates, `_fold_children` folds
+  terminal children (records a `step_results` entry per child),
+  `_maybe_resume_parent` enqueues `resume_parent_run` on a child's finalize.
+- **Jobs** `resume_parent_run` (idempotent), registered in `worker.py`.
+- **Tests** units in `tests/unit/test_async_child_dispatch.py`; E2E + chaos +
+  cost in `tests/parity/` (driven by `worker_sim.py`).
+
+---
+
+## 5. How to verify (commands that work here)
 
 ```bash
 cd backend
-# Python is in the venv (no system `python`):
 PY=.venv/bin/python
 
-# Full unit suite (fast, hermetic). Expect: 1 failed (layout lint, pre-existing).
+# Full unit suite (hermetic). Expect: all pass (layout-lint now green).
 $PY -m pytest tests/unit -o addopts="" -q -p no:warnings
 
-# The parity gate (needs DB+Redis; skips cleanly if absent). Expect: 2 passed.
+# The parity gate + all C4 Phase-A checks (needs DB+Redis; skips if absent).
+# Expect: 2 passed (sanity + the aggregated parity test running G1/G2/G3).
 $PY -m pytest tests/parity -o addopts="" -q -p no:warnings
 
-# Re-record parity goldens (hermetic auto-on with no LLM key):
+# Re-record parity goldens (hermetic; needed if you change a fixture/case).
 $PY -m scripts.record_golden_runs --output tests/parity/goldens
 
-# The layout/canary lint (currently exits 1 — known pre-existing debt):
+# The layout/canary lint (now exits 0).
 $PY scripts/lint_ai_layout.py
 ```
 
-Notes:
-- Always pass `-o addopts=""` — the repo's default addopts can interfere.
-- `-p no:warnings` just trims deprecation noise.
-- The DB has live data; parity seeds throwaway `parity-*` tenants and does **not**
-  clean them up (FK chains). Use a disposable Postgres if that matters.
+Notes: always pass `-o addopts=""`. Parity seeds throwaway `parity-*` tenants and
+does not clean them up (FK chains) — use a disposable Postgres if that matters.
 
 ---
 
 ## 6. The remaining roadmap (prioritized)
 
-Pull the full per-item detail from `WHATS_NEXT.md`. The high-value order:
+Pull per-item detail from `WHATS_NEXT.md`.
 
-### A. Finish the safe, unblocked Stage 1 cuts (no re-platforming needed)
-- **C10 — backend de-prefix:** `ai/phase11_router.py` → `ai/api/admin.py`
-  (`/api/v1/ai/admin/*`) + a redirect shim for one release. *(M)*
-- **C11 — frontend de-prefix:** rename the **14 `P11*` components** +
-  `types/phase11.ts` → `types/agentKernel.ts`; update `router/index.tsx`,
-  `MainLayout.tsx`, `meta.service.ts`, `kpi.service.ts`; route shim. *(M)*
-- **C3-partial — remove the `CortexRouter` alias** (`cortex_service.py:1199`;
-  pure rename shim; update the 2 importers). *(S)*
-- **After C10 + alias removal:** flip `CANARY_LABEL_MODE` → `error` in
-  `scripts/lint_ai_layout.py`; the layout-lint test goes green. *(S)*
-- **C13 — drop deprecated `engine_type` / `reasoning_mode` fields** (schema minor
-  bump; depends on C5 + C9, both done). *(M)*
-- **C12 — `mypy --strict`** per package (`core/ planning/ memory/ meta/
-  governance/`) as a CI gate. *(M, mechanical)*
+### A. Stage 1 consolidation — nearly done
+- ✅ C3-alias, C10, C11, lint→error (de-canary). `grep` of `backend/src
+  frontend/src` for `p11|P11|phase11` is empty except the documented shims +
+  migration names + `*.md` doc pointers.
+- ❌ **C12 — `mypy --strict`** per package (`core/ planning/ memory/ meta/
+  governance/`) as a CI gate. *(M, mechanical, not started.)*
+- 🚧 **C13 — drop deprecated `engine_type` / `reasoning_mode`** — **blocked, not a
+  clean cut** (see §7). Needs per-step reasoning routed via the Strategist first,
+  and the engine_type half is gated on C4.
 
-### B. The C4 chain (large; §3) — only when ready
-Strengthen parity → chaos test → flip async flag → re-platform → delete
-`execute_run` → C2 → C3 MetaReviewer-in-engine removal.
+### B. C4 (large; §3) — Phase A done
+Run the **G4 soak**, then Phase B (PR-5..PR-11). This unblocks **C2** and the rest
+of **C3** as fallout.
 
 ### C. The rest of Phase 12 (each its own track; see plans)
-- **`02`** Sandbox runtime / per-tenant containers (0% — XL).
-- **`03`** Video tool split (0%).
-- **`04`** CORTEX pip package extraction (0%; P11 did Stage-A groundwork).
-- **`06`** Meta-Agent v5 capabilities (v4 board exists; tool synthesis,
-  introspection tools, composition graph, prompt-evolution LLM, etc. = 0%).
-  Note: tool synthesis (`06` §2) hard-depends on `02`.
-- **`07`** MCP adapter, budget-aware REACT, trust-score learning, eval harness.
+- `02` Sandbox runtime / per-tenant containers (0%; hard-dep of `06` tool synth).
+- `03` Video tool split (0%). `04` CORTEX pip package (0%; Stage-A groundwork done;
+  Stage B gated on C2). `06` Meta-Agent v5 capabilities (v4 board exists; v5 = 0%).
+  `07` MCP adapter, budget-aware REACT, trust-score learning, eval harness.
 
 ---
 
 ## 7. Landmines / gotchas (specific, learned the hard way)
 
-- **Don't delete `MemoryRouter`, `MetaReviewer`, or `execute_run` yet** — all are
-  load-bearing via the legacy engine the loop still uses (§3).
-- **`MetaReviewer` is not a shim to delete** — `RealCriticPipeline` (the loop's
-  own critic) uses it (`critic_pipeline.py:490`). Plan `01` §4 is wrong on this.
-- **The narration lint is `error` mode** (`COMMENT_NARRATION_MODE`). Comments
-  matching `#\s*Phase\s+\d+`, `# Fix X:`, `# RACE-N`, etc. **fail the lint.** When
-  you add comments, avoid those patterns (write invariant comments instead). This
-  bit the Stage 0 commit.
-- **Alembic revision ids ≤ 32 chars** (memory note). New migrations use a `p12_*`
-  prefix; don't rename applied `p11t*` migrations.
-- **pytest-asyncio here ignores `loop_scope`** (old version — see the "Unknown
-  config option" warnings). Parametrized async tests each get their own event
-  loop, and the global `AsyncSessionLocal` engine binds to the first loop →
-  "attached to a different loop." The parity test iterates cases in **one**
-  test/loop on purpose. Keep that pattern for anything that drives the engine.
-- **The kernel opens its own `AsyncSessionLocal` sessions internally** (final
-  persist, child runs). You cannot wrap engine runs in a rolled-back savepoint
-  for test isolation — they commit. Seed throwaway tenants instead.
-- **Frontend de-prefix needs route/redirect shims** (`/admin/phase11/*` →
-  `/admin/agent-kernel/*`) for one release so bookmarks don't 404.
+- **C13 is blocked.** `engine_type` is not a typed schema field — its only
+  behavioral consumer is the C4-blocked `execute_run` (`execution_engine.py:738`).
+  `reasoning_mode` is still live: `step_executor.py:841/1041` routes REACT vs
+  CHAIN_OF_THOUGHT off the raw-dict value (the typed `ReasoningConfig.reasoning_mode`
+  is never read via the model). A clean drop needs per-step reasoning routed via
+  the Strategist's `reasoning_hint` first. The ORM/`schemas/execution.py`
+  `reasoning_mode` is *execution telemetry* — keep it.
+- **One-loop parity constraint** (see §1.6): add real-DB parity checks as helpers
+  called from `test_agent_loop_parity`, never as standalone async tests.
+- **Loop result_data shape:** the loop now emits `{"output", "steps":[...]}` to
+  match legacy (`core/step_results.py` + `_persist_final`). The refine flow
+  (`service.py:617`) reads `result_data["steps"]` — don't regress it.
+- **Child resolver has no company filter** (`planning/child_resolver.py` Strategy 4
+  name-hint lookup → `scalar_one_or_none`): seeding fixed-name children across
+  runs trips `MultipleResultsFound`. Parity seeding wires `target.entity_id`
+  directly (Strategy 1) to avoid this.
+- **De-prefix shims carry a 2026-09-01 removal date** (`main.py` backend redirect,
+  frontend route table). Don't delete early; don't forget to delete on schedule.
+- **C10 left a double-`admin/` path** for the KPI/decisions/risks/tools endpoints
+  (e.g. `/api/v1/ai/admin/admin/kpi/runs`) — functionally correct, cosmetic
+  cleanup if desired.
+- **Don't delete `MemoryRouter`, `MetaReviewer`, or `execute_run` yet** — all
+  load-bearing via the legacy engine until C4 Phase B (§3). `MetaReviewer` stays
+  even after C4 (`RealCriticPipeline` uses it, `critic_pipeline.py:490`).
+- **Alembic revision ids ≤ 32 chars**, `p12_*` prefix; don't rename `p11t*`.
+- **pytest-asyncio here ignores `loop_scope`** (old version) — the one-loop
+  pattern in §1.6 is the workaround.
 
 ---
 
 ## 8. File & doc index
 
 **Phase 12 docs (`docs/phase12/`):**
-- `plans/00..08` — the original spec (read order: 00 → 05 → 01 → 06 → 02/03/04 → 07 → 08).
-- `WHATS_NEXT.md` — prioritized, checkbox status of every cut/item.
-- `designs/async_child_dispatch.md` — the C4-unblocking mechanism (implemented).
+- `plans/00..08` — original spec. `WHATS_NEXT.md` — prioritized status.
+- `designs/async_child_dispatch.md` — the mechanism (implemented).
+- `designs/c4_replatforming_implementation_plan.md` — the C4 PR-by-PR plan +
+  Progress section (Phase A done).
 - `HANDOFF.md` — this file.
 
 **Key code:**
-- `backend/src/ai/core/feature_flags.py` — flag defaults (master switches ON).
-- `backend/src/ai/core/agent_loop.py` — the loop (+ suspend/resume).
-- `backend/src/ai/core/execution_engine.py` — the legacy engine (still the
-  step-execution substrate; see the note at lines 97-104).
-- `backend/src/ai/core/executors/` — loop executors (delegate into the engine).
-- `backend/src/ai/step_executor.py` — step + child-run execution.
-- `backend/src/ai/core/arq_jobs.py` + `worker.py` — job dispatch + registration.
-- `backend/tests/parity/` — the legacy-vs-loop gate (+ `README.md`).
-- `backend/scripts/lint_ai_layout.py` — layout + canary-label + narration lint.
-- `backend/scripts/record_golden_runs.py` — parity golden recorder (hermetic).
+- `backend/src/ai/core/feature_flags.py` — flags (`AI_FLAG_` env prefix).
+- `backend/src/ai/core/agent_loop.py` — the loop (+ suspend/resume, step_results).
+- `backend/src/ai/core/step_results.py` — per-step `result_data["steps"]` helpers.
+- `backend/src/ai/core/execution_engine.py` — the legacy engine (`execute_run` is
+  the C4 target; note `:97-104` and the caller inventory in §3).
+- `backend/src/ai/core/executors/child_entity.py` — async dispatch + concurrency cap.
+- `backend/src/ai/api/admin.py` — the de-prefixed admin router (`/api/v1/ai/admin/*`).
+- `backend/src/ai/core/arq_jobs.py` + `worker.py` — dispatch, `resume_parent_run`,
+  `CHILD_RUN_QUEUE`.
+- `backend/tests/parity/` — the gate: `worker_sim.py` (in-process drainer),
+  `test_async_child_parity.py` (G1 async helper), `c4_resumability.py` (G2/G3),
+  `hermetic.py` (seeding + `child_fixtures`/`governance_overrides`), `extract.py`,
+  `test_agent_loop_parity.py` (the one aggregated test).
+- `backend/scripts/lint_ai_layout.py` — layout + canary (`error`) + narration lint.
 
-**Memory notes (`~/.claude/.../memory/`)** worth re-reading: the Phase 12 plan
-index, the alembic 32-char limit, the AgentLoop billing/planning notes, and the
-C9 DebateExecutor note.
+**Memory notes** worth re-reading: `phase12-c4-phase-a-done`,
+`phase12-stage1-decanary`, `phase12-c13-blocker`, the alembic 32-char limit, the
+AgentLoop billing/planning notes.
 
 ---
 
 ## 9. Suggested first actions for the fresh session
 
-1. Read this file, then `WHATS_NEXT.md`, then skim `plans/01` and `plans/08`.
-2. Run the two verify commands in §5; confirm you see the expected green +
-   the single known layout-lint failure.
-3. Push the 6 pending commits (or confirm the human did).
-4. Pick the next cut from §6.A (recommended start: **C10 + CortexRouter alias +
-   flip the canary lint to error** — this finally makes the layout-lint go green
-   and is the visible "de-canary" win, no re-platforming risk).
-5. For anything touching the legacy engine / child execution, re-read §3 first.
+1. Read this file, then `WHATS_NEXT.md`, then
+   `designs/c4_replatforming_implementation_plan.md` (Progress + §3 + §5).
+2. Run the two verify commands in §5; confirm green unit suite + 2 parity passed +
+   lint exit 0.
+3. Push the pending commits (or confirm the human did).
+4. Pick up where it makes sense:
+   - **If continuing C4:** confirm the **G4 soak** decision (run in prod, or
+     dev-skip), then start Phase B at **PR-5 (extract `StepEngine`)** — a
+     non-destructive, parity-guarded refactor. Hold before the irreversible PR-9.
+   - **Else, independent Stage-1 trailing work:** **C12 mypy --strict** (mechanical),
+     or pick a Track C/B/D item from §6.C.
+   - **Do NOT** attempt C13 (blocked, §7) or the C4 deletion (PR-9) without the
+     soak decision.
