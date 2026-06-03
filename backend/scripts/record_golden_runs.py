@@ -86,6 +86,7 @@ async def _record_one(case_id: str, output_dir: Path, *, hermetic: bool) -> bool
             db,
             entity_fixture=case.entity_fixture,
             input_data=case.input,
+            child_fixtures=case.child_fixtures,
         )
         logger.info("Seeded run %s for case %s", run_id, case_id)
 

@@ -138,21 +138,94 @@ def hermetic_llm_and_tools() -> Iterator[None]:
             WebSearchTool.run_with_context = orig_run_ctx            # type: ignore[assignment]
 
 
+def _build_entity(dto: Any, company_id: uuid.UUID, *,
+                  planning_override: Optional[dict] = None) -> Any:
+    """Construct a HierarchicalEntity row from a fixture DTO.
+
+    The name is uniquified so repeated seeds don't collide on
+    (company, name); child resolution never relies on the name (the parent
+    plan carries the resolved ``entity_id`` directly — see
+    ``seed_parity_run``).
+    """
+    from src.ai.orm.entity import HierarchicalEntity
+
+    planning = planning_override
+    if planning is None:
+        planning = dto.planning.model_dump() if dto.planning else None
+
+    return HierarchicalEntity(
+        id=uuid.uuid4(),
+        company_id=company_id,
+        name=f"{dto.name}_{uuid.uuid4().hex[:8]}",
+        display_name=dto.display_name,
+        description=dto.description,
+        goal=dto.goal,
+        type=dto.type.value,
+        status=dto.status.value,
+        version=dto.version,
+        tags=dto.tags,
+        identity=dto.identity,
+        hierarchy=dto.hierarchy.model_dump() if dto.hierarchy else None,
+        logic_gate=dto.logic_gate.model_dump() if dto.logic_gate else None,
+        planning=planning,
+        capabilities=dto.capabilities.model_dump() if dto.capabilities else None,
+        governance=dto.governance.model_dump() if dto.governance else None,
+        io_contract=dto.io_contract.model_dump() if dto.io_contract else None,
+        observability=dto.observability.model_dump() if dto.observability else None,
+        metadata_extensions=dto.metadata_extensions,
+    )
+
+
+def _wire_child_entity_ids(planning: Optional[dict],
+                           child_id_by_hint: dict[str, uuid.UUID]) -> Optional[dict]:
+    """Set each CHILD_ENTITY_INVOCATION step's ``target.entity_id`` to the
+    seeded child id matching its ``entity_name_hint``.
+
+    This makes child resolution deterministic via Strategy 1 (UUID
+    passthrough) instead of the name-hint DB lookup (Strategy 4), which has
+    no company filter and would trip MultipleResultsFound across the
+    un-torn-down parity tenants.
+    """
+    if not planning or not child_id_by_hint:
+        return planning
+    steps = ((planning.get("static_plan") or {}).get("steps")) or []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        # ``type`` may be a StepType enum (model_dump python mode) or its
+        # string value (json mode) — normalize before comparing.
+        step_type = step.get("type", "")
+        step_type = getattr(step_type, "value", step_type)
+        if str(step_type).upper() != "CHILD_ENTITY_INVOCATION":
+            continue
+        target = step.get("target") or {}
+        hint = target.get("entity_name_hint")
+        if hint and hint in child_id_by_hint:
+            target["entity_id"] = str(child_id_by_hint[hint])
+            step["target"] = target
+    return planning
+
+
 async def seed_parity_run(
     db: Any,
     *,
     entity_fixture: str,
     input_data: dict,
     company_id: Optional[uuid.UUID] = None,
+    child_fixtures: Optional[dict] = None,
     commit: bool = True,
 ) -> str:
     """Insert a fresh company (if needed), entity, and PENDING run.
+
+    ``child_fixtures`` maps a parent CHILD_ENTITY_INVOCATION step's
+    ``entity_name_hint`` to a child entity fixture name; each is seeded in
+    the same company and its id wired into the parent plan so a PROCESS
+    resolves its children and completes hermetically.
 
     Returns the new run id as a string. Used by both the recorder and the
     parity tests so goldens and candidates run the identical entity config.
     """
     from sqlalchemy import text
-    from src.ai.orm.entity import HierarchicalEntity
     from src.ai.orm.execution import ExecutionRun
     from tests.harness import load_entity_fixture
 
@@ -168,28 +241,21 @@ async def seed_parity_run(
         {"id": str(company_id), "n": f"parity-{company_id.hex[:8]}"},
     )
 
-    entity = HierarchicalEntity(
-        id=uuid.uuid4(),
-        company_id=company_id,
-        # Unique name so repeated seeds don't collide on (company, name).
-        name=f"{dto.name}_{uuid.uuid4().hex[:8]}",
-        display_name=dto.display_name,
-        description=dto.description,
-        goal=dto.goal,
-        type=dto.type.value,
-        status=dto.status.value,
-        version=dto.version,
-        tags=dto.tags,
-        identity=dto.identity,
-        hierarchy=dto.hierarchy.model_dump() if dto.hierarchy else None,
-        logic_gate=dto.logic_gate.model_dump() if dto.logic_gate else None,
-        planning=dto.planning.model_dump() if dto.planning else None,
-        capabilities=dto.capabilities.model_dump() if dto.capabilities else None,
-        governance=dto.governance.model_dump() if dto.governance else None,
-        io_contract=dto.io_contract.model_dump() if dto.io_contract else None,
-        observability=dto.observability.model_dump() if dto.observability else None,
-        metadata_extensions=dto.metadata_extensions,
-    )
+    # Seed children first so their ids can be wired into the parent plan.
+    child_id_by_hint: dict[str, uuid.UUID] = {}
+    for hint, child_fixture in (child_fixtures or {}).items():
+        child_dto = load_entity_fixture(child_fixture)
+        child = _build_entity(child_dto, company_id)
+        db.add(child)
+        await db.flush()
+        child_id_by_hint[hint] = child.id
+
+    # JSON mode so step ``type`` is a plain string and the wired plan
+    # serializes cleanly into the JSON column.
+    planning = dto.planning.model_dump(mode="json") if dto.planning else None
+    planning = _wire_child_entity_ids(planning, child_id_by_hint)
+
+    entity = _build_entity(dto, company_id, planning_override=planning)
     db.add(entity)
     await db.flush()
 

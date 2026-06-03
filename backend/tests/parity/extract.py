@@ -92,11 +92,18 @@ async def extract_run_result(
                 summ.output_len += len(str(row.output_result or ""))
 
     derived_output = output_text
-    if not derived_output:
-        # Best-effort: stringify result_data so similarity comparisons
-        # have something to chew on.
-        if run.result_data:
-            derived_output = str(run.result_data)
+    if not derived_output and run.result_data:
+        # Compare the logical output, not the whole result_data envelope.
+        # The envelope embeds run-specific child_run_id UUIDs (and a per-step
+        # summary) which differ on every run, so stringifying it would make
+        # the hashed-token cosine penalize even two identical engines. The
+        # user-facing output lives under result_data["output"]; structural
+        # parity (step count / types) is asserted separately.
+        rd = run.result_data
+        if isinstance(rd, dict) and "output" in rd:
+            derived_output = str(rd.get("output") or "")
+        else:
+            derived_output = str(rd)
 
     # Wall time, engine-fair: the legacy engine writes ``execution_time_ms``
     # directly; the AgentLoop only stamps ``started_at`` / ``completed_at``.

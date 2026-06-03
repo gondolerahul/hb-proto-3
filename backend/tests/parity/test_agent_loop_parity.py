@@ -53,6 +53,7 @@ def _case_for(golden: Path) -> ParityCase:
         fixture_name=case.entity_fixture,
         input_data=case.input,
         track=2,
+        child_fixtures=case.child_fixtures,
     )
 
 

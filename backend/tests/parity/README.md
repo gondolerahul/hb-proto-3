@@ -61,13 +61,22 @@ Recorded from `tests/regression/cases/*.yaml`:
 * `simple_skill_topic_easy` — the strong positive case: both engines
   COMPLETE with matching cost/steps/output.
 * `research_agent_brief` — AGENT; both COMPLETE.
-* `research_process_pipeline` — multi-child PROCESS; under the mock both
-  engines fail **identically** (a valid agreement signal, but a weaker
-  case — extend with richer child-entity fixtures for a positive check).
+* `research_process_pipeline` — multi-child PROCESS; the **positive**
+  child-path case. The case seeds the child AGENT (`child_fixtures` in the
+  YAML) and wires its id into the parent plan's `CHILD_ENTITY_INVOCATION`
+  steps, so both engines resolve the children and COMPLETE with matching
+  status/cost/output. This is the C4 gate's child-execution coverage.
 
 ## Known limitations / TODO
 
 * Seeded rows are throwaway (`parity-*` tenants) but are **not** torn down
   (the run spawns cortex nodes/trees with FK chains). Use a disposable
   test Postgres, or add a cascading cleanup fixture.
-* Add more positive cases (esp. a PROCESS that completes under the mock).
+* Output similarity compares `result_data["output"]` (the logical output),
+  not the whole `result_data` envelope — the envelope embeds run-specific
+  `child_run_id` UUIDs that would penalize even identical engines under the
+  hashed-token cosine. Structural parity is covered by status/step-count.
+* The loop persists thinner run metadata than legacy for static PROCESS
+  runs (no `result_data["steps"]`, no `dynamic_plan` steps) — a real pre-C4
+  gap (the refine flow reads `result_data["steps"]`, `service.py`). Track as
+  a follow-up before deleting the legacy engine.

@@ -55,6 +55,7 @@ class ParityCase:
     track: int = 2
     company_id: Optional[str] = None       # if None, harness creates a tenant
     user_id: Optional[str] = None
+    child_fixtures: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -151,4 +152,5 @@ async def _seed_run(db: Any, case: ParityCase, *, flag: str) -> str:
         entity_fixture=case.fixture_name,
         input_data=case.input_data,
         company_id=company_id,
+        child_fixtures=case.child_fixtures,
     )

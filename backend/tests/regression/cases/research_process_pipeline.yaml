@@ -6,6 +6,10 @@ track_min: 2
 timeout_seconds: 1200
 input:
   topic: "lattice cryptography in 2025"
+# Seed the child AGENT both CHILD_ENTITY_INVOCATION steps delegate to, and wire
+# its id into the parent plan so the PROCESS resolves children and completes.
+child_fixtures:
+  test_research_agent: research_agent
 expected_status: COMPLETED
 expected_min_cost_usd: 0.10
 expected_max_cost_usd: 3.50

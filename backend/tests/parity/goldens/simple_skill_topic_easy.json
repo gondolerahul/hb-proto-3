@@ -1,14 +1,14 @@
 {
-  "run_id": "52d00f30-2619-43f0-a6a3-65aee80ad652",
-  "entity_id": "fa2f7f2e-f137-4ad4-90de-a47e43df4edf",
+  "run_id": "fe5b63f9-d228-4319-b692-c3afaed52915",
+  "entity_id": "71e7f9ab-2359-4005-9888-11b06b9ed395",
   "status": "COMPLETED",
   "total_cost_usd": 0.0,
   "total_tokens": 160,
-  "execution_time_ms": 190,
+  "execution_time_ms": 219,
   "iterations": 2,
   "step_count": 2,
   "error_message": null,
-  "output_text": "{'output': 'Post-quantum cryptography advanced in 2025 as NIST finalized its lattice-based standards. This is a deterministic parity summary; the content is fixed so engine-vs-engine comparison is reproducible.', 'steps': [{'step': 'web_search', 'output': 'NIST finalized lattice-based post-quantum cryptography standards in 2025 (deterministic stub result).'}, {'step': 'summarise', 'output': 'Post-quantum cryptography advanced in 2025 as NIST finalized its lattice-based standards. This is a deterministic parity summary; the content is fixed so engine-vs-engine comparison is reproducible.'}]}",
+  "output_text": "Post-quantum cryptography advanced in 2025 as NIST finalized its lattice-based standards. This is a deterministic parity summary; the content is fixed so engine-vs-engine comparison is reproducible.",
   "plan_step_types": [
     "TOOL_CALL",
     "ACTION"

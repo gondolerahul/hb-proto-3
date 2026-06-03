@@ -42,6 +42,15 @@ class RegressionCase(BaseModel):
     input: dict = Field(default_factory=dict)
     expected_status: str = "COMPLETED"
 
+    child_fixtures: dict = Field(
+        default_factory=dict,
+        description="For PROCESS cases: maps a CHILD_ENTITY_INVOCATION step's "
+                    "``target.entity_name_hint`` to the child entity fixture to "
+                    "seed. The seeded child's id is wired into the parent plan "
+                    "step's ``target.entity_id`` so child resolution is "
+                    "deterministic (Strategy 1) and isolated per run.",
+    )
+
     expected_min_cost_usd: Optional[float] = None
     expected_max_cost_usd: Optional[float] = None
 

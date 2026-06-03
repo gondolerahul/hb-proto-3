@@ -1,14 +1,14 @@
 {
-  "run_id": "4eb259cf-dc94-4df6-8ac3-4739dbca86d4",
-  "entity_id": "0160604d-8e0d-4e04-a0a5-0e6215245c68",
+  "run_id": "296a686c-0b2e-4840-a536-4a37486772bd",
+  "entity_id": "4151f814-ee91-442f-914b-ccf80a2a5e2c",
   "status": "COMPLETED",
   "total_cost_usd": 0.0,
   "total_tokens": 0,
-  "execution_time_ms": 240,
+  "execution_time_ms": 262,
   "iterations": 0,
   "step_count": 0,
   "error_message": null,
-  "output_text": "{'output': 'Success', 'steps': []}",
+  "output_text": "Success",
   "plan_step_types": [],
   "steps": [],
   "meta": {
