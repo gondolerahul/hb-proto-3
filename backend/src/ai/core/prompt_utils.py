@@ -58,6 +58,18 @@ def parse_variables(text: str, variables: dict) -> str:
     return text
 
 
+CORTEX_OPS_HELP = (
+    "## Available CORTEX Operations\n"
+    "You can perform the following operations on the cognitive tree:\n"
+    "  NAVIGATE(node_id) — Move your viewport to a node; see its title, summary, and children\n"
+    "  READ(node_id, page=0) — Read the full content of a node (paged if large)\n"
+    "  WRITE(parent_id, node_type, title, content, summary) — Create a new child node\n"
+    "  RECURSE(node_id, task, result_slot) — Spawn a child execution scoped to a subtree\n"
+    "  AWAIT_CHILDREN() — Wait for all child executions to complete and collect results\n"
+    "  CHECKPOINT(progress_summary, key_facts, next_steps) — Save progress and compress context"
+)
+
+
 def build_sandwich_prompt(
     identity: str,
     goal: Optional[str] = None,
@@ -70,6 +82,7 @@ def build_sandwich_prompt(
     allowed_deviations: Optional[Dict] = None,
     execution_constraints: Optional[Dict] = None,
     platform_awareness: Optional[str] = None,
+    cortex_enabled: bool = False,                       # Track 6: inject ops-help once
 ) -> str:
     """
     Build structured prompt using the 'Sandwich Method'.
@@ -106,6 +119,11 @@ def build_sandwich_prompt(
     # Layer 3.5: Platform Awareness (Tier 1 Meta-Cognition)
     if platform_awareness:
         sections.append(f"## Platform Awareness\n{platform_awareness}")
+
+    # Layer 3.7: CORTEX Operations Help (Track 6 — injected once into the
+    # system prompt instead of being re-shipped on every viewport).
+    if cortex_enabled:
+        sections.append(CORTEX_OPS_HELP)
 
     # Layer 4: Few-Shot Examples
     if few_shot_examples:

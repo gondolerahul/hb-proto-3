@@ -457,6 +457,63 @@ class AIService:
         result = await self.db.execute(query)
         return result.scalars().all()
 
+    async def cancel_execution(
+        self, execution_id: UUID, company_id: UUID, user_role: str = None
+    ) -> ExecutionRun:
+        """Cooperatively cancel an in-flight run.
+
+        Flips ``ExecutionRun.status`` to ``CANCELLED`` (a terminal state) and
+        publishes a ``cancelled`` event on the ``execution:{id}`` Redis channel.
+        The running AgentLoop re-reads the status at the top of each iteration
+        (see ``AgentLoop._check_cancelled``) and aborts; legacy-engine runs that
+        outlive the cancel simply settle as-is. Cancelling an already-terminal
+        run is a no-op (returns the run unchanged) so a double-click can't error.
+        """
+        from sqlalchemy.orm import selectinload
+
+        query = select(ExecutionRun).where(ExecutionRun.id == execution_id)
+        if user_role != "app_admin":
+            query = query.where(ExecutionRun.company_id == company_id)
+        run = (await self.db.execute(query)).scalar_one_or_none()
+        if not run:
+            raise HTTPException(status_code=404, detail="Execution not found")
+
+        terminal = {"COMPLETED", "FAILED", "PARTIAL_COMPLETE", "CANCELLED"}
+        if str(run.status) not in terminal:
+            from datetime import datetime
+            run.status = "CANCELLED"
+            run.completed_at = datetime.utcnow()
+            await self.db.commit()
+
+            # Notify any live SSE subscriber so the stream closes promptly. The
+            # ``status`` key drives the stream generator's break condition.
+            try:
+                import json
+                import redis.asyncio as redis_lib
+                from src.common.config import settings
+                r = redis_lib.from_url(settings.REDIS_URL or "redis://localhost:6379")
+                await r.publish(
+                    f"execution:{execution_id}",
+                    json.dumps({"type": "cancelled", "status": "CANCELLED"}),
+                )
+                await r.close()
+            except Exception:
+                pass  # Non-fatal: the loop's own status re-read still aborts it.
+
+        # Reload with relationships for the response schema.
+        result = await self.db.execute(
+            select(ExecutionRun)
+            .options(
+                selectinload(ExecutionRun.entity),
+                selectinload(ExecutionRun.child_runs),
+                selectinload(ExecutionRun.llm_logs),
+                selectinload(ExecutionRun.tool_logs),
+                selectinload(ExecutionRun.human_approvals),
+            )
+            .where(ExecutionRun.id == execution_id)
+        )
+        return result.scalar_one()
+
     async def retry_execution(self, execution_id: UUID, company_id: UUID, user_id: UUID) -> ExecutionRun:
         """
         Create a new execution run that resumes from a FAILED run's state.

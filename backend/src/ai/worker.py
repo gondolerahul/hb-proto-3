@@ -32,36 +32,21 @@ from src.ai.core.arq_jobs import (
     process_document,
     dreaming_worker,
     dreaming_cron_trigger,
+    dreaming_outcome_trigger,
     graph_maintenance_worker,
     resume_execution,
     cortex_resume_scheduled,
+    critic_calibration_job,
+    skill_promotion_scan,
+    meta_agent_prompt_evolution,
+    kpi_rollup_refresh,
+    cost_estimator_refresh,
 )
 from src.ai.campaign_worker import (
     execute_campaign_task,
     pause_campaign_task,
     stop_campaign_task,
 )
-
-# ---------------------------------------------------------------------------
-# Backward-compatibility re-exports
-# ---------------------------------------------------------------------------
-# These allow existing code to `from src.ai.worker import X` without breaking.
-# Deprecated: import from src.ai.core.* directly in new code.
-from src.ai.core.execution_engine import ExecutionEngine  # noqa: F401
-from src.ai.core.recursive_engine import RecursiveReasoningEngine  # noqa: F401
-from src.ai.core.exceptions import UncertaintySignal  # noqa: F401
-from src.ai.core.prompt_utils import (  # noqa: F401
-    parse_variables,
-    build_sandwich_prompt,
-    filter_context_for_step,
-)
-from src.ai.core.context_utils import (  # noqa: F401
-    store_step_output as _store_step_output,
-    sanitize_context_for_persistence as _sanitize_context_for_persistence,
-)
-from src.ai.schemas import GoalNode  # noqa: F401
-from src.ai.schemas import DEFAULT_REVIEW_SYSTEM_PROMPT as DEFAULT_REVIEW_PROMPT  # noqa: F401
-from src.ai.schemas import DEFAULT_PLANNING_SYSTEM_PROMPT as DYNAMIC_PLANNER_PROMPT  # noqa: F401
 
 # Model imports needed by arq at module scope
 from src.common.database import AsyncSessionLocal  # noqa: F401
@@ -80,8 +65,10 @@ class WorkerSettings:
         pause_campaign_task,
         stop_campaign_task,
         resume_execution,
+        # Outcome-triggered Dreaming.
+        dreaming_outcome_trigger,
     ]
-    # Gap #5: Register CORTEX scheduled wake-up cron
+    # Register CORTEX scheduled wake-up cron
     cron_jobs = [
         # Run every 5 minutes to check for scheduled tree resumptions
         # arq expects: cron(coroutine, minute=set, hour=set, ...)
@@ -105,8 +92,21 @@ try:
     from arq.cron import cron
     WorkerSettings.cron_jobs = [
         cron(cortex_resume_scheduled, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
-        # Phase 10C: Auto-schedule dreaming every 6 hours
+        # C: Auto-schedule dreaming every 6 hours
         cron(dreaming_cron_trigger, hour={0, 6, 12, 18}, minute={15}),
+        # Weekly critic calibration (Sunday 03:15 UTC)
+        cron(critic_calibration_job, weekday=6, hour=3, minute=15),
+        # Weekly skill candidate scan (Sunday 04:30 UTC)
+        cron(skill_promotion_scan, weekday=6, hour=4, minute=30),
+        # Weekly Meta-Agent prompt-evolution candidates
+        # (Monday 05:00 UTC; never auto-applies — HITL gate required).
+        cron(meta_agent_prompt_evolution, weekday=0, hour=5, minute=0),
+        # Hourly KPI rollup refresh (xx:07 to spread
+        # load away from other top-of-hour crons).
+        cron(kpi_rollup_refresh, minute={7}),
+        # /9: Nightly cost-estimator baseline refresh from
+        # telemetry (02:30 UTC — quiet hour, follows the daily aggregate).
+        cron(cost_estimator_refresh, hour=2, minute=30),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

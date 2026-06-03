@@ -36,6 +36,11 @@ import {
     Wrench,
     Layers,
     Users,
+    Gauge,
+    Sparkles,
+    Receipt,
+    Flag,
+    ShieldAlert,
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import logo from '@/assets/logo.png';
@@ -123,7 +128,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 ...(([UserRole.APP_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/reports/costing', label: 'Costing Report', icon: PiggyBank }] : []),
                 ...(([UserRole.APP_ADMIN].includes(user?.role as UserRole)) ? [{ path: '/settings/billing', label: 'Billing Settings', icon: Settings }] : []),
             ]
-        }
+        },
+        // Phase 11 — Agent Kernel observability + admin. Admin-only.
+        ...(([UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN].includes(user?.role as UserRole)) ? [{
+            title: 'Agent Kernel',
+            icon: BrainCircuit,
+            items: [
+                { path: '/admin/phase11/kpi', label: 'KPI Dashboard', icon: Gauge },
+                { path: '/admin/phase11/meta-intelligence', label: 'Meta-Agent Intelligence', icon: Sparkles },
+                { path: '/admin/phase11/cost', label: 'Cost Attribution', icon: Receipt },
+                { path: '/admin/phase11/feature-flags', label: 'Feature Flags', icon: Flag },
+                { path: '/admin/phase11/risks', label: 'Risk & Exit', icon: ShieldAlert },
+            ]
+        }] : [])
     ];
 
     const isActive = (path: string) => location.pathname.startsWith(path);

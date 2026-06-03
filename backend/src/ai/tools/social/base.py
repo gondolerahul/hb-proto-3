@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from src.ai.tools.base import Tool
+from src.ai.tools.base import Tool, ToolStatus
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,15 @@ class SocialMediaTool(Tool):
     """
 
     platform: str = ""  # Override in subclass
+
+    # C8 social audit (Phase 12): the 15 social/ads platform integrations are
+    # not yet wired to any production entity and several are unfinished. They
+    # are tagged EXPERIMENTAL so they require an explicit per-company opt-in
+    # (``tools.experimental.{tool_id}=true``) via
+    # ``ToolRegistry.get_visible_tools_for_company`` before an agent can use
+    # them. Promote an individual platform to ``ToolStatus.ACTIVE`` on its
+    # subclass once it is verified end-to-end. See tools/integrations README.
+    status: ToolStatus = ToolStatus.EXPERIMENTAL
 
     async def run(self, input_data: str) -> str:
         """Delegate to run_with_context (credentials require context)."""

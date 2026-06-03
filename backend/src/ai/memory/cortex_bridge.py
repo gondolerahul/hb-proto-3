@@ -13,14 +13,14 @@ from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
-from src.ai.memory.cortex_service import CortexRouter as CortexService
+from src.ai.memory.cortex_service import CortexService
 from src.ai.schemas import StepType, PlanStep
 from src.ai.usage_service import UsageService
 
 logger = logging.getLogger(__name__)
 
 
-# Phase 10A: Direct import — no circular dependency after extraction to ai.core
+# A: Direct import — no circular dependency after extraction to ai.core
 from src.ai.core.prompt_utils import parse_variables as _parse_variables
 
 
@@ -34,9 +34,9 @@ class CortexBridge:
         self.company_id = company_id
         self.cortex = CortexService(db=db, company_id=company_id)
         self.usage_service = usage_service or UsageService(db)
-        self.redis = redis  # Phase 4: optional Redis for viewport caching
-        self._write_buffer: list = []  # Phase 4: batch node write buffer
-        self._context_size_bytes: int = 0  # Phase 6: incremental size tracker
+        self.redis = redis  # optional Redis for viewport caching
+        self._write_buffer: list = []  # batch node write buffer
+        self._context_size_bytes: int = 0  # incremental size tracker
 
     # ------------------------------------------------------------------
     # Context Size Tracking (Phase 6 — PERF-3)
@@ -197,7 +197,7 @@ class CortexBridge:
                         "run_id": str(run.id),
                         "char_count": len(content),
                         "artifact_id": item.get("artifact_id"),
-                        # Phase 9: Provenance tracking
+                        # Provenance tracking
                         "tool_success": True,
                         "verified": False,  # Set to True after fact-checking
                         "provenance_chain": f"{tool_id}→cortex_bridge",

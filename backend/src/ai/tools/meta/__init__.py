@@ -17,6 +17,7 @@ from src.ai.tools.meta.schema_validator import MetaSchemaValidatorTool
 from src.ai.tools.meta.entity_creator import MetaEntityCreatorTool
 from src.ai.tools.meta.entity_executor import MetaEntityExecutorTool
 from src.ai.tools.meta.platform_introspect import MetaPlatformIntrospectTool
+from src.ai.tools.meta.spec_critic import MetaSpecCriticTool
 
 __all__ = [
     "MetaRegistrySearchTool",
@@ -24,4 +25,5 @@ __all__ = [
     "MetaEntityCreatorTool",
     "MetaEntityExecutorTool",
     "MetaPlatformIntrospectTool",
+    "MetaSpecCriticTool",
 ]

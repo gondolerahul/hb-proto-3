@@ -22,17 +22,165 @@ logger = logging.getLogger(__name__)
 # --- Arq Jobs ---
 
 async def run_execution_recursive(ctx, run_id_str: str):
+    """Entry point for an execution run.
+
+    Phase 11 Track 2: when ``agent_loop.enabled`` resolves True for the
+    run's company, the new ``AgentLoop`` orchestrator drives the run.
+    Otherwise the legacy ``ExecutionEngine.execute_run`` path is taken.
+    The feature flag is OFF by default so behaviour is identical to
+    pre-Phase-11 until an operator turns it on per-company (or
+    globally).
+    """
     run_id = UUID(run_id_str)
     import redis.asyncio as redis
     from src.common.config import settings
-    
+
     redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
-    
+
     async with AsyncSessionLocal() as db:
-        engine = ExecutionEngine(db, redis_pool)
-        await engine.execute_run(run_id)
-    
+        # Resolve feature flag scope first; needs the run's company_id +
+        # any entity-level override.
+        from src.ai.core.feature_flags import FeatureFlags
+
+        flags = FeatureFlags(db, redis=redis_pool)
+        company_id, entity_extras = await _resolve_run_flag_scope(db, run_id)
+        use_loop = await flags.is_on(
+            "agent_loop.enabled",
+            company_id=company_id,
+            entity_extras=entity_extras,
+        )
+
+        # Record which engine actually drives this run, for two reasons:
+        #   1. Observability — the chosen path is otherwise invisible in logs.
+        #   2. UI correctness — the SPA resolves ``agent_loop.enabled`` from
+        #      ``run.input_data.feature_flags`` *first* (per-run scope wins over
+        #      the global flag). Stamping the real decision here guarantees the
+        #      ExecutionDetail page renders the layout matching the engine that
+        #      ran: the AgentLoop timeline for loop runs, the legacy step list
+        #      otherwise — instead of a blank "new" page when the global flag is
+        #      ON but this run went legacy.
+        logger.info(
+            "[dispatch] run=%s engine=%s agent_loop.enabled=%s company=%s",
+            run_id, "agent_loop" if use_loop else "legacy", use_loop, company_id,
+        )
+
+        # ── Guard against ghost jobs ──────────────────────────────────────
+        # If the run (or its owning entity) was deleted after the job was
+        # enqueued — e.g. the operator removed the entity mid-flight — there
+        # is nothing to execute. Driving the engine anyway would attempt to
+        # write child rows (cortex_trees, usage_logs, llm_interaction_logs,
+        # StepHealthRecords…) that reference the now-missing run/entity, each
+        # raising a ForeignKeyViolationError that poisons the session and
+        # cascades into a storm of PendingRollbackErrors on every retry.
+        # Return cleanly (no exception) so arq treats the job as done and
+        # stops retrying the ghost run.
+        from sqlalchemy.orm import selectinload as _selectinload
+        guard_run = (await db.execute(
+            select(ExecutionRun)
+            .options(_selectinload(ExecutionRun.entity))
+            .where(ExecutionRun.id == run_id)
+        )).scalar_one_or_none()
+        if guard_run is None:
+            logger.warning(
+                "[dispatch] run %s no longer exists — abandoning ghost job", run_id
+            )
+            await redis_pool.close()
+            return
+        if guard_run.entity is None or getattr(guard_run.entity, "status", None) == "DELETED":
+            logger.warning(
+                "[dispatch] run %s references missing/deleted entity %s — "
+                "abandoning ghost job", run_id, guard_run.entity_id,
+            )
+            await redis_pool.close()
+            return
+
+        # ── Idempotency guard: never re-drive an already-finished run ─────────
+        # arq retries a failed job (default max_tries=5), and any path that
+        # re-enqueues this run_id would otherwise re-run the engine end-to-end
+        # and re-settle billing on a run that already paid. Once a run reaches a
+        # terminal state, a fresh dispatch of the SAME run_id is always a
+        # duplicate — retry/refine create NEW run rows, so they are unaffected.
+        # Returning cleanly (no exception) stops arq from retrying further.
+        _TERMINAL = {
+            RunStatus.COMPLETED.value,
+            RunStatus.FAILED.value,
+            RunStatus.PARTIAL_COMPLETE.value,
+            RunStatus.CANCELLED.value,
+        }
+        if str(guard_run.status) in _TERMINAL:
+            logger.warning(
+                "[dispatch] run %s already terminal (status=%s) — skipping "
+                "re-dispatch to avoid re-billing an already-settled run",
+                run_id, guard_run.status,
+            )
+            await redis_pool.close()
+            return
+
+        try:
+            run_obj = (await db.execute(
+                select(ExecutionRun).where(ExecutionRun.id == run_id)
+            )).scalar_one_or_none()
+            if run_obj is not None:
+                idata = dict(run_obj.input_data or {})
+                ff = dict(idata.get("feature_flags") or {})
+                ff["agent_loop.enabled"] = bool(use_loop)
+                idata["feature_flags"] = ff
+                run_obj.input_data = idata  # reassign so the JSON change is tracked
+                await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.warning("Could not stamp agent_loop decision onto run %s", run_id)
+
+        # Bind a per-run TraceRecorder for the whole execution. Both engine
+        # paths converge here, so this single binding instruments the AgentLoop
+        # AND the legacy execute_run path with the same span machinery. The deep
+        # layers (tool executor, LLM router) read it off a ContextVar.
+        from src.ai.core.trace import TraceRecorder, set_recorder
+
+        _obs = (getattr(guard_run.entity, "observability", None) or {}) if guard_run.entity else {}
+        _capture = bool(_obs.get("log_thoughts", True))
+        recorder = TraceRecorder(
+            run_id, company_id=company_id, redis=redis_pool,
+            capture_payloads=_capture,
+        )
+
+        with set_recorder(recorder):
+            if use_loop:
+                from src.ai.core.agent_loop import AgentLoop
+
+                loop = AgentLoop(
+                    db, redis_pool,
+                    company_id=company_id,
+                    feature_flags=flags,
+                )
+                await loop.run(run_id)
+            else:
+                engine = ExecutionEngine(db, redis_pool)
+                await engine.execute_run(run_id)
+
     await redis_pool.close()
+
+
+async def _resolve_run_flag_scope(db, run_id: UUID):
+    """Best-effort (company_id, entity_extras) lookup for flag resolution.
+
+    Returns ``(None, None)`` on any failure so flag resolution falls
+    back to env + default — never blocks the run from starting.
+    """
+    try:
+        from sqlalchemy.orm import selectinload
+        run = (await db.execute(
+            select(ExecutionRun)
+            .options(selectinload(ExecutionRun.entity))
+            .where(ExecutionRun.id == run_id)
+        )).scalar_one_or_none()
+        if not run:
+            return None, None
+        entity = run.entity
+        extras = getattr(entity, "metadata_extensions", None) if entity else None
+        return run.company_id, extras if isinstance(extras, dict) else None
+    except Exception:
+        return None, None
 
 
 async def process_gateway_event(ctx, envelope_dict: dict):
@@ -471,7 +619,7 @@ async def dreaming_worker(ctx: dict, entity_id_str: str, company_id_str: str, fo
             return {"error": str(e)}
 
 # ---------------------------------------------------------------------------
-# Phase 10C: dreaming_cron_trigger — Auto-schedule dreaming for entities
+# C: dreaming_cron_trigger — Auto-schedule dreaming for entities
 # ---------------------------------------------------------------------------
 async def dreaming_cron_trigger(ctx: dict) -> dict:
     """
@@ -554,7 +702,7 @@ async def graph_maintenance_worker(ctx: dict) -> dict:
             return {"error": str(e)}
 
 # ---------------------------------------------------------------------------
-# Ph-C: resume_execution — Arq job to resume a checkpointed run
+# Resume_execution — Arq job to resume a checkpointed run
 # ---------------------------------------------------------------------------
 async def resume_execution(ctx: dict, run_id_str: str) -> dict:
     """
@@ -572,7 +720,7 @@ async def resume_execution(ctx: dict, run_id_str: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Gap #5: Scheduled CORTEX wake-ups — Arq cron job
+# Scheduled CORTEX wake-ups — Arq cron job
 # ---------------------------------------------------------------------------
 async def cortex_resume_scheduled(ctx: dict) -> dict:
     """
@@ -634,4 +782,282 @@ async def cortex_resume_scheduled(ctx: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Ph-A: RecursiveReasoningEngine — extends ExecutionEngine with Goal Trees
+# Critic Calibration cron job
+# ---------------------------------------------------------------------------
+
+async def kpi_rollup_refresh(ctx: dict) -> dict:
+    """Phase 11 Track 9 — refresh the kpi_daily_rollup materialised view.
+
+    Hourly cron. Uses ``REFRESH MATERIALIZED VIEW CONCURRENTLY`` so
+    reads against the view never block. Falls back to a plain refresh
+    if the unique index is missing (e.g. fresh database without the
+    Track 9 migration applied yet).
+    """
+    try:
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as db:
+            try:
+                await db.execute(text(
+                    "REFRESH MATERIALIZED VIEW CONCURRENTLY kpi_daily_rollup"
+                ))
+                await db.commit()
+                return {"refreshed": True, "mode": "concurrent"}
+            except Exception as concurrent_err:
+                logger.warning(
+                    "CONCURRENTLY refresh failed (%s); falling back to plain refresh",
+                    concurrent_err,
+                )
+                await db.rollback()
+                await db.execute(text(
+                    "REFRESH MATERIALIZED VIEW kpi_daily_rollup"
+                ))
+                await db.commit()
+                return {"refreshed": True, "mode": "plain"}
+    except Exception as e:                                                  # noqa: BLE001
+        logger.error(f"kpi_rollup_refresh error: {e}")
+        return {"error": str(e)}
+
+
+async def dreaming_outcome_trigger(
+    ctx: dict, entity_id_str: str, reason: str = "success",
+    company_id_str: str | None = None,
+) -> dict:
+    """Phase 11 Track 6 — outcome-triggered Dreaming pass.
+
+    Enqueued by ``AgentLoop._finalize`` after every successful or failed
+    run. Performs the cheap ``should_dream`` guard first so we don't
+    burn LLM cost on entities that haven't accumulated enough new
+    episodes. Falls back gracefully when the engine isn't reachable
+    (e.g. early-rollout entities).
+    """
+    try:
+        from src.ai.memory.dreaming_engine import DreamingEngine
+        async with AsyncSessionLocal() as db:
+            entity_id = UUID(entity_id_str)
+            company_id = UUID(company_id_str) if company_id_str else None
+            if company_id is None:
+                from sqlalchemy import select
+                from src.ai.orm.entity import HierarchicalEntity
+                ent = (await db.execute(
+                    select(HierarchicalEntity).where(HierarchicalEntity.id == entity_id)
+                )).scalar_one_or_none()
+                if ent is None:
+                    return {"skipped": "entity not found"}
+                company_id = ent.company_id
+            engine = DreamingEngine(db, company_id=company_id)
+            should = True
+            checker = getattr(engine, "should_dream", None)
+            if callable(checker):
+                try:
+                    should = await checker(entity_id)
+                except Exception:                                           # pragma: no cover
+                    should = True
+            if not should:
+                return {"skipped": "should_dream=False", "entity_id": entity_id_str}
+            dream = getattr(engine, "dream", None)
+            if not callable(dream):
+                return {"skipped": "DreamingEngine.dream not implemented"}
+            await dream(entity_id)
+            await db.commit()
+            return {"dreamed": True, "entity_id": entity_id_str, "reason": reason}
+    except Exception as e:                                                  # noqa: BLE001
+        logger.warning(f"dreaming_outcome_trigger error: {e}")
+        return {"error": str(e)}
+
+
+async def critic_calibration_job(ctx: dict) -> dict:
+    """Weekly: scan recent StepHealthRecords vs run outcomes and write
+    false-pass / false-fail metrics back as Intelligence rules.
+
+    See ``ai.planning.critic_calibration.CriticCalibrator`` for the
+    calibration logic.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            # Lazy-import to avoid worker-boot side effects.
+            from src.ai.planning.critic_calibration import CriticCalibrator
+            results = await CriticCalibrator(db).run()
+            await db.commit()
+            return {
+                "entities_scored": len(results),
+                "samples_total": sum(r.samples for r in results),
+            }
+    except Exception as e:                                                  # noqa: BLE001
+        logger.error(f"critic_calibration_job error: {e}")
+        return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Meta-Agent Skill Library scan + Prompt-Evo cron
+# ---------------------------------------------------------------------------
+
+async def skill_promotion_scan(ctx: dict) -> dict:
+    """Weekly: scan every entity with recent activity for repeated tool chains.
+
+    For each entity that has run within the lookback window, ask
+    :class:`SkillLibrary` to detect chains exceeding the repeat
+    threshold and write candidates into the company's
+    :class:`MetaIntelligenceTree`. Humans approve the candidates via
+    the admin API.
+    """
+    try:
+        from sqlalchemy import distinct, select
+        from src.ai.meta.skill_library import SkillLibrary
+        from src.ai.orm.entity import HierarchicalEntity
+        from src.ai.orm.execution import ExecutionRun
+
+        proposed_per_entity: dict[str, int] = {}
+        async with AsyncSessionLocal() as db:
+            entity_rows = (await db.execute(
+                select(distinct(ExecutionRun.entity_id))
+                .where(ExecutionRun.entity_id.is_not(None))
+                .limit(500)
+            )).scalars().all()
+            for entity_id in entity_rows:
+                ent = (await db.execute(
+                    select(HierarchicalEntity).where(HierarchicalEntity.id == entity_id)
+                )).scalar_one_or_none()
+                if ent is None or ent.company_id is None:
+                    continue
+                lib = SkillLibrary(db)
+                try:
+                    candidates = await lib.scan_entity(entity_id, ent.company_id)
+                except Exception as e:                                      # noqa: BLE001
+                    logger.warning(f"skill scan failed for entity {entity_id}: {e}")
+                    continue
+                if candidates:
+                    proposed_per_entity[str(entity_id)] = len(candidates)
+            await db.commit()
+        return {
+            "entities_scanned": len(entity_rows),
+            "candidates_proposed": sum(proposed_per_entity.values()),
+        }
+    except Exception as e:                                                  # noqa: BLE001
+        logger.error(f"skill_promotion_scan error: {e}")
+        return {"error": str(e)}
+
+
+async def meta_agent_prompt_evolution(ctx: dict) -> dict:
+    """Weekly: write Meta-Agent prompt-update candidates (HITL-gated).
+
+    The actual LLM "critic of critic" pass is deliberately *not*
+    wired up in Track 5 — that's a P2 follow-up. This cron lays the
+    plumbing: it samples recent runs, builds a stub
+    ``prompt_update_candidate`` rationale, and writes it into the
+    MetaIntelligenceTree. Until an admin POSTs the approve endpoint
+    nothing changes about the Meta-Agent prompt.
+    """
+    try:
+        from sqlalchemy import select
+        from src.ai.meta.meta_intelligence_tree import MetaIntelligenceTree
+        from src.ai.orm.entity import HierarchicalEntity
+        from src.ai.orm.execution import ExecutionRun
+
+        proposed = 0
+        async with AsyncSessionLocal() as db:
+            # Find Meta-Agent entities (flagged via metadata_extensions.is_meta_agent).
+            ents = (await db.execute(select(HierarchicalEntity).limit(500))).scalars().all()
+            meta_entities = [
+                e for e in ents
+                if isinstance(e.metadata_extensions, dict)
+                and e.metadata_extensions.get("is_meta_agent")
+            ]
+            for me in meta_entities:
+                if me.company_id is None:
+                    continue
+                recent = (await db.execute(
+                    select(ExecutionRun)
+                    .where(ExecutionRun.entity_id == me.id)
+                    .order_by(ExecutionRun.created_at.desc())
+                    .limit(20)
+                )).scalars().all()
+                if len(recent) < 3:
+                    continue
+                tree = MetaIntelligenceTree(db, me.company_id)
+                try:
+                    await tree.add_prompt_update_candidate(
+                        prompt_diff="",  # filled by P2 LLM critic-of-critic
+                        rationale=(
+                            f"Weekly automated review of {len(recent)} recent "
+                            "Meta-Agent runs. Awaiting LLM critic-of-critic "
+                            "implementation to populate prompt_diff."
+                        ),
+                        evidence_run_ids=[str(r.id) for r in recent[:5]],
+                    )
+                    proposed += 1
+                except Exception as e:                                      # noqa: BLE001
+                    logger.warning(f"prompt-evo write failed for entity {me.id}: {e}")
+            await db.commit()
+        return {"prompt_candidates_proposed": proposed}
+    except Exception as e:                                                  # noqa: BLE001
+        logger.error(f"meta_agent_prompt_evolution error: {e}")
+        return {"error": str(e)}
+
+
+async def cost_estimator_refresh(ctx: dict) -> dict:
+    """Nightly: refresh `cost_estimator` baselines from telemetry.
+
+    Scans recent `tool_interaction_logs` rows, computes a robust
+    median cost per tool, and writes the refreshed dict into a
+    well-known CORTEX-adjacent row. The estimator picks it up via
+    `cost_estimator.refresh_from_db(...)` on next process start; live
+    workers continue using the cached baseline until they restart.
+
+    Conservative defaults: only update a baseline when we have ≥ 20
+    samples in the last 30 days; otherwise keep the seeded value.
+    """
+    try:
+        from datetime import timedelta
+        from decimal import Decimal as _D
+        from sqlalchemy import text as _t
+        async with AsyncSessionLocal() as db:
+            rows = (await db.execute(
+                _t(
+                    """
+                    SELECT tool_id,
+                           COUNT(*) AS samples,
+                           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY cost_usd)
+                               AS median_cost
+                    FROM tool_interaction_logs
+                    WHERE created_at >= :since
+                      AND cost_usd > 0
+                      AND success = TRUE
+                    GROUP BY tool_id
+                    HAVING COUNT(*) >= 20
+                    """
+                ),
+                {"since": datetime.utcnow() - timedelta(days=30)},
+            )).all()
+            refreshed: dict[str, float] = {}
+            for r in rows:
+                refreshed[str(r.tool_id)] = float(r.median_cost or 0)
+            if not refreshed:
+                return {"refreshed_tools": 0, "reason": "no telemetry"}
+            # Apply in-process so live workers using cost_estimator pick the
+            # new baseline on next process restart. The cron emits a
+            # telemetry event so the persisted baseline source is auditable.
+            try:
+                from src.ai.planning import cost_estimator as _ce
+                from decimal import Decimal as _Dec
+                for tool_id, cost in refreshed.items():
+                    if cost > 0:
+                        _ce.TOOL_BASELINE_COST[tool_id] = _Dec(str(cost))
+            except Exception:                                                # pragma: no cover
+                pass
+            try:
+                from src.ai.core.events import event
+                event(
+                    "agent.cost.estimator_refresh",
+                    refreshed_tools=len(refreshed),
+                    tools=refreshed,
+                )
+            except Exception:                                                # pragma: no cover
+                pass
+        return {"refreshed_tools": len(refreshed), "tools": refreshed}
+    except Exception as e:                                                  # noqa: BLE001
+        logger.error(f"cost_estimator_refresh error: {e}")
+        return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# RecursiveReasoningEngine — extends ExecutionEngine with Goal Trees

@@ -9,7 +9,12 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { ExecutionRun, RunStatus, EntityType, LLMInteractionLog, ToolInteractionLog } from '@/types';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { P11AgentLoopExecutionDetail } from '@/components/agent/P11AgentLoopExecutionDetail';
 import './ExecutionDetail.css';
+
+const _API_BASE = (import.meta.env.VITE_API_BASE_URL as string)
+    || 'https://gateway.hirebuddha.com/api/v1';
 
 // Authenticated file download — uses apiClient (with auto token-refresh)
 // for /api/ routes, falls back to direct fetch for static artifact paths.
@@ -522,6 +527,15 @@ export const ExecutionDetail: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'steps' | 'tree'>('steps');
     const runRef = useRef<ExecutionRun | null>(null);
 
+    // Phase 11 Track 2 — flip to new AgentLoop layout per-run when on.
+    const agentLoopEnabled = useFeatureFlag('agent_loop.enabled', {
+        defaultValue: false,
+        runMeta:
+            (run as any)?.input_data?.feature_flags as
+                | Record<string, boolean | undefined>
+                | undefined,
+    });
+
     // Refinement state
     const [showRefinePanel, setShowRefinePanel] = useState(false);
     const [refineFeedback, setRefineFeedback] = useState('');
@@ -755,6 +769,28 @@ export const ExecutionDetail: React.FC = () => {
         </div>
     );
     if (!run) return <div className="error-message">Execution not found.</div>;
+
+    // Phase 11 Track 2: render the new AgentLoop layout when the
+    // run's company has the `agent_loop.enabled` flag on.
+    if (agentLoopEnabled) {
+        const streamUrl = `${_API_BASE}/ai/executions/${run.id}/stream`;
+        return (
+            <div className="page-container execution-detail-page">
+                <header className="page-header">
+                    <div className="flex items-center gap-6">
+                        <JellyButton variant="ghost" onClick={() => navigate('/ai/executions')} className="p-2">
+                            <ArrowLeft size={24} />
+                        </JellyButton>
+                        <div>
+                            <h1>Agent Loop</h1>
+                            <p>{run.entity?.name} • Run ID: {run.id.slice(0, 12)} • status: {run.status}</p>
+                        </div>
+                    </div>
+                </header>
+                <P11AgentLoopExecutionDetail runId={run.id} streamUrl={streamUrl} />
+            </div>
+        );
+    }
 
     return (
         <div className="page-container execution-detail-page">
@@ -1007,6 +1043,21 @@ export const ExecutionDetail: React.FC = () => {
                                     <span className="text-xl font-black text-rose-gold">
                                         ${run.billed_amount != null ? run.billed_amount.toFixed(4) : run.total_cost_usd.toFixed(4)}
                                     </span>
+                                    {/* Transparency: show the raw provider cost beside the
+                                        billed charge so the platform markup is visible
+                                        (DOC_FACTORY_REDESIGN.md §5.3). */}
+                                    {run.billed_amount != null &&
+                                        Math.abs(run.billed_amount - run.total_cost_usd) > 0.0001 && (
+                                        <span
+                                            className="context-value block mt-1 opacity-70"
+                                            title="Raw provider cost before platform markup"
+                                        >
+                                            raw ${run.total_cost_usd.toFixed(4)}
+                                            {run.total_cost_usd > 0 && (
+                                                <> · {(run.billed_amount / run.total_cost_usd).toFixed(2)}×</>
+                                            )}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="context-item border-l-2 border-secondary">
                                     <label className="context-label">Tokens</label>

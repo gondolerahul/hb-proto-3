@@ -26,12 +26,12 @@ from src.ai.tool_executor import ToolExecutor
 from src.ai.llm.router import LLMRouter
 from src.ai.usage_service import UsageService
 from src.billing.credit_service import InsufficientCreditsError
-from sqlalchemy import select
+from sqlalchemy import select, update, func
 
 logger = logging.getLogger(__name__)
 
 
-# Phase 10A: Direct imports — no circular dependency after extraction to ai.core
+# Direct imports from ai.core (no circular dependency).
 from src.ai.core.prompt_utils import parse_variables, build_sandwich_prompt, filter_context_for_step
 from src.ai.core.exceptions import UncertaintySignal
 from src.ai.schemas import DEFAULT_REVIEW_SYSTEM_PROMPT as DEFAULT_REVIEW_PROMPT
@@ -52,7 +52,7 @@ class StepExecutorService:
         self._cortex_bridge = cortex_bridge
         # Callback to ExecutionEngine.execute_run — avoids circular import
         self._execute_run_fn = execute_run_fn
-        # Phase 10E: GovernanceService dependency for credit gates
+        # GovernanceService dependency for credit gates.
         self._governance = governance
 
     # ------------------------------------------------------------------
@@ -116,6 +116,48 @@ class StepExecutorService:
         if self._cortex_bridge:
             await self._cortex_bridge.ingest_tool_result(run, tool_id, tool_output, context)
 
+    async def _bump_run_cost(self, run: ExecutionRun, cost_delta=Decimal("0"), token_delta: int = 0) -> None:
+        """Atomically fold cost/tokens into ``run.total_cost_usd`` on the DB row.
+
+        Why not ``run.total_cost_usd += delta``? The parallel DAG path
+        (``ExecutionEngine._execute_steps_dag``) runs each step in its OWN
+        AsyncSession with its OWN reloaded copy of this run row. An in-place ORM
+        mutation is flushed as an *absolute* full-row UPDATE
+        (``SET total_cost_usd = <my local value>``), so when several isolated
+        sessions commit concurrently the last writer wins and every other
+        step's cost is silently dropped — the Phase 11 billing leak where a
+        ~$6 run settled at ~$0.88.
+
+        An atomic ``SET total_cost_usd = total_cost_usd + :delta`` is
+        read-modify-write under a row lock, so concurrent increments sum
+        correctly. We then ``refresh`` only these two columns so the in-memory
+        object mirrors the new value WITHOUT being marked dirty (a dirty flush
+        would re-introduce the clobbering absolute write).
+        """
+        cost_delta = Decimal(str(cost_delta or 0))
+        token_delta = int(token_delta or 0)
+        if cost_delta == 0 and token_delta == 0:
+            return
+        await self.db.execute(
+            update(ExecutionRun)
+            .where(ExecutionRun.id == run.id)
+            .values(
+                total_cost_usd=func.coalesce(ExecutionRun.total_cost_usd, 0) + cost_delta,
+                total_tokens=func.coalesce(ExecutionRun.total_tokens, 0) + token_delta,
+            )
+        )
+        # Commit immediately to release the run-row lock the UPDATE just took.
+        # In the parallel DAG every isolated-session step bumps the SAME run
+        # row; if the lock were held until the step's next (infrequent) commit,
+        # the parallel steps would serialise and block on each other for the
+        # whole step body (LLM + sandbox work) — observed as multi-minute
+        # ``transactionid`` lock waits. A short acquire-update-commit cycle keeps
+        # the atomic increment correct without the contention. Safe because the
+        # session uses ``expire_on_commit=False`` (no attribute expiry → no
+        # MissingGreenlet) and ``log_usage`` already commits per call.
+        await self.db.commit()
+        await self.db.refresh(run, attribute_names=["total_cost_usd", "total_tokens"])
+
     async def _execute_step(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         """Routes execution to specific step handler."""
         if step.type == StepType.CHILD_ENTITY_INVOCATION:
@@ -127,70 +169,19 @@ class StepExecutorService:
         return {"error": "Unknown step type"}
 
     async def _execute_child_invocation(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
-        entity_id = step.target.entity_id if step.target else None
-
-        # ── Fallback: resolve entity_id from parent entity's hierarchy ──
-        # If the dynamic planner dropped the entity_id, look it up from the
-        # parent entity's hierarchy.children or planning.static_plan.steps.
-        if not entity_id and entity:
-            # Strategy 1: Match by step name against static plan steps
-            planning = entity.planning or {}
-            static_steps = (planning.get("static_plan") or {}).get("steps", [])
-            for ss in static_steps:
-                if ss.get("type") == "CHILD_ENTITY_INVOCATION" and \
-                   ss.get("name", "").lower().strip() == (step.name or "").lower().strip():
-                    entity_id = ss.get("target", {}).get("entity_id")
-                    if entity_id:
-                        logger.info(f"Resolved entity_id {entity_id} for step '{step.name}' from static plan")
-                        break
-
-            # Strategy 2: Match by order index against hierarchy children
-            if not entity_id:
-                hierarchy = entity.hierarchy or {}
-                children = hierarchy.get("children", [])
-                # Find which CHILD_ENTITY_INVOCATION step index this is
-                # (0-based among all child invocation steps)
-                invocation_steps = [
-                    ss for ss in static_steps
-                    if ss.get("type") == "CHILD_ENTITY_INVOCATION"
-                ]
-                for idx, inv_step in enumerate(invocation_steps):
-                    if inv_step.get("name", "").lower().strip() == (step.name or "").lower().strip():
-                        if idx < len(children):
-                            entity_id = children[idx].get("child_id")
-                            logger.info(f"Resolved entity_id {entity_id} for step '{step.name}' from hierarchy children[{idx}]")
-                        break
-
-            # Strategy 3: Resolve by entity_name_hint — LLM used entity name instead of UUID
-            name_hint = getattr(step.target, "entity_name_hint", None) if step.target else None
-            if not entity_id and name_hint:
-                from sqlalchemy import select as _select
-                name_lookup = await self.db.execute(
-                    _select(HierarchicalEntity).where(
-                        HierarchicalEntity.name == name_hint,
-                        HierarchicalEntity.status != "DELETED",
-                    )
-                )
-                name_match = name_lookup.scalar_one_or_none()
-                if name_match:
-                    entity_id = name_match.id
-                    logger.info(
-                        f"[Strategy 3] Resolved entity_id {entity_id} for step '{step.name}' "
-                        f"by name lookup on hint '{name_hint}'"
-                    )
-                else:
-                    logger.warning(
-                        f"[Strategy 3] entity_name_hint '{name_hint}' did not match any entity in DB"
-                    )
-
-        if not entity_id:
+        # Resolve the child entity_id through the single source of truth:
+        # ai.planning.child_resolver (UUID passthrough → static-plan name
+        # match → hierarchy index → entity_name_hint DB lookup). A miss
+        # surfaces as the AgentError the engine has always raised here.
+        from src.ai.planning.child_resolver import (
+            resolve_child_entity_id,
+            EntityNotFoundError as ChildResolveError,
+        )
+        try:
+            entity_id = await resolve_child_entity_id(step, entity, self.db)
+        except ChildResolveError:
             from src.ai.core.exceptions import AgentError
             raise AgentError(f"Child invocation missing entity_id for step {step.name}")
-        
-        # Ensure entity_id is a UUID
-        if isinstance(entity_id, str):
-            entity_id = UUID(entity_id)
-
 
         # ── Runtime safety net: validate child entity exists ──
         # The pre-flight check in trigger_execution() already validated
@@ -212,13 +203,18 @@ class StepExecutorService:
                 ),
             )
 
-        # Fix E: Propagate CORTEX tree ID so all entities share one tree
+        # Propagate CORTEX tree ID so all entities share one tree.
         child_input = dict(context)
+        # input_data is a JSON column — drop any live runtime handle that an
+        # AgentLoop-driven parent may have left in context (the Redis client is
+        # not JSON-serializable and would poison the INSERT). Belt-and-braces:
+        # AgentState now keeps redis off context_state entirely.
+        child_input.pop("__redis__", None)
         if "__cortex_tree_id__" in context:
             child_input["cortex_tree_id"] = context["__cortex_tree_id__"]
             logger.info(f"Propagating CORTEX tree {context['__cortex_tree_id__']} to child entity {entity_id}")
 
-        # Fix G: Set child's 'input' key to the RENDERED prompt_template.
+        # Set child's 'input' key to the RENDERED prompt_template.
         # Without this, the child inherits the parent's raw 'input' key (often
         # just the original topic string).  The prompt_template typically
         # references variables like {{step_1}} or {{Research Phase}} that
@@ -235,7 +231,7 @@ class StepExecutorService:
                     f"({len(rendered_input)} chars) for step '{step.name}'"
                 )
 
-        # Fix F: Strip parent step_id keys to prevent child step-skip collision.
+        # Strip parent step_id keys to prevent child step-skip collision.
         # The parent context contains keys like "step_1", "step_2" from its own
         # execution.  When passed to the child, the child's execute_run loop
         # sees "step_1" already in context_state and wrongly skips the child's
@@ -252,7 +248,7 @@ class StepExecutorService:
                 f"context to prevent step-skip collision: {parent_step_keys}"
             )
 
-        # Fix H: Strip parent-scoped memory/episodic context to prevent
+        # Strip parent-scoped memory/episodic context to prevent
         # child entities from being confused by previous execution history.
         # The parent's CORTEX __memory__ contains past run summaries that
         # cause child agents to replicate past actions instead of analyzing
@@ -274,7 +270,7 @@ class StepExecutorService:
         # ── Credit gate before spawning child run ─────────────────────────
         # Check that the parent still has credits remaining before launching
         # a potentially expensive child entity (e.g. Research Director).
-        # Phase 10E: Route through GovernanceService instead of direct CreditService
+        # Route through GovernanceService instead of direct CreditService.
         _parent_accumulated = Decimal(str(run.total_cost_usd or 0))
         if self._governance:
             await self._governance.check_child_credit_gate(
@@ -313,12 +309,15 @@ class StepExecutorService:
         await self.db.refresh(run)
         await self.db.refresh(child_run)
 
-        # rollup metrics
-        run.total_cost_usd = (run.total_cost_usd or Decimal("0")) + Decimal(str(child_run.total_cost_usd or 0))
-        run.total_tokens = (run.total_tokens or 0) + (child_run.total_tokens or 0)
+        # rollup metrics — atomic so parallel child invocations don't clobber.
+        await self._bump_run_cost(
+            run,
+            Decimal(str(child_run.total_cost_usd or 0)),
+            int(child_run.total_tokens or 0),
+        )
         await self.db.commit()
         
-        # Fix B: Accumulate ALL child step outputs (not just the last one)
+        # Accumulate ALL child step outputs (not just the last one).
         # The director produces ~69KB across 8 steps but previously only the
         # last step's 16KB reached the synthesizer. Now all outputs are passed.
         all_step_outputs = child_result.get("steps", [])
@@ -377,8 +376,10 @@ class StepExecutorService:
             extra_context = {
                 "company_id": str(run.company_id),
                 "user_id": str(run.user_id) if run.user_id else "default",
+                "run_id": str(run.id),
+                "agent_id": str(entity.id) if entity is not None else None,
             }
-                
+
             result = await ToolExecutor.execute_tools([{"tool": tool_id, "input": raw_input}], extra_context=extra_context)
             tool_result = result[0]  # ToolResult dataclass (P3.2)
 
@@ -557,7 +558,7 @@ class StepExecutorService:
                 _ir_entry = _ir_result.scalar_one_or_none()
                 if _ir_entry and _ir_entry.internal_cost:
                     _tool_cost = _Dec(str(_ir_entry.internal_cost))
-                    run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tool_cost
+                    await self._bump_run_cost(run, _tool_cost, 0)
                     logger.info(f"Tool cost for '{tool_id}': ${_tool_cost} (via {_ir_entry.provider_name}/{_ir_entry.service_sku})")
                     # Log to usage_logs as well
                     from src.ai.models import UsageLog as _UL
@@ -571,7 +572,7 @@ class StepExecutorService:
                     ))
                 elif tool_id in _TOOL_FIXED_COST:
                     _tool_cost = _TOOL_FIXED_COST[tool_id]
-                    run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tool_cost
+                    await self._bump_run_cost(run, _tool_cost, 0)
                     logger.info(f"Tool cost for '{tool_id}': ${_tool_cost} (fixed fallback)")
                 else:
                     logger.warning(f"No cost entry found for tool '{tool_id}' — cost not tracked")
@@ -706,7 +707,7 @@ class StepExecutorService:
 
         # Resolve task_type from entity config (new model-agnostic field)
         task_type = config.get("task_type", "text_generation")
-        # Fix D: Allow entity-level model override (e.g. Pro for synthesizer)
+        # Allow entity-level model override (e.g. Pro for synthesizer).
         model_override = config.get("model_name")
 
         # Filter and optionally summarize context
@@ -883,20 +884,55 @@ class StepExecutorService:
             **filtered_context,
             "company_id": str(run.company_id),
             "user_id": str(run.user_id) if run.user_id else "default",
+            "run_id": str(run.id),
+            "agent_id": str(entity.id) if entity is not None else None,
         }
         context['tool_call_counts'] = {}  # Always reset per step to prevent stale counts on retry/resume
 
         all_tool_results = []
 
+        # Route reasoning-mode tool calls through ToolResilience when enabled so
+        # the REACT/AFC path gets the same reformat-retry + fallback healing as
+        # the direct TOOL_CALL path. When the flag is off (or setup fails), the
+        # closure falls back to the raw executor — behaviour is unchanged.
+        _resilience = None
+        try:
+            from src.ai.core.feature_flags import FeatureFlags
+            if await FeatureFlags(self.db).is_on(
+                "tools.resilience_v2_enabled",
+                company_id=run.company_id,
+                entity_id=getattr(entity, "id", None),
+            ):
+                from src.ai.tools.resilience import ToolResilience
+                _resilience = ToolResilience(
+                    reformat_fn=self._reformat_tool_input,
+                    tool_executor=ToolExecutor,
+                )
+        except Exception as _res_err:
+            logger.debug(f"ToolResilience setup skipped: {_res_err}")
+            _resilience = None
+
         async def _execute_tools(function_calls: list) -> list:
             """Adapter: called by LLMRouter's REACT loop per tool-call turn."""
             results = []
             for fc in function_calls:
-                _tr_list = await ToolExecutor.execute_from_function_calls(
-                    [fc],
-                    extra_context=extra_context,
-                    call_counts=context.get('tool_call_counts', {}),
-                )
+                if _resilience is not None:
+                    _tr_single = await _resilience.run_function_call(
+                        run=run,
+                        entity=entity,
+                        function_call=fc,
+                        extra_context=extra_context,
+                        call_counts=context.get('tool_call_counts', {}),
+                        step_name=getattr(step, "name", "") or "",
+                        step_description=getattr(step, "description", "") or "",
+                    )
+                    _tr_list = [_tr_single]
+                else:
+                    _tr_list = await ToolExecutor.execute_from_function_calls(
+                        [fc],
+                        extra_context=extra_context,
+                        call_counts=context.get('tool_call_counts', {}),
+                    )
                 for _tr in _tr_list:
                     self.db.add(ToolInteractionLog(
                         run_id=run.id,
@@ -946,11 +982,11 @@ class StepExecutorService:
                         _afc_entry = _afc_ir.scalar_one_or_none()
                         if _afc_entry and _afc_entry.internal_cost:
                             _tc = _Dec(str(_afc_entry.internal_cost))
-                            run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tc
+                            await self._bump_run_cost(run, _tc, 0)
                             logger.info(f"Tool cost for '{_tr.tool}': ${_tc} (via {_afc_entry.provider_name}/{_afc_entry.service_sku})")
                         elif _tr.tool in _TOOL_FIXED_COST:
                             _tc = _TOOL_FIXED_COST[_tr.tool]
-                            run.total_cost_usd = (run.total_cost_usd or _Dec("0")) + _tc
+                            await self._bump_run_cost(run, _tc, 0)
                             logger.info(f"Tool cost for '{_tr.tool}': ${_tc} (fixed fallback)")
                     except Exception as _tc_err:
                         logger.debug(f"AFC tool cost tracking skipped for '{_tr.tool}': {_tc_err}")
@@ -971,18 +1007,24 @@ class StepExecutorService:
         # ═══════════════════════════════════════════════════════════════════
         # Reasoning Mode Dispatch
         # ═══════════════════════════════════════════════════════════════════
+        # D-3: REFLECTION and TREE_OF_THOUGHTS are retired as per-entity modes.
+        # Their dispatch branches are gone — REFLECTION is superseded by the
+        # AgentLoop Reflector, TREE_OF_THOUGHTS by the Strategist-selected
+        # DebateExecutor. The p12 data migration rewrites any entity still
+        # configured for them to REACT; an un-migrated entity falls through to
+        # the REACT default below (with a warning) rather than running the
+        # removed paths.
+        from src.ai.schemas.enums import DEPRECATED_REASONING_MODES
+        if reasoning_mode in DEPRECATED_REASONING_MODES:
+            logger.warning(
+                "Entity %s uses retired reasoning_mode=%s (D-3); the per-entity "
+                "branch was removed — running REACT instead. Migrate config to "
+                "REACT or CHAIN_OF_THOUGHT (debate is now Strategist-selected).",
+                getattr(entity, "id", "?"), reasoning_mode,
+            )
+            reasoning_mode = "REACT"
         if reasoning_mode == "CHAIN_OF_THOUGHT":
             output, response = await self._execute_chain_of_thought(
-                llm_router, full_system_prompt, user_prompt, task_type,
-                config, tool_schemas, _execute_tools
-            )
-        elif reasoning_mode == "REFLECTION":
-            output, response = await self._execute_reflection(
-                llm_router, full_system_prompt, user_prompt, task_type,
-                config, tool_schemas, _execute_tools
-            )
-        elif reasoning_mode == "TREE_OF_THOUGHTS":
-            output, response = await self._execute_tree_of_thoughts(
                 llm_router, full_system_prompt, user_prompt, task_type,
                 config, tool_schemas, _execute_tools
             )
@@ -1088,140 +1130,6 @@ Step 2: [your analysis]
 
         return output, response
 
-    async def _execute_reflection(self, llm_router, system_prompt, user_prompt,
-                                   task_type, config, tool_schemas, execute_tool_fn):
-        """REFLECTION: Three-phase generate → critique → improve cycle."""
-        # Phase 1: Initial generation
-        _model_ovr = config.get("__model_override")
-        initial_response = await llm_router.call_llm_react(
-            task_type=task_type,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            tool_schemas=tool_schemas,
-            execute_tool_fn=execute_tool_fn,
-            temperature=config.get("temperature", 0.7),
-            max_tokens=config.get("max_tokens"),
-            max_react_turns=MAX_REACT_TURNS,
-            model_override=_model_ovr,
-        )
-        initial_output = initial_response.output
-
-        # Phase 2: Self-critique
-        critique_prompt = (
-            "Critically evaluate the following response. Identify specific weaknesses, "
-            "logical gaps, factual errors, missing information, or areas that could be improved. "
-            "Be constructive and specific.\n\n"
-            f"ORIGINAL TASK:\n{user_prompt}\n\n"
-            f"RESPONSE TO EVALUATE:\n{initial_output}"
-        )
-        critique_response = await llm_router.call_llm(
-            task_type=task_type,
-            system_prompt="You are a rigorous, constructive critic. Find specific weaknesses.",
-            user_prompt=critique_prompt,
-            temperature=0.3,
-            max_tokens=config.get("max_tokens"),
-            model_override=_model_ovr,
-        )
-
-        # Phase 3: Improved version
-        improve_prompt = (
-            f"Here is the original task, an initial response, and a critique of that response. "
-            f"Produce an improved version that addresses all the critique points.\n\n"
-            f"ORIGINAL TASK:\n{user_prompt}\n\n"
-            f"INITIAL RESPONSE:\n{initial_output}\n\n"
-            f"CRITIQUE:\n{critique_response.output}\n\n"
-            f"IMPROVED RESPONSE:"
-        )
-        improved_response = await llm_router.call_llm(
-            task_type=task_type,
-            system_prompt=system_prompt,
-            user_prompt=improve_prompt,
-            temperature=config.get("temperature", 0.5),
-            max_tokens=config.get("max_tokens"),
-            model_override=_model_ovr,
-        )
-
-        # Aggregate token counts for accurate billing
-        total_response = copy.copy(improved_response)
-        total_response.prompt_tokens = (
-            initial_response.prompt_tokens + critique_response.prompt_tokens + improved_response.prompt_tokens
-        )
-        total_response.completion_tokens = (
-            initial_response.completion_tokens + critique_response.completion_tokens + improved_response.completion_tokens
-        )
-        total_response.latency_ms = (
-            initial_response.latency_ms + critique_response.latency_ms + improved_response.latency_ms
-        )
-
-        return improved_response.output, total_response
-
-    async def _execute_tree_of_thoughts(self, llm_router, system_prompt, user_prompt,
-                                         task_type, config, tool_schemas, execute_tool_fn):
-        """TREE_OF_THOUGHTS: Generate N candidate paths in parallel, score, select best."""
-        num_paths = config.get("tot_num_paths", 3)
-        _model_ovr = config.get("__model_override")
-
-        # Phase 1: Generate N candidate responses in parallel with higher temperature
-        async def _generate_candidate(i):
-            return await llm_router.call_llm(
-                task_type=task_type,
-                system_prompt=system_prompt + f"\n\nGenerate approach #{i+1}. Be creative and thorough.",
-                user_prompt=user_prompt,
-                temperature=min(config.get("temperature", 0.7) + 0.2, 1.0),
-                max_tokens=config.get("max_tokens"),
-                model_override=_model_ovr,
-            )
-
-        candidates = await asyncio.gather(*[_generate_candidate(i) for i in range(num_paths)])
-
-        # Phase 2: Score each candidate
-        candidates_text = "\n\n---\n\n".join([
-            f"## Candidate {i+1}\n{c.output}" for i, c in enumerate(candidates)
-        ])
-        scoring_prompt = (
-            f"You are evaluating {num_paths} different responses to the same task. "
-            f"For each candidate, rate it 1-10 on: accuracy, completeness, clarity, and relevance. "
-            f"Then select the BEST candidate number.\n\n"
-            f"ORIGINAL TASK:\n{user_prompt}\n\n"
-            f"CANDIDATES:\n{candidates_text}\n\n"
-            f"Respond with JSON: {{\"scores\": [{{\"candidate\": 1, \"score\": 8, \"reason\": \"...\"}}], "
-            f"\"best\": <candidate_number>}}"
-        )
-        scoring_response = await llm_router.call_llm(
-            task_type=task_type,
-            system_prompt="You are an impartial evaluator. Select the best response.",
-            user_prompt=scoring_prompt,
-            temperature=0.2,
-            max_tokens=1000,
-            model_override=_model_ovr,
-        )
-
-        # Parse scoring to find best candidate
-        best_idx = 0  # Default to first candidate
-        try:
-            score_text = scoring_response.output
-            if "{" in score_text and "}" in score_text:
-                json_str = score_text[score_text.find("{"):score_text.rfind("}") + 1]
-                parsed = json.loads(json_str)
-                best_num = parsed.get("best", 1)
-                best_idx = max(0, min(best_num - 1, num_paths - 1))
-        except (json.JSONDecodeError, ValueError, KeyError):
-            pass
-
-        best_output = candidates[best_idx].output
-
-        # Aggregate token counts
-        total_prompt = sum(c.prompt_tokens for c in candidates) + scoring_response.prompt_tokens
-        total_completion = sum(c.completion_tokens for c in candidates) + scoring_response.completion_tokens
-        total_latency = max(c.latency_ms for c in candidates) + scoring_response.latency_ms  # parallel, so max
-
-        total_response = copy.copy(candidates[best_idx])
-        total_response.prompt_tokens = total_prompt
-        total_response.completion_tokens = total_completion
-        total_response.latency_ms = total_latency
-
-        return best_output, total_response
-
     async def _log_usage(self, run, model_name: str, prompt_tokens: int, completion_tokens: int, log):
         """Helper to log LLM usage stats using model_name from LLMResponse."""
         input_sku = f"{model_name}-in" if model_name else "unknown-in"
@@ -1244,28 +1152,28 @@ Step 2: [your analysis]
         )
 
         # Ensure null-safe accumulation
-        if run.total_cost_usd is None:
-            run.total_cost_usd = Decimal("0")
         if log.cost_usd is None:
             log.cost_usd = Decimal("0")
-        if run.total_tokens is None:
-            run.total_tokens = 0
 
+        # Accumulate the per-interaction log cost in-memory (distinct row per
+        # call — never clobbered) and fold the run-level cost in atomically via
+        # _bump_run_cost so concurrent isolated-session steps don't lose cost.
+        _cost_delta = Decimal("0")
         if input_usage:
             log.cost_usd += input_usage.calculated_cost
-            run.total_cost_usd += input_usage.calculated_cost
+            _cost_delta += input_usage.calculated_cost
             logger.info(f"LLM input cost ({input_sku}): {prompt_tokens} tokens → ${input_usage.calculated_cost}")
         else:
             logger.warning(f"No registry entry for SKU '{input_sku}' — input cost not tracked")
 
         if output_usage:
             log.cost_usd += output_usage.calculated_cost
-            run.total_cost_usd += output_usage.calculated_cost
+            _cost_delta += output_usage.calculated_cost
             logger.info(f"LLM output cost ({output_sku}): {completion_tokens} tokens → ${output_usage.calculated_cost}")
         else:
             logger.warning(f"No registry entry for SKU '{output_sku}' — output cost not tracked")
 
-        run.total_tokens += (prompt_tokens + completion_tokens)
+        await self._bump_run_cost(run, _cost_delta, prompt_tokens + completion_tokens)
         logger.info(f"Run total cost so far: ${run.total_cost_usd}, total tokens: {run.total_tokens}")
 
     async def _maybe_summarize_context(self, run, entity, context_state: dict) -> dict:

@@ -134,8 +134,8 @@ class MemoryAssemblyService:
     async def _create_runtime_knowledge_refs(self, runtime_tree, results):
         """Create reference nodes in the runtime tree's knowledge root."""
         try:
-            from src.ai.memory.cortex_service import CortexRouter
-            cortex = CortexRouter(self.db, self.company_id)
+            from src.ai.memory.cortex_service import CortexService
+            cortex = CortexService(self.db, self.company_id)
             knowledge_root = await cortex.get_knowledge_root(runtime_tree.id)
             if not knowledge_root:
                 return

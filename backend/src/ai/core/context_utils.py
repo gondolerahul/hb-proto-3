@@ -14,6 +14,8 @@ _SENSITIVE_CONTEXT_KEYS = frozenset({
     "api_key", "api_secret", "secret", "token", "password",
     "auth", "authorization", "credential", "credentials",
     "__model_override",
+    # Live runtime handle injected by AgentLoop — not JSON-serializable.
+    "__redis__",
 })
 
 
@@ -33,7 +35,7 @@ def store_step_output(
     configurable thresholds.
     """
     value = output
-    # Phase 6 PERF-3: Incremental context size tracking
+    # PERF-3: Incremental context size tracking
     old_value = context_state.get(step_name, "")
     context_state[step_name] = value
     if cortex_bridge:

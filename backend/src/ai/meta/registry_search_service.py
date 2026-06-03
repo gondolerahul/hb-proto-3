@@ -125,19 +125,19 @@ class RegistrySearchService:
 
         Returns ranked candidates with match type classification.
         """
-        # Phase 1: Structural filtering + scoring
+        # Structural filtering + scoring
         candidates = await self._phase1_structural(request, include_templates)
 
         if not candidates:
             return []
 
-        # Phase 1.5: IO Contract compatibility scoring
+        # .5: IO Contract compatibility scoring
         self._phase15_io_contract(request, candidates)
 
-        # Phase 2: Semantic scoring (LLM-powered)
+        # Semantic scoring (LLM-powered)
         scored = await self._phase2_semantic(request, candidates[:top_k * 2])
 
-        # Phase 2.5: Execution trace weighting
+        # .5: Execution trace weighting
         await self._phase25_execution_traces(scored)
 
         # Recompute combined scores with all four factors
@@ -202,7 +202,7 @@ class RegistrySearchService:
         }
 
     # ------------------------------------------------------------------
-    # Phase 1: Structural Contract Match
+    # Structural Contract Match
     # ------------------------------------------------------------------
 
     async def _phase1_structural(
@@ -321,7 +321,7 @@ class RegistrySearchService:
         return score / weights_total if weights_total > 0 else 0.0
 
     # ------------------------------------------------------------------
-    # Phase 1.5: IO Contract Compatibility
+    # .5: IO Contract Compatibility
     # ------------------------------------------------------------------
 
     def _phase15_io_contract(
@@ -383,7 +383,7 @@ class RegistrySearchService:
         return (input_coverage + output_coverage) / 2
 
     # ------------------------------------------------------------------
-    # Phase 2: Semantic Intent Match (LLM-powered)
+    # Semantic Intent Match (LLM-powered)
     # ------------------------------------------------------------------
 
     async def _phase2_semantic(
@@ -466,7 +466,7 @@ class RegistrySearchService:
         return candidates
 
     # ------------------------------------------------------------------
-    # Phase 2.5: Execution Trace Analysis
+    # .5: Execution Trace Analysis
     # ------------------------------------------------------------------
 
     async def _phase25_execution_traces(

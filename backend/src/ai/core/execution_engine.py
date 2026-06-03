@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.common.database import AsyncSessionLocal
@@ -45,9 +45,9 @@ from src.ai.memory.cortex_service import CortexRouter as CortexService
 from src.ai.memory.cortex_models import CortexNodeType
 from src.ai.constants import INTERNAL_CONTEXT_KEYS, MAX_REACT_TURNS
 
-# Phase 10A: Import from new core modules
+# Imports from the ai.core modules.
 from src.ai.core.exceptions import (
-    AgentError, UncertaintySignal, CreditExhaustedError,
+    AgentError, UncertaintySignal, CreditExhaustedError, BudgetExhaustedError,
     MetaAgentAbort, EntityNotFoundError, CortexError,
 )
 from src.ai.core.context_utils import store_step_output, sanitize_context_for_persistence
@@ -68,7 +68,7 @@ class ExecutionEngine:
         self.redis = redis_pool
         self.config_service = ConfigService(db)
         self.usage_service = UsageService(db)
-        # Phase 3: Composed services (initialized when company_id is known)
+        # Composed services (initialized when company_id is known).
         self.company_id = company_id
         self._governance = GovernanceService(db, redis_pool) if company_id else None
         self._planner = PlannerService(db, company_id) if company_id else None
@@ -93,6 +93,15 @@ class ExecutionEngine:
                 execute_run_fn=self.execute_run,
                 governance=self._governance,
             )
+
+    # NOTE: child entities run via the legacy ``execute_run`` engine even when
+    # ``agent_loop.enabled`` is ON for the top-level run. Routing children
+    # through a nested inline AgentLoop was tried (Phase 11 follow-up) but
+    # destabilised the doc-factory pipeline: each child became a full retry
+    # loop running inline on the shared session, which amplified cost (~$11/
+    # child) and could block the worker. Driving sub-entities through the new
+    # loop needs a safer mechanism (e.g. async dispatch on a dedicated worker)
+    # and is deferred; the flag still governs the top-level engine selection.
 
     async def _execute_steps_dag(self, run, entity, steps: List[dict], context_state: dict) -> List[dict]:
         """Execute steps respecting dependencies, parallelizing independent ones.
@@ -194,9 +203,9 @@ class ExecutionEngine:
                 # Multi-step parallel batch: each step gets its own AsyncSession.
                 # P1-A: This prevents PendingRollbackError when two coroutines
                 # share self.db and one fails mid-transaction.
-                # RACE-1 fix: Each step gets a deep-copied context to prevent
+                # Each step gets a deep-copied context to prevent
                 # cross-contamination between parallel coroutines.
-                # RACE-2 fix: Pass run_id instead of ORM object; reload in
+                # Pass run_id instead of ORM object; reload in
                 # isolated session. Use atomic DB increments for cost/tokens.
                 async def _isolated_step(step_dict: dict, frozen_ctx: dict) -> dict:
                     async with AsyncSessionLocal() as isolated_db:
@@ -212,22 +221,21 @@ class ExecutionEngine:
                         step_result = await isolated_engine._execute_step_wrapper(
                             iso_run, entity, step_obj, frozen_ctx
                         )
-                        # Atomic cost/token increment (RACE-2 fix)
-                        step_cost = step_result.get("cost_usd", Decimal("0")) if isinstance(step_result, dict) else Decimal("0")
-                        step_tokens = step_result.get("tokens", 0) if isinstance(step_result, dict) else 0
-                        if step_cost or step_tokens:
-                            await isolated_db.execute(
-                                update(ExecutionRun)
-                                .where(ExecutionRun.id == run.id)
-                                .values(
-                                    total_cost_usd=ExecutionRun.total_cost_usd + step_cost,
-                                    total_tokens=ExecutionRun.total_tokens + step_tokens,
-                                )
-                            )
-                            await isolated_db.commit()
+                        # Cost/token accounting is owned by StepExecutorService
+                        # via _bump_run_cost, which folds each LLM/tool/child
+                        # charge into run.total_cost_usd with an ATOMIC
+                        # "total_cost_usd = total_cost_usd + delta" UPDATE. That
+                        # is concurrency-safe across these parallel isolated
+                        # sessions. The previous design merged cost here from
+                        # step_result["cost_usd"], but _execute_step never
+                        # populated that key, so every parallel step's cost was
+                        # silently dropped (the Phase 11 billing leak). A
+                        # defensive commit guarantees the final increment is
+                        # durable before the isolated session closes.
+                        await isolated_db.commit()
                         return step_result
 
-                # RACE-1 fix: deep-copy context for each parallel step
+                # Deep-copy context for each parallel step
                 tasks = [_isolated_step(s, copy.deepcopy(context_state)) for s in ready]
                 batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -256,6 +264,46 @@ class ExecutionEngine:
 
         return [results_map.get(s["step_id"], {}) for s in steps]
 
+    async def _enforce_cost_cap(self, run, governance: dict) -> None:
+        """Raise ``BudgetExhaustedError`` if the run's accumulated cost has
+        reached the entity's ``governance.max_cost_usd``.
+
+        Best-effort lookup: a failure to read the cost must never crash a
+        healthy step, so any non-budget exception is swallowed (the run simply
+        proceeds without the guard for that step).
+        """
+        try:
+            max_cost = governance.get("max_cost_usd")
+        except AttributeError:
+            return
+        if not max_cost:
+            return
+        try:
+            cap = float(max_cost)
+        except (TypeError, ValueError):
+            return
+        if cap <= 0:
+            return
+        try:
+            spent_raw = (await self.db.execute(
+                select(ExecutionRun.total_cost_usd).where(ExecutionRun.id == run.id)
+            )).scalar_one_or_none()
+        except Exception:
+            return  # never let the guard's own lookup break a step
+        if spent_raw is None:
+            return
+        try:
+            spent = float(spent_raw)
+        except (TypeError, ValueError):
+            return
+        if spent >= cap:
+            raise BudgetExhaustedError(
+                f"Run {run.id} reached governance.max_cost_usd "
+                f"(spent ${spent:.4f} ≥ cap ${cap:.2f}); stopping further spend.",
+                spent_usd=spent,
+                cap_usd=cap,
+            )
+
     async def _execute_step_wrapper(self, run, entity, step_obj, context_state):
         """Wrapper to handle execution + review + context update for a single step.
 
@@ -273,6 +321,16 @@ class ExecutionEngine:
         log_thoughts = observability.get("log_thoughts", True)
         governance = entity.governance or {}
         timeout_ms = governance.get("timeout_ms", 60000)
+
+        # ── Budget guard: enforce governance.max_cost_usd as a hard stop ─────
+        # The legacy run loop otherwise only guards company-wide credits and
+        # HITL COST_THRESHOLD checkpoints — never the entity's own per-run cap.
+        # That let a child entity (e.g. doc-xlsx-agent, cap $3) run to $15+.
+        # We re-read the run's accumulated cost (a fresh scalar SELECT, never a
+        # possibly-expired ORM attribute) and abort BEFORE starting the next
+        # billable step once the cap is reached. Enforcement is step-granular:
+        # the step that crosses the cap finishes; the following step is blocked.
+        await self._enforce_cost_cap(run, governance)
 
         # ── HITL: Evaluate BEFORE_STEP and COST_THRESHOLD checkpoints ───────
         await self._evaluate_hitl_checkpoints(
@@ -420,7 +478,7 @@ class ExecutionEngine:
         from sqlalchemy.orm import make_transient
         make_transient(entity)
 
-        # Phase 3: Initialize composed services with company_id
+        # Initialize composed services with company_id.
         self._ensure_services(entity.company_id)
 
         # 2. Configure logging level from entity's observability settings
@@ -722,7 +780,7 @@ class ExecutionEngine:
             run.dynamic_plan = plan
             await self.db.commit()
 
-            # Phase 10E: Inject execution metadata for observability
+            # Inject execution metadata for observability.
             reasoning_config = (entity.logic_gate or {}).get("reasoning_config", {})
             is_autonomous = reasoning_config.get("execution_mode") == "AUTONOMOUS"
             context_state["__execution_metadata__"] = {
@@ -754,7 +812,7 @@ class ExecutionEngine:
                         cortex, working_root_id, sr, _run_id
                     )
             else:
-                # Phase 5: Autonomous mode configuration
+                # Autonomous mode configuration
                 reasoning_config = (entity.logic_gate or {}).get("reasoning_config", {})
                 is_autonomous = reasoning_config.get("execution_mode") == "AUTONOMOUS"
                 goal_interval = reasoning_config.get("goal_validation_interval", 2)
@@ -1027,7 +1085,7 @@ class ExecutionEngine:
                     logger.warning(f"Failed to write final output to CORTEX tree: {e}")
 
             # S2: Write episodic memory for top-level runs
-            # Phase 10D: Use direct import instead of removed local variable
+            # Use direct import instead of removed local variable.
             from src.ai.memory.memory_service import MemoryRouter as _MemRouter
             await _MemRouter(self.db).write_episodic(run)
 
@@ -1082,6 +1140,50 @@ class ExecutionEngine:
             except Exception:
                 logger.error(f"Failed to persist FAILED status for run {run_id}: {e}")
             raise
+
+        except BudgetExhaustedError as e:
+            # Per-entity cost cap reached — a clean, terminal stop, NOT a failure.
+            # Work completed up to the cap is kept and billed (PARTIAL_COMPLETE),
+            # and we do NOT re-raise: re-raising would let arq retry and re-bill
+            # the run. The dispatch idempotency guard treats PARTIAL_COMPLETE as
+            # terminal, so even an external re-dispatch is a no-op.
+            partial_result = None
+            try:
+                await self.db.rollback()
+                async with AsyncSessionLocal() as fresh_db:
+                    result = await fresh_db.execute(
+                        select(ExecutionRun)
+                        .options(selectinload(ExecutionRun.entity))
+                        .where(ExecutionRun.id == run_id)
+                    )
+                    capped_run = result.scalar_one()
+                    capped_run.status = RunStatus.PARTIAL_COMPLETE
+                    capped_run.error_message = f"Budget cap reached: {str(e)[:500]}"
+                    capped_run.completed_at = datetime.utcnow()
+                    if context_state:
+                        capped_run.context_state = _sanitize_context_for_persistence(context_state)
+                    partial_result = capped_run.result_data
+                    await fresh_db.commit()
+                    # Settle billing for the partial spend on the same fresh session.
+                    try:
+                        from src.ai.governance.governance_service import GovernanceService
+                        _entity_name = getattr(capped_run.entity, "name", "") or ""
+                        await GovernanceService(fresh_db, self.redis).settle_billing(
+                            capped_run, _entity_name
+                        )
+                    except Exception:
+                        logger.warning(
+                            f"Budget-cap billing settle failed for run {run_id}",
+                            exc_info=True,
+                        )
+                await self.redis.publish(
+                    channel,
+                    json.dumps({"status": "PARTIAL_COMPLETE", "error": str(e)[:500]}),
+                )
+                logger.warning(f"Run {run_id} stopped at budget cap: {e}")
+            except Exception:
+                logger.error(f"Failed to persist PARTIAL_COMPLETE for run {run_id}: {e}")
+            return partial_result
 
         except AgentError as e:
             # Agent-level errors (typed, expected failures)

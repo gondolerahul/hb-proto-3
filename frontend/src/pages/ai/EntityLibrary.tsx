@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { Plus, Brain, Workflow, Zap, Activity, Edit, Trash2, Play, Layers, Tag, BookCopy } from 'lucide-react';
+import { Plus, Brain, Workflow, Zap, Activity, Edit, Trash2, Play, Layers, Tag, BookCopy, CheckCircle } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { templateService } from '@/services/template.service';
+import { metaService } from '@/services/meta.service';
 import { HierarchicalEntity, EntityType, EntityStatus, UserRole } from '@/types';
 import './EntityLibrary.css';
 
@@ -14,6 +15,7 @@ export const EntityLibrary: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<EntityType | 'ALL'>('ALL');
     const [convertingId, setConvertingId] = useState<string | null>(null);
+    const [promotingId, setPromotingId] = useState<string | null>(null);
 
     const isAdmin = user?.role === UserRole.APP_ADMIN;
 
@@ -40,6 +42,22 @@ export const EntityLibrary: React.FC = () => {
             } catch (error) {
                 console.error('Failed to delete entity:', error);
             }
+        }
+    };
+
+    const handlePromoteDraft = async (id: string, name: string) => {
+        if (!window.confirm(`Promote "${name}" from DRAFT to ACTIVE? This bypasses the Meta-Agent Board gates.`)) return;
+        setPromotingId(id);
+        try {
+            const result = await metaService.promoteDraftEntity(id);
+            setEntities((prev) => prev.map((e) =>
+                e.id === id ? { ...e, status: result.status as EntityStatus } : e,
+            ));
+        } catch (error: any) {
+            const msg = error?.response?.data?.detail || 'Promote failed.';
+            alert(`❌ ${msg}`);
+        } finally {
+            setPromotingId(null);
         }
     };
 
@@ -190,6 +208,18 @@ export const EntityLibrary: React.FC = () => {
                                         Edit
                                     </JellyButton>
                                 </Link>
+                                {isAdmin && entity.status === EntityStatus.DRAFT && (
+                                    <span title="Promote DRAFT → ACTIVE">
+                                        <JellyButton
+                                            variant="secondary"
+                                            onClick={() => handlePromoteDraft(entity.id, entity.name)}
+                                            disabled={promotingId === entity.id}
+                                        >
+                                            <CheckCircle size={16} />
+                                            {promotingId === entity.id ? '…' : ''}
+                                        </JellyButton>
+                                    </span>
+                                )}
                                 {isAdmin && (
                                     <JellyButton
                                         variant="secondary"

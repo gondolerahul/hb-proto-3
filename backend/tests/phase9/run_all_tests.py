@@ -322,7 +322,7 @@ async def run_all():
     # Workers
     print("\n=== WORKER REGISTRATIONS ===")
     try:
-        from src.ai.worker import dreaming_worker, graph_maintenance_worker
+        from src.ai.core.arq_jobs import dreaming_worker, graph_maintenance_worker
         record("W1", "dreaming_worker", "PASS")
         record("W2", "graph_maintenance_worker", "PASS")
     except Exception as e:

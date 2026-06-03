@@ -73,6 +73,10 @@ class CortexNodeType(str, enum.Enum):
     PREFERENCE = "preference"    # Intelligence: user/entity behavioral preference
     EPISODE = "episode"          # Episodic: single execution episode record
     EPISODE_GROUP = "episode_group"  # Episodic: grouped episodes (by date, topic)
+    # --- Phase 11 agent-loop types ---
+    SNAPSHOT = "snapshot"        # AgentState snapshot written each loop iteration
+    HEALTH_RECORD = "health_record"  # Critic StepHealthRecord
+    HEALTH_ROOT = "health_root"  # Container node for a run's health records
 
 
 class CortexNodeStatus(str, enum.Enum):
@@ -120,7 +124,10 @@ class CortexTree(Base):
     __tablename__ = "cortex_trees"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    entity_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=False)
+    # Nullable: tenant/app/partner-scoped trees (e.g. the Meta-Agent platform
+    # intelligence tree) are not tied to a single entity and carry entity_id=NULL.
+    # The FK still enforces that any non-NULL value references a real entity.
+    entity_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
 

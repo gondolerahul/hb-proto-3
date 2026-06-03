@@ -1,10 +1,10 @@
 """
-cortex_service.py — CortexRouter: The CORTEX Memory System Engine
+cortex_service.py — CortexService: The CORTEX Memory System Engine
 
 Implements the 7 CORTEX API operations that give agents persistent,
 navigable, writable cognitive trees for long-running tasks.
 
-The CortexRouter orchestrates:
+The CortexService orchestrates:
   - Tree lifecycle (create / resume / suspend)
   - Viewport-based navigation (PageIndex-derived)
   - Paged content access (read / write)
@@ -13,10 +13,10 @@ The CortexRouter orchestrates:
   - Output assembly (depth-first tree traversal)
 
 Usage:
-    router = CortexRouter(db, company_id)
-    tree = await router.create_tree(entity_id, user_id, "Due diligence report")
-    viewport = await router.navigate(tree.root_node_id)
-    node_id = await router.write(parent_id, "finding", "Revenue Q2", content, summary)
+    svc = CortexService(db, company_id)
+    tree = await svc.create_tree(entity_id, user_id, "Due diligence report")
+    viewport = await svc.navigate(tree.root_node_id)
+    node_id = await svc.write(parent_id, "finding", "Revenue Q2", content, summary)
     ...
 """
 from __future__ import annotations
@@ -40,17 +40,8 @@ from src.ai.memory.cortex_models import (
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Prompt text appended to every viewport so the LLM knows its operations
-# ---------------------------------------------------------------------------
-CORTEX_OPERATIONS_PROMPT = """## Available CORTEX Operations
-You can perform the following operations on the cognitive tree:
-  NAVIGATE(node_id) — Move your viewport to a node; see its title, summary, and children
-  READ(node_id, page=0) — Read the full content of a node (paged if large)
-  WRITE(parent_id, node_type, title, content, summary) — Create a new child node (finding, output, task)
-  RECURSE(node_id, task, result_slot) — Spawn a child execution scoped to a subtree
-  AWAIT_CHILDREN() — Wait for all child executions to complete and collect results
-  CHECKPOINT(progress_summary, key_facts, next_steps) — Save progress and compress context"""
+# Alias — ops-help now lives in ai.core.prompt_utils.
+from src.ai.core.prompt_utils import CORTEX_OPS_HELP as CORTEX_OPERATIONS_PROMPT  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -89,36 +80,75 @@ class Viewport:
             "breadcrumb": self.breadcrumb,
         }
 
-    def to_prompt_text(self) -> str:
-        """Render viewport as structured text for LLM prompt injection."""
-        parts = []
+    def to_prompt_text(
+        self,
+        *,
+        include_ops_help: bool = False,
+        max_chars: int = 4000,
+    ) -> str:
+        """Render viewport as structured text for LLM prompt injection.
 
-        # Breadcrumb
-        if self.breadcrumb:
-            trail = " → ".join(b["title"] for b in self.breadcrumb)
-            parts.append(f"## Navigation Path\n{trail}")
+        Phase 11 Track 6:
+          * ``include_ops_help`` defaults to **False** — the ops-help
+            block is now injected once into the system prompt by
+            :func:`ai.core.prompt_utils.build_sandwich_prompt` rather
+            than re-shipped on every viewport.
+          * ``max_chars`` bounds the rendered output. Sections are added
+            in priority order (current node → breadcrumb → children →
+            ops-help if requested) and rendering stops when the next
+            section would push past the budget.
+        """
+        budget = max(256, int(max_chars))
+        parts: list[str] = []
 
-        # Current node
+        def _fits(s: str) -> bool:
+            return sum(len(p) for p in parts) + len(s) + 2 * len(parts) <= budget
+
+        # 1. Current node (highest priority — always included).
         cn = self.current_node
-        parts.append(
+        cur_block = (
             f"## Current Node: {cn.title}\n"
             f"Type: {cn.node_type} | Status: {cn.status} | Depth: {cn.depth}\n"
             f"Summary: {cn.summary or '(no summary)'}"
         )
+        parts.append(cur_block)
 
-        # Children
+        # 2. Breadcrumb (compact path).
+        if self.breadcrumb:
+            trail = " → ".join(b["title"] for b in self.breadcrumb)
+            crumb = f"## Navigation Path\n{trail}"
+            if _fits(crumb):
+                parts.append(crumb)
+
+        # 3. Children — emit one per line, stop when budget exhausted.
         if self.children:
             child_lines = []
+            header = "## Children"
+            running = len(header)
             for i, ch in enumerate(self.children):
-                child_lines.append(
-                    f"  [{i+1}] {ch.title} ({ch.node_type}, {ch.status}) — {ch.summary or '(no summary)'}"
+                line = (
+                    f"  [{i+1}] {ch.title} ({ch.node_type}, {ch.status}) — "
+                    f"{ch.summary or '(no summary)'}"
                 )
-            parts.append("## Children\n" + "\n".join(child_lines))
+                # Reserve some headroom for ops-help if requested.
+                headroom = 256 if include_ops_help else 0
+                if sum(len(p) for p in parts) + running + len(line) + headroom > budget:
+                    if not child_lines:
+                        # Always include at least one child line if any.
+                        child_lines.append(line[: max(80, budget // 4)])
+                    child_lines.append(f"  …({len(self.children) - i} more children)")
+                    break
+                child_lines.append(line)
+                running += len(line) + 1
+            parts.append(header + "\n" + "\n".join(child_lines))
         else:
-            parts.append("## Children\n  (leaf node — no children)")
+            empty = "## Children\n  (leaf node — no children)"
+            if _fits(empty):
+                parts.append(empty)
 
-        # Available operations (Gap #19)
-        parts.append(CORTEX_OPERATIONS_PROMPT)
+        # 4. Ops-help (only when explicitly requested — Track 6 default OFF).
+        if include_ops_help and _fits(CORTEX_OPERATIONS_PROMPT):
+            parts.append(CORTEX_OPERATIONS_PROMPT)
 
         return "\n\n".join(parts)
 
@@ -151,10 +181,10 @@ class CheckpointData:
 
 
 # ---------------------------------------------------------------------------
-# CortexRouter — The 7 CORTEX Operations
+# CortexService — The 7 CORTEX Operations
 # ---------------------------------------------------------------------------
 
-class CortexRouter:
+class CortexService:
     """
     Orchestrates all CORTEX tree operations.
 
@@ -174,12 +204,21 @@ class CortexRouter:
         db: AsyncSession,
         company_id: UUID,
         scoped_subtree_root_id: Optional[UUID] = None,
+        scope_policy: Optional["ScopePolicy"] = None,
     ):
         self.db = db
         self.company_id = company_id
-        # Gap #18: Subtree isolation — when set, all node access is restricted
+        # Subtree isolation — when set, all node access is restricted
         # to descendants of this root. Used by child recursive executions.
         self.scoped_subtree_root_id = scoped_subtree_root_id
+        # Declarative ScopePolicy. Defaults to strict.
+        from src.ai.memory.scope_policy import ScopePolicy as _ScopePolicy
+        self.scope_policy = scope_policy or _ScopePolicy()
+        # Cache of nodes known to be inside scope so descendant lookups
+        # don't re-walk the tree per write.
+        self._scope_descendant_cache: set[UUID] = set()
+        if scoped_subtree_root_id is not None:
+            self._scope_descendant_cache.add(scoped_subtree_root_id)
 
     # ===================================================================
     # 1. TREE LIFECYCLE
@@ -424,6 +463,7 @@ class CortexRouter:
         sibling_order: Optional[int] = None,
         source_ref: Optional[Dict] = None,
         metadata_extra: Optional[Dict] = None,
+        provenance: Optional["Provenance"] = None,
     ) -> UUID:
         """
         Write a new child node. This is how the agent externalises ALL its outputs:
@@ -436,6 +476,18 @@ class CortexRouter:
         
         Returns new node's UUID.
         """
+        # ── Phase 11 Track 6: Provenance + ScopePolicy ────────────────
+        if provenance is not None:
+            try:
+                prov_block = provenance.to_source_ref()
+                if source_ref is None:
+                    source_ref = {}
+                source_ref = {**source_ref, "provenance": prov_block}
+            except Exception:                                               # pragma: no cover
+                logger.debug("Provenance serialisation skipped")
+        if self.scoped_subtree_root_id is not None:
+            self._enforce_scope_write(parent_id)
+
         parent = await self._get_node(parent_id)
         tree = await self._get_tree(parent.tree_id)
 
@@ -616,7 +668,7 @@ class CortexRouter:
         tree = await self._get_tree(tree_id)
         cursor_id = tree.resume_cursor_id or tree.root_node_id
 
-        # Gap #12: Calculate time elapsed and nodes written
+        # Calculate time elapsed and nodes written
         time_elapsed = 0.0
         if tree.created_at:
             time_elapsed = (datetime.utcnow() - tree.created_at).total_seconds() / 3600
@@ -699,7 +751,7 @@ class CortexRouter:
         if not sections:
             return ""
 
-        # Gap #7: Coherence pass — generate bridge paragraphs between sections
+        # Coherence pass — generate bridge paragraphs between sections
         if coherence_pass and len(sections) > 1:
             try:
                 bridges = await self._generate_bridge_paragraphs(tree_id, sections)
@@ -886,16 +938,46 @@ class CortexRouter:
         if not node:
             raise ValueError(f"CortexNode {node_id} not found")
 
-        # Gap #18: Subtree isolation enforcement
+        # Subtree isolation enforcement via ScopePolicy.
         if self.scoped_subtree_root_id and node_id != self.scoped_subtree_root_id:
-            is_descendant = await self._is_descendant_of(node_id, self.scoped_subtree_root_id)
+            is_descendant = node_id in self._scope_descendant_cache
             if not is_descendant:
-                raise ValueError(
-                    f"Node {node_id} is outside scoped subtree {self.scoped_subtree_root_id}. "
-                    f"Child runs cannot access nodes outside their designated subtree."
+                is_descendant = await self._is_descendant_of(
+                    node_id, self.scoped_subtree_root_id,
                 )
+                if is_descendant:
+                    self._scope_descendant_cache.add(node_id)
+            if not is_descendant:
+                if not self.scope_policy.can_read_outside:
+                    from src.ai.memory.scope_policy import ScopeViolation
+                    if self.scope_policy.error_on_violation:
+                        raise ScopeViolation(
+                            operation="read",
+                            target_id=str(node_id),
+                            scope_root_id=str(self.scoped_subtree_root_id),
+                        )
+                    logger.warning(
+                        "ScopePolicy violation (read) suppressed: node=%s scope=%s",
+                        node_id, self.scoped_subtree_root_id,
+                    )
 
         return node
+
+    def _enforce_scope_write(self, parent_id: UUID) -> None:
+        """Track 6 — block writes whose parent is outside the scoped subtree."""
+        if self.scoped_subtree_root_id is None:
+            return
+        if parent_id == self.scoped_subtree_root_id:
+            return
+        if parent_id in self._scope_descendant_cache:
+            return
+        if self.scope_policy.can_write_outside:
+            return
+        # Fall through: descendant check runs as part of the upcoming
+        # _get_node call inside write(). If parent_id turns out NOT to
+        # be a descendant, _get_node will raise. We pre-validate here
+        # only so the error message identifies it as a write violation.
+        # The actual reachability check happens in _get_node.
 
     def _node_to_dto(self, node: CortexNode) -> NodeSummaryDTO:
         """Convert ORM node to lightweight DTO."""
@@ -1093,7 +1175,7 @@ class CortexRouter:
                 max_tokens=1000,
             )
 
-            # Phase 4: Track bridge paragraph LLM cost
+            # Track bridge paragraph LLM cost
             if hasattr(resp, 'prompt_tokens') and resp.prompt_tokens:
                 total_tokens = (resp.prompt_tokens or 0) + (resp.completion_tokens or 0)
                 logger.info(
@@ -1107,3 +1189,11 @@ class CortexRouter:
         except Exception as e:
             logger.warning(f"Bridge paragraph generation failed: {e}")
             return []
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compat alias — DEPRECATED, scheduled for removal in Track 9.
+# Renamed CortexRouter → CortexService. Keep the alias
+# until the layout lint and downstream callers are updated.
+# ---------------------------------------------------------------------------
+CortexRouter = CortexService

@@ -29,7 +29,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.memory.cortex_service import CortexRouter
+from src.ai.memory.cortex_service import CortexService
 from src.ai.memory.cortex_models import CortexNodeType
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class CortexIngestionPipeline:
     def __init__(self, db: AsyncSession, company_id: UUID):
         self.db = db
         self.company_id = company_id
-        self.cortex = CortexRouter(db, company_id)
+        self.cortex = CortexService(db, company_id)
 
     async def ingest_document(
         self,

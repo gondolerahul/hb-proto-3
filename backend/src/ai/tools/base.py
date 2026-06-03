@@ -6,6 +6,7 @@ registry for tool registration and lookup.
 """
 
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 import json
@@ -13,11 +14,21 @@ import logging
 
 from pydantic import BaseModel
 
+
+# ---------------------------------------------------------------------------
+# Tool lifecycle status
+# ---------------------------------------------------------------------------
+
+class ToolStatus(str, Enum):
+    ACTIVE       = "ACTIVE"
+    EXPERIMENTAL = "EXPERIMENTAL"
+    DEPRECATED   = "DEPRECATED"
+
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Phase 6: Typed Tool Protocol
+# Typed Tool Protocol
 # ---------------------------------------------------------------------------
 
 class ToolParams(BaseModel):
@@ -56,6 +67,7 @@ class Tool(ABC):
     """
     name: str
     description: str
+    status: ToolStatus = ToolStatus.ACTIVE
 
     @abstractmethod
     async def run(self, input_data: str) -> str:
@@ -170,6 +182,51 @@ class ToolRegistry:
         merged = dict(cls._tools)
         merged.update(cls._tenant_tools.get(str(company_id), {}))
         return merged
+
+    @classmethod
+    async def get_visible_tools_for_company(
+        cls,
+        company_id: UUID,
+        *,
+        feature_flags: Any = None,
+        include_deprecated: bool = False,
+    ) -> Dict[str, "Tool"]:
+        """Phase 11 Track 8 — filter EXPERIMENTAL / DEPRECATED tools.
+
+        EXPERIMENTAL tools require an explicit per-company feature flag
+        ``tools.experimental.{tool_id}=true`` before they appear. DEPRECATED
+        tools are hidden unless ``include_deprecated`` is True (admin path).
+        """
+        from src.ai.core.feature_flags import FeatureFlags as _FF
+        flags = feature_flags or _FF()
+        merged = cls.get_tools_for_company(company_id)
+        out: Dict[str, "Tool"] = {}
+        for name, tool in merged.items():
+            status = getattr(tool, "status", ToolStatus.ACTIVE)
+            if status == ToolStatus.DEPRECATED and not include_deprecated:
+                continue
+            if status == ToolStatus.EXPERIMENTAL:
+                try:
+                    enabled = await flags.is_on(
+                        f"tools.experimental.{name}",
+                        company_id=company_id,
+                    )
+                except Exception:                                           # pragma: no cover
+                    enabled = False
+                if not enabled:
+                    try:
+                        from src.ai.core.events import event
+                        event(
+                            "agent.tool.status_filtered",
+                            tool_id=name,
+                            company_id=str(company_id) if company_id else None,
+                            reason="experimental_opt_in_required",
+                        )
+                    except Exception:                                       # pragma: no cover
+                        pass
+                    continue
+            out[name] = tool
+        return out
 
     @classmethod
     def list_tools(cls, company_id: Optional[UUID] = None) -> List[Dict[str, str]]:

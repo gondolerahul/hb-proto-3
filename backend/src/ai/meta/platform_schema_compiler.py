@@ -682,7 +682,7 @@ async def get_platform_summary(
 
     This is the primary entry point for Tier 1 meta-cognition. Injected into:
       - build_sandwich_prompt() as Layer 3.5: Platform Awareness
-      - PlannerService._generate_dynamic_plan() system prompt
+      - the PlanGenerator (v2) planning system prompt
     """
     cache_key = f"meta:manifest:{company_id}"
 
@@ -709,16 +709,18 @@ async def get_platform_summary(
     return summary
 
 
-async def describe_entity_children(
+async def load_entity_children(
     db: AsyncSession,
     entity_id: UUID,
     company_id: UUID,
-) -> str:
-    """Describe an entity's children for injection into the dynamic planner.
+) -> List[Any]:
+    """Load the live child ORM rows referenced by an entity's hierarchy.
 
-    Returns a markdown summary of all child entities referenced in the
-    entity's hierarchy.children[]. Used by PlannerService to give the
-    dynamic planner awareness of available child agents.
+    Single source of truth for "what children does this entity have" — used
+    both by :func:`describe_entity_children` (for the planner prompt) and by
+    :class:`PlannerService` when it needs to synthesise CHILD_ENTITY_INVOCATION
+    steps for a routing PROCESS/AGENT whose dynamic plan failed to delegate.
+    Returns ``[]`` when the entity is missing or has no resolvable children.
     """
     from src.ai.models import HierarchicalEntity
 
@@ -730,27 +732,41 @@ async def describe_entity_children(
     )
     entity = result.scalar_one_or_none()
     if not entity:
-        return ""
+        return []
 
     hierarchy = entity.hierarchy or {}
     children_refs = hierarchy.get("children", [])
-    if not children_refs:
-        return ""
-
     child_ids = [c.get("child_id") for c in children_refs if c.get("child_id")]
     if not child_ids:
-        return ""
+        return []
 
-    # Load all children in one query
-    from sqlalchemy import cast, String
     children_result = await db.execute(
         select(HierarchicalEntity).where(
             HierarchicalEntity.company_id == company_id,
-            HierarchicalEntity.id.in_([UUID(cid) if isinstance(cid, str) else cid for cid in child_ids]),
+            HierarchicalEntity.id.in_(
+                [UUID(cid) if isinstance(cid, str) else cid for cid in child_ids]
+            ),
         )
     )
-    children = children_result.scalars().all()
+    return list(children_result.scalars().all())
 
+
+async def describe_entity_children(
+    db: AsyncSession,
+    entity_id: UUID,
+    company_id: UUID,
+    children: Optional[List[Any]] = None,
+) -> str:
+    """Describe an entity's children for injection into the dynamic planner.
+
+    Returns a markdown summary of all child entities referenced in the
+    entity's hierarchy.children[]. Used by PlannerService to give the
+    dynamic planner awareness of available child agents. Pass ``children``
+    to reuse an already-loaded list (e.g. from :func:`load_entity_children`)
+    and skip the extra DB round-trip.
+    """
+    if children is None:
+        children = await load_entity_children(db, entity_id, company_id)
     if not children:
         return ""
 
@@ -783,11 +799,20 @@ async def describe_entity_children(
 def resolve_meta_cognition(entity) -> Dict[str, Any]:
     """Resolve effective meta-cognition config for an entity.
 
-    Auto-enables tiers based on entity type unless explicitly overridden:
-      - Tier 1 (platform_awareness): ON when dynamic_planning.enabled or
-        reasoning_mode=REACT. OFF for static-only plans.
-      - Tier 2 (registry_search): ON for AGENT and PROCESS types.
-      - Tier 3 (self_modification): ON for AGENT and PROCESS types.
+    Phase 11 Track 5 default change:
+      * ``platform_awareness`` — auto-enabled when dynamic_planning is
+        enabled OR reasoning_mode=REACT (unchanged).
+      * ``registry_search`` — **opt-in by default** (was: auto-ON for
+        AGENT/PROCESS). Entities that need it must set it explicitly.
+      * ``self_modification`` — **opt-in by default** (same).
+      * Meta-Agent entities (identified via
+        ``metadata_extensions.is_meta_agent``) opt in to both flags
+        automatically — they are the only entities that build others.
+
+    Existing live entities that were relying on the prior auto-on
+    default are preserved via
+    ``ai.meta.meta_cognition_migration.backfill_meta_cognition`` which
+    must run BEFORE this code deploys.
 
     Returns a dict with resolved boolean flags and limits.
     """
@@ -823,17 +848,33 @@ def resolve_meta_cognition(entity) -> Dict[str, Any]:
     dynamic_enabled = dyn.get("enabled", False)
     reasoning_mode = reasoning.get("reasoning_mode", "REACT")
 
-    # Option B: only inject when LLM is making decisions
+    # Tier 1: only inject when LLM is making decisions
     if "platform_awareness" not in explicit:
         config["platform_awareness"] = dynamic_enabled or reasoning_mode == "REACT"
 
-    # Tier 2: auto-enable for AGENT/PROCESS
+    # Tiers 2 & 3 — Phase 11 Track 5 opt-in defaults.
+    # Entities that previously relied on the auto-on default were
+    # backfilled with explicit `true` by the preserve-migration; this
+    # branch is now intentionally a no-op for non-meta entities so new
+    # entities default OFF and have to opt in.
     if "registry_search" not in explicit:
-        config["registry_search"] = entity_type in ("AGENT", "PROCESS")
-
-    # Tier 3: auto-enable for AGENT/PROCESS
+        config["registry_search"] = False
     if "self_modification" not in explicit:
-        config["self_modification"] = entity_type in ("AGENT", "PROCESS")
+        config["self_modification"] = False
+
+    # The Meta-Agent template itself MUST keep both tiers ON — it is
+    # the only entity whose job is to build other entities.
+    metadata_extensions = (
+        entity.metadata_extensions if hasattr(entity, "metadata_extensions")
+        else (entity.get("metadata_extensions") or {})
+    )
+    is_meta_agent = (
+        isinstance(metadata_extensions, dict)
+        and bool(metadata_extensions.get("is_meta_agent"))
+    )
+    if is_meta_agent:
+        config["registry_search"] = True
+        config["self_modification"] = True
 
     return config
 

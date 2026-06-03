@@ -188,6 +188,125 @@ async def get_execution(
     execution = await service.get_execution(execution_id, current_user.company_id, current_user.role)
     return execution
 
+@router.get("/executions/{execution_id}/agent_state")
+async def get_agent_state(
+    execution_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Phase 11 Track 2 — read the latest AgentState snapshot for a run.
+
+    Debug endpoint only. Returns the most recent CORTEX ``snapshot``
+    node payload (or 404 if none exists). Visible to superadmins and
+    to anyone with execution-read access in the same company; access
+    enforcement piggybacks on AIService.get_execution.
+    """
+    from fastapi import HTTPException
+
+    from src.ai.service import AIService
+
+    # Reuse existing access check.
+    service = AIService(db)
+    await service.get_execution(execution_id, current_user.company_id, current_user.role)
+
+    # Walk the run's CORTEX tree (if any) for the newest snapshot node.
+    try:
+        from sqlalchemy import text
+        row = (await db.execute(
+            text(
+                """
+                SELECT n.content, n.created_at
+                FROM cortex_nodes n
+                JOIN cortex_trees t ON t.id = n.tree_id
+                JOIN execution_runs r ON r.id = :rid
+                WHERE t.entity_id = r.entity_id
+                  AND n.node_type = 'snapshot'
+                  AND n.created_at >= COALESCE(r.started_at, r.created_at)
+                  AND (r.completed_at IS NULL
+                       OR n.created_at <= r.completed_at + interval '120 seconds')
+                ORDER BY n.created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"rid": str(execution_id)},
+        )).first()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"snapshot lookup failed: {exc}")
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="no AgentState snapshot")
+
+    import json as _json
+    try:
+        payload = _json.loads(row[0]) if isinstance(row[0], str) else row[0]
+    except Exception:
+        payload = {"raw": str(row[0])}
+    return {
+        "run_id": str(execution_id),
+        "snapshot_at": row[1].isoformat() if row[1] else None,
+        "snapshot": payload,
+    }
+
+
+@router.get("/executions/{execution_id}/trace")
+async def get_execution_trace(
+    execution_id: UUID,
+    iteration: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Per-iteration transparency trace for a run.
+
+    Returns every ``execution_trace_events`` span (steps → child invocations →
+    tool calls → LLM calls), ordered by ``seq``. The frontend assembles the tree
+    from ``span_id`` / ``parent_span_id``. Optionally filter to one ``iteration``.
+
+    Access is enforced via the same ``AIService.get_execution`` check used by the
+    SSE stream and the agent-state snapshot endpoint.
+    """
+    from sqlalchemy import select as _select
+
+    from src.ai.orm.trace import ExecutionTraceEvent
+
+    service = AIService(db)
+    await service.get_execution(execution_id, current_user.company_id, current_user.role)
+
+    stmt = (
+        _select(ExecutionTraceEvent)
+        .where(ExecutionTraceEvent.run_id == execution_id)
+        .order_by(ExecutionTraceEvent.seq.asc())
+    )
+    if iteration is not None:
+        stmt = stmt.where(ExecutionTraceEvent.iteration == iteration)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    return {
+        "run_id": str(execution_id),
+        "count": len(rows),
+        "spans": [
+            {
+                "span_id": str(r.span_id),
+                "parent_span_id": str(r.parent_span_id) if r.parent_span_id else None,
+                "iteration": r.iteration,
+                "kind": r.kind,
+                "name": r.name,
+                "status": r.status,
+                "seq": r.seq,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "ended_at": r.ended_at.isoformat() if r.ended_at else None,
+                "duration_ms": r.duration_ms,
+                "cost_usd": float(r.cost_usd) if r.cost_usd is not None else None,
+                "tokens_in": r.tokens_in,
+                "tokens_out": r.tokens_out,
+                "child_run_id": str(r.child_run_id) if r.child_run_id else None,
+                "payload": r.payload,
+                "error": r.error_message,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/executions/{execution_id}/stream")
 async def stream_execution(
     execution_id: UUID,
@@ -217,7 +336,10 @@ async def stream_execution(
                 if message["type"] == "message":
                     data = message["data"].decode("utf-8")
                     yield f"data: {data}\n\n"
-                    if "\"status\": \"COMPLETED\"" in data or f"\"status\": \"FAILED\"" in data:
+                    if any(
+                        f"\"status\": \"{terminal}\"" in data
+                        for terminal in ("COMPLETED", "FAILED", "CANCELLED")
+                    ):
                         break
         except asyncio.CancelledError:
             pass
@@ -226,6 +348,25 @@ async def stream_execution(
             await r.close()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+# --- Cancel ---
+@router.post("/executions/{execution_id}/cancel", response_model=ExecutionRunResponse)
+async def cancel_execution(
+    execution_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel an in-flight execution run.
+
+    Sets the run to the terminal ``CANCELLED`` state and publishes on the
+    ``execution:{id}`` Redis channel. A running AgentLoop re-reads the run
+    status at the top of every iteration and aborts, so an operator can stop
+    a spinning run without killing the arq worker.
+    """
+    service = AIService(db)
+    return await service.cancel_execution(
+        execution_id, current_user.company_id, current_user.role
+    )
 
 # --- Retry / Resume ---
 @router.post("/executions/{execution_id}/retry", response_model=ExecutionRunResponse)

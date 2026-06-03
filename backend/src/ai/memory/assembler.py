@@ -23,17 +23,26 @@ async def assemble_memory(
     user_id: Optional[UUID] = None,
     tree_id: Optional[UUID] = None,
     task_description: str = "",
-    memory_pipeline: str = "v1",
+    memory_pipeline: str = "v2",                            # Track 6 default flip
     memory_scope: str = "FULL",
     runtime_tree=None,
     long_running: bool = False,
 ) -> Dict[str, Any]:
-    """
-    Unified entry point for memory retrieval.
+    """Unified entry point for memory retrieval.
+
+    Phase 11 Track 6: ``memory_pipeline`` default is now ``"v2"``. The
+    v1 path (``MemoryRouter``) is retained as an explicit opt-in for
+    rollback safety only and will be removed in Track 9. On the v2 path,
+    if the entity has no Episodic Tree data yet, the
+    :class:`LegacyEpisodicReader` tops up the result with rows from the
+    flat ``episodic_memories`` table so a freshly-migrated entity does
+    not look amnesiac on its first run.
 
     Args:
-        memory_pipeline: "v1" (MemoryRouter) or "v2" (MemoryAssemblyService)
-        memory_scope: "FULL", "RUN_SCOPED", "INTELLIGENCE_ONLY", "KNOWLEDGE_ONLY", "NONE"
+        memory_pipeline: "v2" (MemoryAssemblyService, default) or "v1"
+            (legacy MemoryRouter — explicit opt-in only).
+        memory_scope: "FULL", "RUN_SCOPED", "INTELLIGENCE_ONLY",
+            "KNOWLEDGE_ONLY", "NONE".
 
     Returns:
         Dict with memory context ready for injection into context_state.
@@ -41,16 +50,34 @@ async def assemble_memory(
     if memory_scope == "NONE":
         return {}
 
-    if memory_pipeline == "v2":
-        return await _assemble_v2(
-            db, company_id, entity_id, user_id,
-            task_description, memory_scope, runtime_tree,
-        )
-    else:
+    if memory_pipeline == "v1":
+        # Explicit opt-in for the legacy pipeline (rollback safety).
         return await _assemble_v1(
             db, entity_id, user_id, tree_id,
             memory_scope, long_running,
         )
+
+    result = await _assemble_v2(
+        db, company_id, entity_id, user_id,
+        task_description, memory_scope, runtime_tree,
+    )
+
+    # First-run top-up: if the v2 pipeline returned no episodic context
+    # AND the requested scope cares about episodes, fall back to the
+    # legacy flat-table reader so freshly-migrated entities don't
+    # appear amnesiac. Pure read; no write-backs.
+    if memory_scope in ("FULL", "RUN_SCOPED") and not result.get("__episodic_memory__"):
+        try:
+            from src.ai.memory.legacy_episodic_reader import LegacyEpisodicReader
+            legacy = await LegacyEpisodicReader(db).read(
+                entity_id=entity_id, user_id=user_id, limit=5,
+            )
+            if legacy:
+                result["__episodic_memory__"] = legacy
+        except Exception as exc:                                            # noqa: BLE001
+            logger.debug(f"Legacy episodic top-up skipped: {exc}")
+
+    return result
 
 
 async def _assemble_v1(

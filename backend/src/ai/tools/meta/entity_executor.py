@@ -155,7 +155,7 @@ class MetaEntityExecutorTool(Tool):
             if not run:
                 return {"success": False, "error": f"Run {run_id} not found"}
 
-            if run.status in ("COMPLETED", "FAILED", "PARTIAL_COMPLETE"):
+            if run.status in ("COMPLETED", "FAILED", "PARTIAL_COMPLETE", "CANCELLED"):
                 output = ""
                 if run.result_data:
                     output = str(run.result_data)[:2000]

@@ -159,7 +159,7 @@ class EpisodicTreeService:
             depth=2,
         )
 
-        # Phase 10C: Use shared utility instead of private cross-module import
+        # C: Use shared utility instead of private cross-module import
         from src.ai.shared.text_utils import truncate_for_storage
         input_summary = truncate_for_storage(run.input_data, max_chars=1000)
         output_summary = truncate_for_storage(run.result_data, max_chars=1000)

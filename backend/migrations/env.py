@@ -15,7 +15,7 @@ from src.auth import models as auth_models
 from src.ai import models as ai_models
 from src.config import models as config_models
 from src.billing import billing_models
-from src.ai import cortex_models
+from src.ai.memory import cortex_models
 from src.ai import email_models
 from src.ai import artifact_models
 from src.ai import campaign_models

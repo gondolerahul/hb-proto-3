@@ -7,11 +7,28 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from src.ai.tools import ToolRegistry
 from src.ai.tools.base import Tool as _BaseTool, ToolParams as _BaseToolParams
+from src.ai.core.trace import span as _trace_span
 import json
+import logging
 
-# Phase 6: Cache base references for introspection in execute_from_function_calls
+logger = logging.getLogger(__name__)
+
+# Cache base references for introspection in execute_from_function_calls
 _base_run_typed = _BaseTool.run_typed
 _base_tool_params = _BaseToolParams
+
+
+def _stamp_tool_span(sp, tr: "ToolResult") -> None:
+    """Copy a finished ToolResult onto its trace span (best-effort)."""
+    try:
+        sp.set_output(tr.output)
+        sp.update(success=tr.success, skipped=tr.skipped)
+        if tr.error:
+            sp.set_error(tr.error)
+        elif tr.skipped and tr.skip_reason:
+            sp.update(skip_reason=tr.skip_reason)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -72,8 +89,12 @@ class ToolExecutor:
         if call_counts is None:
             call_counts = {}
 
-        results: List[ToolResult] = []
-        for call in function_calls:
+        async def _one(call: Dict[str, Any]) -> ToolResult:
+            """Execute a single function call and return its typed result.
+
+            Extracted verbatim from the legacy loop body so each call can be
+            wrapped in a trace span; ``continue``/append became ``return``.
+            """
             tool_name = call.get("name")
             tool_args = call.get("args", {})
             # rate_limit_per_run can be passed alongside args by the worker
@@ -83,7 +104,7 @@ class ToolExecutor:
             if rate_limit is not None:
                 current_count = call_counts.get(tool_name, 0)
                 if current_count >= rate_limit:
-                    results.append(ToolResult(
+                    return ToolResult(
                         tool=tool_name,
                         args=tool_args,
                         output=None,
@@ -93,15 +114,14 @@ class ToolExecutor:
                             f"Rate limit exceeded: tool '{tool_name}' has been called "
                             f"{current_count}/{rate_limit} times in this run."
                         ),
-                    ))
-                    continue
+                    )
 
             tool = ToolRegistry.get_tool(tool_name)
 
             if tool:
                 _start = datetime.now(timezone.utc)
                 try:
-                    # Phase 6: Prefer run_typed() if the tool has overridden it
+                    # Prefer run_typed() if the tool has overridden it
                     _has_typed = type(tool).run_typed is not _base_run_typed
                     if _has_typed and isinstance(tool_args, dict):
                         # Discover params class from run_typed type hints
@@ -123,15 +143,14 @@ class ToolExecutor:
                                 typed_result = await tool.run_typed(typed_params)
                             _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
                             call_counts[tool_name] = call_counts.get(tool_name, 0) + 1
-                            results.append(ToolResult(
+                            return ToolResult(
                                 tool=tool_name,
                                 args=tool_args,
                                 output=typed_result.output,
                                 success=typed_result.success,
                                 latency_ms=_latency,
                                 error=typed_result.error_message,
-                            ))
-                            continue
+                            )
                 except Exception as _typed_err:
                     # Typed path failed (type hint resolution, param mismatch, etc.)
                     # Fall through to legacy string-based path silently.
@@ -155,25 +174,25 @@ class ToolExecutor:
                     # P3.3 — Increment counter on successful call
                     call_counts[tool_name] = call_counts.get(tool_name, 0) + 1
 
-                    results.append(ToolResult(
+                    return ToolResult(
                         tool=tool_name,
                         args=tool_args,
                         output=output,
                         success=True,
                         latency_ms=_latency,
-                    ))
+                    )
                 except Exception as e:
                     _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
-                    results.append(ToolResult(
+                    return ToolResult(
                         tool=tool_name,
                         args=tool_args,
                         output=f"Error: {str(e)}",
                         success=False,
                         latency_ms=_latency,
                         error=str(e),
-                    ))
+                    )
             else:
-                results.append(ToolResult(
+                return ToolResult(
                     tool=tool_name,
                     args=tool_args,
                     output=(
@@ -182,7 +201,16 @@ class ToolExecutor:
                     ),
                     success=False,
                     error=f"Tool '{tool_name}' not registered",
-                ))
+                )
+
+        results: List[ToolResult] = []
+        for call in function_calls:
+            async with _trace_span(
+                "tool", call.get("name"), args=call.get("args", {}),
+            ) as _sp:
+                tr = await _one(call)
+                _stamp_tool_span(_sp, tr)
+            results.append(tr)
 
         return results
 
@@ -194,8 +222,7 @@ class ToolExecutor:
         """
         Execute tool calls and return results (legacy method, now returns ToolResult).
         """
-        results: List[ToolResult] = []
-        for call in tool_calls:
+        async def _one(call: Dict[str, str]) -> ToolResult:
             tool = ToolRegistry.get_tool(call["tool"])
             _start = datetime.now(timezone.utc)
             if tool:
@@ -213,33 +240,42 @@ class ToolExecutor:
                     # so tools can look up API keys from the integration registry
                     output = await tool.run_with_context(tool_input, context=extra_context)
                     _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
-                    results.append(ToolResult(
+                    return ToolResult(
                         tool=call["tool"],
                         args={"input": call["input"]},
                         output=output,
                         success=True,
                         latency_ms=_latency,
-                    ))
+                    )
                 except Exception as e:
                     _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
-                    results.append(ToolResult(
+                    return ToolResult(
                         tool=call["tool"],
                         args={"input": call["input"]},
                         output=f"Error: {str(e)}",
                         success=False,
                         latency_ms=_latency,
                         error=str(e),
-                    ))
+                    )
             else:
                 _latency = int((datetime.now(timezone.utc) - _start).total_seconds() * 1000)
-                results.append(ToolResult(
+                return ToolResult(
                     tool=call["tool"],
                     args={"input": call.get("input", "")},
                     output=f"Error: Tool '{call['tool']}' not found",
                     success=False,
                     latency_ms=_latency,
                     error=f"Tool '{call['tool']}' not registered",
-                ))
+                )
+
+        results: List[ToolResult] = []
+        for call in tool_calls:
+            async with _trace_span(
+                "tool", call.get("tool"), input=call.get("input", ""),
+            ) as _sp:
+                tr = await _one(call)
+                _stamp_tool_span(_sp, tr)
+            results.append(tr)
         return results
 
     @staticmethod

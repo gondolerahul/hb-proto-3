@@ -10,23 +10,23 @@ This package contains production-ready tool implementations for:
 """
 
 from src.ai.tools.base import Tool, ToolRegistry
-from src.ai.tools.calculator import CalculatorTool
-from src.ai.tools.search import WebSearchTool
-from src.ai.tools.batch_search import BatchWebSearchTool
-from src.ai.tools.excel import ExcelTool
-from src.ai.tools.scraper import ScraperTool
-from src.ai.tools.pdf_generator import PDFGeneratorTool
-from src.ai.tools.file_writer import FileWriterTool
-from src.ai.tools.email_tool import EmailIngestTool, EmailClassifyTool, EmailDraftTool, EmailSendTool
-from src.ai.tools.image_generation import ImageGenerationTool
-from src.ai.tools.video_generation import VideoGenerationTool
-from src.ai.tools.sandbox_executor import SandboxCodeTool
-from src.ai.tools.terminal_tool import TerminalTool
-from src.ai.tools.browser_tool import HeadlessBrowserTool
-from src.ai.tools.docx_tool import DocxTool
-from src.ai.tools.pptx_tool import PptxTool
-from src.ai.tools.document_save import DocumentSaveTool
-from src.ai.tools.crm_tools import (
+from src.ai.tools.core.calculator import CalculatorTool
+from src.ai.tools.core.search import WebSearchTool
+from src.ai.tools.core.batch_search import BatchWebSearchTool
+from src.ai.tools.documents.excel import ExcelTool
+from src.ai.tools.core.scraper import ScraperTool
+from src.ai.tools.documents.pdf_generator import PDFGeneratorTool
+from src.ai.tools.core.file_writer import FileWriterTool
+from src.ai.tools.email.email_tool import EmailIngestTool, EmailClassifyTool, EmailDraftTool, EmailSendTool
+from src.ai.tools.media.image_generation import ImageGenerationTool
+from src.ai.tools.media.video_generation import VideoGenerationTool
+from src.ai.tools.sandbox.sandbox_executor import SandboxCodeTool
+from src.ai.tools.sandbox.terminal_tool import TerminalTool
+from src.ai.tools.sandbox.browser_tool import HeadlessBrowserTool
+from src.ai.tools.documents.docx_tool import DocxTool
+from src.ai.tools.documents.pptx_tool import PptxTool
+from src.ai.tools.documents.document_save import DocumentSaveTool
+from src.ai.tools.crm.crm_tools import (
     GetCurrentDateTimeTool,
     WhatsAppSendTenantTool,
     GoogleCalendarCreateEventTool,
@@ -86,7 +86,6 @@ from src.ai.tools.social import (
     InstagramManageCommentsTool, InstagramDiscoverHashtagsTool,
     GoogleAdsCreateCampaignTool, GoogleAdsReportTool,
     GoogleAdsManageKeywordsTool, GoogleAdsGetAdGroupsTool,
-    # Phase 2
     YouTubeUploadVideoTool, YouTubeManagePlaylistsTool,
     YouTubeGetAnalyticsTool, YouTubeManageCommentsTool,
     TikTokPublishVideoTool, TikTokGetVideosTool,
@@ -101,7 +100,6 @@ from src.ai.tools.social import (
     MetaAdsReportTool, MetaAdsManageAudiencesTool,
     LinkedInAdsCreateCampaignTool, LinkedInAdsManageCreativesTool,
     LinkedInAdsReportTool, LinkedInAdsManageAudiencesTool,
-    # Phase 3
     LinkedInSalesSearchLeadsTool, LinkedInSalesGetLeadTool,
     LinkedInSalesSaveLeadTool, LinkedInSalesGetListsTool,
     YouTubeAdsCreateCampaignTool, YouTubeAdsManageAdGroupsTool,
@@ -112,7 +110,7 @@ from src.ai.tools.social import (
     SnapchatAdsReportTool, SnapchatAdsManageAudiencesTool,
 )
 
-# Phase 1 registrations
+# Registrations
 ToolRegistry.register(LinkedInCreatePostTool())
 ToolRegistry.register(LinkedInGetAnalyticsTool())
 ToolRegistry.register(LinkedInManageCommentsTool())
@@ -134,7 +132,7 @@ ToolRegistry.register(GoogleAdsReportTool())
 ToolRegistry.register(GoogleAdsManageKeywordsTool())
 ToolRegistry.register(GoogleAdsGetAdGroupsTool())
 
-# Phase 2 registrations
+# Registrations
 ToolRegistry.register(YouTubeUploadVideoTool())
 ToolRegistry.register(YouTubeManagePlaylistsTool())
 ToolRegistry.register(YouTubeGetAnalyticsTool())
@@ -164,7 +162,7 @@ ToolRegistry.register(LinkedInAdsManageCreativesTool())
 ToolRegistry.register(LinkedInAdsReportTool())
 ToolRegistry.register(LinkedInAdsManageAudiencesTool())
 
-# Phase 3 registrations
+# Registrations
 ToolRegistry.register(LinkedInSalesSearchLeadsTool())
 ToolRegistry.register(LinkedInSalesGetLeadTool())
 ToolRegistry.register(LinkedInSalesSaveLeadTool())
@@ -202,7 +200,7 @@ __all__ = [
     "ImageGenerationTool", "VideoGenerationTool", "SandboxCodeTool", "TerminalTool",
     "HeadlessBrowserTool",
     "DocxTool", "PptxTool", "DocumentSaveTool",
-    # Phase 1 social
+    # Social
     "LinkedInCreatePostTool", "LinkedInGetAnalyticsTool",
     "LinkedInManageCommentsTool", "LinkedInGetProfileTool",
     "TwitterCreatePostTool", "TwitterSearchTool",
@@ -213,7 +211,7 @@ __all__ = [
     "InstagramManageCommentsTool", "InstagramDiscoverHashtagsTool",
     "GoogleAdsCreateCampaignTool", "GoogleAdsReportTool",
     "GoogleAdsManageKeywordsTool", "GoogleAdsGetAdGroupsTool",
-    # Phase 2 social
+    # Social
     "YouTubeUploadVideoTool", "YouTubeManagePlaylistsTool",
     "YouTubeGetAnalyticsTool", "YouTubeManageCommentsTool",
     "TikTokPublishVideoTool", "TikTokGetVideosTool",
@@ -228,7 +226,7 @@ __all__ = [
     "MetaAdsReportTool", "MetaAdsManageAudiencesTool",
     "LinkedInAdsCreateCampaignTool", "LinkedInAdsManageCreativesTool",
     "LinkedInAdsReportTool", "LinkedInAdsManageAudiencesTool",
-    # Phase 3 social
+    # Social
     "LinkedInSalesSearchLeadsTool", "LinkedInSalesGetLeadTool",
     "LinkedInSalesSaveLeadTool", "LinkedInSalesGetListsTool",
     "YouTubeAdsCreateCampaignTool", "YouTubeAdsManageAdGroupsTool",

@@ -77,6 +77,9 @@ from src.config.router import router as config_router
 app.include_router(config_router, prefix="/api/v1")
 from src.ai.router import router as ai_router
 app.include_router(ai_router, prefix="/api/v1")
+# Phase 11 — admin / debug endpoints (KPI, bandit, anti-patterns, …).
+from src.ai.phase11_router import router as phase11_router
+app.include_router(phase11_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")
 

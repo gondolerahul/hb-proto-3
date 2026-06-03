@@ -60,7 +60,7 @@ class DreamingEngine:
     def __init__(self, db: AsyncSession, company_id: UUID, llm_router=None):
         self.db = db
         self.company_id = company_id
-        # Phase 10B: Optional LLM dependency injection (lazy fallback)
+        # B: Optional LLM dependency injection (lazy fallback)
         self._llm_router = llm_router
 
     def _get_llm(self):
@@ -69,6 +69,13 @@ class DreamingEngine:
             return self._llm_router
         from src.ai.llm.router import LLMRouter
         return LLMRouter(db=self.db, company_id=self.company_id)
+
+    async def _log_dreaming_usage(self, response) -> None:
+        from src.ai.services.attributed_usage import log_llm_response_usage
+        await log_llm_response_usage(
+            db=self.db, response=response, attribution="dreaming",
+            company_id=self.company_id,
+        )
 
     # ===================================================================
     # Main Entry Point
@@ -91,13 +98,13 @@ class DreamingEngine:
 
         logger.info(f"Dreaming engine starting for entity {entity_id}")
 
-        # Phase 1: Extract Observations
+        # Extract Observations
         obs_ids = await self._extract_observations(entity_id)
 
-        # Phase 2: Pattern Recognition
+        # Pattern Recognition
         pat_ids = await self._recognize_patterns(entity_id)
 
-        # Phase 3: Intelligence Distillation
+        # Intelligence Distillation
         rule_ids = await self._distill_intelligence(entity_id)
 
         # Update consolidation timestamps
@@ -112,7 +119,7 @@ class DreamingEngine:
         return result
 
     # ===================================================================
-    # Phase 1: Observation Extraction
+    # Observation Extraction
     # ===================================================================
 
     async def _extract_observations(self, entity_id: UUID) -> List[UUID]:
@@ -165,6 +172,7 @@ class DreamingEngine:
                 temperature=0.2,
                 max_tokens=2000,
             )
+            await self._log_dreaming_usage(response)
         except Exception as e:
             logger.warning(f"LLM call failed in observation extraction: {e}")
             return []
@@ -218,7 +226,7 @@ class DreamingEngine:
         return created_ids
 
     # ===================================================================
-    # Phase 2: Pattern Recognition
+    # Pattern Recognition
     # ===================================================================
 
     async def _recognize_patterns(self, entity_id: UUID) -> List[UUID]:
@@ -258,6 +266,7 @@ class DreamingEngine:
                     temperature=0.2,
                     max_tokens=500,
                 )
+                await self._log_dreaming_usage(response)
             except Exception as e:
                 logger.warning(f"LLM call failed in pattern recognition: {e}")
                 continue
@@ -311,7 +320,7 @@ class DreamingEngine:
         return created_ids
 
     # ===================================================================
-    # Phase 3: Intelligence Distillation
+    # Intelligence Distillation
     # ===================================================================
 
     async def _distill_intelligence(self, entity_id: UUID) -> List[UUID]:
@@ -357,6 +366,7 @@ class DreamingEngine:
                 temperature=0.1,
                 max_tokens=2000,
             )
+            await self._log_dreaming_usage(response)
         except Exception as e:
             logger.warning(f"LLM call failed in intelligence distillation: {e}")
             return []
@@ -499,9 +509,15 @@ class DreamingEngine:
         return clusters
 
     @staticmethod
-    def _cosine_similarity(a: list, b: list) -> float:
-        """Compute cosine similarity between two vectors."""
-        if not a or not b or len(a) != len(b):
+    def _cosine_similarity(a, b) -> float:
+        """Compute cosine similarity between two vectors.
+
+        Accepts plain lists or numpy/pgvector arrays. We must avoid bare
+        truthiness checks (``if not a``) because pgvector loads embeddings
+        as numpy ndarrays, for which truthiness raises
+        ``ValueError: The truth value of an array ... is ambiguous``.
+        """
+        if a is None or b is None or len(a) == 0 or len(b) == 0 or len(a) != len(b):
             return 0.0
         dot = sum(x * y for x, y in zip(a, b))
         norm_a = sum(x * x for x in a) ** 0.5

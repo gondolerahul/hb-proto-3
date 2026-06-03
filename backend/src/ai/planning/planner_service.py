@@ -12,10 +12,7 @@ from uuid import UUID, uuid4
 from typing import List, Optional
 
 from src.ai.models import ExecutionRun, HierarchicalEntity, LLMInteractionLog
-from src.ai.schemas import (
-    EntityType, PlanStep,
-    DEFAULT_PLANNING_SYSTEM_PROMPT,
-)
+from src.ai.schemas import EntityType, PlanStep
 from src.ai.llm.router import LLMRouter
 from src.ai.usage_service import UsageService
 
@@ -69,17 +66,84 @@ class PlannerService:
         dynamic_config = planning.get("dynamic_planning", {}) or {}
 
         if not dynamic_config.get("enabled"):
-            return static_plan
+            return await self._maybe_enforce_router(run, entity, input_data, static_plan)
 
-        # Generate dynamic plan via LLM
-        logger.info(
-            f"Generating dynamic plan for {entity.name} "
-            f"with input keys: {list(input_data.keys())}"
-        )
+        # Dynamic planning routes through the v2 PlanGenerator
+        # (multi-candidate generation + invariants + judge) when the
+        # planner.v2_enabled flag is on. The legacy single-shot v1 planner
+        # was retired in the cut-C5 consolidation; the static plan is the
+        # only fallback when v2 is off, returns nothing, or errors.
+        try:
+            from src.ai.core.feature_flags import FeatureFlags
+            flags = FeatureFlags(self.db)
+            v2 = await flags.is_on("planner.v2_enabled", company_id=self.company_id)
+        except Exception:                                                   # pragma: no cover
+            v2 = False
+        if v2:
+            try:
+                v2_plan = await self._generate_dynamic_plan_v2(
+                    run, entity, input_data, static_plan,
+                )
+                if v2_plan is not None:
+                    # The v2 PlanGenerator has no routing directive, so a
+                    # static-less router can come back with flat THOUGHT/ACTION
+                    # steps. Enforce delegation here so it can't dead-end on
+                    # text output (see _maybe_enforce_router).
+                    return await self._maybe_enforce_router(
+                        run, entity, input_data, v2_plan
+                    )
+            except Exception as e:                                          # noqa: BLE001
+                logger.warning(f"PlanGenerator reconcile failed; falling back to static: {e}")
 
-        return await self._generate_dynamic_plan(
-            run, entity, input_data, static_plan, dynamic_config
+        return await self._maybe_enforce_router(run, entity, input_data, static_plan)
+
+    async def _generate_dynamic_plan_v2(
+        self,
+        run: ExecutionRun,
+        entity: HierarchicalEntity,
+        input_data: dict,
+        static_plan: dict,
+    ) -> Optional[dict]:
+        """Phase 11 Track 7 — multi-candidate planner path.
+
+        Generates N candidate plans, validates each with invariants,
+        and selects via PlanJudge. Stores the chosen plan + alternates
+        in ``_plan_meta`` so the frontend can render the compare modal.
+        """
+        from src.ai.planning.plan_generator import PlanContext, PlanGenerator
+
+        try:
+            from src.ai.core.feature_flags import NUMERIC_DEFAULTS
+            n_candidates = int(NUMERIC_DEFAULTS.get("planner.n_candidates", 3))
+        except Exception:                                                    # pragma: no cover
+            n_candidates = 2
+
+        ctx = PlanContext(
+            entity=entity,
+            input_data=input_data or {},
+            static_plan=static_plan or {},
+            company_id=self.company_id,
+            goal=getattr(entity, "goal", "") or "",
         )
+        gen = PlanGenerator(llm_router=self.llm, db=self.db)
+        result = await gen.generate(ctx, n=n_candidates)
+        steps = self._assign_step_ids(list(result.chosen.steps), start_from=1)
+        return {
+            "steps": steps,
+            "_plan_meta": {
+                "style": result.chosen.style,
+                "estimated_cost_usd": str(result.chosen.estimated_cost_usd),
+                "alternates": [
+                    {
+                        "style": c.style,
+                        "estimated_cost_usd": str(c.estimated_cost_usd),
+                        "judge_score": getattr(c, "judge_score", 0.0),
+                    }
+                    for c in result.alternates
+                ],
+                "judge_reasoning": result.judge_reasoning,
+            },
+        }
 
     def has_parallel_steps(self, steps: List[dict]) -> bool:
         """Return True ONLY if at least two steps can run simultaneously.
@@ -188,43 +252,44 @@ class PlannerService:
         failed_step: dict,
         goal: str,
     ) -> List[dict]:
-        """Mid-execution re-planning (Phase 5 — Autonomous Loop).
+        """Mid-execution re-planning (autonomous loop).
 
-        When a step fails in autonomous mode, generates a revised plan
-        for the remaining work based on what has already succeeded and
-        what failed.
-
-        Returns a list of revised step dicts with fresh step_ids.
+        Delegates to :class:`PlanGenerator.generate` (multi-candidate +
+        invariants + judge) when ``planner.v2_enabled`` is on. On any
+        failure — or when the flag is off — returns the not-yet-completed
+        steps of the original plan unchanged.
         """
         completed_ids = {s.get("step_id") for s in completed_steps if s.get("step_id")}
         remaining = [s for s in original_plan if s.get("step_id") not in completed_ids]
 
-        prompt = (
-            f"The original plan partially executed. Revise the remaining steps.\n\n"
-            f"Goal: {goal}\n\n"
-            f"Completed successfully:\n"
-            f"{json.dumps([{'name': s.get('name', ''), 'output': str(s.get('output', ''))[:300]} for s in completed_steps], indent=2)}\n\n"
-            f"Failed step:\n"
-            f"{json.dumps({'name': failed_step.get('name', ''), 'error': str(failed_step.get('error', ''))[:500]}, indent=2)}\n\n"
-            f"Original remaining steps:\n"
-            f"{json.dumps(remaining, indent=2, default=str)}\n\n"
-            f"Generate a revised plan (JSON array) for the remaining work. "
-            f"You may add, remove, or modify steps."
-        )
-
         try:
-            result = await self.llm.call_llm(
-                task_type="thinking",
-                system_prompt=DEFAULT_PLANNING_SYSTEM_PROMPT,
-                user_prompt=prompt,
-                temperature=0.4,
-            )
-            revised = self._parse_plan_output(result.output)
-            # Assign fresh step_ids starting after the completed count
-            return self._assign_step_ids(revised, start_from=len(completed_steps) + 1)
-        except Exception as e:
-            logger.warning(f"Plan adaptation failed: {e}. Returning original remaining steps.")
-            return remaining
+            from src.ai.core.feature_flags import FeatureFlags
+            flags = FeatureFlags(self.db)
+            v2 = await flags.is_on("planner.v2_enabled", company_id=self.company_id)
+        except Exception:                                                   # pragma: no cover
+            v2 = False
+        if v2:
+            try:
+                from src.ai.planning.plan_generator import (
+                    PlanContext,
+                    PlanGenerator,
+                )
+                ctx = PlanContext(
+                    entity=None,
+                    static_plan={"steps": list(original_plan or [])},
+                    goal=goal or "",
+                    failed_step=failed_step or {},
+                )
+                gen = PlanGenerator(llm_router=self.llm, db=self.db)
+                result = await gen.generate(ctx, n=2)
+                return self._assign_step_ids(
+                    list(result.chosen.steps),
+                    start_from=len(completed_steps) + 1,
+                )
+            except Exception as e:                                          # noqa: BLE001
+                logger.warning(f"PlanGenerator replan failed; returning remaining steps: {e}")
+
+        return remaining
 
     def _assign_step_ids(self, steps: list, start_from: int = 1) -> list:
         """Assign sequential step_ids to a list of step dicts."""
@@ -234,292 +299,242 @@ class PlannerService:
         return steps
 
     # ------------------------------------------------------------------
-    # Private: Dynamic Plan Generation
+    # Private: Routing enforcement (router PROCESS/AGENT with children)
     # ------------------------------------------------------------------
 
-    async def _generate_dynamic_plan(
+    async def _maybe_enforce_router(
         self,
         run: ExecutionRun,
         entity: HierarchicalEntity,
         input_data: dict,
-        static_plan: dict,
-        dynamic_config: dict,
+        plan: dict,
     ) -> dict:
-        """Call LLM to generate a dynamic plan, then reconcile with static plan."""
+        """Guarantee a router-with-children delegates — for ANY plan source.
 
-        # 1. Prepare planning prompt
-        user_input = input_data.get("input") or {
-            k: v for k, v in input_data.items()
+        Dynamic plans come from ``_generate_dynamic_plan_v2``
+        (``planner.v2_enabled`` defaults True), whose PlanGenerator has no
+        routing directive, so a static-less router can come back with flat
+        THOUGHT/ACTION steps. Centralising the post-hoc enforcement here means
+        a static-less routing PROCESS/AGENT ends up with ≥1
+        CHILD_ENTITY_INVOCATION step regardless of which generator produced
+        the plan — otherwise the AgentLoop drives flat THOUGHT/ACTION steps that
+        produce no child run and no artifact.
+
+        Idempotent and best-effort: a plan that already delegates to a real
+        child passes through untouched; a non-router (no children, or a
+        tool-bearing AGENT) is returned unchanged; any failure leaves the plan
+        as-is.
+        """
+        if not isinstance(plan, dict) or not isinstance(plan.get("steps"), list):
+            return plan
+        entity_type = getattr(entity, "type", "")
+        entity_type = str(getattr(entity_type, "value", entity_type)).upper()
+        if entity_type not in ("PROCESS", "AGENT"):
+            return plan
+        try:
+            from src.ai.meta.platform_schema_compiler import load_entity_children
+            child_entities = await load_entity_children(
+                db=self.db, entity_id=entity.id, company_id=self.company_id,
+            )
+        except Exception as e:                                              # noqa: BLE001
+            logger.warning(
+                "Router enforcement: failed to load children for %s: %s",
+                getattr(entity, "name", "?"), e,
+            )
+            return plan
+        if not child_entities:
+            return plan
+        caps = getattr(entity, "capabilities", None) or {}
+        has_tools = bool(caps.get("tools"))
+        # A router cannot do the work itself: a PROCESS, or any entity binding no
+        # tools. A tool-bearing AGENT is left free to use its own tools.
+        if not (entity_type == "PROCESS" or not has_tools):
+            return plan
+
+        user_input = (input_data or {}).get("input") or {
+            k: v for k, v in (input_data or {}).items()
             if k not in ("__memory__", "company_id", "user_id")
         }
         if isinstance(user_input, dict):
             user_input = json.dumps(user_input, default=str)
-
-        entity_goal = entity.goal or ""
-        entity_identity = entity.identity or {}
-        entity_system_prompt = entity_identity.get("system_prompt", "")
-
-        tools_list = (
-            [t.get("tool_id", t.get("name")) for t in entity.capabilities.get("tools", [])]
-            if entity.capabilities else []
-        )
-
-        # Build a lookup of CHILD_ENTITY_INVOCATION steps from the static plan.
-        # LLM-generated dynamic plans cannot produce valid entity_ids, so we
-        # must preserve them from the static plan and re-inject after planning.
-        static_child_invocations = {}  # name -> step dict
-        for s in static_plan.get("steps", []):
-            if s.get("type") == "CHILD_ENTITY_INVOCATION":
-                static_child_invocations[s.get("name", "")] = s
-
-        # Include static plan steps as a reference for the planner
-        static_steps_ref = self._build_static_reference(
-            static_plan, static_child_invocations
-        )
-
-        custom_planning = dynamic_config.get("planning_prompt", "")
-        system_prompt = (
-            dynamic_config.get("planning_system_prompt")
-            or DEFAULT_PLANNING_SYSTEM_PROMPT
-        )
-        if custom_planning:
-            system_prompt += f"\n\n## Additional Planning Instructions\n{custom_planning}"
-        if entity_system_prompt:
-            system_prompt += f"\n\n## Agent Instructions (from system prompt)\n{entity_system_prompt}"
-
-        # ── Tier 1 Meta-Cognition: Inject platform awareness ───────────
-        # Gives the planner knowledge of tool descriptions, step types,
-        # entity hierarchy, and behavioral rules — enabling informed planning.
-        from src.ai.meta.platform_schema_compiler import resolve_meta_cognition
-        meta_config = resolve_meta_cognition(entity)
-
-        if meta_config.get("platform_awareness"):
-            try:
-                from src.ai.meta.platform_schema_compiler import get_platform_summary
-                manifest_summary = await get_platform_summary(
-                    db=self.db,
-                    company_id=self.company_id,
-                )
-                if manifest_summary:
-                    system_prompt += f"\n\n{manifest_summary}"
-                    logger.info(
-                        f"Tier 1: Injected platform awareness into planner "
-                        f"({len(manifest_summary)} chars) for {entity.name}"
-                    )
-            except Exception as e:
-                logger.warning(f"Tier 1: Failed to inject platform awareness into planner: {e}")
-
-        # ── Inject children descriptions for PROCESS/AGENT entities ────
-        # So the planner knows what child entities are available to delegate to.
-        entity_type = getattr(entity, "type", "")
-        if isinstance(entity_type, str):
-            entity_type = entity_type.upper()
-
-        if entity_type in ("PROCESS", "AGENT"):
-            try:
-                from src.ai.meta.platform_schema_compiler import describe_entity_children
-                children_desc = await describe_entity_children(
-                    db=self.db,
-                    entity_id=entity.id,
-                    company_id=self.company_id,
-                )
-                if children_desc:
-                    system_prompt += f"\n\n{children_desc}"
-                    logger.info(
-                        f"Planner: Injected children descriptions "
-                        f"({len(children_desc)} chars) for {entity.name}"
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to inject children descriptions into planner: {e}")
-        # ───────────────────────────────────────────────────────────────
-
-        user_prompt = f"Entity: {entity.name}\n"
-        if entity_goal:
-            user_prompt += f"Agent Goal: {entity_goal}\n"
-        user_prompt += f"User Input: {user_input}\n"
-        user_prompt += f"Available Tools: {tools_list}\n"
-        user_prompt += static_steps_ref
-        user_prompt += (
-            "\nGenerate the execution plan. "
-            "Make sure to use ALL relevant tools to accomplish the full goal."
-        )
-
-        # 2. Call Planner LLM
         try:
-            plan_result_resp = await self.llm.call_llm(
+            plan["steps"] = await self._enforce_child_routing(
+                run=run, entity=entity, user_input=user_input,
+                valid_steps=plan["steps"], child_entities=child_entities,
+            )
+        except Exception as e:                                              # noqa: BLE001
+            logger.warning(
+                "Router enforcement failed for %s: %s",
+                getattr(entity, "name", "?"), e,
+            )
+        return plan
+
+    @staticmethod
+    def _routing_directive(entity_type: str, has_tools: bool) -> str:
+        """System-prompt directive forcing a router to delegate to children."""
+        no_tools = "" if has_tools else (
+            " It binds NO tools of its own and therefore CANNOT perform the "
+            "work directly — a THOUGHT/ACTION step here only makes you *print* "
+            "code or prose as text, producing no document and no artifact."
+        )
+        return (
+            f"\n\n## ROUTING DIRECTIVE (MANDATORY)\n"
+            f"This entity is a {entity_type} that orchestrates the child "
+            f"entities listed under 'Available Child Entities'.{no_tools}\n"
+            f"- You MUST delegate the actual work using `CHILD_ENTITY_INVOCATION` "
+            f"steps, each with `target.entity_id` set to the EXACT child UUID.\n"
+            f"- DO NOT emit THOUGHT or ACTION steps that attempt to do the work "
+            f"yourself (e.g. writing openpyxl/python-docx code, generating the "
+            f"file, or computing the deliverable).\n"
+            f"- Select ONLY the child(ren) whose role matches the user's request "
+            f"and pass the full instruction to each via `target.prompt_template`.\n"
+            f"- The plan MUST contain at least one CHILD_ENTITY_INVOCATION step."
+        )
+
+    async def _enforce_child_routing(
+        self,
+        run: ExecutionRun,
+        entity: HierarchicalEntity,
+        user_input,
+        valid_steps: List[dict],
+        child_entities: list,
+    ) -> List[dict]:
+        """Guarantee a router-with-children delegates to >=1 child.
+
+        If the reconciled plan already contains a CHILD_ENTITY_INVOCATION step
+        targeting a real child, it passes through untouched. Otherwise we run a
+        constrained routing LLM call to pick the matching child(ren); if that
+        also yields nothing, we deterministically route to every child rather
+        than letting flat THOUGHT/ACTION steps (which produce no artifact) run.
+        """
+        child_ids = {str(c.id) for c in child_entities}
+
+        def _is_real_invocation(step: dict) -> bool:
+            if step.get("type") != "CHILD_ENTITY_INVOCATION":
+                return False
+            eid = (step.get("target") or {}).get("entity_id")
+            return eid is not None and str(eid) in child_ids
+
+        if any(_is_real_invocation(s) for s in valid_steps):
+            return valid_steps
+
+        logger.warning(
+            "Router %s (%s) produced a plan with no CHILD_ENTITY_INVOCATION "
+            "targeting a real child; enforcing delegation.",
+            getattr(entity, "name", "?"), getattr(entity, "id", "?"),
+        )
+
+        routed = await self._route_children_llm(run, entity, user_input, child_entities)
+        if not routed:
+            # Deterministic last resort: route to every child so the run still
+            # spawns child work instead of dead-ending on text output.
+            instr = user_input if isinstance(user_input, str) else json.dumps(
+                user_input, default=str
+            )
+            routed = [{"entity_id": str(c.id), "instruction": instr} for c in child_entities]
+            logger.warning(
+                "Router %s: routing LLM yielded no selection; falling back to "
+                "all %d children.", getattr(entity, "name", "?"), len(routed),
+            )
+
+        steps = []
+        for r in routed:
+            steps.append({
+                "name": f"Delegate to {r.get('name') or r['entity_id']}",
+                "description": "Routed child invocation (delegation enforced).",
+                "type": "CHILD_ENTITY_INVOCATION",
+                "target": {
+                    "entity_id": r["entity_id"],
+                    "prompt_template": r.get("instruction") or "",
+                },
+                "required": True,
+            })
+        return self._assign_step_ids(steps, start_from=1)
+
+    async def _route_children_llm(
+        self,
+        run: ExecutionRun,
+        entity: HierarchicalEntity,
+        user_input,
+        child_entities: list,
+    ) -> List[dict]:
+        """Constrained LLM call: pick the child(ren) that match the request.
+
+        Returns a list of ``{"entity_id", "name", "instruction"}`` dicts (only
+        for child ids that actually exist). Empty list on any failure.
+        """
+        child_ids = {str(c.id): c for c in child_entities}
+        catalog_lines = []
+        for c in child_entities:
+            goal = (c.goal or c.description or "")[:200]
+            catalog_lines.append(f"- entity_id: {c.id} | {c.name} ({c.type}) — {goal}")
+        catalog = "\n".join(catalog_lines)
+        req = user_input if isinstance(user_input, str) else json.dumps(
+            user_input, default=str
+        )
+
+        system_prompt = (
+            "You are a routing dispatcher. Given a user request and a catalog "
+            "of child entities, select the child(ren) whose role best matches "
+            "the request and write a concise instruction for each. Respond ONLY "
+            'with a JSON array: [{"entity_id": "<exact UUID from the catalog>", '
+            '"instruction": "<what this child should do>"}]. '
+            "Use only entity_id values present in the catalog. Select the "
+            "minimum set of children needed — usually exactly one."
+        )
+        user_prompt = (
+            f"User request:\n{req}\n\n"
+            f"Child entity catalog:\n{catalog}\n\n"
+            f"Return the routing JSON array."
+        )
+        try:
+            resp = await self.llm.call_llm(
                 task_type="thinking",
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                temperature=0.4,
+                temperature=0.1,
+                max_tokens=500,
             )
-
-            # Log planner LLM interaction and usage
-            planner_log = LLMInteractionLog(
-                run_id=run.id,
-                model_provider=plan_result_resp.provider,
-                model_name=plan_result_resp.model_name,
-                input_prompt=f"System: {system_prompt[:2000]}\nUser: {user_prompt[:2000]}",
-                output_response=(
-                    plan_result_resp.output[:2000] if plan_result_resp.output else ""
-                ),
-                prompt_tokens=plan_result_resp.prompt_tokens,
-                completion_tokens=plan_result_resp.completion_tokens,
-                latency_ms=plan_result_resp.latency_ms,
-                reasoning_mode="PLANNER",
-                step_name="__planner__",
-            )
-            self.db.add(planner_log)
-            await self._log_planner_usage(
-                run, plan_result_resp, planner_log
-            )
-
-            # 3. Parse and Validate Plan
-            valid_steps = self._parse_plan_output(plan_result_resp.output)
-
-            # 4. Reconcile CHILD_ENTITY_INVOCATION steps
-            if static_child_invocations:
-                self._reconcile_child_invocations(
-                    valid_steps, static_child_invocations
+            try:
+                planner_log = LLMInteractionLog(
+                    run_id=run.id,
+                    model_provider=resp.provider,
+                    model_name=resp.model_name,
+                    input_prompt=f"System: {system_prompt[:1000]}\nUser: {user_prompt[:1000]}",
+                    output_response=(resp.output[:2000] if resp.output else ""),
+                    prompt_tokens=resp.prompt_tokens,
+                    completion_tokens=resp.completion_tokens,
+                    latency_ms=resp.latency_ms,
+                    reasoning_mode="PLANNER",
+                    step_name="__router__",
                 )
+                self.db.add(planner_log)
+                await self._log_planner_usage(run, resp, planner_log)
+            except Exception:                                               # pragma: no cover
+                pass
 
-            return {"steps": valid_steps}
+            out = (resp.output or "").strip()
+            if "```json" in out:
+                out = out.split("```json")[1].split("```")[0]
+            elif "[" in out and "]" in out:
+                out = out[out.find("["):out.rfind("]") + 1]
+            selected = json.loads(out)
+        except Exception as e:                                              # noqa: BLE001
+            logger.warning(f"Child routing LLM call failed: {e}")
+            return []
 
-        except Exception as e:
-            logger.warning(f"Dynamic planning failed: {e}. Falling back to static plan.")
-            return static_plan
-
-    # ------------------------------------------------------------------
-    # Private Helpers
-    # ------------------------------------------------------------------
-
-    def _build_static_reference(
-        self, static_plan: dict, static_child_invocations: dict
-    ) -> str:
-        """Build a text reference of static plan steps for the LLM."""
-        if not static_plan.get("steps"):
-            return ""
-
-        ref = "\n\n## Reference Plan (use as guidance)\n"
-        for s in static_plan["steps"]:
-            step_type = s.get("type", "?")
-            tool_ref = s.get("target", {}).get("tool_id", "N/A")
-            entity_ref = s.get("target", {}).get("entity_id", "")
-            extra = f", entity_id: {entity_ref}" if entity_ref else ""
-            ref += (
-                f"- Step {s.get('order', '?')}: {s.get('name', 'unnamed')} "
-                f"(type: {step_type}, tool: {tool_ref}{extra}) — "
-                f"{s.get('description', '')}\n"
-            )
-        if static_child_invocations:
-            ref += (
-                "\nIMPORTANT: Steps of type CHILD_ENTITY_INVOCATION MUST be "
-                "preserved exactly as shown above. Keep their name, type, "
-                "and entity_id unchanged.\n"
-            )
-        return ref
-
-    def _parse_plan_output(self, output_text: str) -> List[dict]:
-        """Parse LLM plan output into a validated list of step dicts."""
-        json_str = output_text
-        if "```json" in output_text:
-            json_str = output_text.split("```json")[1].split("```")[0]
-        elif "[" in output_text and "]" in output_text:
-            json_str = output_text[output_text.find("["):output_text.rfind("]") + 1]
-
-        steps = json.loads(json_str)
-
-        valid_steps = []
-        for i, s in enumerate(steps):
-            # Ensure GUID step_ids
-            if not s.get("step_id"):
-                s["step_id"] = f"step_{i + 1}_{str(uuid4())[:8]}"
-
-            # Sanitize target.prompt_template: LLM may emit it as a dict
-            target = s.get("target")
-            if isinstance(target, dict):
-                pt = target.get("prompt_template")
-                if isinstance(pt, (dict, list)):
-                    target["prompt_template"] = json.dumps(pt, default=str)
-
-            # Hoist top-level input_dependencies into target
-            if "input_dependencies" in s and "target" not in s:
-                s["target"] = {"input_dependencies": s.pop("input_dependencies")}
-            elif "input_dependencies" in s and isinstance(s.get("target"), dict):
-                s["target"].setdefault(
-                    "input_dependencies", s.pop("input_dependencies")
-                )
-
-            valid_steps.append(s)
-
-        return valid_steps
-
-    def _reconcile_child_invocations(
-        self,
-        valid_steps: List[dict],
-        static_child_invocations: dict,
-    ) -> None:
-        """Reconcile LLM-generated steps with static CHILD_ENTITY_INVOCATION steps.
-
-        Mutates ``valid_steps`` in-place: injects entity_ids from static plan
-        and re-adds any dropped invocation steps.
-        """
-        seen_invocations = set()
-
-        for s in valid_steps:
-            if s.get("type") == "CHILD_ENTITY_INVOCATION":
-                step_name = s.get("name", "")
-                # Try exact name match first
-                matched_static = static_child_invocations.get(step_name)
-                # Fuzzy match: compare lowercase/stripped names
-                if not matched_static:
-                    for sn, sv in static_child_invocations.items():
-                        if (sn.lower().strip() in step_name.lower().strip()
-                                or step_name.lower().strip() in sn.lower().strip()):
-                            matched_static = sv
-                            step_name = sn
-                            break
-
-                if matched_static:
-                    static_target = matched_static.get("target", {})
-                    if not s.get("target"):
-                        s["target"] = {}
-                    s["target"]["entity_id"] = static_target.get("entity_id")
-                    if (not s["target"].get("prompt_template")
-                            and static_target.get("prompt_template")):
-                        s["target"]["prompt_template"] = static_target["prompt_template"]
-                    if (not s["target"].get("input_dependencies")
-                            and static_target.get("input_dependencies")):
-                        s["target"]["input_dependencies"] = static_target["input_dependencies"]
-                    seen_invocations.add(step_name)
-                else:
-                    logger.warning(
-                        f"Dynamic plan has CHILD_ENTITY_INVOCATION step '{step_name}' "
-                        f"with no matching static step — entity_id will be missing."
-                    )
-
-        # Inject any missing CHILD_ENTITY_INVOCATION steps
-        missing = {
-            name: step for name, step in static_child_invocations.items()
-            if name not in seen_invocations
-        }
-        if missing:
-            logger.info(
-                f"Re-injecting {len(missing)} dropped CHILD_ENTITY_INVOCATION "
-                f"steps from static plan: {list(missing.keys())}"
-            )
-            for name, static_step in sorted(
-                missing.items(), key=lambda x: x[1].get("order", 999)
-            ):
-                injected = copy.deepcopy(static_step)
-                if not injected.get("step_id"):
-                    injected["step_id"] = f"static_inject_{str(uuid4())[:8]}"
-                target_order = injected.get("order", 999)
-                insert_idx = len(valid_steps)
-                for idx, vs in enumerate(valid_steps):
-                    if vs.get("order", 999) > target_order:
-                        insert_idx = idx
-                        break
-                valid_steps.insert(insert_idx, injected)
+        routed = []
+        for item in selected if isinstance(selected, list) else []:
+            eid = str(item.get("entity_id", "")).strip()
+            child = child_ids.get(eid)
+            if not child:
+                continue
+            routed.append({
+                "entity_id": eid,
+                "name": child.name,
+                "instruction": item.get("instruction") or req,
+            })
+        return routed
 
     async def _log_planner_usage(
         self, run, plan_result_resp, planner_log
@@ -535,12 +550,14 @@ class PlannerService:
                 service_sku=in_sku,
                 raw_quantity=float(plan_result_resp.prompt_tokens or 0),
                 execution_id=run.id,
+                attribution="planner",
             )
             out_usage = await self.usage_service.log_usage(
                 company_id=run.company_id,
                 service_sku=out_sku,
                 raw_quantity=float(plan_result_resp.completion_tokens or 0),
                 execution_id=run.id,
+                attribution="planner",
             )
 
             from decimal import Decimal

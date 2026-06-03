@@ -8,17 +8,18 @@ Domains:
   - Episodic: Raw execution history per entity
 
 Key services:
-  - CortexRouter: Tree CRUD and navigation
+  - CortexService: Tree CRUD and navigation (Phase 11 Track 0 rename of CortexRouter)
   - CortexBridge: Interface between execution engine and CORTEX
   - MemoryRouter: Legacy 3-tier memory retrieval (v1)
   - MemoryAssemblyService: 4-domain unified retrieval (v2)
 """
-from src.ai.memory.cortex_service import CortexRouter
+from src.ai.memory.cortex_service import CortexService, CortexRouter
 from src.ai.memory.cortex_bridge import CortexBridge
 from src.ai.memory.memory_service import MemoryRouter
 from src.ai.memory.memory_assembly_service import MemoryAssemblyService
 
 __all__ = [
-    "CortexRouter", "CortexBridge",
+    "CortexService", "CortexRouter",  # CortexRouter is a deprecated alias.
+    "CortexBridge",
     "MemoryRouter", "MemoryAssemblyService",
 ]

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.database import get_db
 from src.auth.dependencies import get_current_user
-from src.ai.memory.cortex_service import CortexRouter as CortexService
+from src.ai.memory.cortex_service import CortexService
 from src.ai.memory.cortex_ingestion import CortexIngestionPipeline
 from src.ai.schemas import (
     CortexTreeCreate, CortexTreeResponse, CortexTreeListResponse,

@@ -1,11 +1,22 @@
 """
-ai.core.meta_review — Meta-Agent review hooks for execution monitoring.
+ai.core.meta_review — DEPRECATED back-compat shim (Phase 11 Track 4).
 
-Periodically invokes the Meta-Agent to assess execution quality and
-recommend adjustments (continue, replan, abort).
+The Phase 10D ``MetaReviewer.review_execution`` one-shot LLM call has
+been replaced by :class:`ai.planning.supervisor_critic.SupervisorCritic`
+which reads the full :class:`AgentState`. ``CriticPipeline.supervisor``
+delegates to the new class.
 
-Phase 10D: New module for autonomous execution supervision.
+This file is retained only for legacy importers (older execute_run
+callers and tests). It will be removed in Track 9.
+
+The shim:
+  * keeps the public class name + ``review_execution`` signature;
+  * builds a minimal :class:`AgentState`-like input on the fly so the
+    new SupervisorCritic can score it;
+  * logs a one-shot deprecation warning per process.
 """
+from __future__ import annotations
+
 import logging
 from typing import Dict, List
 from uuid import UUID
@@ -14,18 +25,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+_DEPRECATION_LOGGED = False
+
 
 class MetaReviewer:
-    """
-    Lightweight wrapper that invokes the Meta-Agent for execution review.
-
-    Called by the execution loop every N steps to assess:
-    - Is the execution on track toward the goal?
-    - Should we replan?
-    - Should we abort?
-    """
+    """Back-compat shim around :class:`SupervisorCritic`."""
 
     def __init__(self, db: AsyncSession, company_id: UUID):
+        global _DEPRECATION_LOGGED
+        if not _DEPRECATION_LOGGED:
+            logger.info(
+                "ai.core.meta_review.MetaReviewer is deprecated as of "
+                "Phase 11 Track 4. New AgentLoop entities go through "
+                "CriticPipeline.supervisor → SupervisorCritic.assess(). "
+                "This shim will be removed in Track 9."
+            )
+            _DEPRECATION_LOGGED = True
         self.db = db
         self.company_id = company_id
 
@@ -37,66 +52,49 @@ class MetaReviewer:
         total_cost_usd: float = 0,
         context_summary: str = "",
     ) -> Dict:
-        """
-        Ask the Meta-Agent to review execution progress.
-
-        Returns:
-            {
-                "recommendation": "CONTINUE" | "REPLAN" | "ABORT",
-                "confidence": 0.0–1.0,
-                "reasoning": "...",
-                "adjustments": [...]
-            }
-        """
+        """Lightweight wrapper that builds a stub AgentState and delegates."""
         try:
+            from src.ai.core.agent_state import AgentState
+            from src.ai.core.budget import Budget
             from src.ai.llm.router import LLMRouter
-            llm = LLMRouter(db=self.db, company_id=self.company_id)
-
-            completed_summary = "\n".join([
-                f"  {i+1}. {s.get('step_name', s.get('step', 'Unknown'))}: "
-                f"{'✅' if not s.get('error') else '❌'} "
-                f"{str(s.get('output', ''))[:100]}"
-                for i, s in enumerate(completed_steps[-5:])
-            ])
-
-            remaining_summary = "\n".join([
-                f"  {i+1}. {s.get('name', 'Unknown')} ({s.get('type', '?')})"
-                for i, s in enumerate(remaining_steps[:5])
-            ])
-
-            prompt = (
-                f"## Execution Review Request\n\n"
-                f"**Goal:** {entity_goal}\n"
-                f"**Completed steps ({len(completed_steps)}):**\n{completed_summary}\n\n"
-                f"**Remaining steps ({len(remaining_steps)}):**\n{remaining_summary}\n\n"
-                f"**Total cost so far:** ${total_cost_usd:.4f}\n\n"
-                f"Assess whether this execution is on track. Respond with JSON:\n"
-                f'{{"recommendation": "CONTINUE|REPLAN|ABORT", '
-                f'"confidence": 0.0-1.0, "reasoning": "..."}}'
+            from src.ai.planning.supervisor_critic import (
+                SupervisorCritic,
+                SupervisorCriticConfig,
             )
+            from src.ai.schemas.enums import EntityType
+            from uuid import uuid4
 
-            response = await llm.call_llm(
-                task_type="text_generation",
-                system_prompt=(
-                    "You are a Meta-Agent supervisor reviewing an AI agent's execution. "
-                    "Be concise. Respond with JSON only."
+            state = AgentState(
+                run_id=uuid4(),
+                entity_id=uuid4(),
+                company_id=self.company_id,
+                entity_type=EntityType.ACTION,
+                iteration=max(1, len(completed_steps)),
+                budget=Budget.from_governance(
+                    max_cost_usd=max(total_cost_usd * 2, 0.10),
+                    timeout_ms=600_000,
+                    max_iters=50,
                 ),
-                user_prompt=prompt,
-                temperature=0.2,
-                max_tokens=300,
             )
-
-            from src.ai.shared.json_utils import parse_json_object
-            result = parse_json_object(response.output)
-            if result:
-                return {
-                    "recommendation": result.get("recommendation", "CONTINUE").upper(),
-                    "confidence": float(result.get("confidence", 0.5)),
-                    "reasoning": result.get("reasoning", ""),
-                    "adjustments": result.get("adjustments", []),
-                }
-
-        except Exception as e:
-            logger.warning(f"Meta-review failed (non-fatal): {e}")
-
-        return {"recommendation": "CONTINUE", "confidence": 0.5, "reasoning": "Review unavailable"}
+            state.budget.consume(usd=__import__("decimal").Decimal(str(total_cost_usd or 0)))
+            critic = SupervisorCritic(
+                llm_router=LLMRouter(db=self.db, company_id=self.company_id),
+                config=SupervisorCriticConfig(
+                    entity_goal=entity_goal or "",
+                    fast_path_enabled=False,
+                ),
+            )
+            verdict = await critic.assess(state)
+            return {
+                "recommendation": verdict.recommendation,
+                "confidence": verdict.confidence,
+                "reasoning": verdict.reasoning,
+                "adjustments": [],
+            }
+        except Exception as exc:                                            # noqa: BLE001
+            logger.warning("MetaReviewer shim assess failed: %s", exc)
+            return {
+                "recommendation": "CONTINUE",
+                "confidence": 0.5,
+                "reasoning": "Review unavailable",
+            }

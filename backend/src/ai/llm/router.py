@@ -17,8 +17,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.llm.types import LLMResponse
 from src.ai.llm.base import BaseLLMAdapter
+from src.ai.core.trace import span as _trace_span
 
 logger = logging.getLogger(__name__)
+
+
+def _record_llm_span(sp, resp: "LLMResponse") -> None:
+    """Stamp a trace span with an LLMResponse's output, tokens, and model."""
+    try:
+        sp.set_output(getattr(resp, "output", ""), key="response")
+        sp.set_tokens(
+            getattr(resp, "prompt_tokens", None),
+            getattr(resp, "completion_tokens", None),
+        )
+        sp.update(
+            model_name=getattr(resp, "model_name", None),
+            provider=getattr(resp, "provider", None),
+            finish_reason=getattr(resp, "finish_reason", None),
+            function_calls=getattr(resp, "function_calls", None),
+        )
+        try:
+            sp.set_cost(getattr(resp, "cost_usd", 0) or 0)
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +109,7 @@ class LLMRouter:
     def __init__(self, db: AsyncSession, company_id: UUID):
         self.db = db
         self.company_id = company_id
-        self._adapter_cache: dict = {}  # Phase 4: per-run cache to avoid repeated DB lookups
+        self._adapter_cache: dict = {}  # Per-run cache to avoid repeated DB lookups
 
     async def _resolve_adapter(self, task_type: str, model_override: Optional[str] = None) -> BaseLLMAdapter:
         """Resolve the correct adapter based on task defaults.
@@ -122,7 +145,7 @@ class LLMRouter:
                 f"No API key found for integration '{integration.provider_name}/{integration.model_name}'. "
                 f"Please check the Service Integration configuration."
             )
-        # Fix D: Entity-level model override takes priority over company defaults
+        # Entity-level model override takes priority over company defaults
         effective_model = model_override or integration.model_name or ""
         if model_override:
             logger.info(
@@ -159,15 +182,24 @@ class LLMRouter:
         messages = list(history or [])
         messages.append({"role": "user", "parts": [{"text": user_prompt}]})
 
-        return await adapter.generate(
+        async with _trace_span(
+            "llm", model_override or task_type,
+            task_type=task_type,
             system_prompt=system_prompt,
-            messages=messages,
-            tools=tools,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            **kwargs,
-        )
+            user_prompt=user_prompt,
+            history=history,
+        ) as _sp:
+            resp = await adapter.generate(
+                system_prompt=system_prompt,
+                messages=messages,
+                tools=tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
+                **kwargs,
+            )
+            _record_llm_span(_sp, resp)
+            return resp
 
     async def call_llm_react(
         self,
@@ -191,16 +223,28 @@ class LLMRouter:
         messages = list(history or [])
         messages.append({"role": "user", "parts": [{"text": user_prompt}]})
 
-        return await adapter.generate_with_tools_react(
+        # ReAct turn span — tool spans opened by ``execute_tool_fn`` nest under
+        # this node, so the UI shows which tools each model turn invoked.
+        async with _trace_span(
+            "llm", (model_override or task_type) + " (react)",
+            task_type=task_type,
+            mode="react",
             system_prompt=system_prompt,
-            initial_messages=messages,
-            tool_schemas=tool_schemas,
-            execute_tool_fn=execute_tool_fn,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            max_react_turns=max_react_turns,
-            **kwargs,
-        )
+            user_prompt=user_prompt,
+            tool_schemas=[s.get("name") for s in (tool_schemas or []) if isinstance(s, dict)],
+        ) as _sp:
+            resp = await adapter.generate_with_tools_react(
+                system_prompt=system_prompt,
+                initial_messages=messages,
+                tool_schemas=tool_schemas,
+                execute_tool_fn=execute_tool_fn,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                max_react_turns=max_react_turns,
+                **kwargs,
+            )
+            _record_llm_span(_sp, resp)
+            return resp
 
     async def get_adapter_for_task(self, task_type: str) -> BaseLLMAdapter:
         """Expose the resolved adapter (useful for streaming modules)."""

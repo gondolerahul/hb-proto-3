@@ -96,7 +96,7 @@ class MemoryRouter:
         # Load CORTEX viewport if long_running mode is active
         if long_running and tree_id:
             try:
-                from src.ai.memory.cortex_service import CortexRouter as CortexService
+                from src.ai.memory.cortex_service import CortexService
                 company_id = await self._get_company_id(entity_id)
                 if company_id:
                     cortex = CortexService(self.db, company_id)

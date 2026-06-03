@@ -300,7 +300,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
     async def _write_goal_to_cortex(self, tree_id: UUID, node: GoalNode, output: str):
         """Write a goal node and its result to the CORTEX tree."""
         try:
-            from src.ai.memory.cortex_service import CortexRouter as CortexService
+            from src.ai.memory.cortex_service import CortexService
             cortex = CortexService(db=self.db, company_id=self.company_id)
             working_root = await cortex.get_working_root(tree_id)
             if working_root:

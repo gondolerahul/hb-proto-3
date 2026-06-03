@@ -38,6 +38,12 @@ const TenantAdminReports = lazy(() => import('@/pages/reports/TenantAdminReports
 const TenantUserReports = lazy(() => import('@/pages/reports/TenantUserReports').then(m => ({ default: m.TenantUserReports })));
 const WalletPage = lazy(() => import('@/pages/billing/WalletPage').then(m => ({ default: m.WalletPage })));
 const BillingSettings = lazy(() => import('@/pages/billing/BillingSettings').then(m => ({ default: m.BillingSettings })));
+// Phase 11 admin / KPI pages.
+const Phase11KPI = lazy(() => import('@/pages/dashboards/Phase11KPI'));
+const MetaIntelligencePage = lazy(() => import('@/pages/admin/MetaIntelligencePage'));
+const CostAttributionDashboard = lazy(() => import('@/pages/admin/CostAttributionDashboard'));
+const FeatureFlagsPage = lazy(() => import('@/pages/admin/FeatureFlagsPage'));
+const RiskAndExitPage = lazy(() => import('@/pages/admin/RiskAndExitPage'));
 
 // CORTEX Memory Architecture
 const CortexExplorer = lazy(() => import('@/pages/ai/CortexExplorer').then(m => ({ default: m.CortexExplorer })));
@@ -514,6 +520,49 @@ export const AppRouter: React.FC = () => {
                                 <MainLayout>
                                     <BillingSettings />
                                 </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Phase 11 admin / KPI routes — admin-gated to match
+                        the backend `_require_admin` check on every endpoint. */}
+                    <Route
+                        path="/admin/phase11/kpi"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout><Phase11KPI /></MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/phase11/meta-intelligence"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout><MetaIntelligencePage /></MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/phase11/cost"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout><CostAttributionDashboard /></MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/phase11/feature-flags"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout><FeatureFlagsPage /></MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/phase11/risks"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout><RiskAndExitPage /></MainLayout>
                             </ProtectedRoute>
                         }
                     />

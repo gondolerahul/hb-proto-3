@@ -274,29 +274,29 @@ class GovernanceService:
             should_fire = False
             trigger_desc = ""
 
-            if cp.trigger_type == HITLTriggerType.BEFORE_STEP and phase == "BEFORE":
+            if cp.trigger_type is HITLTriggerType.BEFORE_STEP and phase == "BEFORE":
                 if cp.step_ref and (cp.step_ref == step_obj.name or cp.step_ref == step_obj.step_id):
                     should_fire = True
                     trigger_desc = f"BEFORE_STEP: {step_obj.name}"
 
-            elif cp.trigger_type == HITLTriggerType.AFTER_STEP and phase == "AFTER":
+            elif cp.trigger_type is HITLTriggerType.AFTER_STEP and phase == "AFTER":
                 if cp.step_ref and (cp.step_ref == step_obj.name or cp.step_ref == step_obj.step_id):
                     should_fire = True
                     trigger_desc = f"AFTER_STEP: {step_obj.name}"
 
-            elif cp.trigger_type == HITLTriggerType.COST_THRESHOLD and phase == "BEFORE":
+            elif cp.trigger_type is HITLTriggerType.COST_THRESHOLD and phase == "BEFORE":
                 current_cost = float(run.total_cost_usd or 0)
                 if cp.threshold and current_cost >= cp.threshold:
                     should_fire = True
                     trigger_desc = f"COST_THRESHOLD: ${current_cost:.4f} >= ${cp.threshold:.2f}"
 
-            elif cp.trigger_type == HITLTriggerType.TOOL_CALL and phase == "BEFORE":
-                if step_obj.type == StepType.TOOL_CALL and step_obj.target:
+            elif cp.trigger_type is HITLTriggerType.TOOL_CALL and phase == "BEFORE":
+                if step_obj.type is StepType.TOOL_CALL and step_obj.target:
                     if cp.tool_ref and step_obj.target.tool_id == cp.tool_ref:
                         should_fire = True
                         trigger_desc = f"TOOL_CALL: {cp.tool_ref}"
 
-            elif cp.trigger_type == HITLTriggerType.CUSTOM and phase == "BEFORE":
+            elif cp.trigger_type is HITLTriggerType.CUSTOM and phase == "BEFORE":
                 if cp.expression:
                     try:
                         eval_result = self._safe_eval_expression(

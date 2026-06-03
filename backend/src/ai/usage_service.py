@@ -33,7 +33,8 @@ class UsageService:
         service_sku: str,
         raw_quantity: float,
         execution_id: Optional[UUID] = None,
-        metadata: Optional[dict] = None
+        metadata: Optional[dict] = None,
+        attribution: Optional[str] = None,
     ) -> UsageLog:
         """
         Logs usage for a specific SKU and company.
@@ -98,13 +99,31 @@ class UsageService:
         
         calculated_cost = (registry_entry.internal_cost * Decimal(str(raw_quantity))) / divisor
 
+        # Validate attribution against the closed enum; unknown values
+        # silently fall back to the column default "tool" rather than
+        # losing the charge.
+        clean_attribution = "tool"
+        if attribution:
+            try:
+                from src.ai.services.cost_attribution import VALID_ATTRIBUTIONS
+                if attribution in VALID_ATTRIBUTIONS:
+                    clean_attribution = attribution
+                else:
+                    logger.warning(
+                        "UsageService: unknown attribution %r — recording as 'tool'",
+                        attribution,
+                    )
+            except Exception:
+                clean_attribution = attribution
+
         usage_log = UsageLog(
             company_id=company_id,
             run_id=execution_id,
             sku_id=registry_entry.id,
             raw_quantity=Decimal(str(raw_quantity)),
             calculated_cost=calculated_cost,
-            log_metadata=metadata
+            log_metadata=metadata,
+            attribution=clean_attribution,
         )
         
         self.db.add(usage_log)

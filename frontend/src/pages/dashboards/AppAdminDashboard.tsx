@@ -3,6 +3,8 @@ import { reportsService, WalletLiabilityData, ExecutionHealthData, LLMPerformanc
 import { DollarSign, Activity, Cpu, CheckCircle } from 'lucide-react';
 import { StatCard, SectionTitle, EmptyChart, fmtUSD, fmtPct } from './DashboardShared';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from 'recharts';
+import AccessibleChart from '@/components/ui/AccessibleChart';
+import '@/components/ui/AccessibleChart.css';
 import './SharedDashboard.css';
 
 export const AppAdminDashboard: React.FC = () => {
@@ -55,17 +57,23 @@ export const AppAdminDashboard: React.FC = () => {
                     <SectionTitle>Global Execution Trends (30d)</SectionTitle>
                     <div className="dashboard-chart-container">
                         {execTrend.length === 0 ? <EmptyChart /> : (
-                            <ResponsiveContainer width="100%" height={260}>
-                                <AreaChart data={execTrend} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
-                                    <YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
-                                    <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} />
-                                    <Area type="monotone" dataKey="COMPLETED" stroke="#4dbe8d" fill="rgba(77,190,141,0.15)" />
-                                    <Area type="monotone" dataKey="FAILED" stroke="#e8885a" fill="rgba(232,136,90,0.15)" />
-                                    <Legend />
-                                </AreaChart>
-                            </ResponsiveContainer>
+                            <AccessibleChart
+                                title="Global execution trends — last 30 days"
+                                summary={`Area chart of run outcomes over 30 days. ${execTrend.length} day buckets covering COMPLETED and FAILED counts.`}
+                                sourceNote="Source: execution_runs grouped by date"
+                            >
+                                <ResponsiveContainer width="100%" height={260}>
+                                    <AreaChart data={execTrend} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                                        <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
+                                        <YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 10 }} />
+                                        <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} />
+                                        <Area type="monotone" dataKey="COMPLETED" stroke="#4dbe8d" fill="rgba(77,190,141,0.15)" />
+                                        <Area type="monotone" dataKey="FAILED" stroke="#e8885a" fill="rgba(232,136,90,0.15)" />
+                                        <Legend />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </AccessibleChart>
                         )}
                     </div>
                 </div>
@@ -74,15 +82,21 @@ export const AppAdminDashboard: React.FC = () => {
                     <SectionTitle>LLM Provider Breakdown (Cost $)</SectionTitle>
                     <div className="dashboard-chart-container">
                         {models.length === 0 ? <EmptyChart /> : (
-                            <ResponsiveContainer width="100%" height={260}>
-                                <BarChart data={models} margin={{ top: 10, right: 20, left: 20, bottom: 40 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                    <XAxis dataKey="provider" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} angle={-30} textAnchor="end" />
-                                    <YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} />
-                                    <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} />
-                                    <Bar dataKey="total_cost_usd" name="Total Cost USD" fill="#c9956c" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
+                            <AccessibleChart
+                                title="LLM provider cost breakdown"
+                                summary={`Bar chart of total cost USD per LLM provider. ${models.length} providers in scope.`}
+                                sourceNote="Source: usage_logs aggregated by integration_registry.provider_name"
+                            >
+                                <ResponsiveContainer width="100%" height={260}>
+                                    <BarChart data={models} margin={{ top: 10, right: 20, left: 20, bottom: 40 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                                        <XAxis dataKey="provider" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} angle={-30} textAnchor="end" />
+                                        <YAxis tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }} />
+                                        <Tooltip contentStyle={{ background: 'rgba(20,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10 }} />
+                                        <Bar dataKey="total_cost_usd" name="Total Cost USD" fill="#c9956c" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </AccessibleChart>
                         )}
                     </div>
                 </div>

@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -355,9 +355,56 @@ async def proxy_to_backend(request: Request, path: str):
     headers.pop("content-length", None)
 
     content = await request.body()
+    proxy = _get_proxy_client()
+
+    # Server-Sent Events (e.g. execution event streams) are open-ended — they
+    # never "complete", so buffering them with proxy.request() blocks until the
+    # read timeout fires and the client gets a 503. Relay these as a live
+    # stream with no read timeout instead.
+    wants_sse = (
+        path.endswith("/stream")
+        or "text/event-stream" in headers.get("accept", "")
+    )
+    if wants_sse:
+        try:
+            req = proxy.build_request(
+                method=request.method, url=url, headers=headers, content=content,
+                timeout=httpx.Timeout(None, connect=10.0),  # no read timeout for SSE
+            )
+            upstream = await proxy.send(req, stream=True)
+        except httpx.RequestError as exc:
+            logger.error(f"[Proxy] SSE backend unreachable: {exc}")
+            return Response(
+                content=f'{{"error": "Backend unavailable", "detail": "{exc}"}}',
+                status_code=503, media_type="application/json",
+            )
+        if upstream.status_code != 200:
+            body = await upstream.aread()
+            await upstream.aclose()
+            return Response(
+                content=body, status_code=upstream.status_code,
+                headers=dict(upstream.headers),
+            )
+
+        async def _relay_sse():
+            try:
+                async for chunk in upstream.aiter_raw():
+                    yield chunk
+            finally:
+                await upstream.aclose()
+
+        return StreamingResponse(
+            _relay_sse(),
+            status_code=200,
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # disable proxy buffering (nginx/apache)
+            },
+        )
 
     try:
-        proxy = _get_proxy_client()
         response = await proxy.request(
             method=request.method,
             url=url,

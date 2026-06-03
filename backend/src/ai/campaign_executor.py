@@ -67,7 +67,7 @@ class CampaignExecutor:
         logger.info(f"Starting standalone campaign execution for {campaign_id}")
 
         try:
-            # Phase 1: Load campaign + pending calls and extract primitives
+            # Load campaign + pending calls and extract primitives
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
                     select(Campaign).where(Campaign.id == campaign_id)
@@ -162,7 +162,7 @@ class CampaignExecutor:
                     await db.commit()
                 return
 
-            # Phase 2: Process calls sequentially, each with its own session
+            # Process calls sequentially, each with its own session
             for call_info in calls_data:
                 try:
                     await cls._place_call_safe(campaign_data, call_info)
@@ -174,7 +174,7 @@ class CampaignExecutor:
                 # Delay between calls to respect rate limits
                 await asyncio.sleep(2)
 
-            # Phase 3: Mark campaign as completed
+            # Mark campaign as completed
             async with AsyncSessionLocal() as db:
                 await db.execute(
                     update(Campaign)

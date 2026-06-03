@@ -110,52 +110,52 @@ from src.ai.tools.social.snapchat_ads import (
 
 __all__ = [
     "SocialMediaTool",
-    # Phase 1 — LinkedIn
+    # LinkedIn
     "LinkedInCreatePostTool", "LinkedInGetAnalyticsTool",
     "LinkedInManageCommentsTool", "LinkedInGetProfileTool",
-    # Phase 1 — Twitter/X
+    # Twitter/X
     "TwitterCreatePostTool", "TwitterSearchTool",
     "TwitterGetMentionsTool", "TwitterGetAnalyticsTool",
-    # Phase 1 — Facebook
+    # Facebook
     "FacebookCreatePostTool", "FacebookGetInsightsTool",
     "FacebookManageCommentsTool", "FacebookSendMessageTool",
-    # Phase 1 — Instagram
+    # Instagram
     "InstagramPublishMediaTool", "InstagramGetInsightsTool",
     "InstagramManageCommentsTool", "InstagramDiscoverHashtagsTool",
-    # Phase 1 — Google Ads
+    # Google Ads
     "GoogleAdsCreateCampaignTool", "GoogleAdsReportTool",
     "GoogleAdsManageKeywordsTool", "GoogleAdsGetAdGroupsTool",
-    # Phase 2 — YouTube
+    # YouTube
     "YouTubeUploadVideoTool", "YouTubeManagePlaylistsTool",
     "YouTubeGetAnalyticsTool", "YouTubeManageCommentsTool",
-    # Phase 2 — TikTok
+    # TikTok
     "TikTokPublishVideoTool", "TikTokGetVideosTool",
     "TikTokGetAnalyticsTool", "TikTokManageCommentsTool",
-    # Phase 2 — Reddit
+    # Reddit
     "RedditCreatePostTool", "RedditSearchTool",
     "RedditManageCommentsTool", "RedditGetAnalyticsTool",
-    # Phase 2 — Quora
+    # Quora
     "QuoraSearchQuestionsTool", "QuoraPostAnswerTool",
     "QuoraGetSpacesTool", "QuoraGetAnalyticsTool",
-    # Phase 2 — Pinterest
+    # Pinterest
     "PinterestCreatePinTool", "PinterestManageBoardsTool",
     "PinterestGetAnalyticsTool", "PinterestSearchPinsTool",
-    # Phase 2 — Meta Ads
+    # Meta Ads
     "MetaAdsCreateCampaignTool", "MetaAdsManageAdsetsTool",
     "MetaAdsReportTool", "MetaAdsManageAudiencesTool",
-    # Phase 2 — LinkedIn Ads
+    # LinkedIn Ads
     "LinkedInAdsCreateCampaignTool", "LinkedInAdsManageCreativesTool",
     "LinkedInAdsReportTool", "LinkedInAdsManageAudiencesTool",
-    # Phase 3 — LinkedIn Sales Navigator
+    # LinkedIn Sales Navigator
     "LinkedInSalesSearchLeadsTool", "LinkedInSalesGetLeadTool",
     "LinkedInSalesSaveLeadTool", "LinkedInSalesGetListsTool",
-    # Phase 3 — YouTube Ads
+    # YouTube Ads
     "YouTubeAdsCreateCampaignTool", "YouTubeAdsManageAdGroupsTool",
     "YouTubeAdsReportTool", "YouTubeAdsManageTargetingTool",
-    # Phase 3 — X Ads
+    # X Ads
     "XAdsCreateCampaignTool", "XAdsManageLineItemsTool",
     "XAdsReportTool", "XAdsManageAudiencesTool",
-    # Phase 3 — Snapchat Ads
+    # Snapchat Ads
     "SnapchatAdsCreateCampaignTool", "SnapchatAdsManageAdSquadsTool",
     "SnapchatAdsReportTool", "SnapchatAdsManageAudiencesTool",
 ]

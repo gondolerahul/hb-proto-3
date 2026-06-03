@@ -43,6 +43,23 @@ class CreditExhaustedError(AgentError):
     pass
 
 
+class BudgetExhaustedError(AgentError):
+    """Execution stopped because the run reached the entity's
+    ``governance.max_cost_usd`` ceiling.
+
+    Distinct from ``CreditExhaustedError`` (company-wide credit balance): this is
+    a *per-entity* cost cap enforced between steps on the legacy run loop, so a
+    child entity can't blow many multiples past its own configured budget. The
+    run finalises as ``PARTIAL_COMPLETE`` (not FAILED) — work done up to the cap
+    is kept and billed; the cap simply stops further spend.
+    """
+
+    def __init__(self, message: str, spent_usd: float = 0.0, cap_usd: float = 0.0):
+        self.spent_usd = spent_usd
+        self.cap_usd = cap_usd
+        super().__init__(message)
+
+
 class ParallelStepError(AgentError):
     """One or more parallel steps failed."""
     def __init__(self, failures: list):

@@ -267,7 +267,7 @@ class CentralDispatcher:
                 import redis.asyncio as aioredis
                 redis_client = await aioredis.from_url(settings.REDIS_URL)
 
-                from src.ai.worker import ExecutionEngine
+                from src.ai.core.execution_engine import ExecutionEngine
                 engine = ExecutionEngine(db, redis_client)
                 await engine.execute_run(run.id)
                 await redis_client.aclose()

@@ -4,8 +4,23 @@ embedding_service.py — Centralized Embedding Generation Service
 Provides a unified interface for generating embedding vectors, with:
 - Admin-configurable embedding model (via IntegrationRegistry)
 - Batch embedding with error handling
-- Automatic cost tracking
 - Single-node and multi-text embedding methods
+- Attributed usage logging (one ``usage_logs`` row per ``embed_batch``)
+
+Cost attribution
+----------------
+Every Vertex embedding call is metered to ``usage_logs`` with an
+``"embedding"`` attribution (see ``services/cost_attribution.py``).
+``embed_batch`` is the single chokepoint every caller funnels through,
+so the billing write lives there — one row per batch, keyed on the
+Vertex-reported ``billable_character_count`` (the unit these models
+bill on). The write is best-effort: it runs on its own short-lived
+session so it can never commit the caller's in-flight transaction, and
+any failure is swallowed so a billing hiccup never breaks retrieval.
+
+Both ingestion-time and retrieval-time embeddings are metered; the
+``embedding_phase`` metadata field (``"ingestion"`` vs ``"retrieval"``)
+lets the cost dashboard split the two without dropping either.
 
 Used by: knowledge_tree_service, episodic_tree_service, dreaming_engine,
          memory_service (semantic search), graph_service (auto-edges)
@@ -18,9 +33,47 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.constants import EMBEDDING_MODEL
+from src.ai.constants import EMBEDDING_MODEL, EMBEDDING_MODEL_FALLBACK
 
 logger = logging.getLogger(__name__)
+
+
+async def resolve_embedding_model(db, company_id) -> tuple[str, Optional[str]]:
+    """Phase 11 Track 6 — standalone resolver returning (model_name, api_key).
+
+    This is the public-API form of ``EmbeddingService._resolve_embedding_model``
+    so callers that don't want a full EmbeddingService (e.g. a one-off
+    cron job) can resolve the per-company embedding model without
+    constructing the heavy client.
+
+    Priority is identical to the in-class resolver:
+      1. ``ModelTaskDefault`` for ``task_type="embedding"``.
+      2. ``IntegrationRegistry`` with ``service_category="EMBEDDING"``.
+      3. ``IntegrationRegistry`` Google with ``model_name LIKE '%embed%'``.
+      4. ``EMBEDDING_MODEL_FALLBACK`` constant.
+    """
+    svc = EmbeddingService(db, company_id)
+    try:
+        model_name = await svc._resolve_embedding_model()
+    except Exception:                                                       # pragma: no cover
+        model_name = EMBEDDING_MODEL_FALLBACK
+
+    api_key: Optional[str] = None
+    try:
+        from src.config.models import IntegrationRegistry
+        from sqlalchemy import select
+        row = (await db.execute(
+            select(IntegrationRegistry).where(
+                IntegrationRegistry.company_id == company_id,
+                IntegrationRegistry.model_name == model_name,
+                IntegrationRegistry.status == "active",
+            )
+        )).scalar_one_or_none()
+        if row is not None:
+            api_key = getattr(row, "api_key", None)
+    except Exception:                                                       # pragma: no cover
+        pass
+    return model_name, api_key
 
 
 class EmbeddingService:
@@ -176,14 +229,26 @@ class EmbeddingService:
             return [None] * len(texts)
 
         results: List[Optional[List[float]]] = []
+        billable_chars = 0
+        token_count = 0
+        embedded_count = 0
 
         # Process in batches
         for i in range(0, len(texts), self.BATCH_SIZE):
             batch = texts[i:i + self.BATCH_SIZE]
-            batch_results = await self._embed_batch_internal(
+            batch_results, b_chars, b_tokens, b_ok = await self._embed_batch_internal(
                 client, model_name, batch, task_type
             )
             results.extend(batch_results)
+            billable_chars += b_chars
+            token_count += b_tokens
+            embedded_count += b_ok
+
+        # Best-effort attributed billing — one row per embed_batch call.
+        # Never blocks the caller's transaction (own session) or raises.
+        await self._log_embedding_usage(
+            model_name, task_type, billable_chars, token_count, embedded_count,
+        )
 
         return results
 
@@ -193,11 +258,20 @@ class EmbeddingService:
         model_name: str,
         texts: List[str],
         task_type: str,
-    ) -> List[Optional[List[float]]]:
-        """Internal: embed a single batch (≤ BATCH_SIZE texts)."""
+    ) -> tuple[List[Optional[List[float]]], int, int, int]:
+        """Internal: embed a single batch (≤ BATCH_SIZE texts).
+
+        Returns ``(results, billable_chars, token_count, embedded_count)``.
+        The character/token tallies feed the attributed usage write in
+        :meth:`embed_batch`; Vertex bills embeddings per input character,
+        reported on the response as ``metadata.billable_character_count``.
+        """
         from google.genai import types as _types
 
         results: List[Optional[List[float]]] = []
+        billable_chars = 0
+        token_count = 0
+        embedded_count = 0
 
         for text in texts:
             if not text or not text.strip():
@@ -215,11 +289,86 @@ class EmbeddingService:
                 )
                 embedding = embed_response.embeddings[0].values
                 results.append(list(embedding))
+                embedded_count += 1
+
+                # Tally the billable unit straight from Vertex's response,
+                # falling back to the truncated input length if the SDK
+                # omits the metadata.
+                meta = getattr(embed_response, "metadata", None)
+                resp_chars = getattr(meta, "billable_character_count", None) if meta else None
+                billable_chars += int(resp_chars) if resp_chars else len(truncated)
+                stats = getattr(embed_response.embeddings[0], "statistics", None)
+                resp_tokens = getattr(stats, "token_count", None) if stats else None
+                if resp_tokens:
+                    token_count += int(resp_tokens)
             except Exception as e:
                 logger.warning(f"Embedding failed for text (first 100 chars: {text[:100]!r}): {e}")
                 results.append(None)
 
-        return results
+        return results, billable_chars, token_count, embedded_count
+
+    async def _log_embedding_usage(
+        self,
+        model_name: str,
+        task_type: str,
+        billable_chars: int,
+        token_count: int,
+        embedded_count: int,
+    ) -> None:
+        """Write one attributed ``usage_logs`` row for an ``embed_batch`` call.
+
+        Best-effort and isolated from the caller:
+          * Runs on its own short-lived session so ``UsageService.log_usage``
+            (which commits) can never flush the caller's in-flight
+            transaction — critical on the retrieval hot path.
+          * Swallows every error; a billing failure must never surface
+            into embedding/retrieval.
+          * Attributes to the live run when one is bound (trace recorder),
+            otherwise logs an unscoped (ingestion-cron) charge.
+
+        ``raw_quantity`` is the Vertex-billed character count; the
+        ``embedding_phase`` tag lets the dashboard split retrieval-time
+        from ingestion-time spend.
+        """
+        if embedded_count <= 0 or billable_chars <= 0:
+            return
+        try:
+            run_id = None
+            try:
+                from src.ai.core.trace import current_recorder
+                rec = current_recorder()
+                if rec is not None:
+                    run_id = rec.run_id
+            except Exception:
+                pass
+
+            phase = "retrieval" if task_type == "RETRIEVAL_QUERY" else "ingestion"
+
+            from src.common.database import AsyncSessionLocal
+            from src.ai.usage_service import UsageService
+            from src.ai.services.cost_attribution import CostAttribution
+
+            async with AsyncSessionLocal() as sess:
+                svc = UsageService(sess)
+                await svc.log_usage(
+                    company_id=self.company_id,
+                    # Embeddings are input-only; follow the platform's
+                    # "-in" input-billing SKU convention.
+                    service_sku=f"{model_name}-in",
+                    raw_quantity=float(billable_chars),
+                    execution_id=run_id,
+                    metadata={
+                        "embedding_model": model_name,
+                        "embedding_task_type": task_type,
+                        "embedding_phase": phase,
+                        "texts_embedded": embedded_count,
+                        "billable_characters": int(billable_chars),
+                        "token_count": int(token_count),
+                    },
+                    attribution=CostAttribution.EMBEDDING.value,
+                )
+        except Exception as exc:                                                # pragma: no cover
+            logger.debug("embedding usage logging failed: %s", exc)
 
     async def embed_node(self, node) -> bool:
         """
