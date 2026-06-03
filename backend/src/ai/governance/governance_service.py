@@ -9,6 +9,7 @@ import json
 import asyncio
 import logging
 from decimal import Decimal
+from typing import Any, Optional, cast
 from uuid import UUID
 
 from src.billing.credit_service import CreditService, InsufficientCreditsError
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 class GovernanceService:
     """Handles credit gates, HITL approvals, and billing settlement."""
 
-    def __init__(self, db, redis):
+    def __init__(self, db: Any, redis: Any) -> None:
         self.db = db
         self.redis = redis
         self.credit_service = CreditService(db)
@@ -34,7 +35,7 @@ class GovernanceService:
 
     async def check_credit_gate(
         self, company_id: UUID, entity_type: str, is_child: bool = False
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Pre-execution credit balance check.
 
@@ -64,7 +65,7 @@ class GovernanceService:
 
     async def consume_step_cost(
         self, run: 'ExecutionRun', step_name: str, step_cost: Decimal
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Deduct a single step's cost from the company wallet immediately.
 
@@ -75,7 +76,7 @@ class GovernanceService:
 
         try:
             result = await self.credit_service.consume_incremental(
-                run.company_id, step_cost
+                cast(UUID, run.company_id), step_cost
             )
             logger.debug(
                 f"Step '{step_name}' cost ${step_cost:.4f} deducted "
@@ -98,7 +99,7 @@ class GovernanceService:
         try:
             accumulated = Decimal(str(run.total_cost_usd or 0))
             effective = await self.credit_service.get_effective_balance(
-                run.company_id, accumulated
+                cast(UUID, run.company_id), accumulated
             )
             if effective <= 0:
                 logger.warning(
@@ -160,27 +161,28 @@ class GovernanceService:
         Computes billed amount, deducts remaining credits, and records
         the billing event. Returns the billed amount.
         """
-        total_cost = run.total_cost_usd
         if run.parent_run_id:
             return Decimal("0")  # Only top-level runs settle
 
+        raw_cost = run.total_cost_usd
         logger.info(
-            f"Final billing settlement for top-level run {run.id}. Total cost: {total_cost}"
+            f"Final billing settlement for top-level run {run.id}. Total cost: {raw_cost}"
         )
 
-        if total_cost is None:
-            total_cost = Decimal("0")
-        else:
-            total_cost = Decimal(str(total_cost))
+        total_cost: Decimal = (
+            Decimal(str(raw_cost)) if raw_cost is not None else Decimal("0")
+        )
 
         if total_cost <= Decimal("0"):
-            run.billed_amount = Decimal("0")
+            run.billed_amount = Decimal("0")  # type: ignore[assignment]
             logger.info(f"Run {run.id} cost is 0, no credits deducted.")
             return Decimal("0")
 
         try:
             # Compute billed amount using the TB formula
-            config = await self.billing_service.get_billing_config(run.company_id)
+            config = await self.billing_service.get_billing_config(
+                cast(UUID, run.company_id)
+            )
             if not config:
                 mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
             else:
@@ -203,7 +205,7 @@ class GovernanceService:
 
             # Final settlement: deduct whatever remains
             settlement = await self.credit_service.consume_incremental(
-                run.company_id, billed_amount
+                cast(UUID, run.company_id), billed_amount
             )
             if settlement["exhausted"]:
                 logger.warning(
@@ -219,7 +221,7 @@ class GovernanceService:
 
             # Record billing event
             await self.billing_service.record_billing_event(
-                company_id=run.company_id,
+                company_id=cast(UUID, run.company_id),
                 base_cost=total_cost,
                 grouping_type="process",
                 grouping_value=entity_name,
@@ -229,7 +231,7 @@ class GovernanceService:
                 f"Billing event recorded for run {run.id}: "
                 f"raw=${total_cost}, billed=${billed_amount}"
             )
-            return billed_amount
+            return cast(Decimal, billed_amount)
 
         except Exception as billing_err:
             logger.warning(
@@ -244,11 +246,11 @@ class GovernanceService:
     async def evaluate_hitl(
         self,
         run: 'ExecutionRun',
-        entity,
+        entity: Any,
         step_obj: PlanStep,
-        context_state: dict,
+        context_state: dict[str, Any],
         phase: str,  # "BEFORE" or "AFTER"
-        governance_dict: dict = None,
+        governance_dict: Optional[dict[str, Any]] = None,
     ) -> None:
         """
         Evaluate HITL checkpoints defined in entity.governance.hitl_checkpoints.
@@ -364,7 +366,7 @@ class GovernanceService:
                                 break
                             elif status == "REJECTED":
                                 logger.info(f"HITL rejected: {trigger_desc}")
-                                approval.status = "REJECTED"
+                                approval.status = "REJECTED"  # type: ignore[assignment]
                                 await self.db.commit()
                                 raise Exception(
                                     f"Execution blocked by human reviewer: {trigger_desc}"
@@ -376,11 +378,11 @@ class GovernanceService:
                 if not resolved:
                     if cp.auto_approve_on_timeout:
                         logger.info(f"HITL auto-approved on timeout: {trigger_desc}")
-                        approval.status = "APPROVED"
-                        approval.reviewer_notes = "Auto-approved on timeout"
+                        approval.status = "APPROVED"  # type: ignore[assignment]
+                        approval.reviewer_notes = "Auto-approved on timeout"  # type: ignore[assignment]
                     else:
                         logger.info(f"HITL timed out: {trigger_desc}")
-                        approval.status = "TIMEOUT"
+                        approval.status = "TIMEOUT"  # type: ignore[assignment]
                         await self.db.commit()
                         raise Exception(
                             f"HITL checkpoint timed out after {cp.timeout_ms}ms: {trigger_desc}"
@@ -398,7 +400,7 @@ class GovernanceService:
     # ------------------------------------------------------------------
 
     def _safe_eval_expression(
-        self, expression: str, run: 'ExecutionRun', context_state: dict
+        self, expression: str, run: 'ExecutionRun', context_state: dict[str, Any]
     ) -> bool:
         """Safely evaluate a simple HITL custom expression.
 
@@ -409,20 +411,20 @@ class GovernanceService:
         try:
             if expression.startswith("step_count"):
                 op, val = expression.split("step_count")[1].strip().split(None, 1)
-                val = float(val)
+                threshold = float(val)
                 step_count = len([k for k in context_state if not k.startswith("__")])
-                if op == ">" and step_count > val:
+                if op == ">" and step_count > threshold:
                     return True
-                if op == ">=" and step_count >= val:
+                if op == ">=" and step_count >= threshold:
                     return True
 
             elif expression.startswith("cost"):
                 op, val = expression.split("cost")[1].strip().split(None, 1)
-                val = float(val)
+                threshold = float(val)
                 current_cost = float(run.total_cost_usd or 0)
-                if op == ">" and current_cost > val:
+                if op == ">" and current_cost > threshold:
                     return True
-                if op == ">=" and current_cost >= val:
+                if op == ">=" and current_cost >= threshold:
                     return True
 
             elif expression.startswith("has_key"):

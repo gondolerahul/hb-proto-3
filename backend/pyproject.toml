@@ -70,3 +70,12 @@ ignore = []
 
 [tool.ruff.isort]
 known-first-party = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+# Strict checking is rolled out one package at a time (C12) and enforced by
+# scripts/typecheck_ai.py over a growing allowlist; whole-tree strict is not
+# yet green. This section only sets the shared baseline so editor/manual mypy
+# runs agree with the gate (which adds --strict --follow-imports=silent).

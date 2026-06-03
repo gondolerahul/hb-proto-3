@@ -32,6 +32,11 @@ run_layout_lint() {
     $PY scripts/lint_ai_layout.py
 }
 
+run_typecheck() {
+    bold "mypy --strict gate"
+    $PY scripts/typecheck_ai.py
+}
+
 run_unit() {
     bold "unit tests"
     $PYTEST tests/unit/ -q
@@ -79,6 +84,7 @@ run_migration_roundtrip() {
 case "$LANE" in
     fast)
         run_layout_lint
+        run_typecheck
         run_unit
         run_integration_fast
         ;;
@@ -96,6 +102,7 @@ case "$LANE" in
         ;;
     all)
         run_layout_lint
+        run_typecheck
         run_unit
         run_integration_fast
         run_chaos

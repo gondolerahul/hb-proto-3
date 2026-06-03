@@ -7,7 +7,7 @@ sliding window implementation.
 """
 import logging
 import time
-from typing import Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class RedisRateLimiter:
             raise RateLimitExceeded(...)
     """
 
-    def __init__(self, redis):
+    def __init__(self, redis: Any) -> None:
         """
         Args:
             redis: An async Redis connection (e.g. aioredis / redis-py asyncio).
@@ -65,7 +65,7 @@ class RedisRateLimiter:
             pipe.expire(key, window_seconds + 1)
             results = await pipe.execute()
 
-            count = results[2]
+            count: int = results[2]
             allowed = count <= limit
 
             if not allowed:
@@ -97,7 +97,7 @@ class RedisRateLimiter:
             pipe.zremrangebyscore(key, 0, window_start)
             pipe.zcard(key)
             results = await pipe.execute()
-            count = results[1]
+            count: int = results[1]
             return max(0, limit - count)
         except Exception:
             return limit
