@@ -19,6 +19,38 @@
 
 ---
 
+## Progress (updated 2026-06-03)
+
+**Phase A is complete** — the suspend/resume mechanism is proven end-to-end:
+
+- **PR-1** ✅ (`5aa0a25`) — multi-child PROCESS positive parity case (G1, inline).
+  `child_fixtures` seeding + plan-step `entity_id` wiring; extract compares the
+  logical output, not the uuid-laden envelope.
+- **PR-1b** ✅ (`dd16a35`) — loop emits `result_data["steps"]` (snapshotted
+  `AgentState.step_results`), matching legacy; the refine flow (`service.py`)
+  reads it. Discovered while building PR-1.
+- **PR-2** ✅ (`4b762c5`) — **first E2E** of suspend→child→resume→complete via the
+  in-process arq drainer (`tests/parity/worker_sim.py`); async parity green
+  (G1, async). `governance.max_concurrent_children` cap + `CHILD_RUN_QUEUE`
+  config (not routed).
+- **PR-3** ✅ (`4882886`) — resumability chaos (G2: crash before resume → durable
+  WAITING → fresh-worker recovery → idempotency) + cost amplification guard
+  (G3: async child-execution work == inline). `tests/parity/c4_resumability.py`.
+
+All C4 gate checks (G1/G2/G3) run inside the single aggregated parity test
+(`test_agent_loop_parity`) for the one-event-loop constraint. **558 unit +
+parity green, lint green.**
+
+**Not done / gating Phase B:**
+- **PR-4 (G4 flag soak)** — operational: needs `governance.async_child_dispatch`
+  ON for a live canary + real telemetry over time. Cannot run in the keyless dev
+  env. Analogous to the Stage-0 telemetry gate that this dev build deliberately
+  skipped — the human runs it in prod, or it is dev-skipped by decision.
+- **Phase B (PR-5..PR-9)** — the irreversible deletion chain — remains **gated on
+  G4** per §3. Not started.
+
+---
+
 ## 0. TL;DR
 
 - The hard part — the async child suspend/resume loop — is **already coded**
