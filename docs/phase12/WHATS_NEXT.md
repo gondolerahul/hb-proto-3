@@ -44,9 +44,19 @@ These are gating: nothing downstream can complete until each is done.
         are now unblocked by policy — and the parity gate is green, so C4 has
         its evidence. Strengthen with more positive PROCESS cases before C4.
 
-- [ ] **🔒 C4 — delete legacy `ExecutionEngine.execute_run` monolith** *(keystone,
-      `01` §4)* — `core/execution_engine.py` is still ~1288 LoC. **Gated on
-      Stage 0's 30-day clock + green parity corpus.** Highest-risk single PR.
+- [ ] **🚧 C4 — delete legacy `ExecutionEngine.execute_run` — BLOCKED (not a cut)**
+      *(`01` §4)*. Audit finding: `execute_run` is **not dead** — the AgentLoop
+      delegates step execution into `ExecutionEngine` internals
+      (`single_step`/`dag`/`child_entity` → `_execute_step_wrapper` /
+      `_execute_steps_dag`; `recursive` → `execute_run`), and **every child
+      entity runs via the `execute_run_fn` callback** (`execution_engine.py:79,93`
+      → `step_executor.py:106,305`). Routing children through the loop was
+      **already tried in Phase 11 and reverted** (~$11/child cost amplification +
+      worker blocking — see the verbatim note at `execution_engine.py:97-104`).
+      **Prerequisite designed:** see
+      [`designs/async_child_dispatch.md`](./designs/async_child_dispatch.md) —
+      a suspend/resume async child-dispatch mechanism that, once shipped, lets
+      C4 (and then C2/C3) proceed. This is a multi-PR effort, not a Stage-1 cut.
 
 ---
 
@@ -56,21 +66,22 @@ Ordered by *value now / lowest risk first*. Items 2.1–2.3 are **not gated** an
 can start immediately; 2.4 is gated on Stage 0.
 
 ### 2.1 Not gated — do now
-- [ ] **C6 / P-F4 — REACT-AFC adopts `ToolResilience.run`** *(`01` §6.2)*
-      `core/reasoning/react.py` still calls `execute_tool_fn` directly; route the
-      inner `_execute_thought` closure through `ToolResilience` so REACT heals
-      tool failures like direct TOOL_CALL. *(M)*
-- [ ] **C8 finish — tools/ layout to spec + social audit** *(`01` §5)*
-      Subgroups exist but plan's `integrations/{social,ads}/` wrapper, `ads/`,
-      and `management/` are missing; `social/` sits at top level. Move them, then
-      **tag the 17 social tools ACTIVE / EXPERIMENTAL / DEAD** and gate/delete
-      accordingly. Refresh subdomain READMEs. Flip lint rule
-      "no loose tool files at `tools/` root." *(M)*
-- [ ] **Finish C9 cleanup (D-3)** *(`01` §8.3)* — DebateExecutor + `reasoning_hint`
-      shipped, but `core/reasoning/reflection.py` and `tree_of_thoughts.py`
-      **still exist**; remove the retired per-entity Reflection/ToT modules now
-      that the strategist routes around them (the `p12_retire_reasoning_modes`
-      data migration is already present). *(S)*
+- [x] **C6 / P-F4 — REACT-AFC adopts `ToolResilience.run`** *(`01` §6.2)*
+      **Already done** — the REACT inner closure `_execute_tools`
+      (`step_executor.py:915-935`) routes each function call through
+      `ToolResilience.run_function_call` when `tools.resilience_v2_enabled` is on.
+      (`react.py` is only a thin adapter; the closure lives in step_executor.)
+      Verified by `tests/integration/test_tool_resilience_react_path.py` (22 green).
+- [~] **C8 finish — tools/ layout** *(`01` §5)* — **substantially complete;
+      remainder deferred.** The hard exit criterion (no loose tool files at
+      `tools/` root except `__init__/base/resilience`) is **already satisfied**
+      and tools are subgrouped. The `integrations/{social,ads}/` wrapper +
+      `management/` move + social ACTIVE/EXPERIMENTAL/DEAD audit are low-value,
+      high-churn (rewrites absolute `src.ai.tools.social.*` imports across 17
+      files) and partly need product judgement — deferred as a follow-up.
+- [x] **C9 cleanup (D-3)** — **done** (commit `d70912a`): deleted
+      `core/reasoning/{reflection,tree_of_thoughts}.py` + registrations; registry
+      now holds only REACT + CHAIN_OF_THOUGHT; schema + step_executor cleaned.
 
 ### 2.2 De-prefix (do after C1–C7 land; ship with redirect shims)
 - [ ] **C10 — backend de-prefix** *(`01` §2, §7)*
@@ -91,11 +102,18 @@ can start immediately; 2.4 is gated on Stage 0.
 - [ ] **C13 — drop deprecated `engine_type` & `reasoning_mode` fields** *(`01` §9,
       D-1)* — minor-version schema bump; depends on C5 + C9. *(M)*
 
-### 2.4 🔒 Gated legacy deletions (after Stage 0's 30-day clock)
-- [ ] **C1** delete critic v1 `_review_step_output` body + retire `critic_pipeline.v1_compat`.
-- [ ] **C2** delete `MemoryRouter` body; assembler v2-only (**keep** `LegacyEpisodicReader`).
-- [ ] **C3** delete `MetaReviewer` shim + `CortexRouter` alias.
-- [ ] Prune retired keys from `feature_flags.py::DEFAULTS` (flag count down ~6).
+### 2.4 Legacy deletions
+- [x] **C1** — **done** (commit `a10130e`): deleted the v1 critic body
+      `_review_step_output` + its legacy caller; retired the dead
+      `critic_pipeline.v1_compat` flag. (Was cleanly removable — the loop uses
+      `RealCriticPipeline`.)
+- [ ] **🚧 C2** delete `MemoryRouter` body — **blocked**: still used by the
+      load-bearing `ExecutionEngine` (`execution_engine.py:676,761`). Falls out
+      once C4's `execute_run` is deleted (see async-child-dispatch design).
+- [~] **C3** — **CortexRouter alias is safe to remove now** (pure rename shim,
+      `cortex_service.py:1199`); the `MetaReviewer` deletion is **blocked** (the
+      loop's `RealCriticPipeline` uses it, `critic_pipeline.py:490` — so it is
+      *not* a shim to delete; keep it).
 
 ---
 
@@ -210,12 +228,13 @@ schedulable — defer to the back half without blocking the above.
 | 01 | C0 narration sweep + lint→error | ✅ |
 | 01 | C5 reconcile-v2 + static-as-prior (D-2) | ✅ |
 | 01 | C7 cost attribution + flag ON (P-F3/F6) | ✅ |
-| 01 | C9 DebateExecutor + reasoning_hint (D-3) | ✅ |
-| 01 | C8 tools/ subgrouping | ◐ |
-| 01 | C6/P-F4 REACT ToolResilience closure | ❌ |
+| 01 | C9 DebateExecutor + reasoning_hint + retire REFLECTION/ToT (D-3) | ✅ |
+| 01 | C8 tools/ subgrouping (root clean; integrations/ wrapper deferred) | ◐ |
+| 01 | C6/P-F4 REACT ToolResilience closure | ✅ |
 | 01 | C10/C11 backend+frontend de-prefix | ❌ |
 | 01 | C12 mypy --strict · C13 drop deprecated fields | ❌ |
-| 01 | C1–C4 legacy deletions | 🔒 (Stage 0) |
+| 01 | C1 critic v1 body deletion | ✅ |
+| 01 | C2/C3/C4 engine+memory deletions | 🚧 blocked on async-child-dispatch |
 | 05 | Stage 0 master-switch flip (dev mode, telemetry skipped) | ✅ |
 | 02 | Sandbox runtime / container / browser | ❌ |
 | 03 | Video tool split | ❌ |
