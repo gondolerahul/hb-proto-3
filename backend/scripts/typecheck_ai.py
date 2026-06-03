@@ -16,12 +16,11 @@ and otherwise suppressed.
 Adding a package: make ``mypy --strict --follow-imports=silent
 src/ai/<pkg>`` report zero errors, then append ``"<pkg>"`` here.
 
-Legacy-ORM convention (until the ORM is migrated to SQLAlchemy 2.0
-``Mapped[]``): models in ``src/ai/orm`` still use the legacy ``Column(...)``
-style, so mypy types every attribute as ``Column[T]``. Read access is wrapped
-in ``cast(T, instance.attr)``; the handful of attribute *writes* that cannot be
-cast carry a narrow ``# type: ignore[assignment]``. Migrating the ORM to
-``Mapped[]`` would remove both and is tracked separately.
+ORM typing: the models in ``src/ai/orm`` use the SQLAlchemy 2.0 typed
+``Mapped[T]`` + ``mapped_column(...)`` style, so attribute access carries the
+real column type (``T`` / ``T | None``) for both reads and writes. No
+``cast(T, instance.attr)`` reads or ``# type: ignore[assignment]`` writes are
+needed against these models.
 
 Run manually:
     python backend/scripts/typecheck_ai.py
@@ -38,6 +37,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 # Packages under src/ai that are strict-clean. Grows one PR at a time (C12).
 CLEAN_PACKAGES: list[str] = [
     "governance",
+    "orm",
+    "planning",
 ]
 
 

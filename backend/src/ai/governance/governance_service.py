@@ -76,7 +76,7 @@ class GovernanceService:
 
         try:
             result = await self.credit_service.consume_incremental(
-                cast(UUID, run.company_id), step_cost
+                run.company_id, step_cost
             )
             logger.debug(
                 f"Step '{step_name}' cost ${step_cost:.4f} deducted "
@@ -99,7 +99,7 @@ class GovernanceService:
         try:
             accumulated = Decimal(str(run.total_cost_usd or 0))
             effective = await self.credit_service.get_effective_balance(
-                cast(UUID, run.company_id), accumulated
+                run.company_id, accumulated
             )
             if effective <= 0:
                 logger.warning(
@@ -174,14 +174,14 @@ class GovernanceService:
         )
 
         if total_cost <= Decimal("0"):
-            run.billed_amount = Decimal("0")  # type: ignore[assignment]
+            run.billed_amount = Decimal("0")
             logger.info(f"Run {run.id} cost is 0, no credits deducted.")
             return Decimal("0")
 
         try:
             # Compute billed amount using the TB formula
             config = await self.billing_service.get_billing_config(
-                cast(UUID, run.company_id)
+                run.company_id
             )
             if not config:
                 mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
@@ -205,7 +205,7 @@ class GovernanceService:
 
             # Final settlement: deduct whatever remains
             settlement = await self.credit_service.consume_incremental(
-                cast(UUID, run.company_id), billed_amount
+                run.company_id, billed_amount
             )
             if settlement["exhausted"]:
                 logger.warning(
@@ -221,7 +221,7 @@ class GovernanceService:
 
             # Record billing event
             await self.billing_service.record_billing_event(
-                company_id=cast(UUID, run.company_id),
+                company_id=run.company_id,
                 base_cost=total_cost,
                 grouping_type="process",
                 grouping_value=entity_name,
@@ -366,7 +366,7 @@ class GovernanceService:
                                 break
                             elif status == "REJECTED":
                                 logger.info(f"HITL rejected: {trigger_desc}")
-                                approval.status = "REJECTED"  # type: ignore[assignment]
+                                approval.status = "REJECTED"
                                 await self.db.commit()
                                 raise Exception(
                                     f"Execution blocked by human reviewer: {trigger_desc}"
@@ -378,11 +378,11 @@ class GovernanceService:
                 if not resolved:
                     if cp.auto_approve_on_timeout:
                         logger.info(f"HITL auto-approved on timeout: {trigger_desc}")
-                        approval.status = "APPROVED"  # type: ignore[assignment]
-                        approval.reviewer_notes = "Auto-approved on timeout"  # type: ignore[assignment]
+                        approval.status = "APPROVED"
+                        approval.reviewer_notes = "Auto-approved on timeout"
                     else:
                         logger.info(f"HITL timed out: {trigger_desc}")
-                        approval.status = "TIMEOUT"  # type: ignore[assignment]
+                        approval.status = "TIMEOUT"
                         await self.db.commit()
                         raise Exception(
                             f"HITL checkpoint timed out after {cp.timeout_ms}ms: {trigger_desc}"

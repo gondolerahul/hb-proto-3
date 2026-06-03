@@ -240,7 +240,7 @@ class PlanStyleBandit:
         except Exception as exc:                                            # pragma: no cover
             logger.warning("bandit save_table failed (kept in memory): %s", exc)
 
-    async def _find_arm_node(self, entity_id: UUID, task_class: str):
+    async def _find_arm_node(self, entity_id: UUID, task_class: str) -> Any:
         from sqlalchemy import select
         from src.ai.memory.cortex_models import (
             CortexNode,
@@ -273,7 +273,7 @@ class PlanStyleBandit:
             )
         )).scalar_one_or_none()
 
-    async def _upsert_arm_node(self, entity_id: UUID, task_class: str, table: BanditTable):
+    async def _upsert_arm_node(self, entity_id: UUID, task_class: str, table: BanditTable) -> None:
         from sqlalchemy import select
         from src.ai.memory.cortex_models import (
             CortexNode,
@@ -330,7 +330,7 @@ class PlanStyleBandit:
             },
         )
         self.db.add(new_node)
-        tree.total_nodes = (tree.total_nodes or 0) + 1
+        tree.total_nodes = (tree.total_nodes or 0) + 1  # type: ignore[assignment]
         await self.db.flush()
 
     @staticmethod

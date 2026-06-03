@@ -22,7 +22,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import UUID, uuid4
 
 logger = logging.getLogger(__name__)
@@ -44,8 +44,8 @@ __all__ = [
 @dataclass
 class PlanContext:
     entity: Any
-    input_data: dict = field(default_factory=dict)
-    static_plan: dict = field(default_factory=dict)
+    input_data: dict[str, Any] = field(default_factory=dict)
+    static_plan: dict[str, Any] = field(default_factory=dict)
     intelligence_rules: list[Any] = field(default_factory=list)
     anti_patterns: list[Any] = field(default_factory=list)
     task_class: str = "general"
@@ -53,12 +53,12 @@ class PlanContext:
     company_id: Optional[UUID] = None
     goal: str = ""
     proposed_subgoals: list[Any] = field(default_factory=list)
-    failed_step: Optional[dict] = None
+    failed_step: Optional[dict[str, Any]] = None
 
 
 @dataclass
 class PlanCandidate:
-    steps: list[dict]
+    steps: list[dict[str, Any]]
     style: str = "DAG_SEQUENTIAL"
     estimated_cost_usd: Decimal = field(default_factory=lambda: Decimal("0"))
     estimated_latency_s: int = 0
@@ -101,7 +101,7 @@ class PlanCandidates:
 # ---------------------------------------------------------------------------
 
 
-def classify_plan_style(steps: list[dict]) -> str:
+def classify_plan_style(steps: list[dict[str, Any]]) -> str:
     """Best-effort mapping of a plan shape to a ``PlanStyleArm`` value.
 
     The Bandit (Track 4) keys arm stats by this string so the planner
@@ -236,7 +236,7 @@ class PlanGenerator:
         state: Any,
         *,
         proposed_subgoals: Optional[list[Any]] = None,
-        failed_step: Optional[dict] = None,
+        failed_step: Optional[dict[str, Any]] = None,
         n: int = 2,
     ) -> PlanCandidates:
         ctx = self._ctx_from_state(state, proposed_subgoals, failed_step)
@@ -322,7 +322,7 @@ class PlanGenerator:
         return "\n\n".join(parts)
 
     @staticmethod
-    def _parse_plan(text: Optional[str]) -> list[dict]:
+    def _parse_plan(text: Optional[str]) -> list[dict[str, Any]]:
         from src.ai.shared.json_utils import parse_json_array, parse_json_object
         raw = text or ""
         # Object shape: {"steps": [...]}
@@ -337,8 +337,8 @@ class PlanGenerator:
         return []
 
     @staticmethod
-    def _tidy(steps: list[dict]) -> list[dict]:
-        out: list[dict] = []
+    def _tidy(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         for i, s in enumerate(steps):
             sid = str(s.get("step_id") or s.get("id") or "")
@@ -475,11 +475,11 @@ class PlanGenerator:
             )
             for c, s in zip(ranked, scores):
                 c.judge_score = s
-            chosen._judge_reasoning = reasoning                             # type: ignore[attr-defined]
+            chosen._judge_reasoning = reasoning
             await self._emit("agent.plan.judge_decision",
                              winner_idx=ranked.index(chosen),
                              scores=list(scores))
-            return chosen
+            return cast(PlanCandidate, chosen)
         except Exception as exc:                                            # noqa: BLE001
             logger.warning(f"PlanJudge selection failed: {exc}")
             return self._cheapest(ranked)
@@ -492,7 +492,7 @@ class PlanGenerator:
         self,
         state: Any,
         proposed_subgoals: Optional[list[Any]],
-        failed_step: Optional[dict],
+        failed_step: Optional[dict[str, Any]],
     ) -> PlanContext:
         entity = getattr(state, "entity", None)
         static_plan = {"steps": list(getattr(state, "plan_steps", []) or [])}

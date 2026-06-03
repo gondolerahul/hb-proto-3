@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
-    Column,
     DateTime,
     ForeignKey,
     Index,
@@ -32,6 +33,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
 from src.common.database import Base
 
@@ -50,46 +52,46 @@ class ExecutionTraceEvent(Base):
 
     __tablename__ = "execution_trace_events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    run_id = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("execution_runs.id", ondelete="CASCADE"),
         nullable=False,
     )
-    company_id = Column(UUID(as_uuid=True), nullable=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Tree edges. ``span_id`` is the stable identity used by the close-update and
     # by the frontend to attach children; ``parent_span_id`` is NULL for the
     # run-root spans (iteration nodes).
-    span_id = Column(UUID(as_uuid=True), nullable=False)
-    parent_span_id = Column(UUID(as_uuid=True), nullable=True)
+    span_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    parent_span_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
-    iteration = Column(Integer, nullable=True)
-    kind = Column(String(16), nullable=False)        # see TRACE_KINDS
-    name = Column(String(512), nullable=True)        # tool id / model name / step name
-    status = Column(String(16), nullable=False, default="running")
+    iteration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)        # see TRACE_KINDS
+    name: Mapped[str | None] = mapped_column(String(512), nullable=True)        # tool id / model name / step name
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
 
     # In-process monotonic ordering within a run (assigned by the recorder).
-    seq = Column(BigInteger, nullable=False, default=0)
+    seq: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
-    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    ended_at = Column(DateTime, nullable=True)
-    duration_ms = Column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    cost_usd = Column(Numeric(12, 6), nullable=True)
-    tokens_in = Column(Integer, nullable=True)
-    tokens_out = Column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Links a ``child`` span to the sub-run whose own trace continues the tree.
-    child_run_id = Column(UUID(as_uuid=True), nullable=True)
+    child_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Full inputs / outputs / prompts / responses / error. The recorder caps any
     # single field at TRACE_MAX_FIELD_BYTES and replaces it with a truncation
     # marker, so a pathological multi-MB blob can't break the row.
-    payload = Column(JSONB, nullable=True)
-    error_message = Column(Text, nullable=True)
+    payload: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
         Index("ix_execution_trace_events_run_seq", "run_id", "seq"),

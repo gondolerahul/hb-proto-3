@@ -9,7 +9,7 @@ import copy
 import json
 import logging
 from uuid import UUID, uuid4
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 
 from src.ai.models import ExecutionRun, HierarchicalEntity, LLMInteractionLog
 from src.ai.schemas import EntityType, PlanStep
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class PlannerService:
     """Generates and reconciles execution plans from entity configuration."""
 
-    def __init__(self, db, company_id: UUID):
+    def __init__(self, db: Any, company_id: UUID) -> None:
         self.db = db
         self.company_id = company_id
         self.llm = LLMRouter(db=db, company_id=company_id)
@@ -36,8 +36,8 @@ class PlannerService:
         self,
         run: ExecutionRun,
         entity: HierarchicalEntity,
-        input_data: dict,
-    ) -> dict:
+        input_data: dict[str, Any],
+    ) -> dict[str, Any]:
         """Merges static and dynamic plans based on strategy.
 
         Returns a plan dict with a ``steps`` key containing the final
@@ -101,9 +101,9 @@ class PlannerService:
         self,
         run: ExecutionRun,
         entity: HierarchicalEntity,
-        input_data: dict,
-        static_plan: dict,
-    ) -> Optional[dict]:
+        input_data: dict[str, Any],
+        static_plan: dict[str, Any],
+    ) -> Optional[dict[str, Any]]:
         """Phase 11 Track 7 — multi-candidate planner path.
 
         Generates N candidate plans, validates each with invariants,
@@ -145,7 +145,7 @@ class PlannerService:
             },
         }
 
-    def has_parallel_steps(self, steps: List[dict]) -> bool:
+    def has_parallel_steps(self, steps: List[dict[str, Any]]) -> bool:
         """Return True ONLY if at least two steps can run simultaneously.
 
         The previous implementation returned True whenever *any* step had
@@ -168,13 +168,13 @@ class PlannerService:
 
         # Build dep sets from explicit input_dependencies + {{step_id}} refs
         step_ids = {s.get("step_id") for s in steps if s.get("step_id")}
-        step_deps: dict = {}
+        step_deps: dict[Any, set[Any]] = {}
 
         for s in steps:
             s_id = s.get("step_id")
             if not s_id:
                 continue
-            deps: set = set()
+            deps: set[Any] = set()
             target = s.get("target") or {}
             for dep in target.get("input_dependencies", []):
                 if dep in step_ids:
@@ -199,9 +199,9 @@ class PlannerService:
     async def validate_goal_progress(
         self,
         goal: str,
-        completed_steps: List[dict],
+        completed_steps: List[dict[str, Any]],
         total_steps: int,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Lightweight LLM call to assess goal completion progress.
 
         Phase 5: Used by the autonomous loop to decide whether to
@@ -240,18 +240,18 @@ class PlannerService:
                 output = output.split("```json")[1].split("```")[0]
             elif "{" in output:
                 output = output[output.find("{"):output.rfind("}") + 1]
-            return json.loads(output)
+            return cast("dict[str, Any]", json.loads(output))
         except Exception as e:
             logger.warning(f"Goal validation failed: {e}")
             return {"score": 50, "reasoning": f"Validation failed: {e}", "goal_achieved": False}
 
     async def adapt_plan(
         self,
-        original_plan: list,
-        completed_steps: list,
-        failed_step: dict,
+        original_plan: list[dict[str, Any]],
+        completed_steps: list[dict[str, Any]],
+        failed_step: dict[str, Any],
         goal: str,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """Mid-execution re-planning (autonomous loop).
 
         Delegates to :class:`PlanGenerator.generate` (multi-candidate +
@@ -291,7 +291,7 @@ class PlannerService:
 
         return remaining
 
-    def _assign_step_ids(self, steps: list, start_from: int = 1) -> list:
+    def _assign_step_ids(self, steps: list[dict[str, Any]], start_from: int = 1) -> list[dict[str, Any]]:
         """Assign sequential step_ids to a list of step dicts."""
         for i, s in enumerate(steps):
             s["step_id"] = f"step_{start_from + i}_{str(uuid4())[:8]}"
@@ -306,9 +306,9 @@ class PlannerService:
         self,
         run: ExecutionRun,
         entity: HierarchicalEntity,
-        input_data: dict,
-        plan: dict,
-    ) -> dict:
+        input_data: dict[str, Any],
+        plan: dict[str, Any],
+    ) -> dict[str, Any]:
         """Guarantee a router-with-children delegates — for ANY plan source.
 
         Dynamic plans come from ``_generate_dynamic_plan_v2``
@@ -395,10 +395,10 @@ class PlannerService:
         self,
         run: ExecutionRun,
         entity: HierarchicalEntity,
-        user_input,
-        valid_steps: List[dict],
-        child_entities: list,
-    ) -> List[dict]:
+        user_input: Any,
+        valid_steps: List[dict[str, Any]],
+        child_entities: list[Any],
+    ) -> List[dict[str, Any]]:
         """Guarantee a router-with-children delegates to >=1 child.
 
         If the reconciled plan already contains a CHILD_ENTITY_INVOCATION step
@@ -409,7 +409,7 @@ class PlannerService:
         """
         child_ids = {str(c.id) for c in child_entities}
 
-        def _is_real_invocation(step: dict) -> bool:
+        def _is_real_invocation(step: dict[str, Any]) -> bool:
             if step.get("type") != "CHILD_ENTITY_INVOCATION":
                 return False
             eid = (step.get("target") or {}).get("entity_id")
@@ -455,9 +455,9 @@ class PlannerService:
         self,
         run: ExecutionRun,
         entity: HierarchicalEntity,
-        user_input,
-        child_entities: list,
-    ) -> List[dict]:
+        user_input: Any,
+        child_entities: list[Any],
+    ) -> List[dict[str, Any]]:
         """Constrained LLM call: pick the child(ren) that match the request.
 
         Returns a list of ``{"entity_id", "name", "instruction"}`` dicts (only
@@ -537,7 +537,7 @@ class PlannerService:
         return routed
 
     async def _log_planner_usage(
-        self, run, plan_result_resp, planner_log
+        self, run: ExecutionRun, plan_result_resp: Any, planner_log: Any
     ) -> None:
         """Log LLM usage for the planner call."""
         try:

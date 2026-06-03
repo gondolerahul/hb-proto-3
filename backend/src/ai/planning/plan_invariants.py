@@ -51,7 +51,7 @@ class Invariant:
 
 
 def validate_plan(
-    plan: list[dict],
+    plan: list[dict[str, Any]],
     entity: Any,
     budget: Any = None,
 ) -> list[Invariant]:
@@ -73,7 +73,7 @@ def validate_plan(
 # ---------------------------------------------------------------------------
 
 
-def no_cycle_in_child_invocations(plan: list[dict], entity: Any) -> Invariant:
+def no_cycle_in_child_invocations(plan: list[dict[str, Any]], entity: Any) -> Invariant:
     """A CHILD_ENTITY_INVOCATION must not target the parent entity itself."""
     parent_id = str(getattr(entity, "id", None) or "")
     if not parent_id:
@@ -92,7 +92,7 @@ def no_cycle_in_child_invocations(plan: list[dict], entity: Any) -> Invariant:
     )
 
 
-def all_required_tools_in_capabilities(plan: list[dict], entity: Any) -> Invariant:
+def all_required_tools_in_capabilities(plan: list[dict[str, Any]], entity: Any) -> Invariant:
     caps = getattr(entity, "capabilities", None) or {}
     if isinstance(entity, dict):
         caps = entity.get("capabilities") or {}
@@ -125,7 +125,7 @@ def _collect_var_refs(text: str) -> set[str]:
     return refs
 
 
-def no_dangling_variable_refs(plan: list[dict]) -> Invariant:
+def no_dangling_variable_refs(plan: list[dict[str, Any]]) -> Invariant:
     """Every ``{{step_x}}`` reference in a prompt template must point at
     a step that exists earlier in the plan (or at ``input``).
 
@@ -156,7 +156,7 @@ def no_dangling_variable_refs(plan: list[dict]) -> Invariant:
     )
 
 
-def no_dangling_step_dependencies(plan: list[dict]) -> Invariant:
+def no_dangling_step_dependencies(plan: list[dict[str, Any]]) -> Invariant:
     """Every ``input_dependencies`` entry must reference a real earlier step."""
     ids = {str(s.get("step_id") or s.get("id") or s.get("name") or "")
            for s in plan if s.get("step_id") or s.get("id") or s.get("name")}
@@ -175,7 +175,7 @@ def no_dangling_step_dependencies(plan: list[dict]) -> Invariant:
 
 
 def cost_estimate_within_budget(
-    plan: list[dict], entity: Any, budget: Any = None,
+    plan: list[dict[str, Any]], entity: Any, budget: Any = None,
 ) -> Invariant:
     """Sum of per-step cost estimates must not exceed governance cap.
 
@@ -200,7 +200,7 @@ def cost_estimate_within_budget(
     )
 
 
-def no_orphaned_outputs(plan: list[dict]) -> Invariant:
+def no_orphaned_outputs(plan: list[dict[str, Any]]) -> Invariant:
     """Every non-final step with an ``output_slot`` should be referenced
     somewhere downstream. Pure heuristic: the final step is exempt and
     a missing ``output_slot`` is fine.
@@ -230,7 +230,7 @@ def no_orphaned_outputs(plan: list[dict]) -> Invariant:
 
 
 def child_invocations_have_entity_id(
-    plan: list[dict], entity: Any,                                          # noqa: ARG001
+    plan: list[dict[str, Any]], entity: Any,                                          # noqa: ARG001
 ) -> Invariant:
     """Every CHILD_ENTITY_INVOCATION must have either an entity_id or an
     entity_name_hint that downstream resolution can disambiguate."""
@@ -248,7 +248,7 @@ def child_invocations_have_entity_id(
     )
 
 
-def prompt_templates_are_strings(plan: list[dict]) -> Invariant:
+def prompt_templates_are_strings(plan: list[dict[str, Any]]) -> Invariant:
     """LLMs sometimes emit prompt_template as a dict/list; the planner
     coerces these, but the invariant catches anything that slipped past."""
     bad: list[str] = []
@@ -264,7 +264,7 @@ def prompt_templates_are_strings(plan: list[dict]) -> Invariant:
     )
 
 
-def authored_steps_covered(plan: list[dict], static_plan: dict) -> Invariant:
+def authored_steps_covered(plan: list[dict[str, Any]], static_plan: dict[str, Any]) -> Invariant:
     """When the static plan is *binding*, every authored step must appear in
     the candidate plan.
 

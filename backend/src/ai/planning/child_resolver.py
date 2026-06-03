@@ -29,7 +29,7 @@ successful resolution emits an ``agent.child_resolver.fallback`` event
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -126,7 +126,7 @@ async def resolve_child_entity_id(
             if row is not None:
                 await _emit(emit_event, "agent.child_resolver.fallback",
                             strategy_used=4, step_name=step_name)
-                return row.id
+                return cast(UUID, row.id)
         except Exception as exc:                                            # pragma: no cover
             logger.debug(f"ChildResolver Strategy 4 lookup failed: {exc}")
 
@@ -175,7 +175,7 @@ def _coerce_uuid(raw: Any) -> Optional[UUID]:
         return None
 
 
-def _static_invocation_steps(parent_entity: Any) -> list[dict]:
+def _static_invocation_steps(parent_entity: Any) -> list[dict[str, Any]]:
     planning = getattr(parent_entity, "planning", None)
     if planning is None and isinstance(parent_entity, dict):
         planning = parent_entity.get("planning")
@@ -185,7 +185,7 @@ def _static_invocation_steps(parent_entity: Any) -> list[dict]:
             and str(s.get("type", "")).upper() == "CHILD_ENTITY_INVOCATION"]
 
 
-def _hierarchy_children(parent_entity: Any) -> list[dict]:
+def _hierarchy_children(parent_entity: Any) -> list[dict[str, Any]]:
     h = getattr(parent_entity, "hierarchy", None)
     if h is None and isinstance(parent_entity, dict):
         h = parent_entity.get("hierarchy")
@@ -193,7 +193,7 @@ def _hierarchy_children(parent_entity: Any) -> list[dict]:
     return list(h.get("children") or [])
 
 
-def _match_by_name(static_steps: list[dict], step_name: str) -> Optional[dict]:
+def _match_by_name(static_steps: list[dict[str, Any]], step_name: str) -> Optional[dict[str, Any]]:
     needle = (step_name or "").strip().lower()
     if not needle:
         return None

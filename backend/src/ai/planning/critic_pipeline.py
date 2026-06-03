@@ -43,7 +43,7 @@ import time
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Iterable, Optional, Protocol, runtime_checkable
+from typing import Any, Iterable, Optional, Protocol, cast, runtime_checkable
 from uuid import UUID
 
 from src.ai.core.agent_state import (
@@ -311,7 +311,7 @@ class RealCriticPipeline:
             if kind not in {"PASS", "BLOCK", "REVISE"}:
                 kind = "PASS"
             concerns = [str(c) for c in (payload.get("concerns") or []) if c]
-            verdict = PreCriticVerdict(kind=kind, concerns=concerns, cost_usd=cost)
+            verdict = PreCriticVerdict(kind=cast(Any, kind), concerns=concerns, cost_usd=cost)
             await self._log_critic_usage(
                 state=state, response=response, attribution="critic_pre",
             )
@@ -376,7 +376,7 @@ class RealCriticPipeline:
                     tags.append(tag)
             suggestion = str(payload.get("suggestion", ""))[:500]
             verdict = PostCriticVerdict(
-                kind=kind, tags=tags, suggestion=suggestion, cost_usd=cost,
+                kind=cast(Any, kind), tags=tags, suggestion=suggestion, cost_usd=cost,
             )
             await self._log_critic_usage(
                 state=state, response=response, attribution="critic_post",
@@ -423,7 +423,7 @@ class RealCriticPipeline:
 
         try:
             from src.ai.planning.goal_alignment import GoalAlignmentVerifier
-            verifier = GoalAlignmentVerifier(self.db, state.company_id)
+            verifier = GoalAlignmentVerifier(self.db, cast(UUID, state.company_id))
             result = await verifier.verify_step_alignment(
                 entity_goal=self.config.entity_goal,
                 task_desc=self.config.task_description,
@@ -482,12 +482,12 @@ class RealCriticPipeline:
                 await self._log_critic_usage(
                     state=state, response=response, attribution="critic_super",
                 )
-            return verdict
+            return cast(SupervisorVerdict, verdict)
 
         # Legacy fallback — used only when supervisor_v2_enabled = False.
         try:
             from src.ai.core.meta_review import MetaReviewer
-            reviewer = MetaReviewer(self.db, state.company_id)
+            reviewer = MetaReviewer(self.db, cast(UUID, state.company_id))
             completed = self._completed_steps_for_review(state)
             remaining = self._remaining_steps_for_review(state)
             review = await reviewer.review_execution(
@@ -501,7 +501,7 @@ class RealCriticPipeline:
             if rec not in {"CONTINUE", "REPLAN", "ABORT", "PAUSE"}:
                 rec = "CONTINUE"
             verdict = SupervisorVerdict(
-                recommendation=rec,
+                recommendation=cast(Any, rec),
                 reasoning=str(review.get("reasoning", "")),
                 confidence=float(review.get("confidence", 0.5)),
             )
@@ -617,8 +617,8 @@ class RealCriticPipeline:
         except Exception:                                                   # pragma: no cover
             return "(none)"
 
-    def _completed_steps_for_review(self, state: AgentState) -> list[dict]:
-        out: list[dict] = []
+    def _completed_steps_for_review(self, state: AgentState) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
         for step in state.plan_steps[:50]:
             sid = str(step.get("step_id") or step.get("id") or "")
             if sid and sid in state.completed_step_ids:
@@ -628,8 +628,8 @@ class RealCriticPipeline:
                 })
         return out
 
-    def _remaining_steps_for_review(self, state: AgentState) -> list[dict]:
-        out: list[dict] = []
+    def _remaining_steps_for_review(self, state: AgentState) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
         for step in state.plan_steps[:50]:
             sid = str(step.get("step_id") or step.get("id") or "")
             if sid and sid not in state.completed_step_ids:
@@ -684,7 +684,7 @@ class RealCriticPipeline:
                 source_ref={"type": "health_root"},
             )
             self._health_root_id = new_id
-            return new_id
+            return cast(Optional[UUID], new_id)
         except Exception:                                                   # pragma: no cover
             logger.exception("Failed to create Health root node")
             return None

@@ -30,7 +30,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -104,18 +104,18 @@ class CriticCalibrator:
                 .options(selectinload(ExecutionRun.entity))
                 .where(ExecutionRun.id.in_(run_ids))
             )).scalars().all()
-            for run in run_rows:
-                runs_by_id[run.id] = run
+            for run_row in run_rows:
+                runs_by_id[run_row.id] = run_row
 
-        buckets: dict[tuple[Optional[UUID], str], list[tuple[dict, Any]]] = defaultdict(list)
+        buckets: dict[tuple[Optional[UUID], str], list[tuple[dict[str, Any], Any]]] = defaultdict(list)
         for r in rows:
-            run = runs_by_id.get(r.execution_run_id)
+            run = runs_by_id.get(cast(UUID, r.execution_run_id))
             if run is None:
                 continue
             entity_id = getattr(run, "entity_id", None)
             task_class = self._task_class_for(run)
             try:
-                payload = json.loads(r.content or "{}")
+                payload = json.loads(cast(str, r.content) or "{}")
             except Exception:
                 continue
             buckets[(entity_id, task_class)].append((payload, run))
@@ -152,7 +152,7 @@ class CriticCalibrator:
     def _compute(
         entity_id: Optional[UUID],
         task_class: str,
-        records: list[tuple[dict, Any]],
+        records: list[tuple[dict[str, Any], Any]],
     ) -> CalibrationResult:
         from src.ai.schemas.enums import RunStatus
 
@@ -217,7 +217,7 @@ class CriticCalibrator:
             return
 
         try:
-            svc = IntelligenceTreeService(self.db)
+            svc = IntelligenceTreeService(self.db)  # type: ignore[call-arg]
             write = getattr(svc, "upsert_calibration_rule", None) or getattr(
                 svc, "record_rule", None,
             )

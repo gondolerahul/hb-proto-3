@@ -25,7 +25,7 @@ When Track 9 deletes the legacy path, this whole file goes away.
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,9 +50,9 @@ class GoalGuard:
         company_id: UUID,
         entity_goal: str,
         task_description: str = "",
-        planner=None,
+        planner: Any = None,
         confidence_threshold: float = 0.85,
-    ):
+    ) -> None:
         global _DEPRECATION_LOGGED
         if not _DEPRECATION_LOGGED:
             logger.info(
@@ -73,14 +73,14 @@ class GoalGuard:
 
     async def check(
         self,
-        step_result: dict,
+        step_result: dict[str, Any],
         step_name: str,
         step_idx: int,
-        all_results: list,
+        all_results: list[Any],
         total_steps: int,
         is_autonomous: bool = False,
         goal_interval: int = 2,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """Run post-step goal validation.
 
         Returns:
@@ -88,7 +88,7 @@ class GoalGuard:
              "reason": str,
              "correction_hint": str (if RETRY)}
         """
-        result: Dict = {"action": "CONTINUE", "reason": ""}
+        result: Dict[str, Any] = {"action": "CONTINUE", "reason": ""}
 
         # Check 1: Per-step alignment — delegated to the same
         # GoalAlignmentVerifier the new RealCriticPipeline uses.
@@ -171,7 +171,7 @@ class AlignmentCritic:
         self.entity_goal = entity_goal
         self.task_description = task_description
 
-    async def verify(self, step_output: str, step_name: str) -> Dict:
+    async def verify(self, step_output: str, step_name: str) -> Dict[str, Any]:
         from src.ai.planning.goal_alignment import GoalAlignmentVerifier
         return await GoalAlignmentVerifier(self.db, self.company_id).verify_step_alignment(
             entity_goal=self.entity_goal,

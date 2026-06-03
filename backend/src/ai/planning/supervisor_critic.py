@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from src.ai.core.agent_state import (
@@ -292,7 +292,7 @@ class SupervisorCritic:
                     priority=priority,
                 ))
         return SupervisorVerdict(
-            recommendation=rec,
+            recommendation=cast(Any, rec),
             confidence=confidence,
             reasoning=reasoning,
             proposed_subgoals=proposed,

@@ -11,7 +11,7 @@ baselines drive the ``cost_estimate_within_budget`` invariant.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 
 # ---------------------------------------------------------------------------
@@ -150,15 +150,15 @@ def estimate_latency_s(plan: list[Any]) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _to_dict(step: Any) -> dict:
+def _to_dict(step: Any) -> dict[str, Any]:
     if isinstance(step, dict):
         return step
     if hasattr(step, "model_dump"):
         try:
-            return step.model_dump()
+            return cast("dict[str, Any]", step.model_dump())
         except Exception:                                                   # pragma: no cover
             pass
-    out: dict = {}
+    out: dict[str, Any] = {}
     for attr in ("step_id", "name", "type", "target"):
         v = getattr(step, attr, None)
         if v is not None:
