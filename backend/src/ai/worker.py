@@ -57,6 +57,15 @@ from src.common.database import AsyncSessionLocal  # noqa: F401
 # Arq WorkerSettings
 # ---------------------------------------------------------------------------
 
+# Intended dedicated queue for async child runs, so a fan-out PROCESS can't
+# starve top-level runs (and vice-versa). NOT routed yet: enqueuing children
+# here requires deploying a worker bound to this queue, otherwise children
+# would never be consumed. Until that worker exists, child dispatch stays on
+# the default queue and load is bounded by governance.max_concurrent_children
+# (see ChildEntityExecutor). Wire this in the C4 chain alongside the deletion.
+CHILD_RUN_QUEUE = "children"
+
+
 class WorkerSettings:
     functions = [
         run_execution_recursive,

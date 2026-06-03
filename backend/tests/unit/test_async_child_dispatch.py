@@ -9,9 +9,11 @@ Covers the pure/loosely-coupled pieces of the mechanism designed in
 * ``AgentLoop._fold_children`` (terminal vs pending children),
 * ``AgentLoop.resume`` idempotency guard.
 
-The full worker-driven end-to-end path (child job → resume_parent_run) is an
-integration concern requiring a live arq worker; per the design it is gated by
-the multi-child parity case before the flag flips ON.
+The full worker-driven end-to-end path (child job → resume_parent_run) is
+exercised hermetically by ``tests/parity/test_async_child_parity.py`` via the
+in-process arq drainer (``tests/parity/worker_sim.py``); this file keeps the
+unit-level coverage of the individual pieces plus the per-parent concurrency
+cap.
 """
 from __future__ import annotations
 
@@ -245,3 +247,45 @@ async def test_child_executor_async_dispatch_returns_awaiting_and_enqueues(monke
     ]
     assert result.completed_step_ids == []          # step completes only on resume
     assert enqueued == [("run_execution_recursive", (str(child_id),))]
+
+
+# ---------------------------------------------------------------------------
+# per-parent concurrency cap
+# ---------------------------------------------------------------------------
+
+
+def _awaiting(n_pending: int, n_terminal: int = 0) -> list[dict]:
+    rows = [{"run_id": str(uuid4()), "step_id": f"s{i}", "status": "PENDING"}
+            for i in range(n_pending)]
+    rows += [{"run_id": str(uuid4()), "step_id": f"t{i}", "status": "COMPLETED"}
+             for i in range(n_terminal)]
+    return rows
+
+
+def test_pending_child_count_ignores_terminal() -> None:
+    from src.ai.core.executors.child_entity import pending_child_count
+    state = _make_state()
+    state.awaiting_children = _awaiting(n_pending=2, n_terminal=3)
+    assert pending_child_count(state) == 2
+
+
+def test_within_cap_uses_governance_override() -> None:
+    from src.ai.core.executors.child_entity import within_child_dispatch_cap
+    state = _make_state()
+    state.awaiting_children = _awaiting(n_pending=2)
+    assert within_child_dispatch_cap(state, {"max_concurrent_children": 3}) is True
+    assert within_child_dispatch_cap(state, {"max_concurrent_children": 2}) is False
+
+
+def test_within_cap_default_and_bad_values() -> None:
+    from src.ai.core.executors.child_entity import (
+        within_child_dispatch_cap, DEFAULT_MAX_CONCURRENT_CHILDREN,
+    )
+    state = _make_state()
+    state.awaiting_children = _awaiting(n_pending=DEFAULT_MAX_CONCURRENT_CHILDREN)
+    # At the default ceiling → refused.
+    assert within_child_dispatch_cap(state, {}) is False
+    # Garbage / non-positive overrides fall back to the default (not a crash,
+    # not an accidental "0 allowed").
+    assert within_child_dispatch_cap(_make_state(), {"max_concurrent_children": "x"}) is True
+    assert within_child_dispatch_cap(_make_state(), {"max_concurrent_children": 0}) is True

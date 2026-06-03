@@ -24,6 +24,38 @@ from src.ai.orm.execution import ExecutionRun
 
 logger = logging.getLogger(__name__)
 
+# Default ceiling on a single parent's in-flight (dispatched, not-yet-folded)
+# async children. Bounds fleet load from a fan-out PROCESS; overridable per
+# entity via ``governance.max_concurrent_children``. When the ceiling is hit
+# the executor runs the next child inline (backpressure) instead of enqueuing
+# another isolated job.
+DEFAULT_MAX_CONCURRENT_CHILDREN = 8
+
+_TERMINAL_CHILD_STATUSES = {
+    "COMPLETED", "FAILED", "PARTIAL_COMPLETE", "CANCELLED",
+}
+
+
+def pending_child_count(state: Any) -> int:
+    """Number of this parent's children dispatched but not yet folded."""
+    return sum(
+        1 for c in getattr(state, "awaiting_children", []) or []
+        if c.get("status") not in _TERMINAL_CHILD_STATUSES
+    )
+
+
+def within_child_dispatch_cap(state: Any, governance: dict) -> bool:
+    """True if another async child may be dispatched without exceeding the
+    per-parent concurrency cap."""
+    raw = (governance or {}).get("max_concurrent_children")
+    try:
+        cap = int(raw) if raw is not None else DEFAULT_MAX_CONCURRENT_CHILDREN
+    except (TypeError, ValueError):
+        cap = DEFAULT_MAX_CONCURRENT_CHILDREN
+    if cap < 1:
+        cap = DEFAULT_MAX_CONCURRENT_CHILDREN
+    return pending_child_count(state) < cap
+
 
 class ChildEntityExecutor:
     name = "ChildEntity"
@@ -64,17 +96,25 @@ class ChildEntityExecutor:
         # without the inline-nested-loop cost amplification.
         governance = (entity.governance or {}) if entity else {}
         if governance.get("async_child_dispatch") and redis is not None:
-            try:
-                return await self._dispatch_async(
-                    engine, redis, run, entity, step_obj, state, start,
+            if not within_child_dispatch_cap(state, governance):
+                # Backpressure: too many children already in flight for this
+                # parent. Run this one inline rather than fan out further.
+                logger.info(
+                    "Child dispatch cap reached for parent %s (%d in flight); "
+                    "running child inline.", run.id, pending_child_count(state),
                 )
-            except Exception as exc:                                       # noqa: BLE001
-                # Dispatch failure must not strand the run — fall through to the
-                # inline path below so behaviour degrades to the legacy mode.
-                logger.warning(
-                    "Async child dispatch failed (%s); falling back to inline.",
-                    exc,
-                )
+            else:
+                try:
+                    return await self._dispatch_async(
+                        engine, redis, run, entity, step_obj, state, start,
+                    )
+                except Exception as exc:                                   # noqa: BLE001
+                    # Dispatch failure must not strand the run — fall through to
+                    # the inline path below so behaviour degrades to legacy mode.
+                    logger.warning(
+                        "Async child dispatch failed (%s); falling back to inline.",
+                        exc,
+                    )
 
         _child_name = str(getattr(step_obj, "name", "") or getattr(step_obj, "step_id", "") or "child")
         async with span(

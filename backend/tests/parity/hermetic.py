@@ -139,7 +139,8 @@ def hermetic_llm_and_tools() -> Iterator[None]:
 
 
 def _build_entity(dto: Any, company_id: uuid.UUID, *,
-                  planning_override: Optional[dict] = None) -> Any:
+                  planning_override: Optional[dict] = None,
+                  governance_override: Optional[dict] = None) -> Any:
     """Construct a HierarchicalEntity row from a fixture DTO.
 
     The name is uniquified so repeated seeds don't collide on
@@ -152,6 +153,10 @@ def _build_entity(dto: Any, company_id: uuid.UUID, *,
     planning = planning_override
     if planning is None:
         planning = dto.planning.model_dump() if dto.planning else None
+
+    governance = dto.governance.model_dump() if dto.governance else {}
+    if governance_override:
+        governance = {**(governance or {}), **governance_override}
 
     return HierarchicalEntity(
         id=uuid.uuid4(),
@@ -169,7 +174,7 @@ def _build_entity(dto: Any, company_id: uuid.UUID, *,
         logic_gate=dto.logic_gate.model_dump() if dto.logic_gate else None,
         planning=planning,
         capabilities=dto.capabilities.model_dump() if dto.capabilities else None,
-        governance=dto.governance.model_dump() if dto.governance else None,
+        governance=governance or None,
         io_contract=dto.io_contract.model_dump() if dto.io_contract else None,
         observability=dto.observability.model_dump() if dto.observability else None,
         metadata_extensions=dto.metadata_extensions,
@@ -213,6 +218,7 @@ async def seed_parity_run(
     input_data: dict,
     company_id: Optional[uuid.UUID] = None,
     child_fixtures: Optional[dict] = None,
+    governance_overrides: Optional[dict] = None,
     commit: bool = True,
 ) -> str:
     """Insert a fresh company (if needed), entity, and PENDING run.
@@ -221,6 +227,10 @@ async def seed_parity_run(
     ``entity_name_hint`` to a child entity fixture name; each is seeded in
     the same company and its id wired into the parent plan so a PROCESS
     resolves its children and completes hermetically.
+
+    ``governance_overrides`` is merged into the parent entity's governance
+    (e.g. ``{"async_child_dispatch": True}`` to exercise the suspend/resume
+    child path).
 
     Returns the new run id as a string. Used by both the recorder and the
     parity tests so goldens and candidates run the identical entity config.
@@ -255,7 +265,8 @@ async def seed_parity_run(
     planning = dto.planning.model_dump(mode="json") if dto.planning else None
     planning = _wire_child_entity_ids(planning, child_id_by_hint)
 
-    entity = _build_entity(dto, company_id, planning_override=planning)
+    entity = _build_entity(dto, company_id, planning_override=planning,
+                           governance_override=governance_overrides)
     db.add(entity)
     await db.flush()
 

@@ -106,5 +106,12 @@ async def test_agent_loop_parity(db, redis_client) -> None:
         if not report.passed:
             failures.append(head + "\n" + report.summary())
 
+    # Async child-dispatch parity (suspend/resume path) — run in THIS loop so
+    # the global AsyncSessionLocal engine stays bound to one event loop.
+    from tests.parity.test_async_child_parity import (
+        check_async_child_dispatch_parity,
+    )
+    failures.extend(await check_async_child_dispatch_parity())
+
     assert ran > 0, "No parity cases executed."
     assert not failures, "Parity violations:\n" + "\n".join(failures)
