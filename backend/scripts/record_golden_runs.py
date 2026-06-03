@@ -48,20 +48,25 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger("record_golden_runs")
 
 
-async def _record_one(case_id: str, output_dir: Path) -> bool:
-    """Record one case. Returns True on success."""
+async def _record_one(case_id: str, output_dir: Path, *, hermetic: bool) -> bool:
+    """Record one case. Returns True on success.
+
+    When ``hermetic`` is True the legacy engine runs under the
+    deterministic LLM + tool patches (no API keys / network) so the golden
+    is reproducible and matches how the parity gate runs candidates.
+    """
     # Imports are local so the script can be inspected (--help) even
     # when the DB / Redis env is unset.
-    from sqlalchemy import select
+    import contextlib
 
     from src.ai.core.execution_engine import ExecutionEngine
-    from src.ai.orm.entity import HierarchicalEntity
-    from src.ai.orm.execution import ExecutionRun
     from src.common.database import AsyncSessionLocal
 
-    from tests.harness import load_entity_fixture
     from tests.parity.extract import extract_run_result
+    from tests.parity.hermetic import hermetic_llm_and_tools, seed_parity_run
     from tests.regression.loader import load_case
+
+    patch_ctx = hermetic_llm_and_tools() if hermetic else contextlib.nullcontext()
 
     case_path = REPO_ROOT / "backend" / "tests" / "regression" / "cases" / f"{case_id}.yaml"
     if not case_path.exists():
@@ -69,78 +74,31 @@ async def _record_one(case_id: str, output_dir: Path) -> bool:
         return False
 
     case = load_case(case_path)
-    entity_dto = load_entity_fixture(case.entity_fixture)
 
     import redis.asyncio as aioredis
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
     redis_client = await aioredis.from_url(redis_url)
 
     async with AsyncSessionLocal() as db:
-        company_id = uuid.UUID(os.environ.get(
-            "GOLDEN_COMPANY_ID",
-            "00000000-0000-0000-0000-00000000a000",
-        ))
-        # Insert (or reuse) the entity row.
-        existing = (await db.execute(
-            select(HierarchicalEntity).where(
-                HierarchicalEntity.company_id == company_id,
-                HierarchicalEntity.name == entity_dto.name,
-            )
-        )).scalars().first()
-
-        if existing:
-            entity_id = existing.id
-            logger.info("Reusing entity %s (%s)", entity_dto.name, entity_id)
-        else:
-            entity_row = HierarchicalEntity(
-                id=uuid.uuid4(),
-                company_id=company_id,
-                name=entity_dto.name,
-                display_name=entity_dto.display_name,
-                description=entity_dto.description,
-                goal=entity_dto.goal,
-                type=entity_dto.type.value,
-                status=entity_dto.status.value,
-                version=entity_dto.version,
-                tags=entity_dto.tags,
-                identity=entity_dto.identity,
-                hierarchy=entity_dto.hierarchy.model_dump() if entity_dto.hierarchy else None,
-                logic_gate=entity_dto.logic_gate.model_dump() if entity_dto.logic_gate else None,
-                planning=entity_dto.planning.model_dump() if entity_dto.planning else None,
-                capabilities=entity_dto.capabilities.model_dump() if entity_dto.capabilities else None,
-                governance=entity_dto.governance.model_dump() if entity_dto.governance else None,
-                io_contract=entity_dto.io_contract.model_dump() if entity_dto.io_contract else None,
-                observability=entity_dto.observability.model_dump() if entity_dto.observability else None,
-                metadata_extensions=entity_dto.metadata_extensions,
-            )
-            db.add(entity_row)
-            await db.commit()
-            entity_id = entity_row.id
-            logger.info("Created entity %s (%s)", entity_dto.name, entity_id)
-
-        # Seed the run.
-        run_row = ExecutionRun(
-            id=uuid.uuid4(),
-            entity_id=entity_id,
-            company_id=company_id,
-            status="PENDING",
+        # Seed company + entity + run via the SAME helper the parity tests
+        # use, so the golden and the candidate run identical entity configs.
+        run_id = await seed_parity_run(
+            db,
+            entity_fixture=case.entity_fixture,
             input_data=case.input,
         )
-        db.add(run_row)
-        await db.commit()
-        run_id = run_row.id
-        logger.info("Created run %s for case %s", run_id, case_id)
+        logger.info("Seeded run %s for case %s", run_id, case_id)
 
         # Execute via LEGACY engine — this writes status, cost, logs.
-        logger.info("Executing legacy ExecutionEngine ...")
+        logger.info("Executing legacy ExecutionEngine (hermetic=%s) ...", hermetic)
         engine = ExecutionEngine(db, redis_client)
         try:
-            await engine.execute_run(run_id)
+            with patch_ctx:
+                await engine.execute_run(run_id)
         except Exception:
             logger.exception("Legacy run raised — recording partial snapshot anyway")
 
         # Re-fetch + extract.
-        await db.refresh(run_row)
         rr = await extract_run_result(db, str(run_id))
         snapshot_path = output_dir / f"{case_id}.json"
         rr.save(snapshot_path)
@@ -157,6 +115,21 @@ async def _main(args: Any) -> int:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Hermetic mode: deterministic mock LLM + stubbed tools. Default ON when
+    # no LLM key is present so goldens are reproducible in CI / dev. Force
+    # with --hermetic, disable with --no-hermetic (real LLM calls).
+    has_llm_key = any(
+        os.environ.get(k)
+        for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
+                  "GEMINI_API_KEY", "VERTEX_PROJECT")
+    )
+    if args.hermetic is None:
+        hermetic = not has_llm_key
+    else:
+        hermetic = args.hermetic
+    logger.info("Recording goldens (hermetic=%s, llm_key_present=%s)",
+                hermetic, has_llm_key)
+
     if args.cases:
         case_ids = list(args.cases)
     else:
@@ -171,7 +144,7 @@ async def _main(args: Any) -> int:
     failures = 0
     for cid in case_ids:
         logger.info("=== Recording golden for %s ===", cid)
-        ok = await _record_one(cid, output_dir)
+        ok = await _record_one(cid, output_dir, hermetic=hermetic)
         if not ok:
             failures += 1
     return 0 if failures == 0 else 1
@@ -193,6 +166,20 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Specific case ids to record. Default: every YAML under "
              "backend/tests/regression/cases/.",
+    )
+    parser.add_argument(
+        "--hermetic",
+        dest="hermetic",
+        action="store_true",
+        default=None,
+        help="Force deterministic mock LLM + stubbed tools (no API keys). "
+             "Auto-enabled when no LLM key is present.",
+    )
+    parser.add_argument(
+        "--no-hermetic",
+        dest="hermetic",
+        action="store_false",
+        help="Use the real LLM provider (requires keys + credits).",
     )
     return parser.parse_args()
 

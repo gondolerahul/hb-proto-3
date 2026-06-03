@@ -98,15 +98,33 @@ async def extract_run_result(
         if run.result_data:
             derived_output = str(run.result_data)
 
+    # Wall time, engine-fair: the legacy engine writes ``execution_time_ms``
+    # directly; the AgentLoop only stamps ``started_at`` / ``completed_at``.
+    # Fall back to the timestamp delta so both engines report a comparable
+    # number instead of the loop showing 0.
+    exec_ms = int(run.execution_time_ms or 0)
+    if exec_ms == 0:
+        started = getattr(run, "started_at", None)
+        completed = getattr(run, "completed_at", None)
+        if started is not None and completed is not None:
+            exec_ms = max(0, int((completed - started).total_seconds() * 1000))
+
+    # Step/iteration count, engine-fair: prefer the persisted plan steps;
+    # if the engine didn't persist a plan to ``run.dynamic_plan`` (static
+    # entities under the loop), fall back to the count of LLM interactions
+    # so the count reflects real work rather than reading 0.
+    persisted_steps = len(step_summaries)
+    effective_steps = persisted_steps or len(llm_rows)
+
     return RunResult(
         run_id=str(run.id),
         entity_id=str(run.entity_id),
         status=str(run.status),
         total_cost_usd=float(run.total_cost_usd or 0),
         total_tokens=int(run.total_tokens or 0),
-        execution_time_ms=int(run.execution_time_ms or 0),
-        iterations=int(iterations if iterations is not None else len(step_summaries) or 0),
-        step_count=len(step_summaries),
+        execution_time_ms=exec_ms,
+        iterations=int(iterations if iterations is not None else effective_steps or 0),
+        step_count=effective_steps,
         error_message=run.error_message,
         output_text=derived_output,
         plan_step_types=plan_step_types,

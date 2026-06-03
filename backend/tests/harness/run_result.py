@@ -111,6 +111,11 @@ class ParityTolerance:
     output_similarity_min: float = 0.85
     step_count_delta: int = 2
     wall_time_pct: float = 0.25
+    # Wall-clock parity is only meaningful when the LLM/tooling cost real
+    # time. Under the hermetic parity gate (deterministic mock LLM, stubbed
+    # tools) both engines finish sub-second, so timing is infra-noise rather
+    # than an engine signal — set this False there.
+    check_wall_time: bool = True
 
     @classmethod
     def for_track(cls, track: int) -> "ParityTolerance":
@@ -122,6 +127,14 @@ class ParityTolerance:
         if track == 7:
             return cls(cost_pct=0.10)
         return cls()
+
+    @classmethod
+    def hermetic(cls, track: int = 2) -> "ParityTolerance":
+        """Tolerance for the key-free hermetic gate: real status/cost/step/
+        output checks, but wall-time disabled (mock timing is meaningless)."""
+        base = cls.for_track(track)
+        base.check_wall_time = False
+        return base
 
 
 @dataclass
@@ -204,8 +217,8 @@ def compare_run_results(
             )
         )
 
-    # 4. Wall time — multiplicative band.
-    if baseline.execution_time_ms > 0:
+    # 4. Wall time — multiplicative band (skipped when disabled).
+    if tolerance.check_wall_time and baseline.execution_time_ms > 0:
         wall_ratio = abs(
             candidate.execution_time_ms - baseline.execution_time_ms
         ) / baseline.execution_time_ms

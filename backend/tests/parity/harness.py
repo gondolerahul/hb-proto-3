@@ -86,6 +86,7 @@ async def run_parity_case(
     case: ParityCase,
     *,
     golden_path: Optional[Path] = None,
+    tolerance: Optional[ParityTolerance] = None,
 ) -> ParityReport:
     """Execute the case against legacy + candidate, return a report.
 
@@ -127,7 +128,7 @@ async def run_parity_case(
     violations = compare_run_results(
         baseline,
         candidate,
-        ParityTolerance.for_track(case.track),
+        tolerance or ParityTolerance.for_track(case.track),
         similarity_fn=deterministic_cosine_similarity,
     )
     return ParityReport(case=case, baseline=baseline, candidate=candidate,
@@ -135,12 +136,19 @@ async def run_parity_case(
 
 
 async def _seed_run(db: Any, case: ParityCase, *, flag: str) -> str:
-    """Insert a fresh ExecutionRun row for the case and return its id.
+    """Insert a fresh company + entity + PENDING run for the case.
 
-    Track 2 should replace this with the real run-creation path (the
-    same one the HTTP API uses) once the AgentLoop service exists.
+    ``flag`` is informational only ("legacy"/"candidate"); the engine
+    choice is made by the caller via the registered adapter. Both engines
+    receive an identically-seeded run so any divergence is the engine's.
     """
-    raise NotImplementedError(
-        "_seed_run is intentionally not implemented yet — Track 2 owns "
-        "wiring it to the real run-creation path."
+    import uuid as _uuid
+    from tests.parity.hermetic import seed_parity_run
+
+    company_id = _uuid.UUID(case.company_id) if case.company_id else None
+    return await seed_parity_run(
+        db,
+        entity_fixture=case.fixture_name,
+        input_data=case.input_data,
+        company_id=company_id,
     )

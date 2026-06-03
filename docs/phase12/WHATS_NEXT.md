@@ -35,10 +35,14 @@ These are gating: nothing downstream can complete until each is done.
   - [x] `meta_agent.board_routing` default flipped **ON** (both alias + canonical).
   - [x] Feature-flag unit tests updated to the new defaults; suite green.
   - [ ] *(follow-up)* Verify `meta_cognition_migration` ran in all tenants (`06` §1).
-  - [ ] *(follow-up)* Stand up the eval/parity corpus to prove `loop ≈ legacy`
-        before `C4` (seed dirs exist: `tests/parity/`, `tests/regression/`).
+  - [x] **Parity gate wired + green** — `tests/parity/` now runs the legacy
+        `ExecutionEngine` vs the new `AgentLoop` hermetically (deterministic
+        mock LLM + stubbed tools, no API keys). Goldens recorded for 3 cases;
+        `pytest tests/parity` passes. This is the `loop ≈ legacy` evidence
+        required before the C4 deletion. See `backend/tests/parity/README.md`.
   - **Note:** because telemetry is skipped, the gated legacy deletions (C1–C4)
-        are now unblocked by policy — proceed when the parity corpus is green.
+        are now unblocked by policy — and the parity gate is green, so C4 has
+        its evidence. Strengthen with more positive PROCESS cases before C4.
 
 - [ ] **🔒 C4 — delete legacy `ExecutionEngine.execute_run` monolith** *(keystone,
       `01` §4)* — `core/execution_engine.py` is still ~1288 LoC. **Gated on

@@ -1,0 +1,42 @@
+{
+  "run_id": "e21ec11e-ebeb-4742-98e5-02ce7ed0023b",
+  "entity_id": "201159af-21e2-4299-b015-619bbae2b459",
+  "status": "FAILED",
+  "total_cost_usd": 0.0,
+  "total_tokens": 0,
+  "execution_time_ms": 121,
+  "iterations": 2,
+  "step_count": 2,
+  "error_message": "AgentError: Child invocation missing entity_id for step delegate_research",
+  "output_text": "",
+  "plan_step_types": [
+    "CHILD_ENTITY_INVOCATION",
+    "CHILD_ENTITY_INVOCATION"
+  ],
+  "steps": [
+    {
+      "step_id": "step_researcher",
+      "name": "delegate_research",
+      "type": "CHILD_ENTITY_INVOCATION",
+      "status": "success",
+      "cost_usd": 0.0,
+      "latency_ms": 0,
+      "tool_id": null,
+      "output_len": 0
+    },
+    {
+      "step_id": "step_synthesiser",
+      "name": "delegate_synthesis",
+      "type": "CHILD_ENTITY_INVOCATION",
+      "status": "success",
+      "cost_usd": 0.0,
+      "latency_ms": 0,
+      "tool_id": null,
+      "output_len": 0
+    }
+  ],
+  "meta": {
+    "llm_call_count": 0,
+    "tool_call_count": 0
+  }
+}

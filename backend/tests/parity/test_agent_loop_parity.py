@@ -1,35 +1,41 @@
 """
-Phase 11 Track 2 — Parity tests for the AgentLoop.
+Parity gate — legacy ExecutionEngine vs. the new AgentLoop.
 
-These tests compare a recorded golden snapshot (produced by
-``backend/scripts/record_golden_runs.py``) against a fresh run of the
-new AgentLoop. They are SKIPPED when:
+For each recorded golden snapshot (produced by
+``python -m scripts.record_golden_runs``), this test:
 
-  * No golden snapshot is on disk for the case, OR
-  * The DATABASE_URL / REDIS_URL env vars are missing (CI without
-    services), OR
-  * Track 2 hasn't yet flipped the ``agent_loop.enabled`` feature flag
-    on the test entity.
+  1. seeds a fresh tenant + entity + run from the same fixture,
+  2. runs the **candidate** (AgentLoop) under the deterministic hermetic
+     patches (mock LLM + stubbed web_search — see ``hermetic.py``),
+  3. extracts a ``RunResult`` and compares it to the golden with
+     ``ParityTolerance.hermetic`` (status exact, cost band, step delta,
+     output cosine ≥ floor; wall-time disabled because mock timing is
+     infra-noise).
 
-When all three conditions are met, the tests assert ±5% cost parity,
-≥0.85 output cosine similarity, ±2 step-count delta, and matching final
-status against the golden.
+Because the LLM is held constant, any violation is attributable to the
+engine — which is exactly the evidence required before deleting the
+legacy engine (plan ``01`` C4 / risk R1 in ``08``).
+
+SKIP conditions (so the suite stays green where infra is absent):
+  * no golden snapshots on disk, OR
+  * DATABASE_URL unset / Postgres unreachable / Redis unreachable
+    (handled by the ``db`` / ``redis_client`` fixtures in conftest).
+
+The map ``case_id -> regression-case fixture/input`` is derived from the
+YAML cases the goldens were recorded from.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
 
-from tests.harness import RunResult
+from tests.harness import ParityTolerance, RunResult
+from tests.parity.harness import ParityCase, run_parity_case
 
 
 GOLDENS_DIR = Path(__file__).resolve().parent / "goldens"
-
-
-def _has_live_services() -> bool:
-    return bool(os.environ.get("DATABASE_URL") and os.environ.get("REDIS_URL"))
+CASES_DIR = Path(__file__).resolve().parents[1] / "regression" / "cases"
 
 
 def _available_goldens() -> list[Path]:
@@ -38,50 +44,66 @@ def _available_goldens() -> list[Path]:
     return [p for p in GOLDENS_DIR.glob("*.json") if p.name != ".gitkeep"]
 
 
+def _case_for(golden: Path) -> ParityCase:
+    """Build a ParityCase from the regression YAML the golden mirrors."""
+    from tests.regression.loader import load_case
+    case = load_case(CASES_DIR / f"{golden.stem}.yaml")
+    return ParityCase(
+        case_id=golden.stem,
+        fixture_name=case.entity_fixture,
+        input_data=case.input,
+        track=2,
+    )
+
+
 pytestmark = pytest.mark.parity
+
+
+def test_parity_conftest_registers_engines() -> None:
+    """Sanity: both engine adapters are registered so the harness runs."""
+    from tests.parity.harness import ENGINE_ADAPTERS
+    assert "legacy" in ENGINE_ADAPTERS
+    assert "candidate" in ENGINE_ADAPTERS
 
 
 @pytest.mark.skipif(
     not _available_goldens(),
-    reason="No golden snapshots present — run "
-    "`python backend/scripts/record_golden_runs.py` first.",
-)
-@pytest.mark.skipif(
-    not _has_live_services(),
-    reason="DATABASE_URL / REDIS_URL not set — parity tests need live services.",
-)
-@pytest.mark.parametrize(
-    "golden_path",
-    _available_goldens(),
-    ids=lambda p: p.stem,
+    reason="No golden snapshots — run `python -m scripts.record_golden_runs`.",
 )
 @pytest.mark.asyncio
-async def test_agent_loop_parity(golden_path: Path) -> None:
-    """One parity case per golden snapshot.
+async def test_agent_loop_parity(db, redis_client) -> None:
+    """The AgentLoop matches every recorded legacy golden within tolerance.
 
-    The test loads the golden, sets up a fresh tenant + run, flips
-    ``agent_loop.enabled = true`` on the test entity, and runs the
-    AgentLoop. ``compare_run_results`` then asserts tolerances.
-
-    Track 3+ tightens tolerances per the matrix in
-    ``14_test_strategy.md §4.3``.
+    All cases run inside a **single event loop** on purpose: the kernel's
+    global ``AsyncSessionLocal`` engine binds to the loop it is first used
+    on, and asyncpg connections cannot cross event loops. Parametrising
+    one-test-per-loop trips that, so we iterate here instead and aggregate
+    per-case results.
     """
-    # This is intentionally a thin shell — the harness owns the
-    # heavy lifting once Track 2 wires DB/Redis fixtures into
-    # the parity conftest. Until those fixtures exist this test is
-    # a placeholder that documents the intended call site.
-    baseline = RunResult.load(golden_path)
-    pytest.skip(
-        f"DB/Redis fixtures not yet wired in conftest; baseline loaded "
-        f"({baseline.status}, ${baseline.total_cost_usd:.4f}, "
-        f"{baseline.step_count} steps) — Track 2 sign-off requires "
-        f"wiring DB/Redis fixtures before this assertion can run."
-    )
+    goldens = _available_goldens()
+    failures: list[str] = []
+    ran = 0
 
+    for golden_path in goldens:
+        baseline = RunResult.load(golden_path)
+        case = _case_for(golden_path)
+        report = await run_parity_case(
+            db,
+            redis_client,
+            case,
+            golden_path=golden_path,
+            tolerance=ParityTolerance.hermetic(track=case.track),
+        )
+        ran += 1
+        head = (
+            f"[{case.case_id}] golden(status={baseline.status} "
+            f"cost=${baseline.total_cost_usd:.4f} steps={baseline.step_count}) "
+            f"vs loop(status={report.candidate.status} "
+            f"cost=${report.candidate.total_cost_usd:.4f} "
+            f"steps={report.candidate.step_count})"
+        )
+        if not report.passed:
+            failures.append(head + "\n" + report.summary())
 
-def test_parity_conftest_registers_engines() -> None:
-    """Sanity: the conftest in this directory MUST have registered
-    both engine adapters so ``run_parity_case`` doesn't raise."""
-    from tests.parity.harness import ENGINE_ADAPTERS
-    assert "legacy" in ENGINE_ADAPTERS
-    assert "candidate" in ENGINE_ADAPTERS
+    assert ran > 0, "No parity cases executed."
+    assert not failures, "Parity violations:\n" + "\n".join(failures)
