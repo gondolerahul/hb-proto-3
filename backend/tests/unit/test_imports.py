@@ -1,13 +1,10 @@
-"""Phase 11 Track 0 — import-shape assertions.
+"""Import-shape assertions.
 
-These tests freeze the cleanup work so it doesn't regress in later
-Tracks. Specifically:
+These tests freeze the cleanup work so it doesn't regress:
 
-  * CortexRouter → CortexService rename (T0-3); the legacy name must
-    still resolve via the backwards-compat alias until Track 9 deletes
-    it.
-  * worker.py re-exports must be gone (T0-4); the canonical paths
-    under ``src.ai.core.*`` must work.
+  * CortexService is importable from both its module and the package.
+  * worker.py re-exports must be gone; the canonical paths under
+    ``src.ai.core.*`` must work.
 """
 from __future__ import annotations
 
@@ -21,20 +18,11 @@ def test_cortex_service_canonical_import() -> None:
     assert CortexService.__name__ == "CortexService"
 
 
-def test_cortex_router_backwards_compat_alias_resolves() -> None:
-    """The legacy `CortexRouter` symbol still resolves and points to
-    the renamed class. Removed in Track 9."""
-    from src.ai.memory.cortex_service import CortexRouter, CortexService
+def test_memory_package_exposes_cortex_service() -> None:
+    """`from src.ai.memory import CortexService` resolves."""
+    from src.ai.memory import CortexService
 
-    assert CortexRouter is CortexService
-
-
-def test_memory_package_exposes_both_names() -> None:
-    """`from src.ai.memory import CortexService` and `CortexRouter` both
-    resolve while the alias is in place."""
-    from src.ai.memory import CortexRouter, CortexService
-
-    assert CortexService is CortexRouter
+    assert CortexService.__name__ == "CortexService"
 
 
 def test_no_worker_re_exports() -> None:

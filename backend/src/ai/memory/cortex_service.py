@@ -1189,11 +1189,3 @@ class CortexService:
         except Exception as e:
             logger.warning(f"Bridge paragraph generation failed: {e}")
             return []
-
-
-# ---------------------------------------------------------------------------
-# Backwards-compat alias — DEPRECATED, scheduled for removal in Track 9.
-# Renamed CortexRouter → CortexService. Keep the alias
-# until the layout lint and downstream callers are updated.
-# ---------------------------------------------------------------------------
-CortexRouter = CortexService

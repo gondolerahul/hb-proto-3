@@ -41,7 +41,7 @@ from src.ai.governance.governance_service import GovernanceService
 from src.ai.planning.planner_service import PlannerService
 from src.ai.memory.cortex_bridge import CortexBridge
 from src.ai.step_executor import StepExecutorService
-from src.ai.memory.cortex_service import CortexRouter as CortexService
+from src.ai.memory.cortex_service import CortexService
 from src.ai.memory.cortex_models import CortexNodeType
 from src.ai.constants import INTERNAL_CONTEXT_KEYS, MAX_REACT_TURNS
 
