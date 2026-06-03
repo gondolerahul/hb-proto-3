@@ -1242,16 +1242,8 @@ Step 2: [your analysis]
 
         max_retries = ((entity.logic_gate or {}).get("retry_policy") or {}).get("max_retries", 3)
 
-        # Fix 4 (Option A): Cap retries for expensive reasoning modes.
-        # REFLECTION steps are 2-3x more expensive per retry (~90s each);
-        # burning 3 retries can consume the entire execution budget.
-        step_reasoning = getattr(step.target, 'reasoning_mode', None) if step.target else None
-        if not step_reasoning:
-            # Fall back to entity-level reasoning mode
-            step_reasoning = ((entity.logic_gate or {}).get("reasoning_config") or {}).get("reasoning_mode", "")
-        if str(step_reasoning).upper() == "REFLECTION" and max_retries > 1:
-            max_retries = 1
-            logger.info(f"Capped retries to {max_retries} for REFLECTION step '{step.name}'")
+        # (D-3: the former REFLECTION per-step retry cap is gone — REFLECTION
+        # is retired as a per-entity mode; the AgentLoop Reflector owns it.)
 
         custom_criteria = review_config.get("review_prompt", "")
         # Use entity-configured review system prompt, falling back to the schema default

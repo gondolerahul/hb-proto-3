@@ -288,11 +288,13 @@ class PlatformSchemaCompiler:
     # ------------------------------------------------------------------
 
     def _compile_reasoning_modes(self) -> List[Dict[str, str]]:
+        # D-3: only REACT and CHAIN_OF_THOUGHT remain selectable per-step.
+        # REFLECTION is handled by the AgentLoop Reflector; multi-branch
+        # exploration is the Strategist-selected DebateExecutor — neither is
+        # an author-facing per-entity reasoning mode any longer.
         return [
             {"mode": "REACT", "description": "Reason-Act cycle. LLM reasons, calls tools, observes, repeats."},
             {"mode": "CHAIN_OF_THOUGHT", "description": "Step-by-step reasoning before acting."},
-            {"mode": "REFLECTION", "description": "Post-action self-critique and correction."},
-            {"mode": "TREE_OF_THOUGHTS", "description": "Explores multiple reasoning branches."},
         ]
 
     def _compile_execution_modes(self) -> List[Dict[str, str]]:
