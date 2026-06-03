@@ -52,7 +52,7 @@ DEFAULTS: dict[str, bool] = {
     "critic_pipeline.v2_enabled": True,
     "critic_pipeline.different_model_critic": True,
     "critic_pipeline.pre_critic_enabled": True,
-    "critic_pipeline.v1_compat": False,
+    # (C1: critic_pipeline.v1_compat retired — the v1 critic body is deleted.)
     "critic_pipeline.calibration_enabled": True,
     # Legacy alias retained for tests / pre-Track-3 callers.
     "critic_pipeline.enabled": False,

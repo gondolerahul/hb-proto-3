@@ -373,12 +373,11 @@ class ExecutionEngine:
             governance_dict=governance
         )
 
-        # Review Mechanism
-        if (entity.logic_gate or {}).get("review_mechanism", {}).get("enabled"):
-            step_result = await self._step_executor._review_step_output(run, entity, step_obj, step_result, context_state)
+        # (C1: the legacy v1 self-critique `_review_step_output` is deleted.
+        # The AgentLoop is the default path and runs RealCriticPipeline; this
+        # deprecated engine no longer does its own per-step review.)
 
-        # ── Phase 10D: GoalGuard step-level alignment check ─────────────
-        # Replaces the 50-line inline goal alignment block from Phase 9.
+        # ── GoalGuard step-level alignment check ─────────────
         reasoning_cfg = (entity.logic_gate or {}).get("reasoning_config", {})
         goal_interval = reasoning_cfg.get("goal_validation_interval", 0)
         if goal_interval > 0 and entity.goal and isinstance(step_result, dict) and step_result.get("output"):
