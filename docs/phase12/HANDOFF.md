@@ -107,6 +107,7 @@ all local). Earlier Phase-11/Stage-0 work (`1dd336a`..`deaabba`) is unchanged.
 | `fbfbf00` | **docs** — C4 plan Progress section. |
 | `b17c803` | **C12 scaffold** — `mypy --strict` per-package gate (`scripts/typecheck_ai.py` + allowlist + `test_typecheck_passes` + CI fast lane + `[tool.mypy]`); **`governance/` strict-clean** (first package). |
 | `996053b` | **C12 — ORM→`Mapped[]` + planning clean** — `orm/*` migrated to SQLAlchemy 2.0 `Mapped[]` (DDL-identical), governance de-cast, **`planning/` strict-clean** (87→0); allowlist now governance + orm + planning. |
+| `4f60690` | **C12 — meta strict-clean** — **`meta/` strict-clean** (74→0); allowlist now governance + orm + planning + meta (46 files). Surfaced 3 latent meta bugs (flagged). |
 
 **Push status:** local only.
 ```bash
@@ -215,21 +216,26 @@ Pull per-item detail from `WHATS_NEXT.md`.
 - ✅ C3-alias, C10, C11, lint→error (de-canary). `grep` of `backend/src
   frontend/src` for `p11|P11|phase11` is empty except the documented shims +
   migration names + `*.md` doc pointers.
-- ◐ **C12 — `mypy --strict`** per package as a CI gate. **Scaffold + 3 packages
-  clean** (`b17c803`, `996053b`): `scripts/typecheck_ai.py` (allowlist +
+- ◐ **C12 — `mypy --strict`** per package as a CI gate. **Scaffold + 4 packages
+  clean** (`b17c803`, `996053b`, `4f60690`): `scripts/typecheck_ai.py` (allowlist +
   `--follow-imports=silent`), `test_typecheck_passes`, `run_ci_matrix.sh` fast
   lane, `pyproject [tool.mypy]`. **Clean: `governance/` (32→0), `orm/`, `planning/`
-  (87→0).** Add the next package by making `mypy --strict --follow-imports=silent
-  src/ai/<pkg>` zero, then append it to `CLEAN_PACKAGES`. Localized remaining
-  counts: `meta` 109, `memory` 225, `core` ~1190 — incremental, not the
-  "mechanical M" the plan billed. **The legacy-`Column` ORM cost is GONE:**
+  (87→0), `meta/` (74→0)** — 46 files gated. Add the next package by making
+  `mypy --strict --follow-imports=silent src/ai/<pkg>` zero, then append it to
+  `CLEAN_PACKAGES`. Localized remaining counts: `memory` 225, `core` ~1190 —
+  incremental, not the "mechanical M" the plan billed. **The legacy-`Column` ORM cost is GONE:**
   `orm/` was migrated to SQLAlchemy 2.0 `Mapped[]` (`996053b`, DDL-identical), so
   attributes carry real types — no more `cast()`/`# type: ignore[assignment]`
   against `orm/` models. (Cross-package reads of not-yet-migrated models — e.g.
   `memory/`'s `CortexNode` — still need a `cast` until that package migrates too.)
-  **Latent bug found + flagged:** `CriticCalibrator` builds
-  `IntelligenceTreeService` without the required `company_id` → calibration rules
-  silently never persist (`critic_calibration.py` `# type: ignore[call-arg]`).
+  **Latent bugs surfaced by strict typing (all silently masked, flagged via
+  spawn-tasks):** `CriticCalibrator` built `IntelligenceTreeService` without the
+  required `company_id` (planning; since fixed); and in `meta/` — `curator`'s
+  anti-sprawl CREATE gate calls `check_creation_allowed` with the wrong kwargs,
+  `registry_search`'s `_score_io_compatibility` calls async `db.get` without
+  `await` (sync method), and `platform_schema_compiler` queries
+  `IntegrationRegistry` columns that don't exist. The meta ones carry a narrow
+  `# type: ignore` (self-cleaning via `warn_unused_ignores` once fixed).
 - 🚧 **C13 — drop deprecated `engine_type` / `reasoning_mode`** — **blocked, not a
   clean cut** (see §7). Needs per-step reasoning routed via the Strategist first,
   and the engine_type half is gated on C4.
