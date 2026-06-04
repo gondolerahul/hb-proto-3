@@ -108,6 +108,8 @@ all local). Earlier Phase-11/Stage-0 work (`1dd336a`..`deaabba`) is unchanged.
 | `b17c803` | **C12 scaffold** — `mypy --strict` per-package gate (`scripts/typecheck_ai.py` + allowlist + `test_typecheck_passes` + CI fast lane + `[tool.mypy]`); **`governance/` strict-clean** (first package). |
 | `996053b` | **C12 — ORM→`Mapped[]` + planning clean** — `orm/*` migrated to SQLAlchemy 2.0 `Mapped[]` (DDL-identical), governance de-cast, **`planning/` strict-clean** (87→0); allowlist now governance + orm + planning. |
 | `4f60690` | **C12 — meta strict-clean** — **`meta/` strict-clean** (74→0); allowlist now governance + orm + planning + meta (46 files). Surfaced 3 latent meta bugs (flagged). |
+| `0c6aa5a` | **C12 — memory strict-clean + cortex_models→`Mapped[]`** — `memory/cortex_models.py` migrated to `Mapped[]` (DDL-neutral); **`memory/` strict-clean** (222→0); allowlist + memory (68 files). Fixed graph Decimal+float, `PlanStepTarget`, `_get_company_id` monkey-patch bugs. |
+| `2c84a39` | **C12 — core strict-clean (DONE)** — **`core/` strict-clean** (234→0); allowlist now all 6 ai packages (**100 files**). Fixed a `child_entity` UnboundLocalError (caught by parity). Bundles the CriticCalibrator + 3 meta latent-bug fixes (coupled via arq_jobs). **C12 complete.** |
 
 **Push status:** local only.
 ```bash
@@ -216,26 +218,25 @@ Pull per-item detail from `WHATS_NEXT.md`.
 - ✅ C3-alias, C10, C11, lint→error (de-canary). `grep` of `backend/src
   frontend/src` for `p11|P11|phase11` is empty except the documented shims +
   migration names + `*.md` doc pointers.
-- ◐ **C12 — `mypy --strict`** per package as a CI gate. **Scaffold + 4 packages
-  clean** (`b17c803`, `996053b`, `4f60690`): `scripts/typecheck_ai.py` (allowlist +
-  `--follow-imports=silent`), `test_typecheck_passes`, `run_ci_matrix.sh` fast
-  lane, `pyproject [tool.mypy]`. **Clean: `governance/` (32→0), `orm/`, `planning/`
-  (87→0), `meta/` (74→0)** — 46 files gated. Add the next package by making
-  `mypy --strict --follow-imports=silent src/ai/<pkg>` zero, then append it to
-  `CLEAN_PACKAGES`. Localized remaining counts: `memory` 225, `core` ~1190 —
-  incremental, not the "mechanical M" the plan billed. **The legacy-`Column` ORM cost is GONE:**
-  `orm/` was migrated to SQLAlchemy 2.0 `Mapped[]` (`996053b`, DDL-identical), so
-  attributes carry real types — no more `cast()`/`# type: ignore[assignment]`
-  against `orm/` models. (Cross-package reads of not-yet-migrated models — e.g.
-  `memory/`'s `CortexNode` — still need a `cast` until that package migrates too.)
-  **Latent bugs surfaced by strict typing (all silently masked, flagged via
-  spawn-tasks):** `CriticCalibrator` built `IntelligenceTreeService` without the
-  required `company_id` (planning; since fixed); and in `meta/` — `curator`'s
-  anti-sprawl CREATE gate calls `check_creation_allowed` with the wrong kwargs,
-  `registry_search`'s `_score_io_compatibility` calls async `db.get` without
-  `await` (sync method), and `platform_schema_compiler` queries
-  `IntegrationRegistry` columns that don't exist. The meta ones carry a narrow
-  `# type: ignore` (self-cleaning via `warn_unused_ignores` once fixed).
+- ✅ **C12 — `mypy --strict` per package as a CI gate — DONE.** All six `ai/`
+  packages are strict-clean and gated (`b17c803`, `996053b`, `4f60690`,
+  `0c6aa5a`, `2c84a39`): `scripts/typecheck_ai.py` runs `mypy --strict
+  --follow-imports=silent` over `CLEAN_PACKAGES` = governance, orm, planning,
+  meta, memory, core (**100 files**); `test_typecheck_passes` + `run_ci_matrix.sh`
+  fast lane gate it; `pyproject [tool.mypy]` is the baseline. Start counts:
+  governance 32, planning 87, meta 74, memory 222, core 234 (orm via migration).
+  **The legacy-`Column` ORM cost is GONE:** both `orm/` AND
+  `memory/cortex_models.py` were migrated to SQLAlchemy 2.0 `Mapped[]` (both
+  DDL-identical, alembic-verified). **Conventions for future ai code:** real
+  annotations + `cast()` for query-result/legacy reads; behaviour-preserving
+  `# type: ignore` (NOT "fixes") on the C4-doomed legacy `ExecutionEngine` so the
+  parity goldens hold (`retrieve(top_k=)`, `cortex.get_tree()`); lazily-built
+  Optional services narrowed via `assert ... is not None` after `_ensure_services`
+  / `_compose`. **Bugs fixed along the way:** `CriticCalibrator` missing
+  `company_id`; meta `curator`/`registry_search`/`platform_schema_compiler` latent
+  bugs; a self-inflicted `child_entity` `UnboundLocalError` (inline
+  `from uuid import UUID` shadowing) — **caught by the parity gate**: always run
+  `tests/parity` after touching `core`.
 - 🚧 **C13 — drop deprecated `engine_type` / `reasoning_mode`** — **blocked, not a
   clean cut** (see §7). Needs per-step reasoning routed via the Strategist first,
   and the engine_type half is gated on C4.
