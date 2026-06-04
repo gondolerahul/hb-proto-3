@@ -75,7 +75,7 @@ class ValidatorRole:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _json_shape_ok(spec: dict) -> CheckResult:
+    def _json_shape_ok(spec: dict[str, Any]) -> CheckResult:
         required = ["name", "type", "goal"]
         missing = [k for k in required if not spec.get(k)]
         return CheckResult(
@@ -85,7 +85,7 @@ class ValidatorRole:
         )
 
     @staticmethod
-    def _entity_type_valid(spec: dict) -> CheckResult:
+    def _entity_type_valid(spec: dict[str, Any]) -> CheckResult:
         t = str(spec.get("type", "")).upper()
         return CheckResult(
             "entity_type_valid",
@@ -94,7 +94,7 @@ class ValidatorRole:
         )
 
     @staticmethod
-    def _no_cycle_in_children(spec: dict) -> CheckResult:
+    def _no_cycle_in_children(spec: dict[str, Any]) -> CheckResult:
         parent_id = spec.get("id") or spec.get("entity_id")
         children = spec.get("children") or []
         bad = [c for c in children if isinstance(c, dict)
@@ -106,7 +106,7 @@ class ValidatorRole:
         )
 
     @staticmethod
-    def _all_tools_listed(spec: dict) -> CheckResult:
+    def _all_tools_listed(spec: dict[str, Any]) -> CheckResult:
         caps = spec.get("capabilities") or {}
         listed = {str(t) for t in (caps.get("tools") or [])}
         plan = spec.get("planning") or {}
@@ -130,7 +130,7 @@ class ValidatorRole:
         )
 
     @staticmethod
-    def _plan_step_ids_unique(spec: dict) -> CheckResult:
+    def _plan_step_ids_unique(spec: dict[str, Any]) -> CheckResult:
         plan = spec.get("planning") or {}
         steps = (plan.get("static_plan") or {}).get("steps") or plan.get("steps") or []
         ids = [str(s.get("step_id") or s.get("id") or "") for s in steps if isinstance(s, dict)]
@@ -143,11 +143,11 @@ class ValidatorRole:
         )
 
     @staticmethod
-    def _governance_caps_set(spec: dict) -> CheckResult:
+    def _governance_caps_set(spec: dict[str, Any]) -> CheckResult:
         gov = spec.get("governance") or {}
         cost = gov.get("max_cost_usd")
         timeout = gov.get("timeout_ms")
-        ok = bool(cost) and bool(timeout) and float(cost) > 0 and int(timeout) > 0
+        ok = bool(cost) and bool(timeout) and float(cost or 0) > 0 and int(timeout or 0) > 0
         return CheckResult(
             "governance_caps_set",
             passed=ok,
@@ -155,7 +155,7 @@ class ValidatorRole:
         )
 
     @staticmethod
-    def _cost_estimate_under_cap(spec: dict) -> CheckResult:
+    def _cost_estimate_under_cap(spec: dict[str, Any]) -> CheckResult:
         gov = spec.get("governance") or {}
         cap = float(gov.get("max_cost_usd") or 0.0)
         if cap <= 0:
@@ -172,7 +172,7 @@ class ValidatorRole:
         )
 
     @staticmethod
-    def _review_mechanism_consistent(spec: dict) -> CheckResult:
+    def _review_mechanism_consistent(spec: dict[str, Any]) -> CheckResult:
         logic = spec.get("logic_gate") or {}
         rm = logic.get("review_mechanism") or {}
         if not rm.get("enabled"):

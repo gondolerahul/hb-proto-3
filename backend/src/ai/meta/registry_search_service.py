@@ -31,7 +31,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import select, func, Text as _SAText
@@ -88,7 +88,7 @@ class SearchRequest:
     intent: str                          # Natural language description
     required_tools: List[str] = field(default_factory=list)
     preferred_type: Optional[str] = None  # ACTION, SKILL, AGENT, PROCESS
-    io_schema: Optional[Dict] = None     # Expected input/output shape
+    io_schema: Optional[Dict[str, Any]] = None     # Expected input/output shape
     complexity_class: str = "MEDIUM"     # LOW, MEDIUM, HIGH
     tags: List[str] = field(default_factory=list)
 
@@ -269,7 +269,7 @@ class RegistrySearchService:
 
         return sorted(candidates, key=lambda c: c.structural_score, reverse=True)
 
-    def _score_structural(self, entity, request: SearchRequest) -> float:
+    def _score_structural(self, entity: Any, request: SearchRequest) -> float:
         """Score an entity based on structural contract matching."""
         score = 0.0
         weights_total = 0.0
@@ -357,7 +357,7 @@ class RegistrySearchService:
         except Exception:
             return 0.5
 
-        entity_io = entity.io_contract or {}
+        entity_io = entity.io_contract or {}  # type: ignore[attr-defined]
         entity_input = entity_io.get("input_schema", {}).get("properties", {})
         entity_output = entity_io.get("output_schema", {}).get("properties", {})
 
@@ -523,7 +523,7 @@ class RegistrySearchService:
         except Exception:
             pass
 
-        return success_rate * 0.6 + cost_score * 0.2 + recency_score * 0.2
+        return float(success_rate * 0.6 + cost_score * 0.2 + recency_score * 0.2)
 
     # ------------------------------------------------------------------
     # Classification
@@ -555,7 +555,7 @@ class RegistrySearchService:
         request: SearchRequest,
     ) -> Dict[str, Any]:
         """Generate a diff spec for adapting an existing agent."""
-        diff = {}
+        diff: dict[str, Any] = {}
 
         if candidate.missing_tools:
             diff["add_tools"] = candidate.missing_tools
@@ -574,19 +574,19 @@ class RegistrySearchService:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _extract_tools(self, entity) -> List[str]:
+    def _extract_tools(self, entity: Any) -> List[str]:
         """Extract tool_id list from entity capabilities."""
         caps = entity.capabilities
         if not caps or not isinstance(caps, dict):
             return []
         tools = caps.get("tools", [])
         return [
-            t.get("tool_id", t.get("name", ""))
+            str(t.get("tool_id") or t.get("name") or "")
             for t in tools
             if isinstance(t, dict)
         ]
 
-    def _count_steps(self, entity) -> int:
+    def _count_steps(self, entity: Any) -> int:
         """Count steps in entity's planning."""
         planning = entity.planning
         if not planning or not isinstance(planning, dict):
@@ -596,7 +596,7 @@ class RegistrySearchService:
             return 1
         return len(static_plan.get("steps", []))
 
-    async def _load_entity(self, entity_id: UUID):
+    async def _load_entity(self, entity_id: UUID) -> Any:
         """Load a single entity by ID."""
         from src.ai.models import HierarchicalEntity
         result = await self.db.execute(
@@ -604,7 +604,7 @@ class RegistrySearchService:
         )
         return result.scalar_one_or_none()
 
-    def _parse_semantic_scores(self, output: str) -> List[Dict]:
+    def _parse_semantic_scores(self, output: str) -> List[Dict[str, Any]]:
         """Parse LLM semantic scoring output."""
         try:
             text = output
@@ -612,7 +612,7 @@ class RegistrySearchService:
                 text = text.split("```json")[1].split("```")[0]
             elif "[" in text:
                 text = text[text.find("["):text.rfind("]") + 1]
-            return json.loads(text)
+            return cast("list[dict[str, Any]]", json.loads(text))
         except Exception:
             logger.debug(f"Failed to parse semantic scores: {output[:200]}")
             return []

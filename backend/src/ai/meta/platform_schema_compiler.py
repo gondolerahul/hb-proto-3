@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class PlatformSchemaCompiler:
     """Compiles the HireBuddha platform surface into a queryable schema."""
 
-    def __init__(self, db: AsyncSession = None, company_id: UUID = None):
+    def __init__(self, db: Optional[AsyncSession] = None, company_id: Optional[UUID] = None) -> None:
         self.db = db
         self.company_id = company_id
         self._cached_schema: Optional[Dict[str, Any]] = None
@@ -51,7 +51,7 @@ class PlatformSchemaCompiler:
           - composition_rules: how entities compose into hierarchies
           - schema_version: hash for drift detection
         """
-        schema = {
+        schema: Dict[str, Any] = {
             "compiled_at": datetime.now(timezone.utc).isoformat(),
             "entity_types": self._compile_entity_types(),
             "step_types": self._compile_step_types(),
@@ -195,7 +195,7 @@ class PlatformSchemaCompiler:
     # Entity Types
     # ------------------------------------------------------------------
 
-    def _compile_entity_types(self) -> List[Dict[str, str]]:
+    def _compile_entity_types(self) -> List[Dict[str, Any]]:
         """Extract entity types from schemas.py enums with semantic descriptions."""
         return [
             {
@@ -297,7 +297,7 @@ class PlatformSchemaCompiler:
             {"mode": "CHAIN_OF_THOUGHT", "description": "Step-by-step reasoning before acting."},
         ]
 
-    def _compile_execution_modes(self) -> List[Dict[str, str]]:
+    def _compile_execution_modes(self) -> List[Dict[str, Any]]:
         return [
             {
                 "mode": "STANDARD",
@@ -384,8 +384,8 @@ class PlatformSchemaCompiler:
             result = await self.db.execute(
                 select(IntegrationRegistry).where(
                     IntegrationRegistry.company_id == self.company_id,
-                    IntegrationRegistry.is_enabled == True,
-                    IntegrationRegistry.category == "ai_model",
+                    IntegrationRegistry.is_enabled == True,  # type: ignore[attr-defined]
+                    IntegrationRegistry.category == "ai_model",  # type: ignore[attr-defined]
                 )
             )
             integrations = result.scalars().all()
@@ -393,10 +393,10 @@ class PlatformSchemaCompiler:
             endpoints = []
             for integ in integrations:
                 endpoints.append({
-                    "provider": integ.provider,
-                    "model_name": integ.service_name,
-                    "category": integ.category,
-                    "is_default": bool(integ.is_default),
+                    "provider": integ.provider,  # type: ignore[attr-defined]
+                    "model_name": integ.service_name,  # type: ignore[attr-defined]
+                    "category": integ.category,  # type: ignore[attr-defined]
+                    "is_default": bool(integ.is_default),  # type: ignore[attr-defined]
                 })
             return endpoints
         except Exception as e:
@@ -658,8 +658,8 @@ class PlatformSchemaCompiler:
 # ---------------------------------------------------------------------------
 
 async def compile_platform_schema(
-    db: AsyncSession = None,
-    company_id: UUID = None,
+    db: Optional[AsyncSession] = None,
+    company_id: Optional[UUID] = None,
 ) -> Dict[str, Any]:
     """One-shot schema compilation."""
     compiler = PlatformSchemaCompiler(db=db, company_id=company_id)
@@ -675,7 +675,7 @@ _MANIFEST_CACHE_TTL = 300  # 5 minutes
 async def get_platform_summary(
     db: AsyncSession,
     company_id: UUID,
-    redis=None,
+    redis: Any = None,
 ) -> str:
     """Return a compact (~2-4K token) platform summary for prompt injection.
 
@@ -798,7 +798,7 @@ async def describe_entity_children(
 
 
 
-def resolve_meta_cognition(entity) -> Dict[str, Any]:
+def resolve_meta_cognition(entity: Any) -> Dict[str, Any]:
     """Resolve effective meta-cognition config for an entity.
 
     Phase 11 Track 5 default change:

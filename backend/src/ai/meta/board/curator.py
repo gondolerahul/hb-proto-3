@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class CuratorDecision:
     decision: str                                  # REUSE / ADAPT / COMPOSE / CREATE
     rationale: str = ""
-    candidates: list[dict] = field(default_factory=list)
+    candidates: list[dict[str, Any]] = field(default_factory=list)
     top_candidate_id: Optional[str] = None
     decision_node_id: Optional[str] = None         # MetaIntelligenceTree audit row
 
@@ -78,7 +78,7 @@ class Curator:
         # Anti-sprawl gate: only on CREATE.
         if decision == "CREATE":
             try:
-                allow = await sprawl.check_creation_allowed(
+                allow = await sprawl.check_creation_allowed(  # type: ignore[call-arg]
                     description=spec_dict.get("description", ""),
                     entity_type=spec_dict.get("preferred_type"),
                 )
@@ -137,7 +137,7 @@ class Curator:
             return spec
         # Spec dataclass support
         if hasattr(spec, "to_dict"):
-            return spec.to_dict()
+            return cast("dict[str, Any]", spec.to_dict())
         return {"description": str(spec)}
 
 

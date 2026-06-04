@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import select, func
@@ -34,7 +34,7 @@ class AntiSprawlGuard:
         self,
         meta_agent_user_id: Optional[UUID] = None,
         daily_limit: int = DEFAULT_DAILY_CREATION_LIMIT,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """Check if creation is allowed (daily limit not exceeded).
 
         This is a HARD GATE — if this returns allowed=False, the
@@ -70,7 +70,7 @@ class AntiSprawlGuard:
     async def check_consolidation_needed(
         self, source_entity_id: UUID,
         threshold: int = DEFAULT_ADAPTATION_THRESHOLD,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """Check if an entity has been adapted too many times.
 
         This is a HARD GATE — if consolidation is needed, the
@@ -109,7 +109,7 @@ class AntiSprawlGuard:
         required_tools: List[str],
         preferred_type: Optional[str] = None,
         threshold: float = SEMANTIC_DUPLICATE_THRESHOLD,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """Check if a near-duplicate entity already exists.
 
         Uses RegistrySearchService to find entities with >threshold

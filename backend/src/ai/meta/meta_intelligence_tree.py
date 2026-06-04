@@ -29,7 +29,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import UUID, uuid4
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class AntiPatternRow:
     title: str
     suggestion: str
     evidence_count: int = 1
-    related_tags: list[str] = None
+    related_tags: Optional[list[str]] = None
     last_seen: Optional[str] = None
     node_id: Optional[UUID] = None
 
@@ -143,7 +143,7 @@ class MetaIntelligenceTree:
         self.db.add(root)
         await self.db.flush()
         tree.root_node_id = root.id
-        tree.total_nodes = 1
+        tree.total_nodes = 1  # type: ignore[assignment]
 
         for idx, (key, title) in enumerate(SECTIONS.items()):
             section = CortexNode(
@@ -159,7 +159,7 @@ class MetaIntelligenceTree:
                 sibling_order=idx,
             )
             self.db.add(section)
-            tree.total_nodes += 1
+            tree.total_nodes += 1  # type: ignore[assignment]
         await self.db.flush()
         return tree
 
@@ -204,7 +204,7 @@ class MetaIntelligenceTree:
             meta["last_seen"] = datetime.utcnow().isoformat()
             existing.metadata_extra = meta
             await self.db.flush()
-            return existing.id
+            return cast(UUID, existing.id)
         node_id = await self._add_node(
             section_id=section.id,
             kind="anti_pattern",
@@ -276,7 +276,7 @@ class MetaIntelligenceTree:
         self,
         *,
         decision: str,
-        candidates: list[dict] | None = None,
+        candidates: list[dict[str, Any]] | None = None,
         rationale: str = "",
         outcome: Optional[str] = None,
     ) -> Optional[UUID]:
@@ -315,7 +315,7 @@ class MetaIntelligenceTree:
             meta["last_seen"] = datetime.utcnow().isoformat()
             existing.metadata_extra = meta
             await self.db.flush()
-            return existing.id
+            return cast(UUID, existing.id)
         return await self._add_node(
             section_id=section.id, kind="test_failure",
             title=title,
@@ -345,7 +345,7 @@ class MetaIntelligenceTree:
                 meta["successes"] = int(meta.get("successes", 0)) + 1
             existing.metadata_extra = meta
             await self.db.flush()
-            return existing.id
+            return cast(UUID, existing.id)
         return await self._add_node(
             section_id=section.id, kind="tool_reliability",
             title=title,
@@ -389,10 +389,10 @@ class MetaIntelligenceTree:
             },
         )
 
-    async def list_skill_candidates(self, limit: int = 20) -> list[dict]:
+    async def list_skill_candidates(self, limit: int = 20) -> list[dict[str, Any]]:
         return await self._list_kind("spec_patterns", "skill_candidate", limit)
 
-    async def get_skill_candidate(self, node_id: UUID) -> Optional[dict]:
+    async def get_skill_candidate(self, node_id: UUID) -> Optional[dict[str, Any]]:
         from sqlalchemy import select
         from src.ai.memory.cortex_models import CortexNode
         row = (await self.db.execute(
@@ -465,7 +465,7 @@ class MetaIntelligenceTree:
             },
         )
 
-    async def list_prompt_candidates(self, *, only_pending: bool = True, limit: int = 20) -> list[dict]:
+    async def list_prompt_candidates(self, *, only_pending: bool = True, limit: int = 20) -> list[dict[str, Any]]:
         rows = await self._list_kind("prompt_cand", "prompt_update_candidate", limit * 3)
         if only_pending:
             rows = [r for r in rows if not (r.get("metadata", {}).get("approved"))]
@@ -547,9 +547,9 @@ class MetaIntelligenceTree:
         )
         self.db.add(node)
         await self.db.flush()
-        return node.id
+        return cast(UUID, node.id)
 
-    async def _find_in_section(self, section_id: UUID, title: str):
+    async def _find_in_section(self, section_id: UUID, title: str) -> Any:
         from sqlalchemy import select
         from src.ai.memory.cortex_models import CortexNode
         return (await self.db.execute(
@@ -559,7 +559,7 @@ class MetaIntelligenceTree:
             )
         )).scalar_one_or_none()
 
-    async def _list_kind(self, section_key: str, kind: str, limit: int) -> list[dict]:
+    async def _list_kind(self, section_key: str, kind: str, limit: int) -> list[dict[str, Any]]:
         from sqlalchemy import select
         from src.ai.memory.cortex_models import CortexNode
         section = await self.section_node(section_key)
@@ -570,7 +570,7 @@ class MetaIntelligenceTree:
                 CortexNode.parent_id == section.id,
             ).order_by(CortexNode.created_at.desc()).limit(limit * 3)
         )).scalars().all()
-        out: list[dict] = []
+        out: list[dict[str, Any]] = []
         for r in rows:
             meta = r.metadata_extra or {}
             if (meta.get("kind") or "") != kind:

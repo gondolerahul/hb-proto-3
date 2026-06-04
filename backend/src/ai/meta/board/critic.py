@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ MAX_REVISE_ROUNDS: int = 2
 @dataclass
 class CriticReport:
     verdict: str = "REVISE"                     # PASS / REVISE / BLOCK
-    concerns: list[dict] = field(default_factory=list)
+    concerns: list[dict[str, Any]] = field(default_factory=list)
     rules_referenced: list[str] = field(default_factory=list)
     rounds: int = 0
     blocked_reason: str = ""
@@ -110,8 +110,8 @@ class BoardCritic:
         if hasattr(draft, "to_dict"):
             d = draft.to_dict()
             if isinstance(d, dict) and isinstance(d.get("payload"), dict):
-                return d["payload"]
-            return d
+                return cast("dict[str, Any]", d["payload"])
+            return cast("dict[str, Any]", d)
         return {"raw": str(draft)}
 
 

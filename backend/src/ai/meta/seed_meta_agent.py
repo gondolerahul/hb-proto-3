@@ -14,10 +14,11 @@ Flags:
 """
 import asyncio, sys
 from pathlib import Path
+from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 
-async def _purge_entities(db, entity_ids: list[str]) -> None:
+async def _purge_entities(db: Any, entity_ids: list[str]) -> None:
     """
     Delete a set of HierarchicalEntity rows and ALL their FK dependents.
 
@@ -114,7 +115,7 @@ async def _purge_entities(db, entity_ids: list[str]) -> None:
     ))
 
 
-async def seed(force: bool = False, target_company_id: str = None):
+async def seed(force: bool = False, target_company_id: Optional[str] = None) -> None:
     from sqlalchemy import select, text, or_, String
     from src.common.database import AsyncSessionLocal
     from src.ai.models import HierarchicalEntity

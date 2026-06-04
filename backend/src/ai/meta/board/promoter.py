@@ -47,7 +47,7 @@ class PromotionDecision:
 class Promoter:
     """Run the 6 gates and apply the lifecycle flip when allowed."""
 
-    def __init__(self, *, hitl_required: bool = False, flip_callback=None):
+    def __init__(self, *, hitl_required: bool = False, flip_callback: Any = None) -> None:
         self.hitl_required = hitl_required
         # flip_callback(draft) -> str entity_id ; injectable so tests
         # don't need a live DB.
