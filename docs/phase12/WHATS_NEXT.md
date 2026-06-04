@@ -73,17 +73,21 @@ deletion (Phase B) is **gated on a flag soak (G4)** that needs a live canary.
       green (`98868d4`). Residual `phase11` = shims + migration names + `*.md` docs.
 
 ### 2.3 Quality lock-in (trailing)
-- [~] **C12 — `mypy --strict` series** *(`01` §6.4, P-M1)* — **scaffold landed**
-      (`b17c803`): `scripts/typecheck_ai.py` runs strict over a `CLEAN_PACKAGES`
-      allowlist (`--follow-imports=silent` draws the per-package boundary),
-      `test_typecheck_passes` + the `run_ci_matrix.sh` fast lane gate it, and
-      `pyproject [tool.mypy]` sets the baseline. **`governance/` is strict-clean**
-      (the first package, 32→0). Remaining packages, by localized strict-error
-      count: `planning` 87, `meta` 109, `memory` 225, `core` ~1190 — so the docs'
-      "M, mechanical" was optimistic; it's incremental. **Known cost:** legacy
-      `Column(...)` ORM models force `cast()` on reads + `# type: ignore[assignment]`
-      on attribute writes in every package; an ORM→`Mapped[]` migration would
-      remove that and is worth doing before the larger packages.
+- [~] **C12 — `mypy --strict` series** *(`01` §6.4, P-M1)* — **scaffold + 3
+      packages clean** (`b17c803`, `996053b`): `scripts/typecheck_ai.py` runs
+      strict over a `CLEAN_PACKAGES` allowlist (`--follow-imports=silent` draws
+      the per-package boundary), `test_typecheck_passes` + the `run_ci_matrix.sh`
+      fast lane gate it, `pyproject [tool.mypy]` sets the baseline. **Clean:**
+      `governance/` (32→0), `orm/` (the whole package — migrated to SQLAlchemy 2.0
+      `Mapped[]`), `planning/` (87→0). The **legacy-`Column` cost is GONE**: the
+      ORM→`Mapped[]` migration (`996053b`, DDL-identical) means attributes carry
+      real types, so no more `cast()` reads / `# type: ignore[assignment]` writes
+      against `orm/` models (cross-package reads of not-yet-migrated models like
+      `memory/`'s `CortexNode` still need a `cast`). Remaining localized counts:
+      `meta` 109, `memory` 225, `core` ~1190 — incremental, not the "mechanical M"
+      the plan billed. **Latent bug found** (flagged): `CriticCalibrator` builds
+      `IntelligenceTreeService` without the required `company_id` → calibration
+      rules silently never persist (`# type: ignore[call-arg]` marks it).
 - [ ] 🚧 **C13 — drop deprecated `engine_type` & `reasoning_mode`** *(`01` §9, D-1)*
       — **blocked, not a clean cut.** `engine_type` isn't a typed field (only
       consumer is the C4-blocked `execute_run`); `reasoning_mode` is still live in
@@ -184,7 +188,7 @@ Phase 11 did Stage-A groundwork.
 | 01 | C4 Phase B (delete execute_run) — gated on G4 soak | 🚧 |
 | 01 | C2 MemoryRouter delete — C4 fallout | 🚧 |
 | 01 | C3 finish (engine MetaReviewer) — C4 fallout | 🚧 |
-| 01 | C12 mypy --strict (scaffold + governance clean) | ◐ |
+| 01 | C12 mypy --strict (scaffold + governance/orm/planning clean) | ◐ |
 | 01 | C13 drop deprecated engine_type/reasoning_mode | 🚧 blocked |
 | 02 | Sandbox runtime / container / browser | ❌ |
 | 03 | Video tool split | ❌ |
