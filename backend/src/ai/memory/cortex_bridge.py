@@ -354,7 +354,7 @@ class CortexBridge:
                     try:
                         from arq.connections import ArqRedis
                         arq_redis = ArqRedis(self.redis.client if hasattr(self, 'redis') else None)
-                        await arq_redis.enqueue_job("execute_run", str(child_run_id))
+                        await arq_redis.enqueue_job("run_execution_recursive", str(child_run_id))
                         logger.info(f"Enqueued child run {child_run_id} for RECURSE")
                     except Exception as enqueue_err:
                         logger.warning(

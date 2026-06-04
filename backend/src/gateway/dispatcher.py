@@ -262,14 +262,15 @@ class CentralDispatcher:
                 await db.commit()
                 await db.refresh(run)
 
-                # Execute synchronously in this task
+                # Execute synchronously in this task via the AgentLoop (the sole
+                # run engine; C4 retired the legacy execute_run path).
                 from src.gateway.gateway_config import settings
                 import redis.asyncio as aioredis
                 redis_client = await aioredis.from_url(settings.REDIS_URL)
 
-                from src.ai.core.execution_engine import ExecutionEngine
-                engine = ExecutionEngine(db, redis_client)
-                await engine.execute_run(run.id)
+                from src.ai.core.agent_loop import AgentLoop
+                loop = AgentLoop(db, redis_client, company_id=company_id)
+                await loop.run(run.id)
                 await redis_client.aclose()
 
         except Exception as exc:

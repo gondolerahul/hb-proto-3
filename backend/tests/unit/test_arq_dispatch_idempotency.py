@@ -59,18 +59,17 @@ class _FakeFlags:
         pass
 
     async def is_on(self, *_a, **_k):
-        # Legacy path; irrelevant for a terminal run (guard returns first).
         return False
 
 
 class _ExplodingEngine:
-    """Stand-in for ExecutionEngine that proves it was never constructed when
+    """Stand-in for the AgentLoop that proves it was never constructed when
     the idempotency guard should have short-circuited."""
     def __init__(self, *_a, **_k):
-        raise AssertionError("ExecutionEngine must not run for a terminal run")
+        raise AssertionError("AgentLoop must not run for a terminal run")
 
-    async def execute_run(self, *_a, **_k):  # pragma: no cover
-        raise AssertionError("execute_run must not be reached")
+    async def run(self, *_a, **_k):  # pragma: no cover
+        raise AssertionError("AgentLoop.run must not be reached")
 
 
 def _make_run(status: str):
@@ -86,7 +85,7 @@ def _make_run(status: str):
 
 def _patch(monkeypatch, run, engine_cls=_ExplodingEngine):
     monkeypatch.setattr(arq_jobs, "AsyncSessionLocal", lambda: _FakeSession(run))
-    monkeypatch.setattr(arq_jobs, "ExecutionEngine", engine_cls)
+    monkeypatch.setattr("src.ai.core.agent_loop.AgentLoop", engine_cls)
     monkeypatch.setattr(feature_flags_mod, "FeatureFlags", _FakeFlags)
     fake_redis = _FakeRedis()
     monkeypatch.setattr("redis.asyncio.from_url", lambda *_a, **_k: fake_redis)

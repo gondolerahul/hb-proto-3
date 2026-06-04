@@ -16,7 +16,6 @@ from sqlalchemy import select
 
 from src.common.database import AsyncSessionLocal
 from src.ai.models import ExecutionRun, HierarchicalEntity, RunStatus
-from src.ai.core.execution_engine import ExecutionEngine
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +24,9 @@ logger = logging.getLogger(__name__)
 async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
     """Entry point for an execution run.
 
-    Phase 11 Track 2: when ``agent_loop.enabled`` resolves True for the
-    run's company, the new ``AgentLoop`` orchestrator drives the run.
-    Otherwise the legacy ``ExecutionEngine.execute_run`` path is taken.
-    The feature flag is OFF by default so behaviour is identical to
-    pre-Phase-11 until an operator turns it on per-company (or
-    globally).
+    The ``AgentLoop`` orchestrator is the sole run engine (C4). The
+    ``agent_loop.enabled`` flag is stamped onto the run for the SPA but no
+    longer gates engine choice.
     """
     run_id = UUID(run_id_str)
     import redis.asyncio as redis
@@ -44,26 +40,12 @@ async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
         from src.ai.core.feature_flags import FeatureFlags
 
         flags = FeatureFlags(db, redis=redis_pool)
-        company_id, entity_extras = await _resolve_run_flag_scope(db, run_id)
-        use_loop = await flags.is_on(
-            "agent_loop.enabled",
-            company_id=company_id,
-            entity_extras=entity_extras,
-        )
+        company_id, _entity_extras = await _resolve_run_flag_scope(db, run_id)
 
-        # Record which engine actually drives this run, for two reasons:
-        #   1. Observability — the chosen path is otherwise invisible in logs.
-        #   2. UI correctness — the SPA resolves ``agent_loop.enabled`` from
-        #      ``run.input_data.feature_flags`` *first* (per-run scope wins over
-        #      the global flag). Stamping the real decision here guarantees the
-        #      ExecutionDetail page renders the layout matching the engine that
-        #      ran: the AgentLoop timeline for loop runs, the legacy step list
-        #      otherwise — instead of a blank "new" page when the global flag is
-        #      ON but this run went legacy.
-        logger.info(
-            "[dispatch] run=%s engine=%s agent_loop.enabled=%s company=%s",
-            run_id, "agent_loop" if use_loop else "legacy", use_loop, company_id,
-        )
+        # The AgentLoop is the sole run engine (C4). ``agent_loop.enabled`` no
+        # longer gates engine choice; it is stamped onto the run below only so
+        # the SPA's ExecutionDetail page renders the loop timeline.
+        logger.info("[dispatch] run=%s engine=agent_loop company=%s", run_id, company_id)
 
         # ── Guard against ghost jobs ──────────────────────────────────────
         # If the run (or its owning entity) was deleted after the job was
@@ -124,7 +106,7 @@ async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
             if run_obj is not None:
                 idata = dict(run_obj.input_data or {})
                 ff = dict(idata.get("feature_flags") or {})
-                ff["agent_loop.enabled"] = bool(use_loop)
+                ff["agent_loop.enabled"] = True
                 idata["feature_flags"] = ff
                 run_obj.input_data = idata  # reassign so the JSON change is tracked
                 await db.commit()
@@ -132,10 +114,8 @@ async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
             await db.rollback()
             logger.warning("Could not stamp agent_loop decision onto run %s", run_id)
 
-        # Bind a per-run TraceRecorder for the whole execution. Both engine
-        # paths converge here, so this single binding instruments the AgentLoop
-        # AND the legacy execute_run path with the same span machinery. The deep
-        # layers (tool executor, LLM router) read it off a ContextVar.
+        # Bind a per-run TraceRecorder for the whole execution. The deep layers
+        # (tool executor, LLM router) read it off a ContextVar.
         from src.ai.core.trace import TraceRecorder, set_recorder
 
         _obs = (getattr(guard_run.entity, "observability", None) or {}) if guard_run.entity else {}
@@ -146,18 +126,14 @@ async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
         )
 
         with set_recorder(recorder):
-            if use_loop:
-                from src.ai.core.agent_loop import AgentLoop
+            from src.ai.core.agent_loop import AgentLoop
 
-                loop = AgentLoop(
-                    db, redis_pool,
-                    company_id=company_id,
-                    feature_flags=flags,
-                )
-                await loop.run(run_id)
-            else:
-                engine = ExecutionEngine(db, redis_pool)
-                await engine.execute_run(run_id)
+            loop = AgentLoop(
+                db, redis_pool,
+                company_id=company_id,
+                feature_flags=flags,
+            )
+            await loop.run(run_id)
 
     await redis_pool.close()
 
@@ -192,7 +168,7 @@ async def process_gateway_event(ctx: dict[str, Any], envelope_dict: dict[str, An
 
     Routing:
       - sheet.row_inserted → Campaign-based outbound call pipeline
-      - other events        → ExecutionRun via ExecutionEngine (text agents)
+      - other events        → ExecutionRun via the AgentLoop (text agents)
     """
     import redis.asyncio as redis
     from src.common.config import settings
@@ -287,8 +263,9 @@ async def process_gateway_event(ctx: dict[str, Any], envelope_dict: dict[str, An
                 f"[process_gateway_event] ExecutionRun {run.id} created — executing..."
             )
 
-            engine = ExecutionEngine(db, redis_pool)
-            await engine.execute_run(run.id)
+            from src.ai.core.agent_loop import AgentLoop
+            loop = AgentLoop(db, redis_pool, company_id=UUID(client_id))
+            await loop.run(run.id)
 
             logger.info(
                 f"[process_gateway_event] ExecutionRun {run.id} finished "
@@ -715,9 +692,10 @@ async def resume_execution(ctx: dict[str, Any], run_id_str: str) -> dict[str, An
     run_id = UUID(run_id_str)
     async with AsyncSessionLocal() as db:
         redis = ctx.get('redis')
-        engine = ExecutionEngine(db, redis)
+        from src.ai.core.agent_loop import AgentLoop
+        company_id, _entity_extras = await _resolve_run_flag_scope(db, run_id)
         logger.info(f"Resuming ExecutionRun: {run_id}")
-        return await engine.execute_run(run_id)
+        return await AgentLoop(db, redis, company_id=company_id).run(run_id)
 
 
 async def resume_parent_run(ctx: dict[str, Any], parent_run_id_str: str) -> dict[str, Any]:
@@ -799,7 +777,7 @@ async def cortex_resume_scheduled(ctx: dict[str, Any]) -> dict[str, Any]:
                     if redis:
                         from arq.connections import ArqRedis
                         arq = ArqRedis(redis)
-                        await arq.enqueue_job("execute_run", str(resume_run.id))
+                        await arq.enqueue_job("run_execution_recursive", str(resume_run.id))
                         resumed += 1
                         logger.info(f"CORTEX scheduled resume: tree {tree.id} → run {resume_run.id}")
 
