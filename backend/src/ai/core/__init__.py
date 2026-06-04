@@ -10,7 +10,6 @@ monolithic worker.py during Phase 10A restructuring.
 
 __all__ = [
     "StepEngine",
-    "RecursiveReasoningEngine",
     "MetaReviewer",
     "AgentError",
     "UncertaintySignal",

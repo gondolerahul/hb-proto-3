@@ -1,24 +1,11 @@
-"""Tests for the RecursiveReasoningEngine."""
-import pytest
+"""Tests for the GoalNode decomposition DTO.
+
+The RecursiveReasoningEngine (the engine_type=="RECURSIVE" implementation) was
+deleted in C13: engine_type is gone and the loop maps goal-only AGENTs onto the
+planner. GoalNode remains a CORTEX schema DTO.
+"""
 from decimal import Decimal
-from src.ai.core.recursive_engine import RecursiveReasoningEngine
 from src.ai.schemas import GoalNode
-
-
-class TestRecursiveReasoningEngineConfig:
-    """Tests for safety limits and configuration."""
-
-    def test_default_safety_limits(self):
-        assert RecursiveReasoningEngine.MAX_DEPTH == 5
-        assert RecursiveReasoningEngine.MAX_TOTAL_EXPANSIONS == 20
-        assert RecursiveReasoningEngine.DEFAULT_CONFIDENCE_THRESHOLD == 0.7
-
-    def test_is_step_engine_subclass(self):
-        # Reparented to StepEngine (the step surface) so it survives the C4
-        # deletion of ExecutionEngine.execute_run; it drives leaves via
-        # _step_executor._execute_step and never calls execute_run.
-        from src.ai.core.step_engine import StepEngine
-        assert issubclass(RecursiveReasoningEngine, StepEngine)
 
 
 class TestGoalNodeIntegration:

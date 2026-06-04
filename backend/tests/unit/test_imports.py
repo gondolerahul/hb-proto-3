@@ -40,12 +40,6 @@ def test_canonical_step_engine_import() -> None:
     assert StepEngine.__name__ == "StepEngine"
 
 
-def test_canonical_recursive_engine_import() -> None:
-    from src.ai.core.recursive_engine import RecursiveReasoningEngine
-
-    assert RecursiveReasoningEngine.__name__ == "RecursiveReasoningEngine"
-
-
 def test_canonical_exception_import() -> None:
     from src.ai.core.exceptions import UncertaintySignal
 
