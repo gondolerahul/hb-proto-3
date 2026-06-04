@@ -747,7 +747,12 @@ class StepExecutorService:
         )
 
         # --- Resolve reasoning mode and dispatch ---
-        reasoning_mode = config.get("reasoning_mode", "REACT")
+        # Per-step reasoning is selected by the Strategist's per-step
+        # ``reasoning_hint`` (D-3 / C13). The deprecated entity-level
+        # ``reasoning_config.reasoning_mode`` no longer steers per-step
+        # reasoning; absent a hint a step defaults to REACT.
+        _step_hint = getattr(step, "reasoning_hint", None)
+        reasoning_mode = str(_step_hint).upper() if _step_hint else "REACT"
 
         input_vars = {**filtered_context}
         raw_template = step.target.prompt_template if step.target and step.target.prompt_template else "{{input}}"

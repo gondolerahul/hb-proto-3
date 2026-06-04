@@ -86,6 +86,21 @@ class PlanStep(BaseModel):
     target: Optional[PlanStepTarget] = None
     required: bool = True
     exit_conditions: List[ExitCondition] = []
+    # Per-step reasoning selection (D-3 / C13). The Strategist reads this to
+    # choose an executor (e.g. DEBATE) and the step executor reads it to pick a
+    # reasoning mode (REACT / CHAIN_OF_THOUGHT). It supersedes the deprecated
+    # entity-level ``reasoning_config.reasoning_mode``.
+    reasoning_hint: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_reasoning_mode_to_hint(cls, data: Any) -> Any:
+        """Map a legacy per-step ``reasoning_mode`` onto ``reasoning_hint`` so
+        authored plans that still carry a step-level mode keep steering
+        reasoning per step."""
+        if isinstance(data, dict) and not data.get("reasoning_hint") and data.get("reasoning_mode"):
+            data = {**data, "reasoning_hint": data.get("reasoning_mode")}
+        return data
 
     @field_validator("type", mode="before")
     @classmethod
