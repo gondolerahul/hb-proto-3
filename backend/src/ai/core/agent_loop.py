@@ -1,11 +1,9 @@
 """
-ai.core.agent_loop — The Phase 11 autonomous control loop (Track 2).
+ai.core.agent_loop — The autonomous control loop (Track 2).
 
-This file is the new entry point for entities whose
-``agent_loop.enabled`` feature flag is ON. The legacy
-``ExecutionEngine.execute_run`` remains the entry point when the flag
-is OFF and continues to be reachable indefinitely (Track 9 deletes
-it).
+This file is the sole run entry point for every entity. The legacy
+``ExecutionEngine.execute_run`` plan-walker it replaced has been deleted
+(C4); there is no longer an engine switch.
 
 Per-iteration sequence (mirrors the agent kernel overview, §2):
 

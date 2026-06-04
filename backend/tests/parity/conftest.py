@@ -28,10 +28,15 @@ from tests.parity.harness import register_engine_adapter
 
 
 class LegacyAdapter:
-    """Runs the pre-Phase-11 ExecutionEngine."""
+    """The legacy ExecutionEngine.execute_run path was deleted (C4). Goldens are
+    now frozen, loop-recorded regression baselines; this adapter stays
+    registered (the harness expects a "legacy" key) but is never invoked by the
+    parity test, which always loads a golden from disk."""
     async def run(self, db: Any, redis: Any, run_id: Any) -> None:
-        from src.ai.core.execution_engine import ExecutionEngine
-        await ExecutionEngine(db, redis).execute_run(run_id)
+        raise NotImplementedError(
+            "legacy ExecutionEngine.execute_run was deleted (C4); "
+            "goldens are recorded from the AgentLoop"
+        )
 
 
 class CandidateAdapter:

@@ -12,16 +12,16 @@ from src.ai.core.feature_flags import DEFAULTS, FeatureFlags
 @pytest.mark.asyncio
 async def test_default_when_no_db_no_env() -> None:
     f = FeatureFlags(db=None)
-    # Phase 12 Stage 0: agent_loop.enabled now defaults ON.
-    assert await f.is_on("agent_loop.enabled") is True
-    assert DEFAULTS["agent_loop.enabled"] is True
+    # A representative ON-by-default agent_loop.* flag.
+    assert await f.is_on("agent_loop.snapshot_every_iteration") is True
+    assert DEFAULTS["agent_loop.snapshot_every_iteration"] is True
 
 
 @pytest.mark.asyncio
 async def test_env_override_truthy(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AI_FLAG_AGENT_LOOP_ENABLED", "true")
+    monkeypatch.setenv("AI_FLAG_AGENT_LOOP_SNAPSHOT_EVERY_ITERATION", "true")
     f = FeatureFlags(db=None)
-    assert await f.is_on("agent_loop.enabled") is True
+    assert await f.is_on("agent_loop.snapshot_every_iteration") is True
 
 
 @pytest.mark.asyncio
@@ -33,26 +33,26 @@ async def test_env_override_falsy(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_entity_override_flat_key_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AI_FLAG_AGENT_LOOP_ENABLED", raising=False)
+    monkeypatch.delenv("AI_FLAG_AGENT_LOOP_SNAPSHOT_EVERY_ITERATION", raising=False)
     f = FeatureFlags(db=None)
-    extras = {"feature_flags": {"agent_loop.enabled": True}}
-    assert await f.is_on("agent_loop.enabled", entity_extras=extras) is True
+    extras = {"feature_flags": {"agent_loop.snapshot_every_iteration": True}}
+    assert await f.is_on("agent_loop.snapshot_every_iteration", entity_extras=extras) is True
 
 
 @pytest.mark.asyncio
 async def test_entity_override_namespaced_form(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AI_FLAG_AGENT_LOOP_ENABLED", raising=False)
+    monkeypatch.delenv("AI_FLAG_AGENT_LOOP_SNAPSHOT_EVERY_ITERATION", raising=False)
     f = FeatureFlags(db=None)
-    extras = {"feature_flags": {"agent_loop": {"enabled": True}}}
-    assert await f.is_on("agent_loop.enabled", entity_extras=extras) is True
+    extras = {"feature_flags": {"agent_loop": {"snapshot_every_iteration": True}}}
+    assert await f.is_on("agent_loop.snapshot_every_iteration", entity_extras=extras) is True
 
 
 @pytest.mark.asyncio
 async def test_resolve_returns_source() -> None:
     f = FeatureFlags(db=None)
-    res = await f.resolve("agent_loop.enabled")
+    res = await f.resolve("agent_loop.snapshot_every_iteration")
     assert res.source == "default"
-    assert res.value is DEFAULTS["agent_loop.enabled"]
+    assert res.value is DEFAULTS["agent_loop.snapshot_every_iteration"]
 
 
 @pytest.mark.asyncio
@@ -65,8 +65,8 @@ async def test_db_lookup_safe_degraded_when_table_missing() -> None:
     f = FeatureFlags(db=_RaisingDB())
     # Should not raise; falls through to the hard default.
     assert (
-        await f.is_on("agent_loop.enabled", company_id=uuid4())
-        is DEFAULTS["agent_loop.enabled"]
+        await f.is_on("agent_loop.snapshot_every_iteration", company_id=uuid4())
+        is DEFAULTS["agent_loop.snapshot_every_iteration"]
     )
 
 

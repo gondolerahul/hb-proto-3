@@ -44,68 +44,14 @@ class StepExecutorService:
     dependencies via constructor; does NOT own the DB session or run lifecycle.
     """
 
-    def __init__(self, db, redis, company_id: UUID, usage_service: UsageService, cortex_bridge=None, execute_run_fn=None, governance=None):
+    def __init__(self, db, redis, company_id: UUID, usage_service: UsageService, cortex_bridge=None, governance=None):
         self.db = db
         self.redis = redis
         self.company_id = company_id
         self.usage_service = usage_service
         self._cortex_bridge = cortex_bridge
-        # Callback to ExecutionEngine.execute_run — avoids circular import
-        self._execute_run_fn = execute_run_fn
         # GovernanceService dependency for credit gates.
         self._governance = governance
-
-    # ------------------------------------------------------------------
-    # Phase B: Async child entity dispatch via Arq + Redis pub/sub
-    # ------------------------------------------------------------------
-
-    async def _dispatch_child_async(self, child_run: ExecutionRun, governance: dict) -> dict:
-        """Dispatch child run as Arq job and wait for completion via pub/sub.
-
-        Falls back to recursive execution if no response within timeout.
-        """
-        from arq.connections import ArqRedis
-        timeout_ms = governance.get("timeout_ms", 120000)
-        # Double the timeout for async dispatch to account for queue wait
-        max_wait = (timeout_ms * 2) / 1000.0
-
-        channel = f"run:{child_run.id}:status"
-        pubsub = self.redis.pubsub()
-        await pubsub.subscribe(channel)
-
-        try:
-            # Enqueue job
-            arq_redis = ArqRedis(self.redis.connection_pool)
-            await arq_redis.enqueue_job('run_execution_recursive', str(child_run.id))
-            logger.info(f"Dispatched child run {child_run.id} via Arq")
-
-            # Wait for completion
-            async def _wait_for_result():
-                async for msg in pubsub.listen():
-                    if msg["type"] == "message":
-                        data = json.loads(msg["data"])
-                        if data.get("status") in ("COMPLETED", "FAILED"):
-                            return data
-                return None
-
-            result_data = await asyncio.wait_for(_wait_for_result(), timeout=max_wait)
-
-            if result_data and result_data.get("status") == "FAILED":
-                from src.ai.core.exceptions import AgentError
-                raise AgentError(f"Child run {child_run.id} failed: {result_data.get('error', 'Unknown')}")
-
-            # Reload child_run to get result_data
-            await self.db.refresh(child_run)
-            return child_run.result_data or {}
-
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Async child dispatch timed out after {max_wait}s for run {child_run.id}. "
-                f"Falling back to recursive execution."
-            )
-            return await self._execute_run_fn(child_run.id)
-        finally:
-            await pubsub.unsubscribe(channel)
 
     # ------------------------------------------------------------------
     # CORTEX delegation
@@ -161,7 +107,14 @@ class StepExecutorService:
     async def _execute_step(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         """Routes execution to specific step handler."""
         if step.type == StepType.CHILD_ENTITY_INVOCATION:
-            return await self._execute_child_invocation(run, entity, step, context)
+            # Child entities run as their own isolated runs via the loop's
+            # ChildEntityExecutor (create_child_run + async suspend/resume), not
+            # inline on this session. Reaching here is a routing bug.
+            from src.ai.core.exceptions import AgentError
+            raise AgentError(
+                "CHILD_ENTITY_INVOCATION reached the inline step path; child "
+                "entities are dispatched asynchronously by ChildEntityExecutor."
+            )
         elif step.type == StepType.TOOL_CALL:
             return await self._execute_tool_call(run, entity, step, context)
         elif step.type == StepType.THOUGHT or step.type == StepType.ACTION:
@@ -300,50 +253,6 @@ class StepExecutorService:
         await self.db.commit()
         await self.db.refresh(child_run)
         return child_run
-
-    async def _execute_child_invocation(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
-        """Inline child execution: create the child run, then drive it to
-        completion on this worker (async-dispatch-and-wait, or the legacy
-        recursive callback). The loop's ChildEntityExecutor uses the
-        suspend/resume path instead when ``async_child_dispatch`` is on."""
-        child_run = await self.create_child_run(run, entity, step, context)
-
-        # Recursive Execute
-        # Phase B: Feature-flagged async child dispatch (inline wait variant)
-        governance = entity.governance or {}
-        use_async = governance.get("async_child_dispatch", False)
-
-        if use_async and self.redis:
-            child_result = await self._dispatch_child_async(child_run, governance)
-        else:
-            # Legacy recursive path — uses callback to ExecutionEngine.execute_run
-            child_result = await self._execute_run_fn(child_run.id)
-        
-        # Refresh both run objects after long child execution to prevent
-        # MissingGreenlet from stale ORM state / recycled DB connections
-        await self.db.refresh(run)
-        await self.db.refresh(child_run)
-
-        # rollup metrics — atomic so parallel child invocations don't clobber.
-        await self._bump_run_cost(
-            run,
-            Decimal(str(child_run.total_cost_usd or 0)),
-            int(child_run.total_tokens or 0),
-        )
-        await self.db.commit()
-        
-        # Accumulate ALL child step outputs (not just the last one).
-        # The director produces ~69KB across 8 steps but previously only the
-        # last step's 16KB reached the synthesizer. Now all outputs are passed.
-        all_step_outputs = child_result.get("steps", [])
-        accumulated_output = "\n\n---\n\n".join(
-            f"## {s.get('step', 'Unknown')}\n{s.get('output', '')}"
-            for s in all_step_outputs
-            if s.get("output")
-        )
-        # Fallback to last step output if steps array is empty
-        final_output = accumulated_output or child_result.get("output", "")
-        return {"step": step.name, "output": final_output, "child_run_id": str(child_run.id)}
 
     async def _execute_tool_call(self, run: ExecutionRun, entity: HierarchicalEntity, step: PlanStep, context: dict) -> dict:
         tool_id = step.target.tool_id if step.target else None

@@ -34,12 +34,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULTS: dict[str, bool] = {
-    # Master switch defaults ON in this pre-production/development build; the
-    # 30-day canary-telemetry gate is intentionally skipped (nothing ships to
-    # prod). The AgentLoop is the default execution path; the legacy
-    # ExecutionEngine path is reachable only by setting this flag OFF via a
-    # per-company / global / env override.
-    "agent_loop.enabled": True,
+    # The AgentLoop is the sole run engine (C4 deleted the legacy
+    # ExecutionEngine.execute_run path), so the ``agent_loop.enabled`` master
+    # switch no longer exists. The remaining ``agent_loop.*`` flags tune
+    # behaviour WITHIN the loop.
     "agent_loop.perception_bounded_viewport": True,
     "agent_loop.snapshot_every_iteration": True,
     "agent_loop.executor_dialog_enabled": False,
@@ -575,9 +573,8 @@ class FeatureFlags:
             return None
         except Exception as exc:                                           # pragma: no cover
             # A swallowed error here silently downgrades the flag to its
-            # default (OFF for agent_loop.enabled), which sends a run down
-            # the legacy path even though an override row exists. Log at
-            # WARNING so that fallback is never invisible.
+            # default even though an override row exists. Log at WARNING so that
+            # fallback is never invisible.
             logger.warning(
                 "feature_flags DB lookup failed for %s (%s); "
                 "falling back to env/default",

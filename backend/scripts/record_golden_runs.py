@@ -59,11 +59,11 @@ async def _record_one(case_id: str, output_dir: Path, *, hermetic: bool) -> bool
     # when the DB / Redis env is unset.
     import contextlib
 
-    from src.ai.core.execution_engine import ExecutionEngine
     from src.common.database import AsyncSessionLocal
 
     from tests.parity.extract import extract_run_result
     from tests.parity.hermetic import hermetic_llm_and_tools, seed_parity_run
+    from tests.parity.worker_sim import drive_run_to_completion
     from tests.regression.loader import load_case
 
     patch_ctx = hermetic_llm_and_tools() if hermetic else contextlib.nullcontext()
@@ -90,15 +90,18 @@ async def _record_one(case_id: str, output_dir: Path, *, hermetic: bool) -> bool
         )
         logger.info("Seeded run %s for case %s", run_id, case_id)
 
-        # Execute via LEGACY engine — this writes status, cost, logs.
-        logger.info("Executing legacy ExecutionEngine (hermetic=%s) ...", hermetic)
-        engine = ExecutionEngine(db, redis_client)
-        try:
-            with patch_ctx:
-                await engine.execute_run(run_id)
-        except Exception:
-            logger.exception("Legacy run raised — recording partial snapshot anyway")
+    # Execute via the AgentLoop (the sole engine; C4 deleted execute_run),
+    # driven through the in-process arq drainer so async child dispatch
+    # suspends + resumes to completion. The drainer commits via its own
+    # sessions, so extract on a fresh session below.
+    logger.info("Executing AgentLoop via worker_sim drainer (hermetic=%s) ...", hermetic)
+    try:
+        with patch_ctx:
+            await drive_run_to_completion(str(run_id))
+    except Exception:
+        logger.exception("Run raised — recording partial snapshot anyway")
 
+    async with AsyncSessionLocal() as db:
         # Re-fetch + extract.
         rr = await extract_run_result(db, str(run_id))
         snapshot_path = output_dir / f"{case_id}.json"

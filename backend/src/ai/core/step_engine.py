@@ -6,11 +6,10 @@ step runner, the per-step wrapper (timeout + HITL + budget guard + GoalGuard),
 the cost-cap guard, and the CORTEX helper delegators. It deliberately does NOT
 own a full-run entry point — driving an entire run is the AgentLoop's job.
 
-``ExecutionEngine`` (the legacy plan-walker in ``execution_engine.py``)
-subclasses this and adds only ``execute_run``; that method is the C4 deletion
-target. Keeping the step surface here lets the loop's SingleStep / DAG /
-ChildEntity executors construct a ``StepEngine`` directly, with no dependency on
-``execute_run``.
+The loop's SingleStep / DAG / ChildEntity executors (and the recursive engine)
+construct a ``StepEngine`` directly. The legacy ``ExecutionEngine.execute_run``
+plan-walker this was extracted from has been deleted (C4); the AgentLoop is the
+sole run entry point.
 """
 import asyncio
 import copy
@@ -58,7 +57,6 @@ class StepEngine:
         self._step_executor = StepExecutorService(
             db, redis_pool, company_id, self.usage_service,
             cortex_bridge=self._cortex_bridge,
-            execute_run_fn=self._run_child_full,
             governance=self._governance,
         ) if company_id else None
 
@@ -72,22 +70,8 @@ class StepEngine:
             self._step_executor = StepExecutorService(
                 self.db, self.redis, company_id, self.usage_service,
                 cortex_bridge=self._cortex_bridge,
-                execute_run_fn=self._run_child_full,
                 governance=self._governance,
             )
-
-    async def _run_child_full(self, child_run_id: UUID) -> dict[str, Any]:
-        """Inline child-entity execution: drive a child's whole run via the
-        legacy engine on this session.
-
-        This is the ``execute_run_fn`` callback the step executor falls back to
-        when ``async_child_dispatch`` is OFF. It is the last inline caller of
-        ``execute_run`` and is removed in C4 PR-6 (async dispatch becomes the
-        sole child path).
-        """
-        from src.ai.core.execution_engine import ExecutionEngine
-        engine = ExecutionEngine(self.db, self.redis, self.company_id)
-        return await engine.execute_run(child_run_id)
 
     async def _execute_steps_dag(self, run: Any, entity: Any, steps: List[dict[str, Any]], context_state: dict[str, Any]) -> List[dict[str, Any]]:
         """Execute steps respecting dependencies, parallelizing independent ones.

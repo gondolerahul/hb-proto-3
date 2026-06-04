@@ -32,11 +32,12 @@ def test_no_worker_re_exports() -> None:
         from src.ai.worker import ExecutionEngine  # noqa: F401
 
 
-def test_canonical_execution_engine_import() -> None:
-    """The canonical replacement for the worker re-export works."""
-    from src.ai.core.execution_engine import ExecutionEngine
+def test_canonical_step_engine_import() -> None:
+    """The legacy ExecutionEngine.execute_run plan-walker was deleted (C4); the
+    StepEngine step surface is the canonical engine the loop's executors use."""
+    from src.ai.core.step_engine import StepEngine
 
-    assert ExecutionEngine.__name__ == "ExecutionEngine"
+    assert StepEngine.__name__ == "StepEngine"
 
 
 def test_canonical_recursive_engine_import() -> None:

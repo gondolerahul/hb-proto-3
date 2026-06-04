@@ -3,7 +3,7 @@
 Covers the two real platform bugs surfaced by the doc-factory-process analysis
 (docs/phase11/DOC_FACTORY_REDESIGN.md) plus the sandbox scratch-dir skip:
 
-  §5.1 — ExecutionEngine._enforce_cost_cap raises BudgetExhaustedError once a
+  §5.1 — StepEngine._enforce_cost_cap raises BudgetExhaustedError once a
          run reaches its entity's governance.max_cost_usd (the cap that the
          legacy run loop previously never enforced on children).
   §5.2 — AgentLoop._sync_budget_tokens rolls child-run tokens up to the parent
@@ -22,7 +22,7 @@ from uuid import uuid4
 import pytest
 
 from src.ai.core.exceptions import BudgetExhaustedError
-from src.ai.core.execution_engine import ExecutionEngine
+from src.ai.core.step_engine import StepEngine
 
 
 # ---------------------------------------------------------------------------
@@ -53,14 +53,14 @@ class _FakeDB:
 
 def _engine_stub(db) -> SimpleNamespace:
     # _enforce_cost_cap only touches self.db — bind it to a light stub to avoid
-    # ExecutionEngine's full service wiring.
+    # StepEngine's full service wiring.
     return SimpleNamespace(db=db)
 
 
 async def _enforce(db, governance, spent=None):
     stub = _engine_stub(_FakeDB(value=spent) if db is None else db)
     run = SimpleNamespace(id=uuid4())
-    await ExecutionEngine._enforce_cost_cap(stub, run, governance)
+    await StepEngine._enforce_cost_cap(stub, run, governance)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ async def test_cost_cap_raises_when_spent_reaches_cap():
     stub = _engine_stub(db)
     run = SimpleNamespace(id=uuid4())
     with pytest.raises(BudgetExhaustedError) as ei:
-        await ExecutionEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 3.00})
+        await StepEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 3.00})
     assert ei.value.cap_usd == pytest.approx(3.00)
     assert ei.value.spent_usd == pytest.approx(15.5655)
 
@@ -85,7 +85,7 @@ async def test_cost_cap_passes_when_under_cap():
     stub = _engine_stub(db)
     run = SimpleNamespace(id=uuid4())
     # Must NOT raise.
-    await ExecutionEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 3.00})
+    await StepEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 3.00})
 
 
 @pytest.mark.asyncio
@@ -94,7 +94,7 @@ async def test_cost_cap_noop_when_no_cap(governance):
     db = _FakeDB(value="9999.0")  # huge spend, but no cap configured
     stub = _engine_stub(db)
     run = SimpleNamespace(id=uuid4())
-    await ExecutionEngine._enforce_cost_cap(stub, run, governance)  # no raise
+    await StepEngine._enforce_cost_cap(stub, run, governance)  # no raise
 
 
 @pytest.mark.asyncio
@@ -103,7 +103,7 @@ async def test_cost_cap_swallows_lookup_errors():
     stub = _engine_stub(db)
     run = SimpleNamespace(id=uuid4())
     # A failed cost lookup must never crash a healthy step.
-    await ExecutionEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 1.00})
+    await StepEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 1.00})
 
 
 @pytest.mark.asyncio
@@ -112,7 +112,7 @@ async def test_cost_cap_boundary_equal_trips():
     stub = _engine_stub(db)
     run = SimpleNamespace(id=uuid4())
     with pytest.raises(BudgetExhaustedError):
-        await ExecutionEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 2.00})
+        await StepEngine._enforce_cost_cap(stub, run, {"max_cost_usd": 2.00})
 
 
 # ---------------------------------------------------------------------------

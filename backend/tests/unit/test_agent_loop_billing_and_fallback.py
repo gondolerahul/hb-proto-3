@@ -160,23 +160,15 @@ def swap_single_step():
 
 
 @pytest.fixture
-def explode_execute_run(monkeypatch):
-    """Make ExecutionEngine.execute_run blow up if ANY code path reaches it.
+def explode_execute_run():
+    """BUG 1 was the AgentLoop secretly invoking the legacy full-run lifecycle.
 
-    BUG 1 was the AgentLoop secretly invoking the legacy full-run lifecycle.
+    The legacy ``ExecutionEngine.execute_run`` plan-walker has since been deleted
+    (C4): there is no full-run engine for the loop to call, so the regression is
+    structurally impossible. Retained as a no-op counter (always 0) so the
+    asserting tests still document the invariant.
     """
-    from src.ai.core.execution_engine import ExecutionEngine
-
-    calls = {"n": 0}
-
-    async def _boom(self, run_id):  # noqa: ANN001, ARG001
-        calls["n"] += 1
-        raise AssertionError(
-            "ExecutionEngine.execute_run must never be called from the loop path"
-        )
-
-    monkeypatch.setattr(ExecutionEngine, "execute_run", _boom)
-    return calls
+    return {"n": 0}
 
 
 # ---------------------------------------------------------------------------

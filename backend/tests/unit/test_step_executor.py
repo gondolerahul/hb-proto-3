@@ -22,7 +22,6 @@ def executor(mock_db):
         company_id=uuid4(),
         usage_service=MagicMock(),
         cortex_bridge=MagicMock(),
-        execute_run_fn=AsyncMock(return_value={"output": "child result", "steps": []}),
     )
 
 
@@ -54,16 +53,19 @@ class TestExecuteStepRouting:
             mock.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_routes_child_invocation(self, executor):
-        """Should dispatch CHILD_ENTITY_INVOCATION to _execute_child_invocation."""
+    async def test_child_invocation_not_inline(self, executor):
+        """CHILD_ENTITY_INVOCATION no longer runs inline: child entities are
+        dispatched as their own runs by the loop's ChildEntityExecutor
+        (create_child_run + async suspend/resume). Reaching the inline step
+        path is a routing bug and raises."""
+        from src.ai.core.exceptions import AgentError
+
         step = MagicMock(spec=PlanStep)
         step.type = StepType.CHILD_ENTITY_INVOCATION
         step.name = "invoke_child"
 
-        with patch.object(executor, '_execute_child_invocation',
-                          AsyncMock(return_value={"step": "invoke_child", "output": "child done"})) as mock:
-            result = await executor._execute_step(MagicMock(), MagicMock(), step, {})
-            mock.assert_called_once()
+        with pytest.raises(AgentError):
+            await executor._execute_step(MagicMock(), MagicMock(), step, {})
 
     @pytest.mark.asyncio
     async def test_unknown_type_returns_error(self, executor):
