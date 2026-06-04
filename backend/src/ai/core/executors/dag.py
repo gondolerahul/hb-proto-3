@@ -42,9 +42,9 @@ class DAGExecutor:
                 error="DAGExecutor invoked with empty plan_fragment",
             )
 
-        from src.ai.core.execution_engine import ExecutionEngine
+        from src.ai.core.step_engine import StepEngine
 
-        engine = ExecutionEngine(db, _resolve_redis(state), state.company_id)
+        engine = StepEngine(db, _resolve_redis(state), state.company_id)
         engine._ensure_services(cast(UUID, state.company_id))
 
         run = await self._reload_run(db, state.run_id)

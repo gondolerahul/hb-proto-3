@@ -74,10 +74,10 @@ class ChildEntityExecutor:
             )
 
         step = move.plan_fragment[0]
-        from src.ai.core.execution_engine import ExecutionEngine
+        from src.ai.core.step_engine import StepEngine
 
         redis = _resolve_redis(state)
-        engine = ExecutionEngine(db, redis, state.company_id)
+        engine = StepEngine(db, redis, state.company_id)
         engine._ensure_services(cast(UUID, state.company_id))
 
         run = await self._reload_run(db, state.run_id)
