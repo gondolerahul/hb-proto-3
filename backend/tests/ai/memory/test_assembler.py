@@ -20,10 +20,11 @@ class TestAssembleMemory:
         )
         assert result == {}
 
-    async def test_defaults_to_v1_full(self):
-        """Default pipeline should be v1, scope FULL."""
-        with patch("src.ai.memory.assembler._assemble_v1", new_callable=AsyncMock) as mock_v1:
-            mock_v1.return_value = {"__memory__": "test"}
+    async def test_v1_pipeline_falls_through_to_v2(self):
+        """The legacy v1 path was removed (C2): even an explicit
+        ``memory_pipeline="v1"`` now runs v2."""
+        with patch("src.ai.memory.assembler._assemble_v2", new_callable=AsyncMock) as mock_v2:
+            mock_v2.return_value = {"__memory__": "v2 context"}
             result = await assemble_memory(
                 db=MagicMock(),
                 company_id=uuid4(),
@@ -31,8 +32,8 @@ class TestAssembleMemory:
                 memory_pipeline="v1",
                 memory_scope="FULL",
             )
-            mock_v1.assert_called_once()
-            assert result == {"__memory__": "test"}
+            mock_v2.assert_called_once()
+            assert result == {"__memory__": "v2 context"}
 
     async def test_v2_pipeline_calls_assembler(self):
         """v2 pipeline should call _assemble_v2."""
@@ -50,17 +51,16 @@ class TestAssembleMemory:
             assert result == {"__memory__": "v2 context"}
 
     async def test_knowledge_only_scope_passes_through(self):
-        """KNOWLEDGE_ONLY scope should work with v1 pipeline."""
-        with patch("src.ai.memory.assembler._assemble_v1", new_callable=AsyncMock) as mock_v1:
-            mock_v1.return_value = {}
+        """KNOWLEDGE_ONLY scope routes through v2 with the right domains."""
+        with patch("src.ai.memory.assembler._assemble_v2", new_callable=AsyncMock) as mock_v2:
+            mock_v2.return_value = {}
             await assemble_memory(
                 db=MagicMock(),
                 company_id=uuid4(),
                 entity_id=uuid4(),
-                memory_pipeline="v1",
                 memory_scope="KNOWLEDGE_ONLY",
             )
-            # _assemble_v1(db, entity_id, user_id, tree_id, memory_scope, long_running)
-            # memory_scope is the 5th positional arg (index 4)
-            call_args = mock_v1.call_args[0]
-            assert call_args[4] == "KNOWLEDGE_ONLY"
+            # _assemble_v2(db, company_id, entity_id, user_id, task_description,
+            #              memory_scope, runtime_tree) — scope is the 6th arg (idx 5)
+            call_args = mock_v2.call_args[0]
+            assert call_args[5] == "KNOWLEDGE_ONLY"

@@ -8,16 +8,11 @@ Memory tiers:
   SEMANTIC  — Long-term vectorised knowledge in DocumentChunk table
               (retrieved via cosine similarity using pgvector)
 
-Usage (from worker.py):
-    memory = MemoryRouter(db)
-
-    # Retrieve relevant context before a run
-    ctx = await memory.retrieve(
-        entity_id=..., user_id=..., query="last purchase amount"
-    )
-
-    # Write on run completion (called by S2 hook in worker.py)
-    await memory.write_episodic(run)
+Retrieval (``retrieve`` / ``format_for_prompt`` / ``_load_episodic``) was
+removed in C2 — the AgentLoop reads context from CORTEX via the Perceiver and
+the v2 ``MemoryAssemblyService``. What remains here is the episodic *writer*
+(``write_episodic``) and the reusable semantic-search primitive
+(``search_semantic``).
 """
 from __future__ import annotations
 
@@ -46,11 +41,13 @@ logger = logging.getLogger(__name__)
 
 class MemoryRouter:
     """
-    Routes memory reads/writes across three tiers: WORKING → EPISODIC → SEMANTIC.
+    Episodic writer + semantic-search primitive.
 
-    retrieve()    — Returns combined context from episodic + semantic tiers.
     write_episodic() — Persists a completed run's summary to EpisodicMemory.
-    search_semantic() — Vector similarity search in DocumentChunk (if embeddings available).
+    search_semantic() — Vector/graph similarity search across memory domains.
+
+    (The legacy ``retrieve`` reader was removed in C2; the loop reads context
+    from CORTEX + the v2 MemoryAssemblyService.)
     """
 
     MAX_EPISODES = 10    # Keep last N episodic memories per entity/user pair
@@ -59,7 +56,6 @@ class MemoryRouter:
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
-        self._cortex_viewport: Optional[Any] = None  # Cached viewport for long_running mode
 
     async def _get_company_id(self, entity_id: UUID) -> Optional[UUID]:
         """Lookup company_id for an entity."""
@@ -72,56 +68,6 @@ class MemoryRouter:
             return result.scalar_one_or_none()
         except Exception:
             return None
-
-    # ------------------------------------------------------------------
-    # Retrieve (called before run to inject context)
-    # ------------------------------------------------------------------
-
-    async def retrieve(
-        self,
-        entity_id: UUID,
-        user_id: Optional[UUID] = None,
-        query: Optional[str] = None,
-        channel: Optional[str] = None,
-        long_running: bool = True,
-        tree_id: Optional[UUID] = None,
-    ) -> Dict[str, Any]:
-        """
-        Merge episodic + semantic search results into a single context dict.
-
-        When long_running=True and tree_id is provided, loads CORTEX viewport
-        instead of flat episodic/semantic results.
-
-        Returns:
-            {
-                "episodic": [{"input": ..., "output": ..., "at": ...}, ...],
-                "semantic":  [{"content": ..., "score": ...}, ...],
-                "cortex_viewport": {...} | None
-            }
-        """
-        episodic = await self._load_episodic(entity_id, user_id)
-        semantic: List[Dict[str, Any]] = []
-        if query:
-            semantic = await self.search_semantic(entity_id=entity_id, query=query)
-
-        result: Dict[str, Any] = {"episodic": episodic, "semantic": semantic, "cortex_viewport": None}
-
-        # Load CORTEX viewport if long_running mode is active
-        if long_running and tree_id:
-            try:
-                from src.ai.memory.cortex_service import CortexService
-                company_id = await self._get_company_id(entity_id)
-                if company_id:
-                    cortex = CortexService(self.db, company_id)
-                    tree, viewport, checkpoint = await cortex.resume_tree(tree_id)
-                    self._cortex_viewport = viewport
-                    result["cortex_viewport"] = viewport.to_dict()
-                    if checkpoint:
-                        result["cortex_checkpoint"] = checkpoint
-            except Exception as e:
-                logger.warning(f"CORTEX viewport load failed: {e}")
-
-        return result
 
     # ------------------------------------------------------------------
     # Write Episodic (S2 — called on ExecutionRun completion)
@@ -288,130 +234,8 @@ class MemoryRouter:
             return []
 
     # ------------------------------------------------------------------
-    # Format for injection into system/user prompt
-    # ------------------------------------------------------------------
-
-    def format_for_prompt(self, memory: Dict[str, Any]) -> str:
-        """
-        Render the retrieved memory dict as a text block for prompt injection.
-
-        Gap #13: When CORTEX viewport is available, renders the spec §4.3 format:
-          [CORTEX VIEWPORT] — primary context (task + breadcrumb + children)
-          [EPISODIC MEMORY]  — brief recent interaction history
-          [LAST CHECKPOINT]  — compressed context from previous compaction
-
-        Returns an empty string if all tiers are empty.
-        """
-        viewport = memory.get("cortex_viewport")
-
-        # ── CORTEX mode: structured spec-compliant prompt ──────────────
-        if viewport and self._cortex_viewport:
-            parts = []
-
-            # Task description (from tree)
-            task_desc = memory.get("task_description")
-            if task_desc:
-                parts.append(f"## Task\n{task_desc}")
-
-            # Episodic memory (brief, subordinated)
-            episodes = memory.get("episodic", [])
-            if episodes:
-                ep_lines = []
-                for ep in episodes[-5:]:  # Only last 5 in CORTEX mode
-                    inp = (ep.get("input") or "")[:200]
-                    out = (ep.get("output") or "")[:200]
-                    at = ep.get("at", "")
-                    ep_lines.append(f"  [{at}] {inp!r} → {out!r}")
-                parts.append("## Recent Episodes\n" + "\n".join(ep_lines))
-
-            # CORTEX viewport (primary context — includes available operations)
-            parts.append(self._cortex_viewport.to_prompt_text())
-
-            # Last checkpoint
-            checkpoint = memory.get("cortex_checkpoint")
-            if checkpoint:
-                ckpt_summary = checkpoint.get("progress_summary", "")
-                key_facts = checkpoint.get("key_facts", [])
-                next_steps = checkpoint.get("next_steps", [])
-                ckpt_lines = [f"## Last Checkpoint\n{ckpt_summary}"]
-                if key_facts:
-                    ckpt_lines.append("Key facts: " + "; ".join(key_facts))
-                if next_steps:
-                    ckpt_lines.append("Next steps: " + "; ".join(next_steps))
-                parts.append("\n".join(ckpt_lines))
-
-            return "\n\n".join(parts)
-
-        # ── Standard mode (non-CORTEX) ─────────────────────────────────
-        parts = []
-
-        episodes = memory.get("episodic", [])
-        if episodes:
-            ep_lines = []
-            for ep in episodes[-self.MAX_EPISODES:]:
-                inp = (ep.get("input") or "")[:self.EPISODIC_CHARS]
-                out = (ep.get("output") or "")[:self.EPISODIC_CHARS]
-                at = ep.get("at", "")
-                ep_lines.append(f"  [{at}] User asked: {inp!r} → Agent replied: {out!r}")
-            parts.append("## Recent Interaction History\n" + "\n".join(ep_lines))
-
-        chunks = memory.get("semantic", [])
-        if chunks:
-            chunk_lines = [f"  (score {c['score']:.2f}) {c['content'][:300]}" for c in chunks]
-            parts.append("## Relevant Knowledge\n" + "\n".join(chunk_lines))
-
-        return "\n\n".join(parts)
-
-    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    async def _load_episodic(
-        self,
-        entity_id: UUID,
-        user_id: Optional[UUID],
-    ) -> List[Dict[str, Any]]:
-        """
-        Load episodic memories — prefers v2 Episodic Tree, falls back to v1 flat table.
-        """
-        # --- V2: Try Episodic Tree first ---
-        try:
-            company_id = await self._get_company_id(entity_id)
-            if company_id:
-                from src.ai.memory.episodic_tree_service import EpisodicTreeService
-                episodic_service = EpisodicTreeService(self.db, company_id)
-                episodes = await episodic_service.get_recent_episodes(
-                    entity_id=entity_id, limit=self.MAX_EPISODES,
-                )
-                if episodes:
-                    return episodes
-        except Exception as e:
-            logger.debug(f"Episodic Tree v2 load failed, falling back to v1: {e}")
-
-        # --- V1: Flat table fallback ---
-        try:
-            stmt = (
-                select(EpisodicMemory)
-                .where(EpisodicMemory.entity_id == entity_id)
-                .order_by(desc(EpisodicMemory.created_at))
-                .limit(self.MAX_EPISODES)
-            )
-            if user_id:
-                stmt = stmt.where(EpisodicMemory.user_id == user_id)
-            result = await self.db.execute(stmt)
-            rows = result.scalars().all()
-            return [
-                {
-                    "input": r.input_summary,
-                    "output": r.output_summary,
-                    "status": r.status,
-                    "at": r.created_at.isoformat() if r.created_at else "",
-                }
-                for r in reversed(rows)
-            ]
-        except Exception as e:
-            logger.debug(f"Episodic load failed: {e}")
-            return []
 
     async def _prune_old_episodes(self, entity_id: UUID, user_id: Optional[UUID]) -> None:
         """Delete records beyond MAX_EPISODES for this entity/user pair."""
