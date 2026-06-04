@@ -23,19 +23,27 @@ Design references:
   - RLM: Recursive Language Model execution with bounded context
   - Anthropic: Context engineering (compaction, structured note-taking, sub-agents)
 """
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
-    Column, String, Boolean, ForeignKey, DateTime, Text,
+    String, Boolean, ForeignKey, DateTime, Text,
     Integer, Numeric, Enum as SAEnum, Index, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 import pgvector.sqlalchemy
 
 from src.common.database import Base
+
+if TYPE_CHECKING:
+    from src.auth.models import Company
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.orm.execution import ExecutionRun
 
 
 # ---------------------------------------------------------------------------
@@ -123,45 +131,45 @@ class CortexTree(Base):
     """
     __tablename__ = "cortex_trees"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Nullable: tenant/app/partner-scoped trees (e.g. the Meta-Agent platform
     # intelligence tree) are not tied to a single entity and carry entity_id=NULL.
     # The FK still enforces that any non-NULL value references a real entity.
-    entity_id = Column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
 
-    task_description = Column(Text, nullable=True)
-    status = Column(
+    task_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[CortexTreeStatus] = mapped_column(
         SAEnum(CortexTreeStatus, name="cortex_tree_status", create_constraint=True,
                values_callable=lambda x: [e.value for e in x]),
         default=CortexTreeStatus.ACTIVE,
         nullable=False,
     )
 
-    total_nodes = Column(Integer, default=0)
-    root_node_id = Column(UUID(as_uuid=True), nullable=True)       # Set after root node created
-    output_root_id = Column(UUID(as_uuid=True), nullable=True)     # Root of the output subtree
-    resume_cursor_id = Column(UUID(as_uuid=True), nullable=True)   # KEY: where to resume
+    total_nodes: Mapped[int] = mapped_column(Integer, default=0, nullable=True)
+    root_node_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)       # Set after root node created
+    output_root_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)     # Root of the output subtree
+    resume_cursor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)   # KEY: where to resume
 
     # Configuration
-    max_children = Column(Integer, default=12)       # MAX_CHILDREN invariant
-    page_size_tokens = Column(Integer, default=8000) # Max tokens per content page
-    context_budget_pct = Column(Integer, default=40)  # Root run budget as % of window
+    max_children: Mapped[int] = mapped_column(Integer, default=12, nullable=True)       # MAX_CHILDREN invariant
+    page_size_tokens: Mapped[int] = mapped_column(Integer, default=8000, nullable=True) # Max tokens per content page
+    context_budget_pct: Mapped[int] = mapped_column(Integer, default=40, nullable=True)  # Root run budget as % of window
 
     # Scheduling (Gap #5: multi-day operation)
-    resume_schedule = Column(String(100), nullable=True)   # Cron expression for periodic wake-ups
-    next_resume_at = Column(DateTime, nullable=True)       # Next scheduled resume timestamp
+    resume_schedule: Mapped[str | None] = mapped_column(String(100), nullable=True)   # Cron expression for periodic wake-ups
+    next_resume_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)       # Next scheduled resume timestamp
 
     # --- v2.0: Memory Domain & Scope ---
-    memory_domain = Column(
+    memory_domain: Mapped[MemoryDomain] = mapped_column(
         SAEnum(MemoryDomain, name="memory_domain", create_constraint=False,
                values_callable=lambda x: [e.value for e in x]),
         default=MemoryDomain.KNOWLEDGE,
         server_default="knowledge",
         nullable=False,
     )
-    scope_level = Column(
+    scope_level: Mapped[ScopeLevel] = mapped_column(
         SAEnum(ScopeLevel, name="scope_level", create_constraint=False,
                values_callable=lambda x: [e.value for e in x]),
         default=ScopeLevel.RUNTIME,
@@ -170,27 +178,27 @@ class CortexTree(Base):
     )
 
     # Scope hierarchy keys (nullable — set based on scope_level)
-    app_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
-    partner_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
-    run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
+    app_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
+    partner_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
 
     # Categorization and lifecycle
-    tree_category = Column(String(100), nullable=True)      # e.g. "hr_policies", "sales_playbook"
-    expires_at = Column(DateTime, nullable=True)             # Expiration time (NULL = never)
-    is_persistent = Column(Boolean, default=True, server_default="true")  # Survives archival?
+    tree_category: Mapped[str | None] = mapped_column(String(100), nullable=True)      # e.g. "hr_policies", "sales_playbook"
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)             # Expiration time (NULL = never)
+    is_persistent: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=True)  # Survives archival?
 
     # Consolidation / Dreaming tracking
-    last_consolidated_at = Column(DateTime, nullable=True)   # Last dreaming process timestamp
-    consolidation_generation = Column(Integer, default=0, server_default="0")  # Dream cycle count
-    source_run_ids = Column(JSONB, nullable=True)            # Which runs contributed
+    last_consolidated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)   # Last dreaming process timestamp
+    consolidation_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=True)  # Dream cycle count
+    source_run_ids: Mapped[Any] = mapped_column(JSONB, nullable=True)            # Which runs contributed
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_active_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=True)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
 
     # Relationships
-    entity = relationship("HierarchicalEntity")
-    company = relationship("Company", foreign_keys=[company_id])
-    nodes = relationship("CortexNode", back_populates="tree", cascade="all, delete-orphan",
+    entity: Mapped["HierarchicalEntity | None"] = relationship("HierarchicalEntity")
+    company: Mapped["Company"] = relationship("Company", foreign_keys=[company_id])
+    nodes: Mapped[list["CortexNode"]] = relationship("CortexNode", back_populates="tree", cascade="all, delete-orphan",
                          foreign_keys="CortexNode.tree_id")
 
     __table_args__ = (
@@ -226,21 +234,21 @@ class CortexNode(Base):
     """
     __tablename__ = "cortex_nodes"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tree_id = Column(UUID(as_uuid=True), ForeignKey("cortex_trees.id", ondelete="CASCADE"), nullable=False)
-    parent_id = Column(UUID(as_uuid=True), ForeignKey("cortex_nodes.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tree_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cortex_trees.id", ondelete="CASCADE"), nullable=False)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("cortex_nodes.id", ondelete="SET NULL"), nullable=True)
 
-    node_type = Column(
+    node_type: Mapped[CortexNodeType] = mapped_column(
         SAEnum(CortexNodeType, name="cortex_node_type", create_constraint=False,
                values_callable=lambda x: [e.value for e in x]),
         nullable=False,
     )
-    title = Column(String(500), nullable=False)
-    summary = Column(Text, nullable=True)       # ~200 tokens, shown in parent's viewport
-    content = Column(Text, nullable=True)        # Full content, only loaded on explicit read
-    content_tokens = Column(Integer, default=0)  # Size of content in tokens
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)       # ~200 tokens, shown in parent's viewport
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)        # Full content, only loaded on explicit read
+    content_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=True)  # Size of content in tokens
 
-    status = Column(
+    status: Mapped[CortexNodeStatus] = mapped_column(
         SAEnum(CortexNodeStatus, name="cortex_node_status", create_constraint=True,
                values_callable=lambda x: [e.value for e in x]),
         default=CortexNodeStatus.PENDING,
@@ -248,47 +256,47 @@ class CortexNode(Base):
     )
 
     # Source reference for knowledge nodes
-    source_ref = Column(JSONB, nullable=True)    # {document_id, page_start, page_end}
+    source_ref: Mapped[Any] = mapped_column(JSONB, nullable=True)    # {document_id, page_start, page_end}
 
     # Execution linkage
-    execution_run_id = Column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
+    execution_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
 
     # Tree structure
-    depth = Column(Integer, default=0)           # Depth in tree (root = 0)
-    sibling_order = Column(Integer, default=0)   # Order among siblings
+    depth: Mapped[int] = mapped_column(Integer, default=0, nullable=True)           # Depth in tree (root = 0)
+    sibling_order: Mapped[int] = mapped_column(Integer, default=0, nullable=True)   # Order among siblings
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
 
     # Arbitrary metadata (cost, tokens, tool_used, etc.)
-    metadata_extra = Column(JSONB, nullable=True)
+    metadata_extra: Mapped[Any] = mapped_column(JSONB, nullable=True)
 
     # --- v2.0: Semantic embedding ---
-    embedding = Column(pgvector.sqlalchemy.Vector(768), nullable=True)
-    embedding_model = Column(String(100), nullable=True)  # Which model generated the embedding
+    embedding: Mapped[Any] = mapped_column(pgvector.sqlalchemy.Vector(768), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(100), nullable=True)  # Which model generated the embedding
 
     # --- v2.0: Cross-tree references ---
-    cross_refs = Column(JSONB, nullable=True)    # [{tree_id, node_id, relationship}, ...]
+    cross_refs: Mapped[Any] = mapped_column(JSONB, nullable=True)    # [{tree_id, node_id, relationship}, ...]
 
     # --- v2.0: Access tracking ---
-    access_count = Column(Integer, default=0, server_default="0")
-    last_accessed_at = Column(DateTime, nullable=True)
+    access_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=True)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # --- v2.0: Importance scoring ---
-    importance_score = Column(Numeric(5, 3), default=Decimal("0.500"), server_default="0.500")
+    importance_score: Mapped[Decimal] = mapped_column(Numeric(5, 3), default=Decimal("0.500"), server_default="0.500", nullable=True)
 
     # Relationships
-    tree = relationship("CortexTree", back_populates="nodes", foreign_keys=[tree_id])
-    parent = relationship("CortexNode", remote_side=[id], backref="children",
+    tree: Mapped["CortexTree"] = relationship("CortexTree", back_populates="nodes", foreign_keys=[tree_id])
+    parent: Mapped["CortexNode | None"] = relationship("CortexNode", remote_side=[id], backref="children",
                           foreign_keys=[parent_id])
-    execution_run = relationship("ExecutionRun")
+    execution_run: Mapped["ExecutionRun | None"] = relationship("ExecutionRun")
 
     # Edges where this node is the source
-    outgoing_edges = relationship("CortexEdge", foreign_keys="CortexEdge.source_node_id",
+    outgoing_edges: Mapped[list["CortexEdge"]] = relationship("CortexEdge", foreign_keys="CortexEdge.source_node_id",
                                   back_populates="source_node", cascade="all, delete-orphan")
     # Edges where this node is the target
-    incoming_edges = relationship("CortexEdge", foreign_keys="CortexEdge.target_node_id",
+    incoming_edges: Mapped[list["CortexEdge"]] = relationship("CortexEdge", foreign_keys="CortexEdge.target_node_id",
                                   back_populates="target_node", cascade="all, delete-orphan")
 
     __table_args__ = (
@@ -326,23 +334,23 @@ class CortexEdge(Base):
     """
     __tablename__ = "cortex_edges"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_node_id = Column(UUID(as_uuid=True),
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),
                             ForeignKey("cortex_nodes.id", ondelete="CASCADE"), nullable=False)
-    target_node_id = Column(UUID(as_uuid=True),
+    target_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),
                             ForeignKey("cortex_nodes.id", ondelete="CASCADE"), nullable=False)
-    edge_type = Column(String(50), nullable=False)
-    weight = Column(Numeric(5, 4), default=Decimal("0.5000"), server_default="0.5000")
-    traversal_count = Column(Integer, default=0, server_default="0")
-    last_traversed_at = Column(DateTime, nullable=True)
-    created_by = Column(String(50), nullable=True)  # "dreaming_engine", "embedding_pipeline", etc.
-    edge_metadata = Column("metadata", JSONB, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    edge_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    weight: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0.5000"), server_default="0.5000", nullable=True)
+    traversal_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=True)
+    last_traversed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(50), nullable=True)  # "dreaming_engine", "embedding_pipeline", etc.
+    edge_metadata: Mapped[Any] = mapped_column("metadata", JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=True)
 
     # Relationships
-    source_node = relationship("CortexNode", foreign_keys=[source_node_id],
+    source_node: Mapped["CortexNode"] = relationship("CortexNode", foreign_keys=[source_node_id],
                                back_populates="outgoing_edges")
-    target_node = relationship("CortexNode", foreign_keys=[target_node_id],
+    target_node: Mapped["CortexNode"] = relationship("CortexNode", foreign_keys=[target_node_id],
                                back_populates="incoming_edges")
 
     __table_args__ = (

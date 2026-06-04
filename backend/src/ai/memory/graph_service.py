@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -57,7 +58,7 @@ class SemanticGraphService:
         edge_type: str,
         weight: float = 0.5,
         created_by: str = "system",
-        metadata: Optional[Dict] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> CortexEdge:
         """Create or update (upsert) an edge between two nodes."""
         result = await self.db.execute(
@@ -70,7 +71,10 @@ class SemanticGraphService:
         edge = result.scalar_one_or_none()
 
         if edge:
-            edge.weight = min(self.MAX_WEIGHT, edge.weight + self.BOOST_ON_TRAVERSAL)
+            edge.weight = min(
+                Decimal(str(self.MAX_WEIGHT)),
+                edge.weight + Decimal(str(self.BOOST_ON_TRAVERSAL)),
+            )
             edge.traversal_count = (edge.traversal_count or 0) + 1
             edge.last_traversed_at = datetime.utcnow()
             return edge
@@ -220,7 +224,7 @@ class SemanticGraphService:
 
         # Step 2: Graph expansion
         all_results: List[Dict[str, Any]] = []
-        seen_ids: set = set()
+        seen_ids: set[Any] = set()
 
         for seed in seed_nodes:
             seed_id = str(seed[0])

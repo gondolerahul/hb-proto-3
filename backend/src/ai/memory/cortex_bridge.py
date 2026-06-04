@@ -10,11 +10,11 @@ viewport/checkpoint management.
 import json
 import logging
 from decimal import Decimal
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from src.ai.memory.cortex_service import CortexService
-from src.ai.schemas import StepType, PlanStep
+from src.ai.schemas import StepType, PlanStep, PlanStepTarget
 from src.ai.usage_service import UsageService
 
 logger = logging.getLogger(__name__)
@@ -29,20 +29,20 @@ class CortexBridge:
 
     VIEWPORT_CACHE_TTL = 30  # seconds
 
-    def __init__(self, db, company_id: UUID, usage_service: UsageService = None, redis=None):
+    def __init__(self, db: Any, company_id: UUID, usage_service: Optional[UsageService] = None, redis: Any = None) -> None:
         self.db = db
         self.company_id = company_id
         self.cortex = CortexService(db=db, company_id=company_id)
         self.usage_service = usage_service or UsageService(db)
         self.redis = redis  # optional Redis for viewport caching
-        self._write_buffer: list = []  # batch node write buffer
+        self._write_buffer: list[dict[str, Any]] = []  # batch node write buffer
         self._context_size_bytes: int = 0  # incremental size tracker
 
     # ------------------------------------------------------------------
     # Context Size Tracking (Phase 6 — PERF-3)
     # ------------------------------------------------------------------
 
-    def update_context_size(self, key: str, old_value: str = "", new_value: str = ""):
+    def update_context_size(self, key: str, old_value: str = "", new_value: str = "") -> None:
         """Incrementally update tracked context size in bytes.
 
         Called by the orchestrator whenever context_state is mutated
@@ -54,7 +54,7 @@ class CortexBridge:
         if self._context_size_bytes < 0:
             self._context_size_bytes = 0
 
-    def reset_context_size(self, context_state: dict):
+    def reset_context_size(self, context_state: dict[str, Any]) -> None:
         """Full recalculation — call once at run start."""
         self._context_size_bytes = sum(len(str(v)) for v in context_state.values())
 
@@ -62,7 +62,7 @@ class CortexBridge:
     # Task Description
     # ------------------------------------------------------------------
 
-    def build_task_description(self, entity, input_data: dict) -> str:
+    def build_task_description(self, entity: Any, input_data: dict[str, Any]) -> str:
         """Build a CORTEX task description from entity and input."""
         input_summary = ""
         if input_data:
@@ -81,7 +81,7 @@ class CortexBridge:
         self,
         cortex: CortexService,
         working_root_id: UUID,
-        step_result: dict,
+        step_result: dict[str, Any],
         run_id: UUID,
     ) -> None:
         """Write a step's result as a finding node in the CORTEX tree."""
@@ -123,10 +123,10 @@ class CortexBridge:
 
     async def ingest_tool_result(
         self,
-        run,
+        run: Any,
         tool_id: str,
         tool_output: str,
-        context: dict,
+        context: dict[str, Any],
     ) -> None:
         """
         Ingest scraper/browser tool output into the CORTEX Knowledge subtree.
@@ -213,7 +213,7 @@ class CortexBridge:
             logger.warning(f"CORTEX knowledge ingestion failed for {tool_id}: {e}")
 
     async def _generate_summary(
-        self, run, url: str, content: str, title: str
+        self, run: Any, url: str, content: str, title: str
     ) -> str:
         """Generate an LLM summary for a knowledge node, with cost tracking."""
         try:
@@ -282,19 +282,19 @@ class CortexBridge:
 
     async def execute_cortex_step(
         self,
-        run,
-        entity,
+        run: Any,
+        entity: Any,
         step: PlanStep,
         cortex: CortexService,
-        tree,
-        context: dict,
-    ) -> dict:
+        tree: Any,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Handle CORTEX-native step types: NAVIGATE, READ, WRITE, RECURSE, AWAIT_CHILDREN.
         These are the 5 primitives from the CORTEX spec mapped to step types.
         """
         try:
-            target = step.target or PlanStep.Target()
+            target = step.target or PlanStepTarget()
 
             if step.type == StepType.NAVIGATE:
                 node_id = self.resolve_node_id(target, context)
@@ -397,7 +397,7 @@ class CortexBridge:
     # Node Resolution
     # ------------------------------------------------------------------
 
-    def resolve_node_id(self, target, context: dict) -> str:
+    def resolve_node_id(self, target: Any, context: dict[str, Any]) -> str:
         """Resolve a node_id from step target or context."""
         node_id = getattr(target, "node_id", None)
         if node_id:
@@ -405,14 +405,14 @@ class CortexBridge:
         if hasattr(target, "prompt_template") and target.prompt_template:
             resolved = _parse_variables(target.prompt_template, context)
             return resolved.strip()
-        return context.get("__cortex_cursor__", "")
+        return str(context.get("__cortex_cursor__", ""))
 
     # ------------------------------------------------------------------
     # Viewport & Checkpoint
     # ------------------------------------------------------------------
 
     async def refresh_viewport(
-        self, cortex: CortexService, tree, context_state: dict
+        self, cortex: CortexService, tree: Any, context_state: dict[str, Any]
     ) -> None:
         """Refresh the CORTEX viewport after a step and inject into context.
 
@@ -444,7 +444,7 @@ class CortexBridge:
             pass
 
     async def write_checkpoint(
-        self, cortex: CortexService, tree, context_state: dict, step_name: str
+        self, cortex: CortexService, tree: Any, context_state: dict[str, Any], step_name: str
     ) -> None:
         """Auto-checkpoint: compact the tree if context is getting large."""
         ctx_size = self._context_size_bytes // 4  # Estimated tokens (O(1))
@@ -460,10 +460,10 @@ class CortexBridge:
         parent_id: UUID,
         node_type: str,
         title: str,
-        content: str = None,
-        summary: str = None,
+        content: Optional[str] = None,
+        summary: Optional[str] = None,
         status: str = "complete",
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Buffer a node write. Call flush_buffer() at the step boundary."""
         self._write_buffer.append({

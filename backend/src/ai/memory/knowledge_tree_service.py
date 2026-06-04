@@ -476,7 +476,7 @@ class KnowledgeTreeService:
             select(func.coalesce(func.max(CortexNode.sibling_order), -1))
             .where(CortexNode.parent_id == parent_id)
         )
-        return result.scalar() + 1
+        return int(result.scalar() or -1) + 1
 
     async def _get_tree(self, tree_id: UUID) -> CortexTree:
         """Load a CortexTree by ID."""

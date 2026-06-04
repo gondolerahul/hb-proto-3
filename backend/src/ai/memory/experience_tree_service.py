@@ -179,7 +179,7 @@ class ExperienceTreeService:
                 CortexNode.node_type == CortexNodeType.OBSERVATION,
             ).order_by(CortexNode.created_at.desc()).limit(limit)
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     # ===================================================================
     # Pattern Queries
@@ -227,4 +227,4 @@ class ExperienceTreeService:
                 CortexNode.node_type == CortexNodeType.PATTERN,
             ).order_by(CortexNode.created_at.desc())
         )
-        return result.scalars().all()
+        return list(result.scalars().all())

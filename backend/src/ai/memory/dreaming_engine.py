@@ -57,20 +57,20 @@ class DreamingEngine:
     OBSERVATION_CONFIDENCE_THRESHOLD = 0.5
     PATTERN_STRENGTH_THRESHOLD = 0.7
 
-    def __init__(self, db: AsyncSession, company_id: UUID, llm_router=None):
+    def __init__(self, db: AsyncSession, company_id: UUID, llm_router: Any = None) -> None:
         self.db = db
         self.company_id = company_id
         # B: Optional LLM dependency injection (lazy fallback)
         self._llm_router = llm_router
 
-    def _get_llm(self):
+    def _get_llm(self) -> Any:
         """Return injected LLMRouter or lazily create one."""
         if self._llm_router:
             return self._llm_router
         from src.ai.llm.router import LLMRouter
         return LLMRouter(db=self.db, company_id=self.company_id)
 
-    async def _log_dreaming_usage(self, response) -> None:
+    async def _log_dreaming_usage(self, response: Any) -> None:
         from src.ai.services.attributed_usage import log_llm_response_usage
         await log_llm_response_usage(
             db=self.db, response=response, attribution="dreaming",
@@ -509,7 +509,7 @@ class DreamingEngine:
         return clusters
 
     @staticmethod
-    def _cosine_similarity(a, b) -> float:
+    def _cosine_similarity(a: Any, b: Any) -> float:
         """Compute cosine similarity between two vectors.
 
         Accepts plain lists or numpy/pgvector arrays. We must avoid bare
@@ -524,7 +524,7 @@ class DreamingEngine:
         norm_b = sum(x * x for x in b) ** 0.5
         if norm_a == 0 or norm_b == 0:
             return 0.0
-        return dot / (norm_a * norm_b)
+        return float(dot / (norm_a * norm_b))
 
     async def _next_sibling_order(self, parent_id: UUID) -> int:
         """Get next sibling order for children of a node."""
@@ -533,5 +533,5 @@ class DreamingEngine:
             select(func.coalesce(func.max(CortexNode.sibling_order), -1))
             .where(CortexNode.parent_id == parent_id)
         )
-        return result.scalar() + 1
+        return int(result.scalar() or -1) + 1
 

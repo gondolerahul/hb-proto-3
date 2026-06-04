@@ -176,7 +176,7 @@ class IntelligenceTreeService:
                 ]),
             ).order_by(CortexNode.created_at.desc())
         )
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def get_applicable_rules(
         self,

@@ -25,7 +25,7 @@ async def assemble_memory(
     task_description: str = "",
     memory_pipeline: str = "v2",                            # Track 6 default flip
     memory_scope: str = "FULL",
-    runtime_tree=None,
+    runtime_tree: Any = None,
     long_running: bool = False,
 ) -> Dict[str, Any]:
     """Unified entry point for memory retrieval.
@@ -81,8 +81,8 @@ async def assemble_memory(
 
 
 async def _assemble_v1(
-    db, entity_id, user_id, tree_id,
-    memory_scope, long_running,
+    db: Any, entity_id: UUID, user_id: Optional[UUID], tree_id: Optional[UUID],
+    memory_scope: str, long_running: bool,
 ) -> Dict[str, Any]:
     """Legacy MemoryRouter path."""
     from src.ai.memory.memory_service import MemoryRouter
@@ -95,7 +95,7 @@ async def _assemble_v1(
         long_running=long_running,
     )
 
-    result = {}
+    result: Dict[str, Any] = {}
     if memory_scope in ("FULL", "RUN_SCOPED"):
         memory_text = memory_router.format_for_prompt(memory_ctx)
         if memory_text:
@@ -133,8 +133,8 @@ async def _assemble_v1(
 
 
 async def _assemble_v2(
-    db, company_id, entity_id, user_id,
-    task_description, memory_scope, runtime_tree,
+    db: Any, company_id: UUID, entity_id: UUID, user_id: Optional[UUID],
+    task_description: str, memory_scope: str, runtime_tree: Any,
 ) -> Dict[str, Any]:
     """New MemoryAssemblyService path — 4-domain retrieval."""
     from src.ai.memory.memory_assembly_service import MemoryAssemblyService
@@ -158,7 +158,7 @@ async def _assemble_v2(
     )
 
     # Format into the same structure execute_run expects
-    memory_context = {}
+    memory_context: Dict[str, Any] = {}
     if result.formatted_prompt:
         memory_context["__memory__"] = result.formatted_prompt
     if result.intelligence_rules:

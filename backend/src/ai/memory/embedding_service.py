@@ -27,7 +27,7 @@ Used by: knowledge_tree_service, episodic_tree_service, dreaming_engine,
 """
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -38,7 +38,7 @@ from src.ai.constants import EMBEDDING_MODEL, EMBEDDING_MODEL_FALLBACK
 logger = logging.getLogger(__name__)
 
 
-async def resolve_embedding_model(db, company_id) -> tuple[str, Optional[str]]:
+async def resolve_embedding_model(db: Any, company_id: UUID) -> tuple[str, Optional[str]]:
     """Phase 11 Track 6 — standalone resolver returning (model_name, api_key).
 
     This is the public-API form of ``EmbeddingService._resolve_embedding_model``
@@ -84,13 +84,13 @@ class EmbeddingService:
 
     BATCH_SIZE = 100  # Max texts per API call (Vertex AI limit)
 
-    def __init__(self, db: AsyncSession, company_id: UUID):
+    def __init__(self, db: AsyncSession, company_id: UUID) -> None:
         self.db = db
         self.company_id = company_id
-        self._client = None
-        self._model_name = None
+        self._client: Any = None
+        self._model_name: Optional[str] = None
 
-    async def _get_client_and_model(self):
+    async def _get_client_and_model(self) -> tuple[Any, str]:
         """
         Resolve the embedding model and Vertex AI client.
 
@@ -145,7 +145,7 @@ class EmbeddingService:
                 ir = ir_result.scalar_one_or_none()
                 if ir and ir.model_name:
                     logger.debug(f"Using AI Config task default embedding model: {ir.model_name}")
-                    return ir.model_name
+                    return cast(str, ir.model_name)
         except Exception as e:
             logger.debug(f"ModelTaskDefault lookup for embedding failed: {e}")
 
@@ -163,7 +163,7 @@ class EmbeddingService:
             integration = result.scalar_one_or_none()
             if integration and integration.model_name:
                 logger.debug(f"Using admin-configured embedding model: {integration.model_name}")
-                return integration.model_name
+                return cast(str, integration.model_name)
 
             # Priority 3: Google integration with embed in model name
             # Exclude non-embedding categories to avoid selecting LLM models
@@ -182,7 +182,7 @@ class EmbeddingService:
             integration = result.scalar_one_or_none()
             if integration and integration.model_name:
                 logger.debug(f"Using google embedding model: {integration.model_name}")
-                return integration.model_name
+                return cast(str, integration.model_name)
 
         except Exception as e:
             logger.debug(f"Failed to resolve embedding model from registry: {e}")
@@ -254,7 +254,7 @@ class EmbeddingService:
 
     async def _embed_batch_internal(
         self,
-        client,
+        client: Any,
         model_name: str,
         texts: List[str],
         task_type: str,
@@ -370,7 +370,7 @@ class EmbeddingService:
         except Exception as exc:                                                # pragma: no cover
             logger.debug("embedding usage logging failed: %s", exc)
 
-    async def embed_node(self, node) -> bool:
+    async def embed_node(self, node: Any) -> bool:
         """
         Generate and store embedding for a CortexNode.
 
@@ -394,7 +394,7 @@ class EmbeddingService:
 
         return False
 
-    async def embed_nodes_batch(self, nodes: list) -> int:
+    async def embed_nodes_batch(self, nodes: list[Any]) -> int:
         """
         Embed multiple CortexNodes in batch.
 
@@ -428,7 +428,7 @@ class EmbeddingService:
         """Return the resolved embedding model name."""
         return self._model_name or EMBEDDING_MODEL
 
-    async def embed_node_with_edges(self, node) -> bool:
+    async def embed_node_with_edges(self, node: Any) -> bool:
         """
         Embed a node and automatically create similarity edges (Phase E).
 

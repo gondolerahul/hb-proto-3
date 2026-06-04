@@ -33,10 +33,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MemoryAssemblyResult:
     """Container for assembled memory from all four domains."""
-    knowledge_refs: List[Dict] = field(default_factory=list)
-    experience_suggestions: List[Dict] = field(default_factory=list)
-    intelligence_rules: List[Dict] = field(default_factory=list)
-    episodic_context: List[Dict] = field(default_factory=list)
+    knowledge_refs: List[Dict[str, Any]] = field(default_factory=list)
+    experience_suggestions: List[Dict[str, Any]] = field(default_factory=list)
+    intelligence_rules: List[Dict[str, Any]] = field(default_factory=list)
+    episodic_context: List[Dict[str, Any]] = field(default_factory=list)
     formatted_prompt: str = ""
 
 
@@ -57,7 +57,7 @@ class MemoryAssemblyService:
         entity_id: UUID,
         user_id: Optional[UUID] = None,
         task_description: str = "",
-        runtime_tree=None,
+        runtime_tree: Any = None,
         include_domains: Optional[List[str]] = None,
     ) -> MemoryAssemblyResult:
         """
@@ -105,8 +105,8 @@ class MemoryAssemblyService:
         self,
         entity_id: UUID,
         task_description: str,
-        runtime_tree=None,
-    ) -> List[Dict]:
+        runtime_tree: Any = None,
+    ) -> List[Dict[str, Any]]:
         """
         Find relevant knowledge nodes via semantic graph search.
         Creates reference nodes in runtime tree if available.
@@ -131,7 +131,7 @@ class MemoryAssemblyService:
             logger.debug(f"Knowledge assembly failed: {e}")
             return []
 
-    async def _create_runtime_knowledge_refs(self, runtime_tree, results):
+    async def _create_runtime_knowledge_refs(self, runtime_tree: Any, results: Any) -> None:
         """Create reference nodes in the runtime tree's knowledge root."""
         try:
             from src.ai.memory.cortex_service import CortexService
@@ -164,7 +164,7 @@ class MemoryAssemblyService:
         self,
         entity_id: UUID,
         task_description: str,
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """Query Experience Tree for suggestions relevant to the current task."""
         try:
             from src.ai.memory.graph_service import SemanticGraphService
@@ -194,7 +194,7 @@ class MemoryAssemblyService:
         self,
         entity_id: UUID,
         task_description: str,
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """Query Intelligence Tree for applicable rules."""
         try:
             from src.ai.memory.intelligence_tree_service import IntelligenceTreeService
@@ -213,7 +213,7 @@ class MemoryAssemblyService:
         entity_id: UUID,
         user_id: Optional[UUID] = None,
         task_description: str = "",
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """Retrieve recent and topically relevant episodes."""
         try:
             from src.ai.memory.episodic_tree_service import EpisodicTreeService

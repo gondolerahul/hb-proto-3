@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, func, text
@@ -144,7 +144,7 @@ class EpisodicTreeService:
         # Get or create month group
         month_node_id = await self._get_or_create_group(
             tree_id=tree.id,
-            parent_id=tree.root_node_id,
+            parent_id=cast(UUID, tree.root_node_id),
             group_key=month_key,
             title=f"📅 {now.strftime('%B %Y')}",
             depth=1,
@@ -415,9 +415,9 @@ class EpisodicTreeService:
             select(func.coalesce(func.max(CortexNode.sibling_order), -1))
             .where(CortexNode.parent_id == parent_id)
         )
-        return result.scalar() + 1
+        return int(result.scalar() or -1) + 1
 
-    def _extract_tools_used(self, context_state: Optional[dict]) -> List[str]:
+    def _extract_tools_used(self, context_state: Optional[dict[str, Any]]) -> List[str]:
         """Extract unique tool names from context_state."""
         if not context_state:
             return []
@@ -461,7 +461,7 @@ class EpisodicTreeService:
         try:
             if node.content:
                 data = json.loads(node.content)
-                return data.get(field, "")
+                return str(data.get(field, ""))
         except (json.JSONDecodeError, TypeError):
             pass
         return ""

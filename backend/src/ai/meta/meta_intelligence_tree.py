@@ -143,7 +143,7 @@ class MetaIntelligenceTree:
         self.db.add(root)
         await self.db.flush()
         tree.root_node_id = root.id
-        tree.total_nodes = 1  # type: ignore[assignment]
+        tree.total_nodes = 1
 
         for idx, (key, title) in enumerate(SECTIONS.items()):
             section = CortexNode(
@@ -159,7 +159,7 @@ class MetaIntelligenceTree:
                 sibling_order=idx,
             )
             self.db.add(section)
-            tree.total_nodes += 1  # type: ignore[assignment]
+            tree.total_nodes += 1
         await self.db.flush()
         return tree
 
@@ -547,7 +547,7 @@ class MetaIntelligenceTree:
         )
         self.db.add(node)
         await self.db.flush()
-        return cast(UUID, node.id)
+        return node.id
 
     async def _find_in_section(self, section_id: UUID, title: str) -> Any:
         from sqlalchemy import select

@@ -15,7 +15,7 @@ entities have accumulated tree-shaped episodic history.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -29,7 +29,9 @@ __all__ = ["LegacyEpisodicReader"]
 class LegacyEpisodicReader:
     """Reads the legacy flat ``episodic_memories`` table."""
 
-    def __init__(self, db: AsyncSession):
+    _warned: ClassVar[bool] = False
+
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
         if not getattr(LegacyEpisodicReader, "_warned", False):
             logger.info(

@@ -330,7 +330,7 @@ class PlanStyleBandit:
             },
         )
         self.db.add(new_node)
-        tree.total_nodes = (tree.total_nodes or 0) + 1  # type: ignore[assignment]
+        tree.total_nodes = (tree.total_nodes or 0) + 1
         await self.db.flush()
 
     @staticmethod

@@ -30,6 +30,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy import select, desc
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.ext.asyncio import AsyncSession
 # ---------------------------------------------------------------------------
 # ORM Model imported from models.py
 # ---------------------------------------------------------------------------
@@ -56,9 +57,21 @@ class MemoryRouter:
     MAX_SEMANTIC = 5     # Max semantic chunks to inject
     EPISODIC_CHARS = 300 # Max chars per episode in the injected context block
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
-        self._cortex_viewport = None  # Cached viewport for long_running mode
+        self._cortex_viewport: Optional[Any] = None  # Cached viewport for long_running mode
+
+    async def _get_company_id(self, entity_id: UUID) -> Optional[UUID]:
+        """Lookup company_id for an entity."""
+        try:
+            from src.ai.models import HierarchicalEntity
+            result = await self.db.execute(
+                select(HierarchicalEntity.company_id)
+                .where(HierarchicalEntity.id == entity_id)
+            )
+            return result.scalar_one_or_none()
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Retrieve (called before run to inject context)
@@ -87,11 +100,11 @@ class MemoryRouter:
             }
         """
         episodic = await self._load_episodic(entity_id, user_id)
-        semantic: List[Dict] = []
+        semantic: List[Dict[str, Any]] = []
         if query:
             semantic = await self.search_semantic(entity_id=entity_id, query=query)
 
-        result = {"episodic": episodic, "semantic": semantic, "cortex_viewport": None}
+        result: Dict[str, Any] = {"episodic": episodic, "semantic": semantic, "cortex_viewport": None}
 
         # Load CORTEX viewport if long_running mode is active
         if long_running and tree_id:
@@ -435,21 +448,3 @@ def _summarize(data: Any, max_chars: int = 400) -> str:
     from src.ai.shared.text_utils import truncate_for_storage
     return truncate_for_storage(data, max_chars=max_chars)
 
-
-# Needed for retrieve() when tree_id is provided
-async def _get_company_id_from_entity(db, entity_id: UUID) -> Optional[UUID]:
-    """Lookup company_id for an entity."""
-    try:
-        from src.ai.models import HierarchicalEntity
-        result = await db.execute(
-            select(HierarchicalEntity.company_id)
-            .where(HierarchicalEntity.id == entity_id)
-        )
-        row = result.scalar_one_or_none()
-        return row
-    except Exception:
-        return None
-
-
-# Add helper to MemoryRouter
-MemoryRouter._get_company_id = _get_company_id_from_entity

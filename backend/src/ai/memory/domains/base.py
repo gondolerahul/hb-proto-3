@@ -150,7 +150,7 @@ class DomainTreeBase(ABC):
 
     async def find(
         self, *, tree: Any, query: str, top_k: int = 5,
-        filters: Optional[dict] = None,
+        filters: Optional[dict[str, Any]] = None,
     ) -> list[DomainItem]:                                                      # pragma: no cover
         raise NotImplementedError
 

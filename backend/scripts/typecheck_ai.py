@@ -40,6 +40,7 @@ CLEAN_PACKAGES: list[str] = [
     "orm",
     "planning",
     "meta",
+    "memory",
 ]
 
 

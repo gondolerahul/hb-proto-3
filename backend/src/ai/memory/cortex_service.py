@@ -25,13 +25,17 @@ import json
 import logging
 import math
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 from uuid import UUID, uuid4
 from dataclasses import dataclass, field, asdict
 
 from sqlalchemy import select, update, func, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+if TYPE_CHECKING:
+    from src.ai.memory.scope_policy import ScopePolicy
+    from src.ai.schemas.cortex import Provenance
 
 from src.ai.memory.cortex_models import (
     CortexTree, CortexNode,
@@ -60,7 +64,7 @@ class NodeSummaryDTO:
     depth: int = 0
     content_tokens: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -72,7 +76,7 @@ class Viewport:
     parent: Optional[NodeSummaryDTO]
     breadcrumb: List[Dict[str, str]]   # [{id, title}, ...] from root to current
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "current_node": self.current_node.to_dict(),
             "children": [c.to_dict() for c in self.children],
@@ -122,7 +126,7 @@ class Viewport:
 
         # 3. Children — emit one per line, stop when budget exhausted.
         if self.children:
-            child_lines = []
+            child_lines: list[str] = []
             header = "## Children"
             running = len(header)
             for i, ch in enumerate(self.children):
@@ -163,7 +167,7 @@ class NodeContent:
     total_pages: int
     content_tokens: int
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -176,7 +180,7 @@ class CheckpointData:
     nodes_written: List[str] = field(default_factory=list)
     time_elapsed_hours: float = 0.0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -204,7 +208,7 @@ class CortexService:
         db: AsyncSession,
         company_id: UUID,
         scoped_subtree_root_id: Optional[UUID] = None,
-        scope_policy: Optional["ScopePolicy"] = None,
+        scope_policy: Optional[ScopePolicy] = None,
     ):
         self.db = db
         self.company_id = company_id
@@ -320,7 +324,7 @@ class CortexService:
         logger.info(f"CortexTree created: {tree_id} with 4 initial nodes")
         return tree
 
-    async def resume_tree(self, tree_id: UUID) -> Tuple[CortexTree, Viewport, Optional[Dict]]:
+    async def resume_tree(self, tree_id: UUID) -> Tuple[CortexTree, Viewport, Optional[Dict[str, Any]]]:
         """
         Load an existing tree and return the viewport at the resume cursor.
         Also returns the last checkpoint data if available.
@@ -332,7 +336,7 @@ class CortexService:
         tree.status = CortexTreeStatus.ACTIVE
         tree.last_active_at = datetime.utcnow()
 
-        cursor_id = tree.resume_cursor_id or tree.root_node_id
+        cursor_id = cast(UUID, tree.resume_cursor_id or tree.root_node_id)
         viewport = await self.navigate(cursor_id)
 
         # Load last checkpoint if available
@@ -461,9 +465,9 @@ class CortexService:
         summary: Optional[str] = None,
         status: str = "complete",
         sibling_order: Optional[int] = None,
-        source_ref: Optional[Dict] = None,
-        metadata_extra: Optional[Dict] = None,
-        provenance: Optional["Provenance"] = None,
+        source_ref: Optional[Dict[str, Any]] = None,
+        metadata_extra: Optional[Dict[str, Any]] = None,
+        provenance: Optional[Provenance] = None,
     ) -> UUID:
         """
         Write a new child node. This is how the agent externalises ALL its outputs:
@@ -505,7 +509,7 @@ class CortexService:
                 select(func.coalesce(func.max(CortexNode.sibling_order), -1))
                 .where(CortexNode.parent_id == parent_id)
             )
-            sibling_order = result.scalar() + 1
+            sibling_order = int(result.scalar() or -1) + 1
 
         # ── Invariant 2: No Unbounded Viewports ──────────────────────
         child_count_result = await self.db.execute(
@@ -666,7 +670,7 @@ class CortexService:
         Returns checkpoint node UUID.
         """
         tree = await self._get_tree(tree_id)
-        cursor_id = tree.resume_cursor_id or tree.root_node_id
+        cursor_id = cast(UUID, tree.resume_cursor_id or tree.root_node_id)
 
         # Calculate time elapsed and nodes written
         time_elapsed = 0.0
@@ -745,7 +749,7 @@ class CortexService:
         if not tree.output_root_id:
             return ""
 
-        sections = []
+        sections: list[Any] = []
         await self._dfs_collect(tree.output_root_id, sections)
 
         if not sections:
@@ -886,8 +890,8 @@ class CortexService:
         status: CortexNodeStatus,
         depth: int,
         sibling_order: int,
-        source_ref: Optional[Dict] = None,
-        metadata_extra: Optional[Dict] = None,
+        source_ref: Optional[Dict[str, Any]] = None,
+        metadata_extra: Optional[Dict[str, Any]] = None,
         content_tokens: int = 0,
     ) -> CortexNode:
         """
@@ -1012,7 +1016,7 @@ class CortexService:
         result = await self.db.execute(query, {"node_id": str(node.id)})
         return [{"id": str(r.id), "title": r.title} for r in result.fetchall()]
 
-    async def _get_last_checkpoint(self, cursor_id: UUID) -> Optional[Dict]:
+    async def _get_last_checkpoint(self, cursor_id: UUID) -> Optional[Dict[str, Any]]:
         """Find the most recent checkpoint node under the cursor."""
         result = await self.db.execute(
             select(CortexNode)
@@ -1026,7 +1030,7 @@ class CortexService:
         checkpoint = result.scalar_one_or_none()
         if checkpoint and checkpoint.content:
             try:
-                return json.loads(checkpoint.content)
+                return cast("dict[str, Any]", json.loads(checkpoint.content))
             except json.JSONDecodeError:
                 return {"progress_summary": checkpoint.summary}
         return None
