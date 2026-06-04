@@ -22,19 +22,21 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.ai.core.execution_engine import ExecutionEngine
+from src.ai.core.step_engine import StepEngine
 from src.ai.models import ExecutionRun, HierarchicalEntity
 from src.ai.schemas import GoalNode, PlanStep, StepType
 
 logger = logging.getLogger(__name__)
 
 
-class RecursiveReasoningEngine(ExecutionEngine):
+class RecursiveReasoningEngine(StepEngine):
     """
     Autonomous goal decomposition engine.
 
-    Gated behind entity.reasoning_config.engine_type == "RECURSIVE".
-    Falls back to standard ExecutionEngine for all other entity types.
+    Decomposes a goal into a subgoal tree and executes leaves via the
+    ``StepEngine`` step surface (``_step_executor._execute_step``) — it never
+    calls ``execute_run``. The loop's ``RecursiveExecutor`` drives it directly
+    for a goal-only AGENT.
     """
 
     # Safety limits

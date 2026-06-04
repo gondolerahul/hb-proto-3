@@ -13,9 +13,12 @@ class TestRecursiveReasoningEngineConfig:
         assert RecursiveReasoningEngine.MAX_TOTAL_EXPANSIONS == 20
         assert RecursiveReasoningEngine.DEFAULT_CONFIDENCE_THRESHOLD == 0.7
 
-    def test_is_execution_engine_subclass(self):
-        from src.ai.core.execution_engine import ExecutionEngine
-        assert issubclass(RecursiveReasoningEngine, ExecutionEngine)
+    def test_is_step_engine_subclass(self):
+        # Reparented to StepEngine (the step surface) so it survives the C4
+        # deletion of ExecutionEngine.execute_run; it drives leaves via
+        # _step_executor._execute_step and never calls execute_run.
+        from src.ai.core.step_engine import StepEngine
+        assert issubclass(RecursiveReasoningEngine, StepEngine)
 
 
 class TestGoalNodeIntegration:
