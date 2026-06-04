@@ -19,7 +19,19 @@
 
 ---
 
-## Progress (updated 2026-06-03)
+## Progress (updated 2026-06-04)
+
+**C4 is COMPLETE** — Phase A (evidence gate) + the full Phase B deletion chain
+landed; the G4 soak was dev-skipped by explicit decision (no live canary).
+`execute_run` and `execution_engine.py` are deleted and the AgentLoop is the
+sole run engine. Phase B specifics: PR-5 `StepEngine` extraction; PR-6 async
+child dispatch as the loop's sole child path (parity candidate drainer-driven);
+PR-7 `RecursiveExecutor` mapped onto the planner (the "recursive" name was a
+misnomer — it just ran `execute_run`); PR-8 every entry point loop-only; PR-9
+the irreversible deletion + child-callback plumbing + `agent_loop.enabled`.
+Fallout: C2 (MemoryRouter retrieval delete, memory v2 unconditional), C3-finish,
+C13 (engine_type/RecursiveReasoningEngine deleted, reasoning via reasoning_hint).
+Original Phase-A notes below.
 
 **Phase A is complete** — the suspend/resume mechanism is proven end-to-end:
 

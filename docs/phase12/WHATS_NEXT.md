@@ -3,7 +3,7 @@
 > **Pairs with** [`HANDOFF.md`](./HANDOFF.md) (the entry point) and the eight
 > [`plans/`](./plans/) files (the spec). This file sequences and prioritises the
 > plan's own item IDs (C0–C13, S1–S7, V1–V6, K1–K7, P-*) by current state.
-> **Last updated:** 2026-06-03 (Stage 1 de-canary + C4 Phase A landed)
+> **Last updated:** 2026-06-04 (Stage 1 COMPLETE — C4 Phase B + C2/C3/C13 landed)
 > **Branch:** `phase12/stage1-consolidation`
 
 Legend: ✅ done · ◐ partial · ❌ not started · 🚧 blocked by a hard gate
@@ -12,17 +12,18 @@ Legend: ✅ done · ◐ partial · ❌ not started · 🚧 blocked by a hard gat
 
 ## 0. Current state in one paragraph
 
-The repo is now the **GA shape**, not the canary build: Stage 0 is flipped, and
-**Stage 1 consolidation is nearly complete** — `C0`-narration, `C1` (v1 critic
-delete), `C3` (alias), `C5` reconcile-v2, `C6`, `C7` cost attribution, `C8`
-(root-clean), `C9` (DebateExecutor + retire REFLECTION/ToT), **`C10`+`C11`
-de-prefix**, and the **layout/canary lint flipped to `error` (green)** have all
-landed. The big remaining deletion, **`C4` (delete legacy `execute_run`), has its
-evidence gate (Phase A) green** — multi-child PROCESS parity (inline + async
-suspend/resume), resumability chaos, and a cost guard — but the irreversible
-deletion (Phase B) is **gated on a flag soak (G4)** that needs a live canary.
-`C12` (mypy --strict) is not started; `C13` is blocked. Tracks `02` (sandbox),
-`03` (video), `04` (CORTEX package), and `06`'s v5 capabilities are not started.
+The repo is now the **GA shape** and **Stage 1 consolidation is COMPLETE.** On
+top of the earlier cuts (`C0`–`C1`, `C3`-alias, `C5`–`C12`, `C10`/`C11`
+de-prefix, lint→error), the keystone **`C4`** landed: the legacy
+`ExecutionEngine.execute_run` plan-walker and `execution_engine.py` are deleted,
+the **AgentLoop is the sole run engine**, and async suspend/resume is the only
+child path (G4 soak dev-skipped by decision). Its fallout also landed: **`C2`**
+(MemoryRouter retrieval body deleted, memory v2 unconditional), **`C3`-finish**
+(engine MetaReviewer use gone), and **`C13`** (`engine_type` +
+`RecursiveReasoningEngine` deleted; per-step reasoning routed via
+`reasoning_hint`). All gates green. Remaining Phase-12 work is the new-capability
+tracks: `02` (sandbox), `03` (video), `04` (CORTEX package), `06`'s v5
+capabilities, `07` hardening — none started.
 
 ---
 
@@ -31,21 +32,20 @@ deletion (Phase B) is **gated on a flag soak (G4)** that needs a live canary.
 - [x] **STAGE 0 — master switches ON** *(plan `05` §4, `08` Stage 0)* — done (dev
       mode; 30-day telemetry gate intentionally skipped). Parity gate wired + green.
 
-- [~] **C4 — delete legacy `ExecutionEngine.execute_run`** *(`01` §4)* — **Phase A
-      (the evidence gate) is DONE; Phase B (deletion) is gated.** `execute_run` is
-      load-bearing (loop delegates into it; children ran via the `execute_run_fn`
-      callback). The unblocking mechanism (async suspend/resume child dispatch) is
-      built and **now proven end-to-end**. See
+- [x] **C4 — delete legacy `ExecutionEngine.execute_run`** *(`01` §4)* — **DONE.**
+      Phase A evidence gate + the full Phase B deletion chain landed (G4 soak
+      dev-skipped by decision, same policy as the Stage-0 telemetry gate). The
+      AgentLoop is now the sole run engine. See
       [`designs/c4_replatforming_implementation_plan.md`](./designs/c4_replatforming_implementation_plan.md).
-  - [x] **G1** multi-child PROCESS parity — inline (PR-1) + async, first E2E (PR-2).
-  - [x] **G2** resumability chaos (crash → durable WAITING → recover → idempotent) (PR-3).
-  - [x] **G3** cost amplification guard (async child work == inline) (PR-3).
-  - [x] PR-1b — loop emits `result_data["steps"]` (fixed a real refine regression).
-  - [ ] **G4 flag soak (PR-4)** — operational; needs a live canary. **Gates Phase B.**
-  - [ ] **Phase B (PR-5..PR-9)** — extract `StepEngine` → drop child callback →
-        re-platform `RecursiveExecutor` → loop-only entry points (incl. the
-        gateway dispatcher + `process_gateway_event` that bypass the flag) →
-        delete `execute_run` (**irreversible**). Then **C2**/**C3** fall out.
+  - [x] **G1/G2/G3** parity + resumability chaos + cost guard (Phase A).
+  - [x] **PR-5** extract `StepEngine`; **PR-6** async child dispatch is the loop's
+        sole child path (+ parity candidate drainer-driven); **PR-7** re-platform
+        `RecursiveExecutor` onto the planner; **PR-8** every entry point loop-only
+        (arq dispatch, gateway dispatcher, `process_gateway_event`,
+        `resume_execution`; dead `enqueue_job("execute_run")` repointed);
+        **PR-9** delete `execute_run` + `execution_engine.py` + the child callback
+        plumbing + the `agent_loop.enabled` switch.
+  - `grep -rn 'execute_run\b' backend/src/ai` → comments/history only.
 
 ---
 
@@ -94,18 +94,24 @@ deletion (Phase B) is **gated on a flag soak (G4)** that needs a live canary.
       `IntegrationRegistry` columns; and a self-inflicted `child_entity`
       `UnboundLocalError` (inline `from uuid import UUID` shadowing) caught by the
       parity gate.
-- [ ] 🚧 **C13 — drop deprecated `engine_type` & `reasoning_mode`** *(`01` §9, D-1)*
-      — **blocked, not a clean cut.** `engine_type` isn't a typed field (only
-      consumer is the C4-blocked `execute_run`); `reasoning_mode` is still live in
-      `step_executor` (REACT vs CHAIN_OF_THOUGHT off the raw dict). A clean drop
-      needs per-step reasoning routed via the Strategist's `reasoning_hint` first.
-      Keep the ORM/`schemas/execution.py` `reasoning_mode` (telemetry).
+- [x] **C13 — drop deprecated `engine_type` & `reasoning_mode`** *(`01` §9, D-1)*
+      — **DONE.** `engine_type`'s only consumer (`execute_run`'s RECURSIVE branch)
+      died with C4; the orphaned `RecursiveReasoningEngine` was deleted (C13a).
+      `step_executor` now reads per-step `PlanStep.reasoning_hint` (default REACT)
+      instead of the entity-level `reasoning_config.reasoning_mode`; a PlanStep
+      before-validator maps a legacy per-step `reasoning_mode` onto the hint
+      (C13b). The ORM/`schemas/execution.py` run-telemetry `reasoning_mode` is
+      retained.
 
-### 2.4 Legacy deletions (fall out of C4 Phase B)
-- [ ] 🚧 **C2** — delete `MemoryRouter` body — unblocks once `execute_run` is
-      deleted (all engine MemoryRouter uses are inside `execute_run`).
-- [ ] 🚧 **C3 finish** — drop the engine `MetaReviewer` use after C4; `MetaReviewer`
-      itself **stays** (`critic_pipeline.py:490`).
+### 2.4 Legacy deletions (fell out of C4 Phase B)
+- [x] **C2** — deleted the `MemoryRouter` retrieval body (`retrieve` /
+      `_load_episodic` / `format_for_prompt`) + the assembler v1 branch; v2 is now
+      unconditional. `write_episodic` + `search_semantic` + `LegacyEpisodicReader`
+      retained. (The loop reads CORTEX via the Perceiver with
+      `memory_assembler=None`, so the legacy pipeline was fully dead.)
+- [x] **C3 finish** — the engine `MetaReviewer` hook died with `execute_run`;
+      `MetaReviewer` itself **stays** as `CriticPipeline.supervisor`'s
+      `supervisor_v2_enabled=False` fallback (`critic_pipeline.py:489`).
 
 ---
 
@@ -191,11 +197,11 @@ Phase 11 did Stage-A groundwork.
 | 01 | C11 frontend de-prefix | ✅ |
 | 01 | canary lint → error (de-canary) | ✅ |
 | 01 | C4 Phase A evidence gate (G1/G2/G3) | ✅ |
-| 01 | C4 Phase B (delete execute_run) — gated on G4 soak | 🚧 |
-| 01 | C2 MemoryRouter delete — C4 fallout | 🚧 |
-| 01 | C3 finish (engine MetaReviewer) — C4 fallout | 🚧 |
+| 01 | C4 Phase B (delete execute_run) — G4 soak dev-skipped | ✅ |
+| 01 | C2 MemoryRouter retrieval delete + v2 unconditional | ✅ |
+| 01 | C3 finish (engine MetaReviewer use gone) | ✅ |
 | 01 | C12 mypy --strict (all 6 ai/ packages clean + gated) | ✅ |
-| 01 | C13 drop deprecated engine_type/reasoning_mode | 🚧 blocked |
+| 01 | C13 drop deprecated engine_type/reasoning_mode | ✅ |
 | 02 | Sandbox runtime / container / browser | ❌ |
 | 03 | Video tool split | ❌ |
 | 04 | CORTEX package extraction | ❌ (A-groundwork ✅) |
