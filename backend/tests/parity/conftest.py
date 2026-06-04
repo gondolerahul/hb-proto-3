@@ -35,10 +35,15 @@ class LegacyAdapter:
 
 
 class CandidateAdapter:
-    """Runs the Phase 11 AgentLoop."""
+    """Drives the AgentLoop the way the worker does — through
+    ``run_execution_recursive`` plus the in-process arq drainer
+    (``worker_sim``). Async child dispatch is the loop's sole child path, so a
+    multi-child PROCESS suspends (WAITING_ON_CHILDREN) and must be resumed by
+    draining the child + ``resume_parent_run`` jobs to completion. The drainer
+    opens its own sessions and commits durably, mirroring a real worker."""
     async def run(self, db: Any, redis: Any, run_id: Any) -> None:
-        from src.ai.core.agent_loop import AgentLoop
-        await AgentLoop(db, redis).run(run_id)
+        from tests.parity.worker_sim import drive_run_to_completion
+        await drive_run_to_completion(str(run_id))
 
 
 register_engine_adapter("legacy", LegacyAdapter())

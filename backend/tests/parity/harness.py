@@ -124,7 +124,12 @@ async def run_parity_case(
         )
     candidate_run_id = await _seed_run(db, case, flag="candidate")
     await ENGINE_ADAPTERS["candidate"].run(db, redis, candidate_run_id)
-    candidate = await extract_run_result(db, candidate_run_id)
+    # The candidate is driven through the in-process drainer, which writes via
+    # its own committed sessions. Extract on a fresh session so the read sees
+    # the durable final state, not this fixture session's stale identity map.
+    from src.common.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as _ex_db:
+        candidate = await extract_run_result(_ex_db, candidate_run_id)
 
     violations = compare_run_results(
         baseline,

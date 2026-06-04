@@ -1,15 +1,16 @@
 """
-ChildEntityExecutor — adapter around step_executor child invocation.
+ChildEntityExecutor — async suspend/resume child dispatch for the loop.
 
-CHILD_ENTITY_INVOCATION steps in a plan spawn a sub-run (synchronous
-or async-dispatched per governance config). The legacy path lives in
-``step_executor``; this adapter wraps it so AgentLoop can drive it.
+CHILD_ENTITY_INVOCATION steps spawn a sub-run. The loop dispatches every
+child as its own isolated run job (own session, own budget) and suspends
+(WAITING_ON_CHILDREN) until the child's finalize fires ``resume_parent_run``.
+This is the sole child path — the inline nested-run variant (which amplified
+cost ~$11/child on the parent's session) is retired.
 """
 from __future__ import annotations
 
 import logging
 import time
-from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
 
@@ -20,7 +21,6 @@ from src.ai.core.agent_state import AgentState, ExecutorName
 from src.ai.core.executors.base import ActionResult, register_executor
 from src.ai.core.executors.single_step import _resolve_redis
 from src.ai.core.strategist import Move
-from src.ai.core.trace import span
 from src.ai.orm.execution import ExecutionRun
 
 logger = logging.getLogger(__name__)
@@ -84,86 +84,46 @@ class ChildEntityExecutor:
         entity = run.entity
 
         step_obj = self._coerce_step(step)
-        ctx = await state.materialise_context_dict()
         start = time.time()
 
-        # ── Async child dispatch (suspend/resume) ────────────────────────────
-        # When the entity opts in and Redis is available, create the child run,
-        # enqueue it as its OWN isolated job (own session + own budget), and
-        # return an ``awaiting_children`` marker. The AgentLoop snapshots and
-        # suspends (WAITING_ON_CHILDREN) instead of blocking this worker; the
-        # child's finalize enqueues ``resume_parent_run`` which folds the result
-        # back in. This is the mechanism that lets a PROCESS's children run
-        # without the inline-nested-loop cost amplification.
+        # ── Async child dispatch (suspend/resume) — the sole child path ──────
+        # Create the child run, enqueue it as its OWN isolated job (own session
+        # + own budget), and return an ``awaiting_children`` marker. The
+        # AgentLoop snapshots and suspends (WAITING_ON_CHILDREN) instead of
+        # blocking this worker; the child's finalize enqueues
+        # ``resume_parent_run`` which folds the result back in. There is no
+        # inline fallback: running a child inline meant a nested full run on the
+        # parent's session — the ~$11/child amplification this design retired.
+        if redis is None:
+            return ActionResult(
+                success=False,
+                error=(
+                    "child-entity dispatch requires Redis "
+                    "(async child dispatch is the sole child path)"
+                ),
+                latency_ms=int((time.time() - start) * 1000),
+            )
+
         governance = (entity.governance or {}) if entity else {}
-        if governance.get("async_child_dispatch") and redis is not None:
-            if not within_child_dispatch_cap(state, governance):
-                # Backpressure: too many children already in flight for this
-                # parent. Run this one inline rather than fan out further.
-                logger.info(
-                    "Child dispatch cap reached for parent %s (%d in flight); "
-                    "running child inline.", run.id, pending_child_count(state),
-                )
-            else:
-                try:
-                    return await self._dispatch_async(
-                        engine, redis, run, entity, step_obj, state, start,
-                    )
-                except Exception as exc:                                   # noqa: BLE001
-                    # Dispatch failure must not strand the run — fall through to
-                    # the inline path below so behaviour degrades to legacy mode.
-                    logger.warning(
-                        "Async child dispatch failed (%s); falling back to inline.",
-                        exc,
-                    )
+        if not within_child_dispatch_cap(state, governance):
+            # The cap is now advisory: with the inline backpressure path retired,
+            # we dispatch anyway and let the child queue absorb the fan-out.
+            logger.info(
+                "Child dispatch cap reached for parent %s (%d in flight); "
+                "dispatching anyway.", run.id, pending_child_count(state),
+            )
 
-        _child_name = str(getattr(step_obj, "name", "") or getattr(step_obj, "step_id", "") or "child")
-        async with span(
-            "child", _child_name,
-            step_id=str(getattr(step_obj, "step_id", "") or ""),
-            instruction=getattr(step_obj, "instruction", None) or getattr(step_obj, "description", None),
-        ) as _child_span:
-            try:
-                result = await engine._execute_step_wrapper(run, entity, step_obj, ctx)
-            except Exception as exc:                                       # noqa: BLE001
-                _child_span.set_error(f"{type(exc).__name__}: {exc}")
-                return ActionResult(
-                    success=False,
-                    error=f"{type(exc).__name__}: {exc}",
-                    latency_ms=int((time.time() - start) * 1000),
-                )
-
-            latency_ms = int((time.time() - start) * 1000)
-            await state.absorb_context_dict(ctx)
-
-            step_id = str(getattr(step_obj, "step_id", None) or step_obj.name or "")
-            cost = Decimal(str((result or {}).get("cost_usd", 0) or 0))
-            child_run_ids: list[Any] = []
-            child_id = (result or {}).get("child_run_id") or (result or {}).get("run_id")
-            if child_id:
-                try:
-                    child_run_ids.append(UUID(str(child_id)))
-                except Exception:
-                    pass
-
-            # Link the span to the spawned sub-run so the UI can deep-link into
-            # the child's own trace tree.
-            if child_run_ids:
-                _child_span.set_child_run_id(child_run_ids[0])
-            _child_span.set_cost(cost)
-            _child_span.set_output(str((result or {}).get("output", ""))[:8000])
-            if (result or {}).get("error"):
-                _child_span.set_error(str((result or {}).get("error")))
-
-        return ActionResult(
-            output=str((result or {}).get("output", ""))[:8000],
-            cost_usd=cost,
-            latency_ms=latency_ms,
-            success=not (result or {}).get("error"),
-            error=str((result or {}).get("error", ""))[:500],
-            completed_step_ids=[step_id] if step_id else [],
-            children_run_ids=child_run_ids,
-        )
+        try:
+            return await self._dispatch_async(
+                engine, redis, run, entity, step_obj, state, start,
+            )
+        except Exception as exc:                                           # noqa: BLE001
+            logger.warning("Async child dispatch failed: %s", exc)
+            return ActionResult(
+                success=False,
+                error=f"child dispatch failed: {type(exc).__name__}: {exc}",
+                latency_ms=int((time.time() - start) * 1000),
+            )
 
     async def _dispatch_async(
         self,
