@@ -34,7 +34,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Iterator, Literal, Optional
 from uuid import UUID
 
 logger = logging.getLogger("agent.events")
@@ -122,7 +122,7 @@ def set_otel_exporter(fn: Optional[Callable[[TelemetryEvent], None]]) -> None:
 
 
 @contextmanager
-def capture_test_events():
+def capture_test_events() -> Iterator[list[Any]]:
     """Capture events emitted inside the ``with`` block.
 
     Each invocation pushes its own buffer onto the capture stack;

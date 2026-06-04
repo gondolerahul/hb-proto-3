@@ -16,7 +16,7 @@ Gated behind entity.reasoning_config.engine_type == "RECURSIVE".
 import json
 import logging
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -42,7 +42,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
     MAX_TOTAL_EXPANSIONS = 20
     DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
-    def __init__(self, db, redis_pool, company_id=None):
+    def __init__(self, db: Any, redis_pool: Any, company_id: Optional[UUID] = None) -> None:
         super().__init__(db, redis_pool, company_id=company_id)
         self._expansion_count = 0
         self._total_cost = Decimal("0")
@@ -51,9 +51,9 @@ class RecursiveReasoningEngine(ExecutionEngine):
         self,
         run_id: UUID,
         root_goal: str,
-        context: dict,
+        context: dict[str, Any],
         tree_id: Optional[UUID] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Main entry point for recursive goal execution.
 
@@ -103,7 +103,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
             }
 
     async def _execute_node(
-        self, run, entity, node: GoalNode, context: dict, *,
+        self, run: Any, entity: Any, node: GoalNode, context: dict[str, Any], *,
         max_depth: int, confidence_threshold: float,
         cost_ceiling: Decimal, tree_id: Optional[UUID],
     ) -> str:
@@ -170,7 +170,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
 
         return synthesis
 
-    async def _assess_confidence(self, entity, node: GoalNode, context: dict) -> float:
+    async def _assess_confidence(self, entity: Any, node: GoalNode, context: dict[str, Any]) -> float:
         """Ask the LLM to self-assess confidence for this goal."""
         try:
             from src.ai.llm.router import LLMRouter
@@ -199,7 +199,7 @@ class RecursiveReasoningEngine(ExecutionEngine):
         except Exception:
             return 0.5  # Default: uncertain
 
-    async def _expand_goal(self, entity, node: GoalNode, context: dict) -> List[GoalNode]:
+    async def _expand_goal(self, entity: Any, node: GoalNode, context: dict[str, Any]) -> List[GoalNode]:
         """Decompose a goal into sub-goals via LLM."""
         self._expansion_count += 1
 
@@ -249,8 +249,9 @@ class RecursiveReasoningEngine(ExecutionEngine):
 
         return children
 
-    async def _execute_leaf(self, run, entity, node: GoalNode, context: dict, tree_id=None) -> str:
+    async def _execute_leaf(self, run: Any, entity: Any, node: GoalNode, context: dict[str, Any], tree_id: Any = None) -> str:
         """Execute a leaf goal as a single THOUGHT step."""
+        assert self._step_executor is not None
         step = PlanStep(
             name=f"Goal: {node.goal[:60]}",
             type=StepType.THOUGHT,
@@ -271,9 +272,9 @@ class RecursiveReasoningEngine(ExecutionEngine):
         if tree_id:
             await self._write_goal_to_cortex(tree_id, node, output)
 
-        return output
+        return str(output)
 
-    async def _synthesize(self, entity, node: GoalNode, results: list, context: dict) -> str:
+    async def _synthesize(self, entity: Any, node: GoalNode, results: list[Any], context: dict[str, Any]) -> str:
         """Synthesize child results into a unified answer for the parent goal."""
         from src.ai.llm.router import LLMRouter
         llm = LLMRouter(db=self.db, company_id=entity.company_id)
@@ -297,11 +298,11 @@ class RecursiveReasoningEngine(ExecutionEngine):
 
         return response.output
 
-    async def _write_goal_to_cortex(self, tree_id: UUID, node: GoalNode, output: str):
+    async def _write_goal_to_cortex(self, tree_id: UUID, node: GoalNode, output: str) -> None:
         """Write a goal node and its result to the CORTEX tree."""
         try:
             from src.ai.memory.cortex_service import CortexService
-            cortex = CortexService(db=self.db, company_id=self.company_id)
+            cortex = CortexService(db=self.db, company_id=cast(UUID, self.company_id))
             working_root = await cortex.get_working_root(tree_id)
             if working_root:
                 await cortex.write(

@@ -33,8 +33,8 @@ class Reasoning(Protocol):
         system_prompt: str,
         user_prompt: str,
         task_type: str,
-        config: dict,
-        tool_schemas: list[dict],
+        config: dict[str, Any],
+        tool_schemas: list[dict[str, Any]],
         execute_tool_fn: Any,
         model_override: Optional[str] = None,
     ) -> tuple[str, Any]: ...

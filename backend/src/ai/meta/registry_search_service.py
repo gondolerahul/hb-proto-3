@@ -132,7 +132,7 @@ class RegistrySearchService:
             return []
 
         # .5: IO Contract compatibility scoring
-        self._phase15_io_contract(request, candidates)
+        await self._phase15_io_contract(request, candidates)
 
         # Semantic scoring (LLM-powered)
         scored = await self._phase2_semantic(request, candidates[:top_k * 2])
@@ -324,7 +324,7 @@ class RegistrySearchService:
     # .5: IO Contract Compatibility
     # ------------------------------------------------------------------
 
-    def _phase15_io_contract(
+    async def _phase15_io_contract(
         self,
         request: SearchRequest,
         candidates: List[MatchCandidate],
@@ -338,26 +338,25 @@ class RegistrySearchService:
             return
 
         for c in candidates:
-            c.io_score = self._score_io_compatibility(c.entity_id, request)
+            c.io_score = await self._score_io_compatibility(c.entity_id, request)
 
-    def _score_io_compatibility(self, entity_id: UUID, request: SearchRequest) -> float:
+    async def _score_io_compatibility(self, entity_id: UUID, request: SearchRequest) -> float:
         """Score how well an entity's IO contract matches the request."""
         if not request.io_schema:
             return 0.5  # Neutral
 
-        # We need the entity's io_contract — look it up from the structural
-        # candidates' source entity (already loaded in phase 1 query).
-        # For efficiency, we use a sync helper since the entity data is
-        # already in the session's identity map.
+        # We need the entity's io_contract. On an AsyncSession, Session.get is a
+        # coroutine and must be awaited (already-loaded rows resolve from the
+        # identity map without a round-trip).
         try:
             from src.ai.models import HierarchicalEntity
-            entity = self.db.get(HierarchicalEntity, entity_id)
+            entity = await self.db.get(HierarchicalEntity, entity_id)
             if not entity:
                 return 0.5
         except Exception:
             return 0.5
 
-        entity_io = entity.io_contract or {}  # type: ignore[attr-defined]
+        entity_io = entity.io_contract or {}
         entity_input = entity_io.get("input_schema", {}).get("properties", {})
         entity_output = entity_io.get("output_schema", {}).get("properties", {})
 

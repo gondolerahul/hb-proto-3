@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 __all__ = ["Budget", "BudgetAxis"]
 
@@ -25,7 +25,7 @@ BudgetAxis = Literal["tokens", "usd", "wall_s", "iters"]
 _ZERO = Decimal("0")
 
 
-def _to_decimal(value) -> Decimal:
+def _to_decimal(value: Any) -> Decimal:
     if isinstance(value, Decimal):
         return value
     if value is None:
@@ -158,7 +158,7 @@ class Budget:
     # Snapshot
     # ------------------------------------------------------------------
 
-    def snapshot(self) -> dict:
+    def snapshot(self) -> dict[str, Any]:
         d = asdict(self)
         # Decimal → str for JSON-friendliness (CORTEX node content).
         d["usd_max"] = str(self.usd_max)
@@ -167,7 +167,7 @@ class Budget:
         return d
 
     @classmethod
-    def restore(cls, snapshot: dict) -> "Budget":
+    def restore(cls, snapshot: dict[str, Any]) -> "Budget":
         return cls(
             tokens_max=int(snapshot.get("tokens_max", 0)),
             tokens_used=int(snapshot.get("tokens_used", 0)),

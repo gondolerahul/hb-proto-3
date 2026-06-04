@@ -15,7 +15,10 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
+
+if TYPE_CHECKING:
+    from src.ai.core.strategist import Decision
 from uuid import UUID, uuid4
 
 from src.ai.core.budget import Budget

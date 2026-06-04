@@ -41,6 +41,7 @@ CLEAN_PACKAGES: list[str] = [
     "planning",
     "meta",
     "memory",
+    "core",
 ]
 
 

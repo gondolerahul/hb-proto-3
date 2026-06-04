@@ -17,8 +17,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from src.ai.planning.plan_style_bandit import PlanStyleBandit
 
 from src.ai.core.agent_state import (
     AgentState,

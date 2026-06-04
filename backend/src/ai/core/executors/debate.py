@@ -22,12 +22,13 @@ import asyncio
 import logging
 import time
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Optional, cast
+from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
-from src.ai.core.agent_state import AgentState
+from src.ai.core.agent_state import AgentState, ExecutorName
 from src.ai.core.executors.base import ActionResult, register_executor
 from src.ai.core.strategist import Move
 from src.ai.core.trace import span
@@ -54,7 +55,7 @@ _PERSONAS = [
 
 
 class DebateExecutor:
-    name = "Debate"
+    name: ExecutorName = "Debate"
 
     async def execute(
         self,
@@ -78,7 +79,7 @@ class DebateExecutor:
         model_override = config.get("model_name")
         base_temp = float(config.get("temperature", 0.7) or 0.7)
 
-        router = LLMRouter(db=db, company_id=state.company_id)
+        router = LLMRouter(db=db, company_id=cast(UUID, state.company_id))
 
         async with span("debate", step_id or "debate", num_candidates=n) as _sp:
             # 1. Generate N candidates in parallel (varied persona + temperature).
@@ -141,7 +142,7 @@ class DebateExecutor:
         task_type: str,
         user_prompt: str,
         candidates: list[Any],
-        config: dict,
+        config: dict[str, Any],
         model_override: Optional[str],
     ) -> tuple[int, Any]:
         """Score every candidate and return ``(winner_index, judge_response)``.
@@ -195,10 +196,10 @@ class DebateExecutor:
         persona = identity.get("persona") or {}
         if persona:
             sp = persona.get("system_prompt", sp)
-        return sp
+        return str(sp)
 
     @staticmethod
-    async def _user_prompt(entity: Any, step: dict, state: AgentState) -> str:
+    async def _user_prompt(entity: Any, step: dict[str, Any], state: AgentState) -> str:
         instruction = (
             step.get("instruction")
             or step.get("description")
@@ -219,12 +220,12 @@ class DebateExecutor:
         return str(instruction)
 
     @staticmethod
-    def _reasoning_config(entity: Any) -> dict:
+    def _reasoning_config(entity: Any) -> dict[str, Any]:
         logic_gate = getattr(entity, "logic_gate", None) or {}
         return logic_gate.get("reasoning_config") or {}
 
     @staticmethod
-    def _num_candidates(config: dict) -> int:
+    def _num_candidates(config: dict[str, Any]) -> int:
         raw = config.get("debate_num_candidates", config.get("tot_num_paths", _DEFAULT_NUM_CANDIDATES))
         try:
             n = int(raw)
@@ -305,7 +306,7 @@ class DebateExecutor:
         user_prompt: str,
         candidates: list[Any],
         winner_idx: int,
-    ) -> list:
+    ) -> list[Any]:
         """Write a debate parent node + one child per candidate.
 
         Anchored under the run's CORTEX working root. ``CortexService.write``
@@ -317,11 +318,11 @@ class DebateExecutor:
         """
         if state.cortex_working_root_id is None:
             return []
-        written: list = []
+        written: list[Any] = []
         try:
             from src.ai.memory.cortex_service import CortexService
 
-            cortex = CortexService(db=db, company_id=state.company_id)
+            cortex = CortexService(db=db, company_id=cast(UUID, state.company_id))
             parent_id = await cortex.write(
                 parent_id=state.cortex_working_root_id,
                 node_type="finding",
@@ -361,7 +362,7 @@ class DebateExecutor:
             .options(selectinload(ExecutionRun.entity))
             .where(ExecutionRun.id == run_id)
         )
-        return result.scalar_one()
+        return cast(ExecutionRun, result.scalar_one())
 
 
 register_executor(DebateExecutor())

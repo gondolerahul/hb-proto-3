@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.ai.core.agent_state import AgentState
+from src.ai.core.agent_state import AgentState, ExecutorName
 from src.ai.core.executors.base import ActionResult, register_executor
 from src.ai.core.strategist import Move
 
@@ -38,17 +38,17 @@ class _StubMixin:
 
 
 class DialogExecutor(_StubMixin):
-    name = "Dialog"
+    name: ExecutorName = "Dialog"
     track = "Track 5"
 
 
 class ToolBurstExecutor(_StubMixin):
-    name = "ToolBurst"
+    name: ExecutorName = "ToolBurst"
     track = "Track 7/8"
 
 
 class SkillExecutor(_StubMixin):
-    name = "Skill"
+    name: ExecutorName = "Skill"
     track = "Track 5"
 
 

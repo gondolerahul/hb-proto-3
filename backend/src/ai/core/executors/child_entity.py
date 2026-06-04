@@ -10,12 +10,13 @@ from __future__ import annotations
 import logging
 import time
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.ai.core.agent_state import AgentState
+from src.ai.core.agent_state import AgentState, ExecutorName
 from src.ai.core.executors.base import ActionResult, register_executor
 from src.ai.core.executors.single_step import _resolve_redis
 from src.ai.core.strategist import Move
@@ -44,7 +45,7 @@ def pending_child_count(state: Any) -> int:
     )
 
 
-def within_child_dispatch_cap(state: Any, governance: dict) -> bool:
+def within_child_dispatch_cap(state: Any, governance: dict[str, Any]) -> bool:
     """True if another async child may be dispatched without exceeding the
     per-parent concurrency cap."""
     raw = (governance or {}).get("max_concurrent_children")
@@ -58,7 +59,7 @@ def within_child_dispatch_cap(state: Any, governance: dict) -> bool:
 
 
 class ChildEntityExecutor:
-    name = "ChildEntity"
+    name: ExecutorName = "ChildEntity"
 
     async def execute(
         self,
@@ -77,7 +78,7 @@ class ChildEntityExecutor:
 
         redis = _resolve_redis(state)
         engine = ExecutionEngine(db, redis, state.company_id)
-        engine._ensure_services(state.company_id)
+        engine._ensure_services(cast(UUID, state.company_id))
 
         run = await self._reload_run(db, state.run_id)
         entity = run.entity
@@ -137,12 +138,10 @@ class ChildEntityExecutor:
 
             step_id = str(getattr(step_obj, "step_id", None) or step_obj.name or "")
             cost = Decimal(str((result or {}).get("cost_usd", 0) or 0))
-            child_run_ids: list = []
+            child_run_ids: list[Any] = []
             child_id = (result or {}).get("child_run_id") or (result or {}).get("run_id")
             if child_id:
                 try:
-                    from uuid import UUID
-
                     child_run_ids.append(UUID(str(child_id)))
                 except Exception:
                     pass
@@ -216,7 +215,7 @@ class ChildEntityExecutor:
             .options(selectinload(ExecutionRun.entity))
             .where(ExecutionRun.id == run_id)
         )
-        return result.scalar_one()
+        return cast(ExecutionRun, result.scalar_one())
 
     @staticmethod
     def _coerce_step(step: Any) -> Any:

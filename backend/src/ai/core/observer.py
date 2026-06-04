@@ -6,7 +6,7 @@ novelty, goal-delta from intelligence rules, etc.).
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from src.ai.core.agent_state import AgentState, Observation
 
@@ -24,7 +24,7 @@ class Observer:
         outcome = self._outcome(action_result)
         return Observation(
             iteration=state.iteration,
-            outcome=outcome,
+            outcome=cast(Any, outcome),
             novelty_score=self._novelty(action_result),
             goal_delta_estimate=self._goal_delta(action_result, outcome),
             cortex_node_ids_written=[

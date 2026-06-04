@@ -13,11 +13,13 @@ import logging
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.database import AsyncSessionLocal
 from src.ai.models import (
@@ -63,7 +65,7 @@ _store_step_output = store_step_output
 _sanitize_context_for_persistence = sanitize_context_for_persistence
 
 class ExecutionEngine:
-    def __init__(self, db: AsyncSessionLocal, redis_pool, company_id: UUID = None):
+    def __init__(self, db: AsyncSession, redis_pool: Any, company_id: Optional[UUID] = None) -> None:
         self.db = db
         self.redis = redis_pool
         self.config_service = ConfigService(db)
@@ -80,7 +82,7 @@ class ExecutionEngine:
             governance=self._governance,
         ) if company_id else None
 
-    def _ensure_services(self, company_id: UUID):
+    def _ensure_services(self, company_id: UUID) -> None:
         """Lazily initialize services when company_id becomes available."""
         if not self._governance:
             self.company_id = company_id
@@ -103,7 +105,7 @@ class ExecutionEngine:
     # loop needs a safer mechanism (e.g. async dispatch on a dedicated worker)
     # and is deferred; the flag still governs the top-level engine selection.
 
-    async def _execute_steps_dag(self, run, entity, steps: List[dict], context_state: dict) -> List[dict]:
+    async def _execute_steps_dag(self, run: Any, entity: Any, steps: List[dict[str, Any]], context_state: dict[str, Any]) -> List[dict[str, Any]]:
         """Execute steps respecting dependencies, parallelizing independent ones.
 
         P1-A: Parallel steps each open their own AsyncSession to avoid
@@ -113,11 +115,11 @@ class ExecutionEngine:
         """
 
         # 1. Build Dependency Graph
-        step_deps = {s["step_id"]: set() for s in steps}
+        step_deps: dict[str, set[str]] = {s["step_id"]: set() for s in steps}
         step_map = {s["step_id"]: s for s in steps}
 
         for step in steps:
-            s_id = step.get("step_id")
+            s_id = step.get("step_id", "")
             target = step.get("target") or {}
             if target and "input_dependencies" in target:
                 for dep in target.get("input_dependencies", []):
@@ -141,7 +143,7 @@ class ExecutionEngine:
             if s["step_id"] in context_state and s["step_id"] != "input":
                 completed.add(s["step_id"])
 
-        results_map = {}
+        results_map: dict[str, Any] = {}
         logger.info(f"DAG Execution Plan for {len(steps)} steps. Dependencies: {step_deps}")
 
         while len(completed) < len(steps):
@@ -207,7 +209,7 @@ class ExecutionEngine:
                 # cross-contamination between parallel coroutines.
                 # Pass run_id instead of ORM object; reload in
                 # isolated session. Use atomic DB increments for cost/tokens.
-                async def _isolated_step(step_dict: dict, frozen_ctx: dict) -> dict:
+                async def _isolated_step(step_dict: dict[str, Any], frozen_ctx: dict[str, Any]) -> dict[str, Any]:
                     async with AsyncSessionLocal() as isolated_db:
                         isolated_engine = ExecutionEngine(isolated_db, self.redis, company_id=self.company_id)
                         step_obj = PlanStep(**step_dict)
@@ -241,20 +243,20 @@ class ExecutionEngine:
 
                 # ERR-2 fix: Collect ALL results first, then decide whether to raise.
                 # Previously, the first failure discarded successful step results.
-                failures = []
-                for i, result in enumerate(batch_results):
+                failures: list[Any] = []
+                for i, batch_result in enumerate(batch_results):
                     step_id = ready[i]["step_id"]
-                    if isinstance(result, Exception):
-                        logger.error(f"Step {step_id} failed: {result}")
-                        results_map[step_id] = {"error": str(result), "step": ready[i]["name"]}
-                        _store_step_output(context_state, ready[i]["name"], step_id, f"[FAILED] {result}")
-                        failures.append((step_id, result))
+                    if isinstance(batch_result, Exception):
+                        logger.error(f"Step {step_id} failed: {batch_result}")
+                        results_map[step_id] = {"error": str(batch_result), "step": ready[i]["name"]}
+                        _store_step_output(context_state, ready[i]["name"], step_id, f"[FAILED] {batch_result}")
+                        failures.append((step_id, batch_result))
                     else:
-                        results_map[step_id] = result
+                        results_map[step_id] = batch_result
                         completed.add(step_id)
                         # Merge results back into parent context
-                        if isinstance(result, dict) and "output" in result:
-                            _store_step_output(context_state, ready[i]["name"], step_id, result["output"])
+                        if isinstance(batch_result, dict) and "output" in batch_result:
+                            _store_step_output(context_state, ready[i]["name"], step_id, batch_result["output"])
 
                 # Refresh run from DB after parallel steps to get accumulated costs
                 await self.db.refresh(run)
@@ -264,7 +266,7 @@ class ExecutionEngine:
 
         return [results_map.get(s["step_id"], {}) for s in steps]
 
-    async def _enforce_cost_cap(self, run, governance: dict) -> None:
+    async def _enforce_cost_cap(self, run: Any, governance: dict[str, Any]) -> None:
         """Raise ``BudgetExhaustedError`` if the run's accumulated cost has
         reached the entity's ``governance.max_cost_usd``.
 
@@ -304,7 +306,7 @@ class ExecutionEngine:
                 cap_usd=cap,
             )
 
-    async def _execute_step_wrapper(self, run, entity, step_obj, context_state):
+    async def _execute_step_wrapper(self, run: Any, entity: Any, step_obj: Any, context_state: dict[str, Any]) -> dict[str, Any]:
         """Wrapper to handle execution + review + context update for a single step.
 
         Ph-B: If the LLM raises UncertaintySignal, the step result is annotated
@@ -317,6 +319,7 @@ class ExecutionEngine:
         """
         # Entity is detached (make_transient) — safe to access .governance etc.
         # without triggering lazy-load / MissingGreenlet.
+        assert self._step_executor is not None
         observability = entity.observability or {}
         log_thoughts = observability.get("log_thoughts", True)
         governance = entity.governance or {}
@@ -432,11 +435,12 @@ class ExecutionEngine:
         run: 'ExecutionRun',
         entity: 'HierarchicalEntity',
         step_obj: PlanStep,
-        context_state: dict,
+        context_state: dict[str, Any],
         phase: str,
-        governance_dict: dict = None,
+        governance_dict: Optional[dict[str, Any]] = None,
     ) -> None:
         """Delegate to GovernanceService (Phase 3 extraction)."""
+        assert self._governance is not None
         await self._governance.evaluate_hitl(
             run, entity, step_obj, context_state, phase,
             governance_dict=governance_dict
@@ -445,7 +449,7 @@ class ExecutionEngine:
 
     # --- Updated execute_run using DAG ---
 
-    async def execute_run(self, run_id: UUID) -> dict:
+    async def execute_run(self, run_id: UUID) -> dict[str, Any]:
         # 1. Fetch Run and Entity
         result = await self.db.execute(
             select(ExecutionRun)
@@ -479,6 +483,10 @@ class ExecutionEngine:
 
         # Initialize composed services with company_id.
         self._ensure_services(entity.company_id)
+        assert self._governance is not None
+        assert self._planner is not None
+        assert self._cortex_bridge is not None
+        assert self._step_executor is not None
 
         # 2. Configure logging level from entity's observability settings
         observability = entity.observability or {}
@@ -559,7 +567,7 @@ class ExecutionEngine:
                     user_id=_run_user_id,
                     task_description=task_desc,
                 )
-                viewport = await cortex.navigate(tree.root_node_id)
+                viewport = await cortex.navigate(cast(UUID, tree.root_node_id))
                 last_checkpoint = None
                 logger.info(f"CORTEX new tree: {tree.id}")
 
@@ -626,9 +634,9 @@ class ExecutionEngine:
                     try:
                         if src_type == "CORTEX_TREE":
                             # Link to an existing CORTEX tree — inject its root viewport
-                            linked_tree = await cortex.get_tree(UUID(ref_id))
+                            linked_tree = await cortex.get_tree(UUID(ref_id))  # type: ignore[attr-defined]
                             if linked_tree:
-                                linked_viewport = await cortex.navigate(linked_tree.root_node_id)
+                                linked_viewport = await cortex.navigate(cast(UUID, linked_tree.root_node_id))
                                 loaded_sources.append(
                                     f"## Context Source: {desc or 'CORTEX Tree'}\n"
                                     f"{linked_viewport.to_prompt_text()}"
@@ -642,7 +650,7 @@ class ExecutionEngine:
                                 if _artifact:
                                     from pathlib import Path as _Path
                                     _fpath = _Path(_artifact.file_path)
-                                    _mime = _artifact.mime_type or ""
+                                    _mime = str(_artifact.mime_type or "")
                                     _label = desc or file_name or _artifact.file_name
 
                                     if _mime.startswith(("image/", "audio/", "video/")):
@@ -677,7 +685,7 @@ class ExecutionEngine:
                                         _kb_ctx = await _memory_router.retrieve(
                                             entity_id=entity.id,
                                             query=desc or "knowledge base context",
-                                            top_k=10,
+                                            top_k=10,  # type: ignore[call-arg]
                                         )
                                         if _kb_ctx:
                                             loaded_sources.append(
@@ -825,7 +833,7 @@ class ExecutionEngine:
                 # step_ids (e.g. from prompt_template {{variable}} extraction), causing
                 # steps to be incorrectly skipped.  For retries, the set is pre-populated
                 # from the previous run's __completed_steps__.
-                completed_steps: set = set(context_state.get("__completed_steps__", []))
+                completed_steps: set[Any] = set(context_state.get("__completed_steps__", []))
 
                 # ── Refinement mode detection ──────────────────────────────
                 refinement_feedback = input_data.get("__refinement_feedback__")
@@ -835,7 +843,7 @@ class ExecutionEngine:
                 if is_refinement:
                     logger.info(
                         f"[RUN:{run_id}] Refinement mode: {len(skip_steps_set)} steps to skip, "
-                        f"feedback='{refinement_feedback[:80]}...'"
+                        f"feedback='{str(refinement_feedback)[:80]}...'"
                     )
 
                 for step_idx, step in enumerate(steps):
@@ -1182,7 +1190,7 @@ class ExecutionEngine:
                 logger.warning(f"Run {run_id} stopped at budget cap: {e}")
             except Exception:
                 logger.error(f"Failed to persist PARTIAL_COMPLETE for run {run_id}: {e}")
-            return partial_result
+            return cast("dict[str, Any]", partial_result)
 
         except AgentError as e:
             # Agent-level errors (typed, expected failures)
@@ -1229,18 +1237,20 @@ class ExecutionEngine:
     # CORTEX Execution Helpers
     # ===================================================================
 
-    def _build_task_description(self, entity: 'HierarchicalEntity', input_data: dict) -> str:
+    def _build_task_description(self, entity: 'HierarchicalEntity', input_data: dict[str, Any]) -> str:
         """Delegate to CortexBridge (Phase 3 extraction)."""
+        assert self._cortex_bridge is not None
         return self._cortex_bridge.build_task_description(entity, input_data)
 
     async def _write_step_to_cortex(
         self,
         cortex: 'CortexService',
         working_root_id: UUID,
-        step_result: dict,
+        step_result: dict[str, Any],
         run_id: UUID,
     ) -> None:
         """Delegate to CortexBridge (Phase 3 extraction)."""
+        assert self._cortex_bridge is not None
         await self._cortex_bridge.write_step(cortex, working_root_id, step_result, run_id)
 
     async def _ingest_tool_result_to_cortex(
@@ -1248,9 +1258,10 @@ class ExecutionEngine:
         run: 'ExecutionRun',
         tool_id: str,
         tool_output: str,
-        context: dict,
+        context: dict[str, Any],
     ) -> None:
         """Delegate to CortexBridge (Phase 3 extraction)."""
+        assert self._cortex_bridge is not None
         await self._cortex_bridge.ingest_tool_result(run, tool_id, tool_output, context)
 
     async def _execute_cortex_step(
@@ -1259,29 +1270,33 @@ class ExecutionEngine:
         entity: 'HierarchicalEntity',
         step: PlanStep,
         cortex: 'CortexService',
-        tree,
-        context: dict,
-    ) -> dict:
+        tree: Any,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
         """Delegate to CortexBridge (Phase 3 extraction)."""
+        assert self._cortex_bridge is not None
         return await self._cortex_bridge.execute_cortex_step(
             run, entity, step, cortex, tree, context
         )
 
-    def _resolve_node_id(self, target, context: dict) -> str:
+    def _resolve_node_id(self, target: Any, context: dict[str, Any]) -> str:
         """Delegate to CortexBridge (Phase 3 extraction)."""
+        assert self._cortex_bridge is not None
         return self._cortex_bridge.resolve_node_id(target, context)
-            
-    def _extract_text_from_file(self, file_path, mime_type: str = "") -> str:
+
+    def _extract_text_from_file(self, file_path: Any, mime_type: str = "") -> str:
         """Delegate to standalone text_extractor module (Phase 6 dedup)."""
         from src.ai.text_extractor import extract_text_from_file
         return extract_text_from_file(file_path, mime_type)
 
-    def _has_parallel_steps(self, steps: List[dict]) -> bool:
+    def _has_parallel_steps(self, steps: List[dict[str, Any]]) -> bool:
         """Delegate to PlannerService (Phase 3 extraction)."""
+        assert self._planner is not None
         return self._planner.has_parallel_steps(steps)
 
-    async def _get_reconciled_plan(self, run: ExecutionRun, entity: HierarchicalEntity, input_data: dict) -> dict:
+    async def _get_reconciled_plan(self, run: ExecutionRun, entity: HierarchicalEntity, input_data: dict[str, Any]) -> dict[str, Any]:
         """Delegate to PlannerService (Phase 3 extraction)."""
+        assert self._planner is not None
         return await self._planner.reconcile(run, entity, input_data)
 
 

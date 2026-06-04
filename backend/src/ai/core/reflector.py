@@ -19,7 +19,7 @@ Phase 11 Track 6 additions:
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from src.ai.core.agent_state import (
     AgentState,
@@ -94,7 +94,7 @@ class Reflector:
 
         return Reflection(
             iteration=state.iteration,
-            scope=scope,
+            scope=cast(Any, scope),
             what_worked=what_worked,
             what_didnt=what_didnt,
             cause_hypothesis=cause,

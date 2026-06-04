@@ -38,7 +38,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ class set_recorder:
 
     def __init__(self, recorder: Optional["TraceRecorder"]):
         self._recorder = recorder
-        self._token = None
+        self._token: Any = None
 
     def __enter__(self) -> Optional["TraceRecorder"]:
         self._token = _RECORDER.set(self._recorder)
@@ -300,7 +300,7 @@ async def span(
     parent_span_id: Optional[UUID] = None,
     iteration: Optional[int] = None,
     **payload: Any,
-):
+) -> AsyncIterator[Any]:
     """Open a span around a block of work. No-op when no recorder is bound.
 
     ``parent`` defaults to the innermost open span in the current async task

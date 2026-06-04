@@ -4,7 +4,7 @@ ai.core.context_utils — Context state management utilities.
 Handles step output storage and context sanitization for persistence.
 Extracted from worker.py during Phase 10A restructuring.
 """
-from typing import Optional
+from typing import Any, Optional
 
 
 # SEC-1: Keys to strip before persisting context to DB.
@@ -20,11 +20,11 @@ _SENSITIVE_CONTEXT_KEYS = frozenset({
 
 
 def store_step_output(
-    context_state: dict,
+    context_state: dict[str, Any],
     step_name: str,
     step_id: str,
     output: str,
-    cortex_bridge=None,
+    cortex_bridge: Any = None,
 ) -> None:
     """Store step output in context (Phase 4 — DATA-1).
 
@@ -47,7 +47,7 @@ def store_step_output(
             cortex_bridge.update_context_size(step_id, old_id_value, value)
 
 
-def sanitize_context_for_persistence(ctx: dict) -> dict:
+def sanitize_context_for_persistence(ctx: dict[str, Any]) -> dict[str, Any]:
     """Return a shallow copy of ctx with sensitive keys redacted.
 
     Called before persisting context_state to the database to prevent

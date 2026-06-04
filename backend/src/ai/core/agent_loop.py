@@ -22,7 +22,8 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from decimal import Decimal
+from typing import Any, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -85,7 +86,7 @@ class AgentLoopOutcome:
     output: str
     error: Optional[str] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
             "status": self.status,
@@ -145,7 +146,7 @@ class AgentLoop:
     # Public entry point
     # ------------------------------------------------------------------
 
-    async def run(self, run_id: UUID) -> dict:
+    async def run(self, run_id: UUID) -> dict[str, Any]:
         # Cache the run id and register our redis client so per-iteration
         # events fan out to the ``execution:{run_id}`` SSE channel the
         # frontend ExecutionDetail page subscribes to.
@@ -192,7 +193,7 @@ class AgentLoop:
 
         return await self._drive(run, state, run_id)
 
-    async def _drive(self, run: ExecutionRun, state: AgentState, run_id: UUID) -> dict:
+    async def _drive(self, run: ExecutionRun, state: AgentState, run_id: UUID) -> dict[str, Any]:
         """Run the loop to a terminal state, OR suspend if it dispatched async
         children. Shared by ``run`` (fresh) and ``resume`` (rehydrated)."""
         outcome_status = RunStatus.FAILED.value
@@ -250,7 +251,7 @@ class AgentLoop:
             error=last_error,
         ).to_dict()
 
-    async def resume(self, run_id: UUID) -> dict:
+    async def resume(self, run_id: UUID) -> dict[str, Any]:
         """Resume a parent run suspended on async child dispatch.
 
         Rehydrates ``AgentState`` from the snapshot persisted at suspend, folds
@@ -393,6 +394,10 @@ class AgentLoop:
                 break
 
     async def _iteration(self, state: AgentState) -> None:
+        assert self.perceiver is not None
+        assert self.strategist is not None
+        assert self.observer is not None
+        assert self.reflector is not None
         # Cooperative cancellation: re-read the run's status before doing any
         # (billable) work. An operator can stop a spinning run by flipping
         # ExecutionRun.status away from RUNNING via POST /executions/{id}/cancel;
@@ -632,16 +637,16 @@ class AgentLoop:
         if record is not None and record.is_actionable_failure() and _retryable_move:
             step_id = record.step_id or ""
             if not RetryExecutor.is_exhausted(state, step_id):
-                decision = pick_retry(record, state)
-                if decision.strategy not in (RetryStrategy.NONE, RetryStrategy.ABANDON):
-                    follow_up = self.retry_executor.build(decision, move, record)
+                retry_decision = pick_retry(record, state)
+                if retry_decision.strategy not in (RetryStrategy.NONE, RetryStrategy.ABANDON):
+                    follow_up = self.retry_executor.build(retry_decision, move, record)
                     if follow_up:
                         state.retry_queue.append(follow_up)
                         state.corrective_retries_used += 1
                         await event_async(
                             "agent.retry.picked",
                             run_id=str(state.run_id), iteration=state.iteration,
-                            strategy=decision.strategy.value,
+                            strategy=retry_decision.strategy.value,
                             tags=[t.value for t in record.post_critic_tags],
                         )
             else:
@@ -861,7 +866,7 @@ class AgentLoop:
         try:
             from src.ai.memory.cortex_service import CortexService
 
-            cortex = CortexService(db=self.db, company_id=state.company_id)
+            cortex = CortexService(db=self.db, company_id=cast(UUID, state.company_id))
             run = await self._reload_run(self._run_id) if self._run_id else None
             input_data = (getattr(run, "input_data", None) or {}) if run else {}
 
@@ -924,7 +929,7 @@ class AgentLoop:
             config=config,
         )
 
-    def _entity_extras(self) -> Optional[dict]:
+    def _entity_extras(self) -> Optional[dict[str, Any]]:
         if self._entity is None:
             return None
         if isinstance(self._entity, dict):
@@ -978,7 +983,7 @@ class AgentLoop:
             if run is None:
                 return
             input_data = run.input_data if isinstance(run.input_data, dict) else {}
-            planner = PlannerService(self.db, company_id=state.company_id)
+            planner = PlannerService(self.db, company_id=cast(UUID, state.company_id))
             plan = await planner.reconcile(run, entity, input_data)
             steps = plan.get("steps") if isinstance(plan, dict) else None
             if steps:
@@ -1001,7 +1006,7 @@ class AgentLoop:
                 pass
 
     @staticmethod
-    def _extract_plan_steps(entity: Any, run: ExecutionRun) -> list[dict]:
+    def _extract_plan_steps(entity: Any, run: ExecutionRun) -> list[dict[str, Any]]:
         # Prefer run.dynamic_plan (post-planning); fall back to static.
         dp = run.dynamic_plan
         if isinstance(dp, dict) and isinstance(dp.get("steps"), list):
@@ -1090,9 +1095,9 @@ class AgentLoop:
             fresh.completed_at = datetime.utcnow()
             # Don't clobber the engine-billed cost with the loop's budget — keep
             # whichever is larger (the nested engine bills on its own session).
-            fresh.total_cost_usd = max(
+            fresh.total_cost_usd = Decimal(str(max(
                 float(state.budget.usd_used), float(fresh.total_cost_usd or 0)
-            )
+            )))
             # Roll up tokens from the whole run subtree (child runs bill onto
             # their own rows) so a delegating parent reports the real total.
             synced_tokens = await self._sync_budget_tokens()
@@ -1145,7 +1150,7 @@ class AgentLoop:
             billed = await governance.settle_billing(run, entity_name)
             await event_async(
                 "agent.loop.billing_settled",
-                run_id=str(self._run_id or getattr(run, "id", "")),
+                run_id=str(self._run_id or getattr(run, "id", None)),
                 billed_amount=float(billed or 0),
                 total_cost_usd=float(getattr(run, "total_cost_usd", 0) or 0),
             )
@@ -1175,9 +1180,9 @@ class AgentLoop:
             cs["__agent_state_snapshot__"] = state.snapshot()
             fresh.context_state = cs
             fresh.status = RunStatus.WAITING_ON_CHILDREN.value
-            fresh.total_cost_usd = max(
+            fresh.total_cost_usd = Decimal(str(max(
                 float(state.budget.usd_used), float(fresh.total_cost_usd or 0)
-            )
+            )))
             await self.db.commit()
             await event_async(
                 "agent.loop.suspended",
@@ -1218,7 +1223,7 @@ class AgentLoop:
             .options(selectinload(ExecutionRun.entity))
             .where(ExecutionRun.id == run_id)
         )
-        return result.scalar_one_or_none()
+        return cast(Optional[ExecutionRun], result.scalar_one_or_none())
 
     async def _check_cancelled(self, state: AgentState) -> bool:
         """Re-read the run's status; if it is no longer RUNNING (an operator
@@ -1378,7 +1383,7 @@ class AgentLoop:
                 return
         try:
             from src.ai.planning.planner_service import PlannerService
-            planner = PlannerService(self.db, company_id=state.company_id)
+            planner = PlannerService(self.db, company_id=cast(UUID, state.company_id))
             new_goal = (
                 "\n".join(g.description for g in supervise.proposed_subgoals)
                 if supervise and supervise.proposed_subgoals
@@ -1423,6 +1428,7 @@ class AgentLoop:
     async def _finalize_bandit(self, state: AgentState, status: str) -> None:
         if not getattr(self, "bandit", None):
             return
+        assert self.bandit is not None
         arms = list(state.chosen_arms_by_iteration)
         if not arms:
             return
@@ -1453,7 +1459,7 @@ class AgentLoop:
             except Exception as exc:                                        # noqa: BLE001
                 logger.debug("bandit arm update failed for %s: %s", arm, exc)
 
-    def _move_from_retry(self, queued: dict, state: AgentState) -> Any:
+    def _move_from_retry(self, queued: dict[str, Any], state: AgentState) -> Any:
         """Rehydrate a queued retry dict into a Strategist Move."""
         from src.ai.core.strategist import Move
         plan_fragment = queued.get("plan_fragment")

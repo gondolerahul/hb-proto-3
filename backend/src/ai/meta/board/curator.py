@@ -78,15 +78,16 @@ class Curator:
         # Anti-sprawl gate: only on CREATE.
         if decision == "CREATE":
             try:
-                allow = await sprawl.check_creation_allowed(  # type: ignore[call-arg]
-                    description=spec_dict.get("description", ""),
-                    entity_type=spec_dict.get("preferred_type"),
-                )
+                # Daily-creation hard gate (company-scoped). AntiSprawlGuard
+                # owns the semantic/limit split: check_creation_allowed is the
+                # per-day count gate; the semantic near-duplicate check is the
+                # sibling call below.
+                allow = await sprawl.check_creation_allowed()
                 if isinstance(allow, dict) and not allow.get("allowed", True):
                     if candidates:
                         decision = "ADAPT"
                         rationale = (
-                            f"AntiSprawl declined CREATE ({allow.get('reason','')}); "
+                            f"AntiSprawl declined CREATE ({allow.get('message','')}); "
                             f"adapting top candidate instead."
                         )
             except Exception:                                               # pragma: no cover

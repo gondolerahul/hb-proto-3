@@ -119,7 +119,7 @@ class Perceiver:
         # to_prompt_text() or a dict-like response.
         if hasattr(viewport, "to_prompt_text"):
             try:
-                txt = viewport.to_prompt_text()
+                txt: str = viewport.to_prompt_text()
             except TypeError:
                 # Legacy signature accepted kwargs.
                 txt = viewport.to_prompt_text()

@@ -17,8 +17,8 @@ class ChainOfThoughtReasoning:
         system_prompt: str,
         user_prompt: str,
         task_type: str,
-        config: dict,
-        tool_schemas: list[dict],          # noqa: ARG002
+        config: dict[str, Any],
+        tool_schemas: list[dict[str, Any]],          # noqa: ARG002
         execute_tool_fn: Any,              # noqa: ARG002
         model_override: Optional[str] = None,
     ) -> tuple[str, Any]:

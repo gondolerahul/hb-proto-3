@@ -10,12 +10,13 @@ from __future__ import annotations
 import logging
 import time
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.ai.core.agent_state import AgentState
+from src.ai.core.agent_state import AgentState, ExecutorName
 from src.ai.core.executors.base import ActionResult, register_executor
 from src.ai.core.executors.single_step import _resolve_redis
 from src.ai.core.strategist import Move
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class DAGExecutor:
-    name = "DAG"
+    name: ExecutorName = "DAG"
 
     async def execute(
         self,
@@ -44,7 +45,7 @@ class DAGExecutor:
         from src.ai.core.execution_engine import ExecutionEngine
 
         engine = ExecutionEngine(db, _resolve_redis(state), state.company_id)
-        engine._ensure_services(state.company_id)
+        engine._ensure_services(cast(UUID, state.company_id))
 
         run = await self._reload_run(db, state.run_id)
         entity = run.entity
@@ -102,12 +103,12 @@ class DAGExecutor:
             .options(selectinload(ExecutionRun.entity))
             .where(ExecutionRun.id == run_id)
         )
-        return result.scalar_one()
+        return cast(ExecutionRun, result.scalar_one())
 
     @staticmethod
-    def _normalise_steps(plan_fragment: list[Any]) -> list[dict]:
+    def _normalise_steps(plan_fragment: list[Any]) -> list[dict[str, Any]]:
         """Legacy expects list-of-dict steps."""
-        out: list[dict] = []
+        out: list[dict[str, Any]] = []
         for s in plan_fragment:
             if isinstance(s, dict):
                 out.append(s)

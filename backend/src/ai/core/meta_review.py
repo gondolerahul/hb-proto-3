@@ -18,7 +18,7 @@ The shim:
 from __future__ import annotations
 
 import logging
-from typing import Dict, List
+from typing import Any, Dict, List
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,11 +47,11 @@ class MetaReviewer:
     async def review_execution(
         self,
         entity_goal: str,
-        completed_steps: List[Dict],
-        remaining_steps: List[Dict],
+        completed_steps: List[Dict[str, Any]],
+        remaining_steps: List[Dict[str, Any]],
         total_cost_usd: float = 0,
         context_summary: str = "",
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """Lightweight wrapper that builds a stub AgentState and delegates."""
         try:
             from src.ai.core.agent_state import AgentState

@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 
-def find_plan_step(steps: Any, step_id: Any) -> Optional[dict]:
+def find_plan_step(steps: Any, step_id: Any) -> Optional[dict[str, Any]]:
     """Find a plan step by id in a plan_fragment / plan_steps list.
 
     Returns a normalized ``{"name", "type"}`` dict (entries may be raw dicts

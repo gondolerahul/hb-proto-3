@@ -381,11 +381,15 @@ class PlatformSchemaCompiler:
         try:
             from src.config.models import IntegrationRegistry
 
+            # IntegrationRegistry has no is_enabled/category/is_default columns.
+            # Enabled rows are status=='active'; LLM endpoints are the LLM /
+            # LLM_LIVE service categories. Provider/model come from
+            # provider_name/model_name.
             result = await self.db.execute(
                 select(IntegrationRegistry).where(
                     IntegrationRegistry.company_id == self.company_id,
-                    IntegrationRegistry.is_enabled == True,  # type: ignore[attr-defined]
-                    IntegrationRegistry.category == "ai_model",  # type: ignore[attr-defined]
+                    IntegrationRegistry.status == "active",
+                    IntegrationRegistry.service_category.in_(["LLM", "LLM_LIVE"]),
                 )
             )
             integrations = result.scalars().all()
@@ -393,10 +397,10 @@ class PlatformSchemaCompiler:
             endpoints = []
             for integ in integrations:
                 endpoints.append({
-                    "provider": integ.provider,  # type: ignore[attr-defined]
-                    "model_name": integ.service_name,  # type: ignore[attr-defined]
-                    "category": integ.category,  # type: ignore[attr-defined]
-                    "is_default": bool(integ.is_default),  # type: ignore[attr-defined]
+                    "provider": integ.provider_name,
+                    "model_name": integ.model_name,
+                    "category": integ.service_category,
+                    "service_sku": integ.service_sku,
                 })
             return endpoints
         except Exception as e:

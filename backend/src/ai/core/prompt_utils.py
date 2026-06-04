@@ -7,12 +7,12 @@ with no database or service dependencies.
 """
 import json
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.ai.schemas import PlanStep
 
 
-def parse_variables(text: str, variables: dict) -> str:
+def parse_variables(text: str, variables: dict[str, Any]) -> str:
     """Replaces {{variable}} and {variable} in text with values from variables dict.
 
     Supports both double-brace ``{{topic}}`` and single-brace ``{topic}`` syntax.
@@ -22,8 +22,8 @@ def parse_variables(text: str, variables: dict) -> str:
     if not text:
         return ""
 
-    def _resolve(key: str, fallback: str):
-        val = variables
+    def _resolve(key: str, fallback: str) -> str:
+        val: Any = variables
         parts = key.split('.')
         for i, k in enumerate(parts):
             if isinstance(val, dict):
@@ -41,13 +41,13 @@ def parse_variables(text: str, variables: dict) -> str:
         return str(val)
 
     # Pass 1: double-brace {{var}}
-    def replace_double(match):
+    def replace_double(match: "re.Match[str]") -> str:
         key = match.group(1).strip()
         return _resolve(key, match.group(0))
     text = re.sub(r'\{\{(.*?)\}\}', replace_double, text)
 
     # Pass 2: single-brace {var}  (skip if looks like JSON / Python format string)
-    def replace_single(match):
+    def replace_single(match: "re.Match[str]") -> str:
         key = match.group(1).strip()
         # Skip patterns that look like JSON or contain spaces/special chars
         if not key or ' ' in key or ':' in key or ',' in key or '"' in key:
@@ -73,14 +73,14 @@ CORTEX_OPS_HELP = (
 def build_sandwich_prompt(
     identity: str,
     goal: Optional[str] = None,
-    tools: Optional[List[Dict]] = None,
+    tools: Optional[List[Dict[str, Any]]] = None,
     few_shot_examples: Optional[List[Dict[str, str]]] = None,
     context: Optional[str] = None,
     current_task: str = "",
-    output_schema: Optional[Dict] = None,
-    success_criteria: Optional[List[Dict]] = None,
-    allowed_deviations: Optional[Dict] = None,
-    execution_constraints: Optional[Dict] = None,
+    output_schema: Optional[Dict[str, Any]] = None,
+    success_criteria: Optional[List[Dict[str, Any]]] = None,
+    allowed_deviations: Optional[Dict[str, Any]] = None,
+    execution_constraints: Optional[Dict[str, Any]] = None,
     platform_awareness: Optional[str] = None,
     cortex_enabled: bool = False,                       # Track 6: inject ops-help once
 ) -> str:
@@ -183,9 +183,9 @@ def build_sandwich_prompt(
 
 def filter_context_for_step(
     step: PlanStep,
-    full_context: dict,
-    context_policy: Optional[Dict] = None
-) -> dict:
+    full_context: dict[str, Any],
+    context_policy: Optional[Dict[str, Any]] = None
+) -> dict[str, Any]:
     """
     Filter context based on step's explicit inputs and policy.
 

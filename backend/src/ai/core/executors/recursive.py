@@ -9,12 +9,13 @@ from __future__ import annotations
 import logging
 import time
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.ai.core.agent_state import AgentState
+from src.ai.core.agent_state import AgentState, ExecutorName
 from src.ai.core.executors.base import ActionResult, register_executor
 from src.ai.core.executors.single_step import _resolve_redis
 from src.ai.core.strategist import Move
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class RecursiveExecutor:
-    name = "Recursive"
+    name: ExecutorName = "Recursive"
 
     async def execute(
         self,
@@ -35,7 +36,7 @@ class RecursiveExecutor:
         from src.ai.core.execution_engine import ExecutionEngine
 
         engine = ExecutionEngine(db, _resolve_redis(state), state.company_id)
-        engine._ensure_services(state.company_id)
+        engine._ensure_services(cast(UUID, state.company_id))
 
         run = await self._reload_run(db, state.run_id)
         start = time.time()
@@ -66,7 +67,7 @@ class RecursiveExecutor:
             .options(selectinload(ExecutionRun.entity))
             .where(ExecutionRun.id == run_id)
         )
-        return result.scalar_one()
+        return cast(ExecutionRun, result.scalar_one())
 
 
 register_executor(RecursiveExecutor())

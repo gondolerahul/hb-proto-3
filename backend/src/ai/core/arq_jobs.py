@@ -9,6 +9,7 @@ Extracted from worker.py during Phase 10A restructuring.
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # --- Arq Jobs ---
 
-async def run_execution_recursive(ctx, run_id_str: str):
+async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
     """Entry point for an execution run.
 
     Phase 11 Track 2: when ``agent_loop.enabled`` resolves True for the
@@ -35,7 +36,7 @@ async def run_execution_recursive(ctx, run_id_str: str):
     import redis.asyncio as redis
     from src.common.config import settings
 
-    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")  # type: ignore[no-untyped-call]
 
     async with AsyncSessionLocal() as db:
         # Resolve feature flag scope first; needs the run's company_id +
@@ -161,7 +162,7 @@ async def run_execution_recursive(ctx, run_id_str: str):
     await redis_pool.close()
 
 
-async def _resolve_run_flag_scope(db, run_id: UUID):
+async def _resolve_run_flag_scope(db: Any, run_id: UUID) -> Any:
     """Best-effort (company_id, entity_extras) lookup for flag resolution.
 
     Returns ``(None, None)`` on any failure so flag resolution falls
@@ -183,7 +184,7 @@ async def _resolve_run_flag_scope(db, run_id: UUID):
         return None, None
 
 
-async def process_gateway_event(ctx, envelope_dict: dict):
+async def process_gateway_event(ctx: dict[str, Any], envelope_dict: dict[str, Any]) -> Any:
     """Process a gateway event (webhook/internal) by routing to the correct handler.
 
     This is the arq job function invoked by the CentralDispatcher when a webhook
@@ -207,7 +208,7 @@ async def process_gateway_event(ctx, envelope_dict: dict):
     source = envelope_dict.get("source", "unknown")
     correlation_id = envelope_dict.get("id", "")
 
-    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")  # type: ignore[no-untyped-call]
 
     try:
         async with AsyncSessionLocal() as db:
@@ -303,13 +304,13 @@ async def process_gateway_event(ctx, envelope_dict: dict):
 
 
 async def _handle_sheet_row_campaign(
-    db,
-    entity,
+    db: Any,
+    entity: Any,
     client_id: str,
-    raw_data: dict,
+    raw_data: dict[str, Any],
     correlation_id: str,
-    redis_pool,
-):
+    redis_pool: Any,
+) -> Any:
     """Create a single-contact Campaign from a Google Sheets row and trigger outbound call.
 
     Pipeline: Campaign → CampaignExecutor._place_tata_call() → Tata Tele webhook
@@ -459,7 +460,7 @@ async def _handle_sheet_row_campaign(
         try:
             from src.ai.campaign_executor import CampaignExecutor
             executor = CampaignExecutor(db)
-            await executor.start_campaign(campaign.id)
+            await executor.start_campaign(cast(UUID, campaign.id))
             logger.info(f"[sheet_campaign] In-process fallback completed for campaign {campaign.id}")
         except Exception as exec_err:
             logger.error(
@@ -468,7 +469,7 @@ async def _handle_sheet_row_campaign(
             )
 
 
-async def process_document(ctx, document_id_str: str, file_content: bytes, file_type: str, filename: str):
+async def process_document(ctx: dict[str, Any], document_id_str: str, file_content: bytes, file_type: str, filename: str) -> Any:
     from src.ai.models import Document, DocumentChunk
     import io
     
@@ -592,7 +593,7 @@ from src.ai.campaign_worker import execute_campaign_task, pause_campaign_task, s
 # ---------------------------------------------------------------------------
 # Phase D: dreaming_worker — Background learning pipeline
 # ---------------------------------------------------------------------------
-async def dreaming_worker(ctx: dict, entity_id_str: str, company_id_str: str, force: bool = False) -> dict:
+async def dreaming_worker(ctx: dict[str, Any], entity_id_str: str, company_id_str: str, force: bool = False) -> dict[str, Any]:
     """
     Background worker task for the Dreaming Engine.
     Runs the three-phase learning pipeline for an entity:
@@ -621,7 +622,7 @@ async def dreaming_worker(ctx: dict, entity_id_str: str, company_id_str: str, fo
 # ---------------------------------------------------------------------------
 # C: dreaming_cron_trigger — Auto-schedule dreaming for entities
 # ---------------------------------------------------------------------------
-async def dreaming_cron_trigger(ctx: dict) -> dict:
+async def dreaming_cron_trigger(ctx: dict[str, Any]) -> dict[str, Any]:
     """
     Periodic cron job that auto-discovers entities with dreaming enabled
     and enqueues a dreaming_worker job for each.
@@ -668,7 +669,7 @@ async def dreaming_cron_trigger(ctx: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Phase E: graph_maintenance_worker — Periodic graph maintenance
 # ---------------------------------------------------------------------------
-async def graph_maintenance_worker(ctx: dict) -> dict:
+async def graph_maintenance_worker(ctx: dict[str, Any]) -> dict[str, Any]:
     """
     Periodic maintenance for the semantic graph.
     Run daily via scheduler. Decays stale edge weights and prunes weak edges.
@@ -704,7 +705,7 @@ async def graph_maintenance_worker(ctx: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Resume_execution — Arq job to resume a checkpointed run
 # ---------------------------------------------------------------------------
-async def resume_execution(ctx: dict, run_id_str: str) -> dict:
+async def resume_execution(ctx: dict[str, Any], run_id_str: str) -> dict[str, Any]:
     """
     Resume a previously checkpointed execution run.
     Reloads `run.context_state` and skips steps that are already completed.
@@ -719,7 +720,7 @@ async def resume_execution(ctx: dict, run_id_str: str) -> dict:
         return await engine.execute_run(run_id)
 
 
-async def resume_parent_run(ctx: dict, parent_run_id_str: str) -> dict:
+async def resume_parent_run(ctx: dict[str, Any], parent_run_id_str: str) -> dict[str, Any]:
     """Resume a parent run suspended on async child dispatch.
 
     Enqueued by ``AgentLoop._maybe_resume_parent`` when a child run finalizes.
@@ -731,7 +732,7 @@ async def resume_parent_run(ctx: dict, parent_run_id_str: str) -> dict:
     import redis.asyncio as redis
     from src.common.config import settings
 
-    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")
+    redis_pool = redis.from_url(settings.REDIS_URL or "redis://localhost:6379")  # type: ignore[no-untyped-call]
     try:
         async with AsyncSessionLocal() as db:
             from src.ai.core.agent_loop import AgentLoop
@@ -753,7 +754,7 @@ async def resume_parent_run(ctx: dict, parent_run_id_str: str) -> dict:
 # ---------------------------------------------------------------------------
 # Scheduled CORTEX wake-ups — Arq cron job
 # ---------------------------------------------------------------------------
-async def cortex_resume_scheduled(ctx: dict) -> dict:
+async def cortex_resume_scheduled(ctx: dict[str, Any]) -> dict[str, Any]:
     """
     Periodic cron job that wakes up suspended CORTEX trees whose
     next_resume_at timestamp has arrived. Creates a new execution run
@@ -816,7 +817,7 @@ async def cortex_resume_scheduled(ctx: dict) -> dict:
 # Critic Calibration cron job
 # ---------------------------------------------------------------------------
 
-async def kpi_rollup_refresh(ctx: dict) -> dict:
+async def kpi_rollup_refresh(ctx: dict[str, Any]) -> dict[str, Any]:
     """Phase 11 Track 9 — refresh the kpi_daily_rollup materialised view.
 
     Hourly cron. Uses ``REFRESH MATERIALIZED VIEW CONCURRENTLY`` so
@@ -850,9 +851,9 @@ async def kpi_rollup_refresh(ctx: dict) -> dict:
 
 
 async def dreaming_outcome_trigger(
-    ctx: dict, entity_id_str: str, reason: str = "success",
+    ctx: dict[str, Any], entity_id_str: str, reason: str = "success",
     company_id_str: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Phase 11 Track 6 — outcome-triggered Dreaming pass.
 
     Enqueued by ``AgentLoop._finalize`` after every successful or failed
@@ -896,7 +897,7 @@ async def dreaming_outcome_trigger(
         return {"error": str(e)}
 
 
-async def critic_calibration_job(ctx: dict) -> dict:
+async def critic_calibration_job(ctx: dict[str, Any]) -> dict[str, Any]:
     """Weekly: scan recent StepHealthRecords vs run outcomes and write
     false-pass / false-fail metrics back as Intelligence rules.
 
@@ -906,12 +907,30 @@ async def critic_calibration_job(ctx: dict) -> dict:
     try:
         async with AsyncSessionLocal() as db:
             # Lazy-import to avoid worker-boot side effects.
+            from sqlalchemy import distinct, select
+
+            from src.ai.orm.execution import ExecutionRun
             from src.ai.planning.critic_calibration import CriticCalibrator
-            results = await CriticCalibrator(db).run()
+
+            # The calibrator persists into a company-scoped Intelligence Tree,
+            # so run one per company that has recent activity.
+            company_ids = (await db.execute(
+                select(distinct(ExecutionRun.company_id))
+                .where(ExecutionRun.company_id.is_not(None))
+                .limit(500)
+            )).scalars().all()
+
+            entities_scored = 0
+            samples_total = 0
+            for company_id in company_ids:
+                results = await CriticCalibrator(db, company_id).run()
+                entities_scored += len(results)
+                samples_total += sum(r.samples for r in results)
             await db.commit()
             return {
-                "entities_scored": len(results),
-                "samples_total": sum(r.samples for r in results),
+                "companies_scored": len(company_ids),
+                "entities_scored": entities_scored,
+                "samples_total": samples_total,
             }
     except Exception as e:                                                  # noqa: BLE001
         logger.error(f"critic_calibration_job error: {e}")
@@ -922,7 +941,7 @@ async def critic_calibration_job(ctx: dict) -> dict:
 # Meta-Agent Skill Library scan + Prompt-Evo cron
 # ---------------------------------------------------------------------------
 
-async def skill_promotion_scan(ctx: dict) -> dict:
+async def skill_promotion_scan(ctx: dict[str, Any]) -> dict[str, Any]:
     """Weekly: scan every entity with recent activity for repeated tool chains.
 
     For each entity that has run within the lookback window, ask
@@ -968,7 +987,7 @@ async def skill_promotion_scan(ctx: dict) -> dict:
         return {"error": str(e)}
 
 
-async def meta_agent_prompt_evolution(ctx: dict) -> dict:
+async def meta_agent_prompt_evolution(ctx: dict[str, Any]) -> dict[str, Any]:
     """Weekly: write Meta-Agent prompt-update candidates (HITL-gated).
 
     The actual LLM "critic of critic" pass is deliberately *not*
@@ -1025,7 +1044,7 @@ async def meta_agent_prompt_evolution(ctx: dict) -> dict:
         return {"error": str(e)}
 
 
-async def cost_estimator_refresh(ctx: dict) -> dict:
+async def cost_estimator_refresh(ctx: dict[str, Any]) -> dict[str, Any]:
     """Nightly: refresh `cost_estimator` baselines from telemetry.
 
     Scans recent `tool_interaction_logs` rows, computes a robust

@@ -6,6 +6,7 @@ structured error handling in the execution loop.
 
 Extracted from worker.py during Phase 10A restructuring.
 """
+from typing import Any, Optional
 
 
 class AgentError(Exception):
@@ -26,7 +27,7 @@ class UncertaintySignal(AgentError):
         confidence:    Estimated confidence in completing the task without input (0–1).
         alternatives:  Optional list of alternative interpretations the LLM suggests.
     """
-    def __init__(self, question: str, confidence: float = 0.0, alternatives: list = None):
+    def __init__(self, question: str, confidence: float = 0.0, alternatives: Optional[list[Any]] = None) -> None:
         super().__init__(question)
         self.question = question
         self.confidence = confidence
@@ -62,7 +63,7 @@ class BudgetExhaustedError(AgentError):
 
 class ParallelStepError(AgentError):
     """One or more parallel steps failed."""
-    def __init__(self, failures: list):
+    def __init__(self, failures: list[Any]) -> None:
         self.failures = failures
         msgs = [f"{sid}: {err}" for sid, err in failures]
         super().__init__(f"{len(failures)} parallel step(s) failed: {'; '.join(msgs)}")
@@ -83,7 +84,7 @@ class StepTimeoutError(AgentError):
 
 class EntityNotFoundError(AgentError):
     """Referenced entity does not exist or has been deleted."""
-    def __init__(self, entity_id, context: str = ""):
+    def __init__(self, entity_id: Any, context: str = "") -> None:
         self.entity_id = entity_id
         super().__init__(f"Entity {entity_id} not found. {context}")
 

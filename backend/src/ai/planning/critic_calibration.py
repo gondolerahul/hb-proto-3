@@ -73,8 +73,15 @@ class CalibrationResult:
 class CriticCalibrator:
     """Reads StepHealthRecord CORTEX nodes and writes Intelligence rules."""
 
-    def __init__(self, db: AsyncSession, *, window_days: int = _SAMPLE_WINDOW_DAYS):
+    def __init__(
+        self,
+        db: AsyncSession,
+        company_id: UUID,
+        *,
+        window_days: int = _SAMPLE_WINDOW_DAYS,
+    ):
         self.db = db
+        self.company_id = company_id
         self.window_days = window_days
 
     async def run(self) -> list[CalibrationResult]:
@@ -111,6 +118,11 @@ class CriticCalibrator:
         for r in rows:
             run = runs_by_id.get(cast(UUID, r.execution_run_id))
             if run is None:
+                continue
+            # Scope to this calibrator's company; the broad CortexNode pull
+            # above is global, so filter out runs from other tenants before
+            # we persist rules into this company's Intelligence Tree.
+            if getattr(run, "company_id", None) != self.company_id:
                 continue
             entity_id = getattr(run, "entity_id", None)
             task_class = self._task_class_for(run)
@@ -217,7 +229,7 @@ class CriticCalibrator:
             return
 
         try:
-            svc = IntelligenceTreeService(self.db)  # type: ignore[call-arg]
+            svc = IntelligenceTreeService(self.db, self.company_id)
             write = getattr(svc, "upsert_calibration_rule", None) or getattr(
                 svc, "record_rule", None,
             )

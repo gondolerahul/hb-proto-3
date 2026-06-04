@@ -23,12 +23,13 @@ from __future__ import annotations
 import logging
 import time
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.ai.core.agent_state import AgentState
+from src.ai.core.agent_state import AgentState, ExecutorName
 from src.ai.core.executors.base import ActionResult, register_executor
 from src.ai.core.strategist import Move
 from src.ai.core.trace import span
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class SingleStepExecutor:
-    name = "SingleStep"
+    name: ExecutorName = "SingleStep"
 
     async def execute(
         self,
@@ -75,7 +76,7 @@ class SingleStepExecutor:
         # called". Isolating the engine session keeps the loop's session clean.
         async with AsyncSessionLocal() as inner_db:
             engine = ExecutionEngine(inner_db, _resolve_redis(state), state.company_id)
-            engine._ensure_services(state.company_id)
+            engine._ensure_services(cast(UUID, state.company_id))
 
             run = await self._reload_run(inner_db, state.run_id)
             entity = run.entity
@@ -88,7 +89,7 @@ class SingleStepExecutor:
             # raw step ``cost_usd`` is almost always 0.0.
             cost_before = Decimal(str(getattr(run, "total_cost_usd", 0) or 0))
 
-            for step in move.plan_fragment:
+            for step in move.plan_fragment or []:
                 step_obj = self._coerce_step(step)
                 _step_name = str(getattr(step_obj, "name", "") or getattr(step_obj, "step_id", "") or "step")
                 _step_type = str(getattr(step_obj, "type", "") or "")
@@ -183,7 +184,7 @@ class SingleStepExecutor:
             .options(selectinload(ExecutionRun.entity))
             .where(ExecutionRun.id == run_id)
         )
-        return result.scalar_one()
+        return cast(ExecutionRun, result.scalar_one())
 
     @staticmethod
     def _coerce_step(step: Any) -> Any:
