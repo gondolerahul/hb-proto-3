@@ -4,10 +4,11 @@ ai.core.meta_review — DEPRECATED back-compat shim (Phase 11 Track 4).
 The Phase 10D ``MetaReviewer.review_execution`` one-shot LLM call has
 been replaced by :class:`ai.planning.supervisor_critic.SupervisorCritic`
 which reads the full :class:`AgentState`. ``CriticPipeline.supervisor``
-delegates to the new class.
+uses it directly.
 
-This file is retained only for legacy importers (older execute_run
-callers and tests). It will be removed in Track 9.
+The engine caller (``execute_run``'s in-loop meta-review hook) was deleted
+with the legacy engine (C4). This shim is retained as ``CriticPipeline``'s
+legacy-supervisor fallback (when ``supervisor_v2_enabled`` is OFF).
 
 The shim:
   * keeps the public class name + ``review_execution`` signature;
@@ -35,10 +36,10 @@ class MetaReviewer:
         global _DEPRECATION_LOGGED
         if not _DEPRECATION_LOGGED:
             logger.info(
-                "ai.core.meta_review.MetaReviewer is deprecated as of "
-                "Phase 11 Track 4. New AgentLoop entities go through "
-                "CriticPipeline.supervisor → SupervisorCritic.assess(). "
-                "This shim will be removed in Track 9."
+                "ai.core.meta_review.MetaReviewer is deprecated. New AgentLoop "
+                "entities go through CriticPipeline.supervisor → "
+                "SupervisorCritic.assess(); this shim is only the "
+                "supervisor_v2_enabled=False fallback."
             )
             _DEPRECATION_LOGGED = True
         self.db = db
