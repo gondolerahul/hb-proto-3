@@ -38,7 +38,11 @@ from cortex_memory.enums import (
     MemoryDomain,
     ScopeLevel,
 )
+from cortex_memory.episodic_tree import EpisodicTreeService
+from cortex_memory.experience_tree import ExperienceTreeService
 from cortex_memory.graph import SemanticGraphService
+from cortex_memory.intelligence_tree import IntelligenceTreeService
+from cortex_memory.knowledge_tree import KnowledgeTreeService
 from cortex_memory.models import CortexEdge, CortexNode, CortexTree
 from cortex_memory.prompts import CORTEX_OPS_HELP
 from cortex_memory.service import (
@@ -101,6 +105,10 @@ __all__ = [
     # service
     "CortexService",
     "SemanticGraphService",
+    "KnowledgeTreeService",
+    "EpisodicTreeService",
+    "ExperienceTreeService",
+    "IntelligenceTreeService",
     "Viewport",
     "NodeSummaryDTO",
     "NodeContent",
