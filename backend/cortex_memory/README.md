@@ -42,16 +42,34 @@ implementations so the package runs in tests with zero host/DB/LLM.
 | K6 | `task_classifier` stays host-side (depends on host task families/bandit). |
 | K7 | One controlled cutover at the end of Stage B, after `01`'s memory deletions (C2, done). |
 
-## Remaining Stage-B work (scheduled)
+## Done so far
 
-1. Host adapter: make `cortex_bridge` implement the four Protocols; inject them
-   into the CORTEX services (start with `EmbeddingProvider` — seam S4).
-2. Move the host-independent tree primitives next (`domains/base.py`,
-   `dreaming_prompts.py`, CORTEX DTOs/`Provenance`).
-3. Move `cortex_models.py` onto the package's own SQLAlchemy `Base` + ship the
-   package's Alembic migrations (opaque nullable UUID FKs, K5). **DB change —
-   its own controlled step.**
-4. Move `cortex_service.py` + ingestion/graph/domain/dreaming/v2-assembler.
-5. The one-shot cutover: host imports flip to `cortex_memory`; smoke replay.
+- [x] **Data layer** — own `Base` (`db.py`), ORM (`models.py`, opaque FK-free
+      external refs), enums (`enums.py`), DTOs (`dtos.py`), standalone schema
+      bootstrap (`schema.py`). Host DB schema migrated (external cortex FK
+      constraints dropped). Host shims keep all imports working.
+- [x] **Provider boundary** — Protocols (`providers.py`) + reference impls
+      (`providers_reference.py`) + the host adapters
+      (`src/ai/memory/cortex_providers.py`: `HostLLMProvider` /
+      `HostEmbeddingProvider` / `HostUsageReporter` / `HostRunRegistry` +
+      `build_cortex_providers`).
+- [x] **Tree primitives** — `scope_policy.py`, `domains.py` (`DomainTreeBase` +
+      retrieval weights).
+
+## Remaining Stage-B work (the service bodies)
+
+The orchestration services still live in `src/ai/memory/` and consume the host
+adapters. Each move converts its host imports (`LLMRouter`/`EmbeddingService`/
+`ExecutionRun`/usage) to **injected providers**:
+
+1. `cortex_service.py` (the 7 tree ops) + `cortex_ingestion.py`.
+2. `graph_service.py` (semantic graph; uses `EmbeddingProvider`).
+3. the four domain services + `memory_assembly_service.py` (v2 assembler).
+4. `dreaming_engine.py` + `dreaming_prompts.py`.
+5. Wire the host to construct these with `build_cortex_providers(...)` injected;
+   smoke-replay a run through the loop.
+
+`cortex_bridge.py`, `cortex_router.py` (HTTP), `legacy_episodic_reader.py`,
+`failure_pattern_service.py` stay host-side as thin adapters (plan §3).
 
 Then Stage C: docs, ≥85% coverage, `mypy --strict`, CI, publish v0.1.0.

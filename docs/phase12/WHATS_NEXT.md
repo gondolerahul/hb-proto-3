@@ -153,13 +153,17 @@ v4 board exists; all v5 capabilities unbuilt.
 Phase 11 did Stage-A groundwork.
 
 - [ ] **Stage A — Protocols in place** *(`04` §5)* — can start now. *(L)*
-- [~] **Stage B — package skeleton + cutover** — gated on **C2** (done). **Skeleton
-      + provider Protocols landed** (`backend/cortex_memory/`: `LLMProvider`/
-      `EmbeddingProvider`/`UsageReporter`/`RunRegistry` Protocols + reference impls;
-      `scope_policy` moved with host re-export; host-free package self-test).
-      Remaining: host adapter (`cortex_bridge` implements the Protocols), move the
-      remaining primitives, then the ORM/`Base` split + own migrations + the
-      one-shot cutover (DB-risky — its own step). *(XL)*
+- [~] **Stage B — package skeleton + cutover** — gated on **C2** (done). **Data
+      layer + provider boundary + primitives landed** (`backend/cortex_memory/`):
+      own `Base` + ORM (opaque FK-free external refs) + enums + DTOs + standalone
+      `schema.py`; the 4 provider Protocols + reference impls + **host adapters**
+      (`cortex_providers.py`); `scope_policy` + `DomainTreeBase` moved. Host DB
+      schema migrated (external cortex FK constraints dropped); host shims keep
+      all imports working; host alembic `target_metadata` includes the package
+      metadata. **Remaining:** move the service bodies (`cortex_service`,
+      `cortex_ingestion`, `graph_service`, the 4 domain services,
+      `memory_assembly_service`, `dreaming_engine`) onto injected providers, then
+      smoke-replay. *(L remaining)*
 - [ ] **Stage C — docs/coverage/CI → publish `cortex-memory` v0.1.0**. *(L)*
 - [ ] Lock decisions K1–K7 (`04` §4). *(S)*
 
