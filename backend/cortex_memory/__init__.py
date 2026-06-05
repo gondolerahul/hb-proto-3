@@ -38,6 +38,7 @@ from cortex_memory.enums import (
     MemoryDomain,
     ScopeLevel,
 )
+from cortex_memory.graph import SemanticGraphService
 from cortex_memory.models import CortexEdge, CortexNode, CortexTree
 from cortex_memory.prompts import CORTEX_OPS_HELP
 from cortex_memory.service import (
@@ -99,6 +100,7 @@ __all__ = [
     "RunfRef",
     # service
     "CortexService",
+    "SemanticGraphService",
     "Viewport",
     "NodeSummaryDTO",
     "NodeContent",
