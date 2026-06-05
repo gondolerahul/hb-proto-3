@@ -173,15 +173,7 @@ class CortexTreeStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class CortexNodeType(str, Enum):
-    ROOT = "root"
-    KNOWLEDGE = "knowledge"
-    FINDING = "finding"
-    TASK = "task"
-    OUTPUT = "output"
-    CHECKPOINT = "checkpoint"
-    # AgentLoop snapshot for resume
-    SNAPSHOT = "snapshot"
-    # CriticPipeline health records
-    HEALTH_ROOT = "health_root"
-    HEALTH_RECORD = "health_record"
+# CortexNodeType is unified with the cortex_memory package's canonical enum
+# (Phase 12 `04`). The host's previous reduced copy is replaced by a re-export
+# so the ORM and the schemas layer share one type.
+from cortex_memory.enums import CortexNodeType  # noqa: E402,F401

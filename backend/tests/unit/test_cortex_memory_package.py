@@ -85,3 +85,49 @@ def test_host_scope_policy_reexport_is_same_object() -> None:
 
     assert ScopePolicy is cortex_memory.ScopePolicy
     assert ScopeViolation is cortex_memory.ScopeViolation
+
+
+# ---------------------------------------------------------------------------
+# Data layer (own Base + opaque-FK models + unified enum)
+# ---------------------------------------------------------------------------
+
+
+def test_models_on_package_base_with_three_tables() -> None:
+    from cortex_memory.db import Base
+
+    tables = set(Base.metadata.tables)
+    assert {"cortex_trees", "cortex_nodes", "cortex_edges"} <= tables
+    # The package Base must NOT contain host tables (it's self-contained).
+    assert not any(t in tables for t in ("companies", "users", "execution_runs", "hierarchical_entities"))
+
+
+def test_external_references_are_opaque_no_fk() -> None:
+    """External refs (company/user/entity/run) are plain UUID columns with no
+    ForeignKey to host tables (decision K5); internal refs keep their FKs."""
+    from cortex_memory.models import CortexNode, CortexTree
+
+    for col in ("company_id", "entity_id", "user_id", "app_id", "partner_id", "run_id"):
+        assert not CortexTree.__table__.c[col].foreign_keys, f"{col} must be opaque"
+    assert not CortexNode.__table__.c["execution_run_id"].foreign_keys
+    # Internal tree/parent FKs are retained.
+    assert CortexNode.__table__.c["tree_id"].foreign_keys
+    assert CortexNode.__table__.c["parent_id"].foreign_keys
+
+
+def test_host_and_package_share_one_cortex_node_type() -> None:
+    from src.ai.memory.cortex_models import CortexNodeType as ModelEnum
+    from src.ai.schemas.enums import CortexNodeType as SchemaEnum
+
+    assert ModelEnum is cortex_memory.CortexNodeType
+    assert SchemaEnum is cortex_memory.CortexNodeType
+    # The unified enum is the full set (the old host schemas copy was a subset).
+    assert "CHUNK" in cortex_memory.CortexNodeType.__members__
+    assert "OBSERVATION" in cortex_memory.CortexNodeType.__members__
+
+
+def test_provenance_roundtrips_via_package() -> None:
+    p = cortex_memory.Provenance(source_type=cortex_memory.SourceType.TOOL, tool_id="web_search")
+    ref = p.to_source_ref()
+    back = cortex_memory.Provenance.from_source_ref(ref)
+    assert back is not None and back.source_type == cortex_memory.SourceType.TOOL
+    assert back.effective_trust_score() == 0.7

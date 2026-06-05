@@ -15,7 +15,8 @@ from src.auth import models as auth_models
 from src.ai import models as ai_models
 from src.config import models as config_models
 from src.billing import billing_models
-from src.ai.memory import cortex_models
+from src.ai.memory import cortex_models  # re-export shim (cortex tables live on the package Base)
+import cortex_memory  # CORTEX ORM now owns its own Base/metadata (Phase 12 `04`)
 from src.ai import email_models
 from src.ai import artifact_models
 from src.ai import campaign_models
@@ -33,8 +34,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # add your model's MetaData object here
-# for 'autogenerate' support
-target_metadata = Base.metadata
+# for 'autogenerate' support. The CORTEX tables moved onto the cortex_memory
+# package's own Base (Phase 12 `04`); include its metadata so the host's
+# autogenerate manages (and never drops) the package-owned tables.
+target_metadata = [Base.metadata, cortex_memory.metadata]
 
 # Override sqlalchemy.url with the one from settings
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

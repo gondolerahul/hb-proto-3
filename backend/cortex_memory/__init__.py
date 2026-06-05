@@ -8,13 +8,37 @@ its concerns — LLM calls, embeddings, usage metering, run lookups — through 
 Protocols in :mod:`cortex_memory.providers`. A host adapter (the thin
 ``cortex_bridge`` that stays in ``src/ai/memory``) implements those Protocols.
 
-This is the Stage-B skeleton: the package boundary + provider Protocols + the
-first fully host-independent primitive (:mod:`cortex_memory.scope_policy`). The
-ORM/`Base` split, the package's own Alembic migrations, and the one-shot host
-cutover are the remaining Stage-B work (see ``README.md``).
+Stage-B status: the data layer (own ``Base`` + ORM models + enums + DTOs) and
+the provider boundary live here. The CORTEX services move in next; see
+``README.md``.
 """
 from __future__ import annotations
 
+from cortex_memory.db import Base, metadata
+from cortex_memory.dtos import (
+    DEFAULT_TRUST_BY_SOURCE,
+    CortexCheckpointCreate,
+    CortexNodeContentResponse,
+    CortexNodeCreate,
+    CortexNodeDetailResponse,
+    CortexNodeSummary,
+    CortexRecurseRequest,
+    CortexTreeCreate,
+    CortexTreeListResponse,
+    CortexTreeResponse,
+    CortexViewportResponse,
+    GoalNode,
+    Provenance,
+    SourceType,
+)
+from cortex_memory.enums import (
+    CortexNodeStatus,
+    CortexNodeType,
+    CortexTreeStatus,
+    MemoryDomain,
+    ScopeLevel,
+)
+from cortex_memory.models import CortexEdge, CortexNode, CortexTree
 from cortex_memory.providers import (
     EmbeddingProvider,
     EmbeddingResult,
@@ -30,7 +54,33 @@ from cortex_memory.scope_policy import ScopePolicy, ScopeViolation
 __version__ = "0.0.0.dev0"
 
 __all__ = [
-    # providers (the host injects implementations of these)
+    # data layer
+    "Base",
+    "metadata",
+    "CortexTree",
+    "CortexNode",
+    "CortexEdge",
+    "CortexTreeStatus",
+    "CortexNodeType",
+    "CortexNodeStatus",
+    "MemoryDomain",
+    "ScopeLevel",
+    # DTOs
+    "Provenance",
+    "SourceType",
+    "DEFAULT_TRUST_BY_SOURCE",
+    "GoalNode",
+    "CortexTreeCreate",
+    "CortexTreeResponse",
+    "CortexTreeListResponse",
+    "CortexNodeSummary",
+    "CortexViewportResponse",
+    "CortexNodeContentResponse",
+    "CortexNodeCreate",
+    "CortexCheckpointCreate",
+    "CortexRecurseRequest",
+    "CortexNodeDetailResponse",
+    # providers
     "LLMProvider",
     "LLMResult",
     "EmbeddingProvider",

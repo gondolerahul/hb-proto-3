@@ -4,11 +4,14 @@ The CORTEX hierarchical-memory engine, extracted as a host-independent package
 (Phase 12 track `04`). **Import name:** `cortex_memory`. **Distribution name:**
 `cortex-memory` (planned). **License:** Apache-2.0.
 
-> Status: **Stage-B skeleton.** This directory currently holds the package
-> *boundary* — the provider Protocols and the first fully host-independent
-> primitive. The bulk of the CORTEX code (`CortexService`, the ORM/`Base`, the
-> domain/graph/dreaming services, the v2 assembler) still lives in
-> `backend/src/ai/memory/` and moves in over the remaining Stage-B steps.
+> Status: **Stage-B in progress.** The package now owns its **data layer** —
+> its own SQLAlchemy `Base` (`db.py`), the ORM models (`models.py`, opaque
+> FK-free external refs), the enums (`enums.py`), the DTOs (`dtos.py`,
+> `Provenance`/`GoalNode`/tree shapes), a standalone schema bootstrap
+> (`schema.py`), the provider Protocols (`providers.py`), and `scope_policy`.
+> The host re-exports all of these via shims (`cortex_models`, `schemas/cortex`,
+> `schemas/enums`) so existing imports are unchanged. The CORTEX *services*
+> (`CortexService`, graph/domain/dreaming, the v2 assembler) move in next.
 
 ## The boundary rule
 

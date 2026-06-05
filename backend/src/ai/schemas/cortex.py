@@ -1,20 +1,29 @@
-"""schemas/cortex.py — CORTEX tree DTOs + the GoalNode dataclass.
+"""
+ai.schemas.cortex — host re-export shim.
 
-CORTEX DTOs cover tree-level CRUD/list, node summaries, viewport, content
-pages, node creates, checkpoint writes, and recurse requests. GoalNode lives
-here because it is the unit of the goal-decomposition tree consumed by the
-RecursiveReasoningEngine, sibling to the CORTEX data shapes.
+The CORTEX DTOs (tree/node shapes, ``Provenance``, ``GoalNode``) moved into the
+``cortex_memory`` package (Phase 12 `04` Stage B). This shim keeps the existing
+``src.ai.schemas.cortex`` import path (and the ``from src.ai.schemas import *``
+re-export) working; new code should import from ``cortex_memory`` directly.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field as dataclass_field
-from datetime import datetime
-from typing import Any, Dict, List, Optional
-from uuid import UUID
-
-from pydantic import BaseModel
-
-from src.ai.schemas.enums import CortexNodeType
+from cortex_memory.dtos import (
+    DEFAULT_TRUST_BY_SOURCE,
+    CortexCheckpointCreate,
+    CortexNodeContentResponse,
+    CortexNodeCreate,
+    CortexNodeDetailResponse,
+    CortexNodeSummary,
+    CortexRecurseRequest,
+    CortexTreeCreate,
+    CortexTreeListResponse,
+    CortexTreeResponse,
+    CortexViewportResponse,
+    GoalNode,
+    Provenance,
+    SourceType,
+)
 
 __all__ = [
     "CortexTreeCreate",
@@ -32,233 +41,3 @@ __all__ = [
     "SourceType",
     "DEFAULT_TRUST_BY_SOURCE",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Provenance attached to every knowledge-node write.
-# ---------------------------------------------------------------------------
-
-from enum import Enum
-
-
-class SourceType(str, Enum):
-    TOOL = "tool"
-    USER_UPLOAD = "user_upload"
-    REFLECTION = "reflection"
-    DREAMING = "dreaming"
-    EXTERNAL_LINK = "external_link"
-    MANUAL = "manual"
-    CONTEXT_SOURCE = "context_source"
-
-
-# Per-source-type default trust scores (Track 6 §4.5 table).
-DEFAULT_TRUST_BY_SOURCE: Dict[str, float] = {
-    SourceType.USER_UPLOAD.value:   1.0,
-    SourceType.MANUAL.value:        0.9,
-    SourceType.DREAMING.value:      0.8,
-    SourceType.TOOL.value:          0.7,    # curated tool default
-    SourceType.REFLECTION.value:    0.6,
-    SourceType.CONTEXT_SOURCE.value: 0.6,
-    SourceType.EXTERNAL_LINK.value: 0.4,
-}
-
-
-class Provenance(BaseModel):
-    """Typed source-tracking block attached to CORTEX knowledge writes."""
-
-    source_type: SourceType
-    tool_id: Optional[str] = None
-    url: Optional[str] = None
-    upload_ref: Optional[str] = None
-    fetched_at: Optional[datetime] = None
-    trust_score: Optional[float] = None     # filled from DEFAULT_TRUST_BY_SOURCE if None
-    run_id: Optional[UUID] = None
-    step_id: Optional[str] = None
-    notes: Optional[str] = None
-
-    def effective_trust_score(self) -> float:
-        if self.trust_score is not None:
-            return max(0.0, min(1.0, float(self.trust_score)))
-        return float(DEFAULT_TRUST_BY_SOURCE.get(self.source_type.value, 0.5))
-
-    def to_source_ref(self) -> Dict[str, Any]:
-        """Serialise into the CortexNode.source_ref JSON blob."""
-        return {
-            "source_type": self.source_type.value,
-            "tool_id": self.tool_id,
-            "url": self.url,
-            "upload_ref": self.upload_ref,
-            "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
-            "trust_score": self.effective_trust_score(),
-            "run_id": str(self.run_id) if self.run_id else None,
-            "step_id": self.step_id,
-            "notes": self.notes,
-        }
-
-    @classmethod
-    def from_source_ref(cls, raw: Optional[Dict[str, Any]]) -> Optional["Provenance"]:
-        if not raw or "source_type" not in raw:
-            return None
-        try:
-            fetched_at = raw.get("fetched_at")
-            if isinstance(fetched_at, str):
-                try:
-                    fetched_at = datetime.fromisoformat(fetched_at)
-                except Exception:
-                    fetched_at = None
-            return cls(
-                source_type=SourceType(raw["source_type"]),
-                tool_id=raw.get("tool_id"),
-                url=raw.get("url"),
-                upload_ref=raw.get("upload_ref"),
-                fetched_at=fetched_at,
-                trust_score=raw.get("trust_score"),
-                run_id=UUID(raw["run_id"]) if raw.get("run_id") else None,
-                step_id=raw.get("step_id"),
-                notes=raw.get("notes"),
-            )
-        except Exception:
-            return None
-
-
-class CortexTreeCreate(BaseModel):
-    entity_id: UUID
-    task_description: str
-    max_children: int = 12
-    page_size_tokens: int = 8000
-    context_budget_pct: int = 40
-
-
-class CortexTreeResponse(BaseModel):
-    id: UUID
-    entity_id: UUID
-    task_description: Optional[str]
-    status: str
-    total_nodes: int = 0
-    root_node_id: Optional[str] = None
-    output_root_id: Optional[str] = None
-    resume_cursor_id: Optional[str] = None
-    max_children: int = 12
-    created_at: Optional[datetime] = None
-    last_active_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class CortexTreeListResponse(BaseModel):
-    id: UUID
-    entity_id: UUID
-    task_description: Optional[str]
-    status: str
-    total_nodes: int = 0
-    created_at: Optional[datetime] = None
-    last_active_at: Optional[datetime] = None
-
-
-class CortexNodeSummary(BaseModel):
-    id: str
-    title: str
-    summary: Optional[str]
-    status: str
-    node_type: str
-    sibling_order: int = 0
-    depth: int = 0
-    content_tokens: int = 0
-
-
-class CortexViewportResponse(BaseModel):
-    current_node: CortexNodeSummary
-    children: List[CortexNodeSummary]
-    parent: Optional[CortexNodeSummary] = None
-    breadcrumb: List[Dict[str, str]]
-
-
-class CortexNodeContentResponse(BaseModel):
-    node_id: str
-    title: str
-    content: str
-    page: int
-    total_pages: int
-    content_tokens: int
-
-
-class CortexNodeCreate(BaseModel):
-    parent_id: UUID
-    node_type: CortexNodeType
-    title: str
-    content: Optional[str] = None
-    summary: Optional[str] = None
-    status: str = "complete"
-    source_ref: Optional[Dict[str, Any]] = None
-    metadata_extra: Optional[Dict[str, Any]] = None
-
-
-class CortexCheckpointCreate(BaseModel):
-    progress_summary: str
-    key_facts: List[str] = []
-    next_steps: List[str] = []
-
-
-class CortexRecurseRequest(BaseModel):
-    node_id: UUID
-    task: str
-    result_slot: str
-
-
-class CortexNodeDetailResponse(BaseModel):
-    id: str
-    tree_id: str
-    parent_id: Optional[str] = None
-    node_type: str
-    title: str
-    summary: Optional[str]
-    content_tokens: int = 0
-    status: str
-    depth: int = 0
-    sibling_order: int = 0
-    source_ref: Optional[Dict[str, Any]] = None
-    metadata_extra: Optional[Dict[str, Any]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-
-# ---------------------------------------------------------------------------
-# A: GoalNode — unit of the goal decomposition tree used by
-# RecursiveReasoningEngine. Extracted from worker.py; moved here in Track 1.
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class GoalNode:
-    """A single node in the goal decomposition tree.
-
-    Fields:
-        goal:         Natural-language description of the sub-goal.
-        depth:        Current depth in the tree (0 = root).
-        confidence:   LLM self-reported confidence for this goal (0–1).
-        parent:       Reference to parent GoalNode (None for root).
-        children:     Child GoalNodes generated by ``expand_goal()``.
-        result:       Final string result once the goal is executed.
-        status:       'pending' | 'running' | 'completed' | 'failed'
-    """
-    goal: str
-    depth: int = 0
-    confidence: float = 1.0
-    parent: Optional["GoalNode"] = dataclass_field(default=None, repr=False)
-    children: List["GoalNode"] = dataclass_field(default_factory=list)
-    result: Optional[str] = None
-    status: str = "pending"
-
-    def is_leaf(self) -> bool:
-        return len(self.children) == 0
-
-    def to_dict(self) -> dict:
-        return {
-            "goal": self.goal,
-            "depth": self.depth,
-            "confidence": self.confidence,
-            "status": self.status,
-            "result": self.result,
-            "children": [c.to_dict() for c in self.children],
-        }
