@@ -32,9 +32,18 @@ class HostLLMProvider:
     """Implements ``cortex_memory.LLMProvider`` via the host ``LLMRouter``."""
 
     def __init__(self, db: Any, company_id: UUID) -> None:
-        from src.ai.llm.router import LLMRouter
+        # Lazy: the host LLMRouter is built on first use (a CortexService is
+        # constructed on every loop iteration but rarely calls the LLM).
+        self._db = db
+        self._company_id = company_id
+        self._router: Any = None
 
-        self._router = LLMRouter(db=db, company_id=company_id)
+    def _get_router(self) -> Any:
+        if self._router is None:
+            from src.ai.llm.router import LLMRouter
+
+            self._router = LLMRouter(db=self._db, company_id=self._company_id)
+        return self._router
 
     async def complete(
         self,
@@ -46,7 +55,7 @@ class HostLLMProvider:
         max_tokens: Optional[int] = None,
         task_type: Optional[str] = None,
     ) -> LLMResult:
-        resp = await self._router.call_llm(
+        resp = await self._get_router().call_llm(
             task_type=task_type or "text_generation",
             system_prompt=system,
             user_prompt=user,

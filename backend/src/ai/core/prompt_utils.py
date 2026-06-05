@@ -58,16 +58,9 @@ def parse_variables(text: str, variables: dict[str, Any]) -> str:
     return text
 
 
-CORTEX_OPS_HELP = (
-    "## Available CORTEX Operations\n"
-    "You can perform the following operations on the cognitive tree:\n"
-    "  NAVIGATE(node_id) — Move your viewport to a node; see its title, summary, and children\n"
-    "  READ(node_id, page=0) — Read the full content of a node (paged if large)\n"
-    "  WRITE(parent_id, node_type, title, content, summary) — Create a new child node\n"
-    "  RECURSE(node_id, task, result_slot) — Spawn a child execution scoped to a subtree\n"
-    "  AWAIT_CHILDREN() — Wait for all child executions to complete and collect results\n"
-    "  CHECKPOINT(progress_summary, key_facts, next_steps) — Save progress and compress context"
-)
+# CORTEX ops-help moved into the cortex_memory package (Phase 12 `04`); re-used
+# here so build_sandwich_prompt still injects it.
+from cortex_memory.prompts import CORTEX_OPS_HELP  # noqa: E402,F401
 
 
 def build_sandwich_prompt(

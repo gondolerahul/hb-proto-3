@@ -39,6 +39,14 @@ from cortex_memory.enums import (
     ScopeLevel,
 )
 from cortex_memory.models import CortexEdge, CortexNode, CortexTree
+from cortex_memory.prompts import CORTEX_OPS_HELP
+from cortex_memory.service import (
+    CheckpointData,
+    CortexService,
+    NodeContent,
+    NodeSummaryDTO,
+    Viewport,
+)
 from cortex_memory.providers import (
     EmbeddingProvider,
     EmbeddingResult,
@@ -89,6 +97,13 @@ __all__ = [
     "RunRegistry",
     "RunRef",
     "RunfRef",
+    # service
+    "CortexService",
+    "Viewport",
+    "NodeSummaryDTO",
+    "NodeContent",
+    "CheckpointData",
+    "CORTEX_OPS_HELP",
     # tree primitives
     "ScopePolicy",
     "ScopeViolation",
