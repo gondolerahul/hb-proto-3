@@ -153,8 +153,13 @@ v4 board exists; all v5 capabilities unbuilt.
 Phase 11 did Stage-A groundwork.
 
 - [ ] **Stage A — Protocols in place** *(`04` §5)* — can start now. *(L)*
-- [ ] 🚧 **Stage B — package skeleton + cutover** — gated on **C2** (MemoryRouter
-      delete), i.e. on C4. *(XL)*
+- [~] **Stage B — package skeleton + cutover** — gated on **C2** (done). **Skeleton
+      + provider Protocols landed** (`backend/cortex_memory/`: `LLMProvider`/
+      `EmbeddingProvider`/`UsageReporter`/`RunRegistry` Protocols + reference impls;
+      `scope_policy` moved with host re-export; host-free package self-test).
+      Remaining: host adapter (`cortex_bridge` implements the Protocols), move the
+      remaining primitives, then the ORM/`Base` split + own migrations + the
+      one-shot cutover (DB-risky — its own step). *(XL)*
 - [ ] **Stage C — docs/coverage/CI → publish `cortex-memory` v0.1.0**. *(L)*
 - [ ] Lock decisions K1–K7 (`04` §4). *(S)*
 
