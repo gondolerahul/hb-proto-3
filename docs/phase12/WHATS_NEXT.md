@@ -119,7 +119,13 @@ capabilities, `07` hardening — none started.
 
 `02` is a **hard dependency** of `06`'s tool synthesis.
 
-- [ ] **02 S1–S2 — `SandboxRuntime` Protocol + `SubprocessRuntime`** *(`02` §5)*. *(M)*
+- [x] **02 S1–S2 — `SandboxRuntime` Protocol + `SubprocessRuntime`** *(`02` §5)* —
+      **DONE.** `tools/sandbox/runtime.py`: Protocol (exec/browser/file-ops/lifecycle)
+      + `ExecResult`/`BrowserSession` DTOs + `SubprocessRuntime` (today's behavior)
+      + `get_sandbox_runtime()` factory. The 3 tools delegate launch to it
+      (zero behavior change; terminal/browser e2e green). Next: **S3** `hb-sandbox`
+      image, **S4** `ContainerRuntime`/`TenantSandboxManager` (needs Docker + a
+      security-review gate).
 - [ ] **02 S3–S4 — `hb-sandbox` image + `ContainerRuntime`/`TenantSandboxManager`**
       *(`02` §3)* — needs a security review gate. *(XL)*
 - [ ] **02 S5 — persistent browser sessions** *(L)*; **02 S6 — sandbox cost
