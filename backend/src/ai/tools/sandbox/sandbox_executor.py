@@ -23,7 +23,6 @@ Output:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -407,56 +406,46 @@ class SandboxCodeTool(Tool):
             return text, "bash"
 
     async def _run_subprocess(self, interpreter: str, script_path: str, timeout_s: int, working_dir: str = None) -> str:
-        """Spawn subprocess, capture output, enforce timeout."""
-        try:
-            # Build env — include node_modules/.bin for npm tools (e.g. pptxgenjs)
-            node_bin = os.path.join(working_dir, "node_modules", ".bin") if working_dir else ""
-            sandbox_path = f"{node_bin}:/usr/local/bin:/usr/bin:/bin" if node_bin else "/usr/local/bin:/usr/bin:/bin"
+        """Run the script via the SandboxRuntime; shape the result into the
+        tool's string contract (output cap + error wording unchanged)."""
+        from src.ai.tools.sandbox.runtime import get_sandbox_runtime
 
-            proc = await asyncio.create_subprocess_exec(
-                interpreter,
-                script_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=working_dir,
-                env={
-                    "PATH": sandbox_path,
-                    "HOME": "/tmp",
-                    "TMPDIR": working_dir or "/tmp",
-                    "LANG": "C.UTF-8",
-                    "SAL_USE_VCLPLUGIN": "svp",  # LibreOffice headless rendering
-                },
-            )
+        # Build env — include node_modules/.bin for npm tools (e.g. pptxgenjs)
+        node_bin = os.path.join(working_dir, "node_modules", ".bin") if working_dir else ""
+        sandbox_path = f"{node_bin}:/usr/local/bin:/usr/bin:/bin" if node_bin else "/usr/local/bin:/usr/bin:/bin"
+        env = {
+            "PATH": sandbox_path,
+            "HOME": "/tmp",
+            "TMPDIR": working_dir or "/tmp",
+            "LANG": "C.UTF-8",
+            "SAL_USE_VCLPLUGIN": "svp",  # LibreOffice headless rendering
+        }
 
-            try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=float(timeout_s),
-                )
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return f"Error: execution timed out after {timeout_s} seconds."
+        res = await get_sandbox_runtime().exec(
+            [interpreter, script_path],
+            cwd=working_dir,
+            timeout=float(timeout_s),
+            env=env,
+        )
 
-            stdout = stdout_bytes.decode("utf-8", errors="replace")
-            stderr = stderr_bytes.decode("utf-8", errors="replace")
-
-            if proc.returncode != 0:
-                msg = f"Error: process exited with code {proc.returncode}."
-                if stderr.strip():
-                    msg += f"\nStderr:\n{stderr[:2048]}"
-                return msg
-
-            # Truncate long output
-            if len(stdout) > _MAX_OUTPUT_CHARS:
-                stdout = stdout[:_MAX_OUTPUT_CHARS] + f"\n... [truncated, {len(stdout)} total chars]"
-
-            return stdout if stdout else "(no output)"
-
-        except FileNotFoundError:
+        if res.timed_out:
+            return f"Error: execution timed out after {timeout_s} seconds."
+        if res.not_found:
             return f"Error: interpreter '{interpreter}' not found on this system."
-        except Exception as exc:
-            return f"Error: subprocess launch failed — {exc}"
+        if res.launch_error:
+            return f"Error: subprocess launch failed — {res.launch_error}"
+
+        if res.returncode != 0:
+            msg = f"Error: process exited with code {res.returncode}."
+            if res.stderr.strip():
+                msg += f"\nStderr:\n{res.stderr[:2048]}"
+            return msg
+
+        stdout = res.stdout
+        if len(stdout) > _MAX_OUTPUT_CHARS:
+            stdout = stdout[:_MAX_OUTPUT_CHARS] + f"\n... [truncated, {len(stdout)} total chars]"
+
+        return stdout if stdout else "(no output)"
 
     def get_function_schema(self) -> Dict[str, Any]:
         return {

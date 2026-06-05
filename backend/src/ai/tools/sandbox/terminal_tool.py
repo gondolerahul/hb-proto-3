@@ -28,7 +28,6 @@ Output (JSON string):
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -209,74 +208,65 @@ class TerminalTool(Tool):
     async def _run_subprocess(
         self, command: str, working_dir: str, timeout_s: int
     ) -> str:
-        """Spawn bash -c subprocess, capture output, enforce timeout."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "/bin/bash", "-c", command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=working_dir,
-                # Sandbox env — LibreOffice needs SAL_USE_VCLPLUGIN for headless
-                env={
-                    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                    "HOME": "/tmp",
-                    "TMPDIR": "/tmp",
-                    "LANG": "C.UTF-8",
-                    "SAL_USE_VCLPLUGIN": "svp",  # LibreOffice headless rendering
-                },
-            )
+        """Run ``bash -c command`` via the SandboxRuntime; shape the result
+        into the tool's JSON contract (output cap + wording unchanged)."""
+        from src.ai.tools.sandbox.runtime import get_sandbox_runtime
 
-            try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=float(timeout_s),
-                )
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return json.dumps({
-                    "exit_code": -1,
-                    "stdout": "",
-                    "stderr": f"Execution timed out after {timeout_s} seconds.",
-                    "timed_out": True,
-                })
+        res = await get_sandbox_runtime().exec(
+            ["/bin/bash", "-c", command],
+            cwd=working_dir,
+            timeout=float(timeout_s),
+            # Sandbox env — LibreOffice needs SAL_USE_VCLPLUGIN for headless
+            env={
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME": "/tmp",
+                "TMPDIR": "/tmp",
+                "LANG": "C.UTF-8",
+                "SAL_USE_VCLPLUGIN": "svp",  # LibreOffice headless rendering
+            },
+        )
 
-            stdout = stdout_bytes.decode("utf-8", errors="replace")
-            stderr = stderr_bytes.decode("utf-8", errors="replace")
-
-            # Truncate long output
-            if len(stdout) > _MAX_OUTPUT_CHARS:
-                stdout = (
-                    stdout[:_MAX_OUTPUT_CHARS]
-                    + f"\n... [truncated, {len(stdout)} total chars]"
-                )
-            if len(stderr) > _MAX_OUTPUT_CHARS:
-                stderr = (
-                    stderr[:_MAX_OUTPUT_CHARS]
-                    + f"\n... [truncated, {len(stderr)} total chars]"
-                )
-
+        if res.timed_out:
             return json.dumps({
-                "exit_code": proc.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-                "timed_out": False,
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Execution timed out after {timeout_s} seconds.",
+                "timed_out": True,
             })
-
-        except FileNotFoundError:
+        if res.not_found:
             return json.dumps({
                 "exit_code": -1,
                 "stdout": "",
                 "stderr": "/bin/bash not found on this system.",
                 "timed_out": False,
             })
-        except Exception as exc:
+        if res.launch_error:
             return json.dumps({
                 "exit_code": -1,
                 "stdout": "",
-                "stderr": f"Subprocess launch failed: {exc}",
+                "stderr": f"Subprocess launch failed: {res.launch_error}",
                 "timed_out": False,
             })
+
+        stdout = res.stdout
+        stderr = res.stderr
+        if len(stdout) > _MAX_OUTPUT_CHARS:
+            stdout = (
+                stdout[:_MAX_OUTPUT_CHARS]
+                + f"\n... [truncated, {len(stdout)} total chars]"
+            )
+        if len(stderr) > _MAX_OUTPUT_CHARS:
+            stderr = (
+                stderr[:_MAX_OUTPUT_CHARS]
+                + f"\n... [truncated, {len(stderr)} total chars]"
+            )
+
+        return json.dumps({
+            "exit_code": res.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "timed_out": False,
+        })
 
     # ------------------------------------------------------------------
     # Document file extensions that should be auto-registered as artifacts

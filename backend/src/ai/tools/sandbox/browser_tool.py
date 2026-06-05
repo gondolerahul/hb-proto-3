@@ -33,7 +33,6 @@ Output (JSON string):
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
@@ -139,28 +138,15 @@ class HeadlessBrowserTool(Tool):
         timeout_ms: int,
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Create browser context, execute action, return result."""
+        """Open a browser session via the SandboxRuntime, execute the action on
+        its page, and return the result. The runtime owns browser lifecycle
+        (launch/context/teardown); the action logic stays here."""
+        from src.ai.tools.sandbox.runtime import get_sandbox_runtime
+
         try:
-            from playwright.async_api import async_playwright
-        except ImportError:
-            return json.dumps({
-                "error": "Playwright is not installed. Run: pip install playwright && playwright install chromium"
-            })
-
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            ctx = await browser.new_context(
-                viewport={"width": 1280, "height": 720},
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 "
-                    "HireBuddha-AI-Agent/1.0"
-                ),
-            )
-            page = await ctx.new_page()
-            page.set_default_timeout(timeout_ms)
-
-            try:
+            runtime = get_sandbox_runtime(context)
+            async with runtime.open_browser_session(timeout_ms=timeout_ms) as session:
+                page = session.page
                 if action == "navigate":
                     result = await self._action_navigate(page, args, timeout_ms)
                 elif action == "click":
@@ -177,9 +163,10 @@ class HeadlessBrowserTool(Tool):
                     result = {"error": f"Unknown action: {action}"}
 
                 return json.dumps(result)
-            finally:
-                await ctx.close()
-                await browser.close()
+        except ImportError:
+            return json.dumps({
+                "error": "Playwright is not installed. Run: pip install playwright && playwright install chromium"
+            })
 
     # ------------------------------------------------------------------
     # Action implementations
