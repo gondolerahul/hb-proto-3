@@ -4,14 +4,18 @@ The CORTEX hierarchical-memory engine, extracted as a host-independent package
 (Phase 12 track `04`). **Import name:** `cortex_memory`. **Distribution name:**
 `cortex-memory` (planned). **License:** Apache-2.0.
 
-> Status: **Stage-B in progress.** The package now owns its **data layer** —
-> its own SQLAlchemy `Base` (`db.py`), the ORM models (`models.py`, opaque
-> FK-free external refs), the enums (`enums.py`), the DTOs (`dtos.py`,
-> `Provenance`/`GoalNode`/tree shapes), a standalone schema bootstrap
-> (`schema.py`), the provider Protocols (`providers.py`), and `scope_policy`.
-> The host re-exports all of these via shims (`cortex_models`, `schemas/cortex`,
-> `schemas/enums`) so existing imports are unchanged. The CORTEX *services*
-> (`CortexService`, graph/domain/dreaming, the v2 assembler) move in next.
+> Status: **Stage-B code-move COMPLETE.** Every CORTEX module now lives here,
+> with **zero host imports** (a package self-test enforces it): the data layer
+> (`db`/`models`/`enums`/`dtos`/`schema`), the provider boundary
+> (`providers`/`providers_reference`), and all services — `service` (the 7 tree
+> ops), `graph`, `ingestion`, the four domain trees (`knowledge_tree`/
+> `episodic_tree`/`experience_tree`/`intelligence_tree`), `dreaming`, and
+> `assembly` (the v2 assembler) — plus `scope_policy`, `domains`, `prompts`, and
+> the embedding/text helpers. The host's `src/ai/memory/` keeps only thin
+> re-export/auto-injection **shims** + the genuine host **adapters**
+> (`cortex_providers`, `cortex_bridge`, `cortex_router`, `embedding_service`,
+> `legacy_episodic_reader`, `failure_pattern_service`). Remaining: Stage C
+> (separate repo + dist packaging, ≥85% coverage, `mypy --strict`, CI, PyPI).
 
 ## The boundary rule
 
@@ -56,20 +60,21 @@ implementations so the package runs in tests with zero host/DB/LLM.
 - [x] **Tree primitives** — `scope_policy.py`, `domains.py` (`DomainTreeBase` +
       retrieval weights).
 
-## Remaining Stage-B work (the service bodies)
+- [x] **All service bodies** — `service` / `graph` / `ingestion` / the four
+      domain trees / `dreaming` / `assembly`, each converted from host imports
+      (`LLMRouter` / `EmbeddingService` / `ExecutionRun` / usage) to **injected
+      providers** (LLM via `LLMProvider`; embeddings via `EmbeddingProvider` +
+      the node-aware `cortex_memory.embedding` helpers; RECURSE child runs via an
+      injected `child_run_factory`). Host shims auto-inject the adapters so
+      existing call sites are unchanged.
 
-The orchestration services still live in `src/ai/memory/` and consume the host
-adapters. Each move converts its host imports (`LLMRouter`/`EmbeddingService`/
-`ExecutionRun`/usage) to **injected providers**:
+## Remaining (Stage C — separate repo + release)
 
-1. `cortex_service.py` (the 7 tree ops) + `cortex_ingestion.py`.
-2. `graph_service.py` (semantic graph; uses `EmbeddingProvider`).
-3. the four domain services + `memory_assembly_service.py` (v2 assembler).
-4. `dreaming_engine.py` + `dreaming_prompts.py`.
-5. Wire the host to construct these with `build_cortex_providers(...)` injected;
-   smoke-replay a run through the loop.
+1. Extract this directory to its own public repo with a `pyproject.toml`
+   (name `cortex-memory`, Apache-2.0, deps: SQLAlchemy + pgvector + pydantic).
+2. ≥85% coverage, `mypy --strict`, CI, examples, docs.
+3. Publish v0.1.0 to PyPI; the host pins the version and drops the in-repo copy.
 
-`cortex_bridge.py`, `cortex_router.py` (HTTP), `legacy_episodic_reader.py`,
-`failure_pattern_service.py` stay host-side as thin adapters (plan §3).
-
-Then Stage C: docs, ≥85% coverage, `mypy --strict`, CI, publish v0.1.0.
+`cortex_bridge.py`, `cortex_router.py` (HTTP), `embedding_service.py`,
+`legacy_episodic_reader.py`, `failure_pattern_service.py` stay host-side as the
+genuine adapters / host-specific code (plan §3).

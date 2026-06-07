@@ -153,17 +153,16 @@ v4 board exists; all v5 capabilities unbuilt.
 Phase 11 did Stage-A groundwork.
 
 - [ ] **Stage A — Protocols in place** *(`04` §5)* — can start now. *(L)*
-- [~] **Stage B — package skeleton + cutover** — gated on **C2** (done). **Data
-      layer + provider boundary + primitives landed** (`backend/cortex_memory/`):
-      own `Base` + ORM (opaque FK-free external refs) + enums + DTOs + standalone
-      `schema.py`; the 4 provider Protocols + reference impls + **host adapters**
-      (`cortex_providers.py`); `scope_policy` + `DomainTreeBase` moved. Host DB
-      schema migrated (external cortex FK constraints dropped); host shims keep
-      all imports working; host alembic `target_metadata` includes the package
-      metadata. **Remaining:** move the service bodies (`cortex_service`,
-      `cortex_ingestion`, `graph_service`, the 4 domain services,
-      `memory_assembly_service`, `dreaming_engine`) onto injected providers, then
-      smoke-replay. *(L remaining)*
+- [x] **Stage B — full code-move DONE** — gated on **C2** (done). The entire
+      CORTEX engine lives in `backend/cortex_memory/` with **zero host imports**
+      (package self-test enforces it): own `Base` + ORM (opaque FK-free external
+      refs, dev-DB FK constraints dropped) + enums + DTOs + `schema.py`; the 4
+      provider Protocols + reference impls + host adapters (`cortex_providers`);
+      and **all services** — `service` (7 tree ops), `graph`, `ingestion`, the 4
+      domain trees, `dreaming`, `assembly` — on injected providers. Host
+      `src/ai/memory/` is now thin shims + the genuine adapters. Host alembic
+      `target_metadata` includes the package metadata. **Remaining = Stage C**
+      (separate repo + `pyproject` + ≥85% cov + `mypy --strict` + CI + PyPI v0.1.0).
 - [ ] **Stage C — docs/coverage/CI → publish `cortex-memory` v0.1.0**. *(L)*
 - [ ] Lock decisions K1–K7 (`04` §4). *(S)*
 
