@@ -38,6 +38,7 @@ from cortex_memory.enums import (
     MemoryDomain,
     ScopeLevel,
 )
+from cortex_memory.assembly import MemoryAssemblyResult, MemoryAssemblyService
 from cortex_memory.dreaming import DreamingEngine
 from cortex_memory.episodic_tree import EpisodicTreeService
 from cortex_memory.experience_tree import ExperienceTreeService
@@ -111,6 +112,8 @@ __all__ = [
     "ExperienceTreeService",
     "IntelligenceTreeService",
     "DreamingEngine",
+    "MemoryAssemblyService",
+    "MemoryAssemblyResult",
     "Viewport",
     "NodeSummaryDTO",
     "NodeContent",
