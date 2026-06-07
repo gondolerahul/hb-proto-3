@@ -7,7 +7,11 @@ package so it carries no dependency on the host's ``ai.shared`` utilities.
 from __future__ import annotations
 
 import json
-from typing import Any
+import logging
+import re
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def truncate_for_storage(data: Any, max_chars: int = 400) -> str:
@@ -23,36 +27,57 @@ def truncate_for_storage(data: Any, max_chars: int = 400) -> str:
     return s[:max_chars]
 
 
-def parse_json_array(text: str) -> list:
-    """Best-effort extraction of a JSON array from LLM text (host-free)."""
-    if not text:
-        return []
-    try:
-        import re
+def strip_markdown_fences(text: str) -> str:
+    """Remove ```json ... ``` fences from LLM output."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        end = -1 if lines[-1].strip() == "```" else len(lines)
+        text = "\n".join(lines[1:end])
+    return text.strip()
 
-        m = re.search(r"\[.*\]", text, re.DOTALL)
-        if m:
-            val = json.loads(m.group(0))
-            return val if isinstance(val, list) else []
-    except Exception:
+
+def parse_json_array(text: str, warn_label: str = "LLM output") -> List[Dict]:
+    """Parse a JSON array from LLM output (markdown-fence aware). [] on failure."""
+    text = strip_markdown_fences(text)
+    try:
+        result = json.loads(text)
+        if isinstance(result, list):
+            return result
+    except json.JSONDecodeError:
         pass
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    logger.warning(f"Failed to parse JSON array from {warn_label}: {text[:200]}")
     return []
 
 
-def parse_json_object(text: str) -> dict:
-    """Best-effort extraction of a JSON object from LLM text (host-free)."""
-    if not text:
-        return {}
+def parse_json_object(text: str, warn_label: str = "LLM output") -> Optional[Dict]:
+    """Parse a JSON object from LLM output (markdown-fence aware). None on failure."""
+    text = strip_markdown_fences(text)
     try:
-        import re
-
-        m = re.search(r"\{.*\}", text, re.DOTALL)
-        if m:
-            val = json.loads(m.group(0))
-            return val if isinstance(val, dict) else {}
-    except Exception:
+        result = json.loads(text)
+        if isinstance(result, dict):
+            return result
+    except json.JSONDecodeError:
         pass
-    return {}
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    logger.warning(f"Failed to parse JSON object from {warn_label}: {text[:200]}")
+    return None
 
 
-__all__ = ["truncate_for_storage", "parse_json_array", "parse_json_object"]
+__all__ = [
+    "truncate_for_storage",
+    "strip_markdown_fences",
+    "parse_json_array",
+    "parse_json_object",
+]
