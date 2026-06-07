@@ -58,7 +58,9 @@ Pure-logic tests need nothing; the integration tests are skipped unless
 
 ---
 
-> Status: **Stage-B code-move COMPLETE.** Every CORTEX module now lives here,
+> Status: **Stages B + C COMPLETE** (in-repo). The package is self-contained,
+> `mypy --strict`-clean, 85%-covered, and builds a wheel; only the move to a
+> public repo + PyPI upload remains. Every CORTEX module now lives here,
 > with **zero host imports** (a package self-test enforces it): the data layer
 > (`db`/`models`/`enums`/`dtos`/`schema`), the provider boundary
 > (`providers`/`providers_reference`), and all services — `service` (the 7 tree

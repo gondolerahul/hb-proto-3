@@ -161,8 +161,17 @@ Phase 11 did Stage-A groundwork.
       and **all services** — `service` (7 tree ops), `graph`, `ingestion`, the 4
       domain trees, `dreaming`, `assembly` — on injected providers. Host
       `src/ai/memory/` is now thin shims + the genuine adapters. Host alembic
-      `target_metadata` includes the package metadata. **Remaining = Stage C**
-      (separate repo + `pyproject` + ≥85% cov + `mypy --strict` + CI + PyPI v0.1.0).
+      `target_metadata` includes the package metadata.
+- [x] **Stage C — packaging DONE** (in-repo). `backend/cortex_memory/pyproject.toml`
+      (PEP 621, name `cortex-memory`, Apache-2.0, dynamic version 0.1.0,
+      `package-dir` flat-layout build) + `LICENSE`; a host-free test suite under
+      `cortex_memory/tests/` (pure + DB-gated integration via the reference
+      providers) at **85% coverage**; **`mypy --strict` clean** (23 files); CI
+      (`.github/workflows/cortex-memory.yml`, pgvector service, mypy + coverage
+      gate + wheel build); quickstart example. `python -m build` produces a clean
+      `cortex_memory-0.1.0-py3-none-any.whl`. **Remaining = publish:** move to a
+      public repo + `twine upload` to PyPI; then the host pins the version and
+      drops the in-repo copy. **Track `04` is otherwise complete.**
 - [ ] **Stage C — docs/coverage/CI → publish `cortex-memory` v0.1.0**. *(L)*
 - [ ] Lock decisions K1–K7 (`04` §4). *(S)*
 
