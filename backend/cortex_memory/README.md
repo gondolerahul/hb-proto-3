@@ -1,8 +1,62 @@
 # cortex-memory
 
-The CORTEX hierarchical-memory engine, extracted as a host-independent package
-(Phase 12 track `04`). **Import name:** `cortex_memory`. **Distribution name:**
-`cortex-memory` (planned). **License:** Apache-2.0.
+A navigable, writable **hierarchical-memory engine for LLM agents** — the agent
+never holds "context", it holds a *viewport* onto a persistent cognitive tree
+(PostgreSQL + pgvector). Extracted as a host-independent package (Phase 12 track
+`04`). **Import:** `cortex_memory`. **Dist:** `cortex-memory`. **License:** Apache-2.0.
+
+## Install
+
+```bash
+pip install cortex-memory          # needs a Postgres with the `vector` extension
+```
+
+## Quickstart
+
+```python
+import asyncio
+from uuid import uuid4
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from cortex_memory import CortexService
+from cortex_memory.providers_reference import EchoLLMProvider   # swap for your own adapter
+from cortex_memory.schema import create_all_schema_async
+
+async def main():
+    engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/db")
+    await create_all_schema_async(engine)                       # idempotent
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        cortex = CortexService(db, uuid4(), llm=EchoLLMProvider())
+        tree = await cortex.create_tree(entity_id=uuid4(), user_id=None,
+                                        task_description="Summarise the deck")
+        await db.commit()
+        working = await cortex.get_working_root(tree.id)
+        await cortex.write(parent_id=working.id, node_type="finding",
+                           title="Key point", content="…", summary="…")
+        await db.commit()
+        print((await cortex.navigate(working.id)).to_prompt_text())
+
+asyncio.run(main())
+```
+
+A runnable version: `python -m cortex_memory.examples.quickstart`. The host
+injects real LLM/embedding adapters via the Protocols (see **The boundary rule**);
+the reference providers above let it run with no external services.
+
+## Develop
+
+```bash
+pip install -e ".[dev]"
+mypy --strict cortex_memory                                     # strict-clean
+CORTEX_TEST_DATABASE_URL=postgresql+asyncpg://… coverage run --source=cortex_memory -m pytest
+coverage report                                                 # ≥85%
+python -m build                                                 # sdist + wheel
+```
+
+Pure-logic tests need nothing; the integration tests are skipped unless
+`CORTEX_TEST_DATABASE_URL` (or `DATABASE_URL`) points at a Postgres+pgvector. CI:
+`.github/workflows/cortex-memory.yml`.
+
+---
 
 > Status: **Stage-B code-move COMPLETE.** Every CORTEX module now lives here,
 > with **zero host imports** (a package self-test enforces it): the data layer
