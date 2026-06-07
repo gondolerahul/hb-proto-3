@@ -66,7 +66,7 @@ from cortex_memory.providers import (
 )
 from cortex_memory.scope_policy import ScopePolicy, ScopeViolation
 
-__version__ = "0.0.0.dev0"
+__version__ = "0.1.0"
 
 __all__ = [
     # data layer

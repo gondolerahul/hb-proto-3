@@ -120,7 +120,10 @@ class SemanticGraphService:
                 SELECT
                     e.target_node_id AS node_id,
                     e.edge_type,
-                    e.weight,
+                    -- Cast so the non-recursive term's type (numeric(5,4))
+                    -- matches the recursive term (numeric after multiplication);
+                    -- Postgres requires both branches to share a column type.
+                    e.weight::numeric AS weight,
                     1 AS depth,
                     ARRAY[e.source_node_id, e.target_node_id] AS path
                 FROM cortex_edges e
