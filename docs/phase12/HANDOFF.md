@@ -7,7 +7,8 @@
 > [`plans/`](./plans/) files (the original spec), and the two C4 design docs in
 > [`designs/`](./designs/).
 >
-> **Last updated:** 2026-06-04 (Stage 1 COMPLETE — C4 Phase B + C2/C3/C13 landed)
+> **Last updated:** 2026-06-07 (Stage 1 COMPLETE; new-capability tracks started —
+> `02` S1–S2 + `04` Stage A–C landed; `02` S3–S4 in progress)
 > **Branch:** `phase12/stage1-consolidation`
 
 ---
@@ -282,10 +283,20 @@ Run the **G4 soak**, then Phase B (PR-5..PR-11). This unblocks **C2** and the re
 of **C3** as fallout.
 
 ### C. The rest of Phase 12 (each its own track; see plans)
-- `02` Sandbox runtime / per-tenant containers (0%; hard-dep of `06` tool synth).
-- `03` Video tool split (0%). `04` CORTEX pip package (0%; Stage-A groundwork done;
-  Stage B gated on C2). `06` Meta-Agent v5 capabilities (v4 board exists; v5 = 0%).
-  `07` MCP adapter, budget-aware REACT, trust-score learning, eval harness.
+- `02` Sandbox runtime / per-tenant containers — **S1–S2 DONE** (the
+  `SandboxRuntime` Protocol + `SubprocessRuntime` in `tools/sandbox/runtime.py`;
+  all three tools delegate to it, zero behavior change). **S3–S4 in progress**
+  (the `hb-sandbox` image + `ContainerRuntime`/`TenantSandboxManager` behind
+  `sandbox.container_runtime_enabled`, OFF). Hard-dep of `06` tool synth.
+- `03` Video tool split (0%).
+- `04` CORTEX pip package — **DONE through Stage C** (Stage A Protocols, Stage B
+  full code-move to a host-free `backend/cortex_memory/` package on injected
+  providers, Stage C packaging: `mypy --strict` clean, 85% coverage, CI workflow,
+  builds a `cortex_memory-0.1.0` wheel). `src/ai/memory/` is now thin shims + host
+  adapters. **Remaining = publish** (public repo + `twine upload` to PyPI, then
+  pin the version and drop the in-repo copy).
+- `06` Meta-Agent v5 capabilities (v4 board exists; v5 = 0%).
+- `07` MCP adapter, budget-aware REACT, trust-score learning, eval harness.
 
 ---
 
@@ -361,10 +372,13 @@ billing/planning notes.
 2. Run the two verify commands in §5; confirm green unit suite + 2 parity passed +
    lint exit 0.
 3. Push the pending commits (or confirm the human did).
-4. **Stage 1 is complete.** Pick a new-capability track from §6.C / `WHATS_NEXT.md`:
-   - **`04` CORTEX Stage B** is now unblocked (C2 done) — package skeleton + cutover.
-   - **`02` S1–S2** sandbox refactor (unblocks `06` tool synthesis), or **`03`**
-     video tool split.
-   - **`06`** board GA on the AgentLoop + introspection (C4 done unblocks it).
-   - **Do NOT** attempt C13 (blocked, §7) or the C4 deletion (PR-9) without the
-     soak decision.
+4. **Stage 1 is complete; `04` is done through Stage C and `02` S1–S2 landed.**
+   Pick up / continue a new-capability track from §6.C / `WHATS_NEXT.md`:
+   - **`02` S3–S4** (in progress) — the `hb-sandbox` image +
+     `ContainerRuntime`/`TenantSandboxManager` behind
+     `sandbox.container_runtime_enabled` (OFF). Unblocks `06` tool synthesis.
+     Keep CI Docker-free (`SubprocessRuntime` stays the test default); gate any
+     container integration test on Docker availability.
+   - **`03`** video tool split, or **`06`** board GA on the AgentLoop + introspection.
+   - **`04`** is feature-complete in-repo; the only remainder is **publish** (PyPI).
+   - **Do NOT** re-open C13 or the deleted `execute_run` path.
