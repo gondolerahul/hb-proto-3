@@ -182,7 +182,7 @@ class KnowledgeTreeService:
             # No structure detected — chunk entire content directly under doc
             chunk_count = await self._create_chunks(
                 tree_id, doc_node.id, content, document_id, filename,
-                depth=2, embedding_service=embedding_service,
+                depth=2,
             )
             node_count += chunk_count
         else:
@@ -212,7 +212,7 @@ class KnowledgeTreeService:
                 # Create CHUNK nodes under this section
                 chunk_count = await self._create_chunks(
                     tree_id, section_node.id, body, document_id, filename,
-                    depth=3, embedding_service=embedding_service,
+                    depth=3,
                     section_index=idx,
                 )
                 node_count += chunk_count
@@ -358,7 +358,6 @@ class KnowledgeTreeService:
         document_id: UUID,
         filename: str,
         depth: int,
-        embedding_service: EmbeddingService,
         section_index: int = 0,
     ) -> int:
         """Create CHUNK nodes with embeddings under a parent node."""

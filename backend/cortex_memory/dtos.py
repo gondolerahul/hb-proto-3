@@ -231,7 +231,7 @@ class GoalNode:
     def is_leaf(self) -> bool:
         return len(self.children) == 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "goal": self.goal,
             "depth": self.depth,

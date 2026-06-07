@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -37,38 +37,38 @@ def strip_markdown_fences(text: str) -> str:
     return text.strip()
 
 
-def parse_json_array(text: str, warn_label: str = "LLM output") -> List[Dict]:
+def parse_json_array(text: str, warn_label: str = "LLM output") -> List[Dict[str, Any]]:
     """Parse a JSON array from LLM output (markdown-fence aware). [] on failure."""
     text = strip_markdown_fences(text)
     try:
         result = json.loads(text)
         if isinstance(result, list):
-            return result
+            return cast(List[Dict[str, Any]], result)
     except json.JSONDecodeError:
         pass
     match = re.search(r"\[.*\]", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group())
+            return cast(List[Dict[str, Any]], json.loads(match.group()))
         except json.JSONDecodeError:
             pass
     logger.warning(f"Failed to parse JSON array from {warn_label}: {text[:200]}")
     return []
 
 
-def parse_json_object(text: str, warn_label: str = "LLM output") -> Optional[Dict]:
+def parse_json_object(text: str, warn_label: str = "LLM output") -> Optional[Dict[str, Any]]:
     """Parse a JSON object from LLM output (markdown-fence aware). None on failure."""
     text = strip_markdown_fences(text)
     try:
         result = json.loads(text)
         if isinstance(result, dict):
-            return result
+            return cast(Dict[str, Any], result)
     except json.JSONDecodeError:
         pass
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group())
+            return cast(Dict[str, Any], json.loads(match.group()))
         except json.JSONDecodeError:
             pass
     logger.warning(f"Failed to parse JSON object from {warn_label}: {text[:200]}")

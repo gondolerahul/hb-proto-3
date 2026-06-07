@@ -13,9 +13,13 @@ alone. The host enforces referential integrity in its own schema.
 """
 from __future__ import annotations
 
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """The package's declarative base (SQLAlchemy 2.0, typed)."""
+
+
 metadata = Base.metadata
 
 __all__ = ["Base", "metadata"]
