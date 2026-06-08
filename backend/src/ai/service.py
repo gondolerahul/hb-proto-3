@@ -453,9 +453,41 @@ class AIService:
         
         query = query.where(ExecutionRun.parent_run_id.is_(None))  # Only show root executions in list
         query = query.order_by(ExecutionRun.created_at.desc())
-        
+
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    async def record_csat(
+        self,
+        execution_id: UUID,
+        company_id: UUID,
+        score: int,
+        comment: str = None,
+        user_role: str = None,
+    ) -> ExecutionRun:
+        """Capture a +1/-1 CSAT rating on a completed run (Phase 12 `07` §6).
+
+        Only finished runs can be rated. Access piggybacks on the same company
+        scoping as ``get_execution``.
+        """
+        if score not in (1, -1):
+            raise HTTPException(status_code=422, detail="csat score must be +1 or -1")
+
+        query = select(ExecutionRun).where(ExecutionRun.id == execution_id)
+        if user_role != "app_admin":
+            query = query.where(ExecutionRun.company_id == company_id)
+        result = await self.db.execute(query)
+        run = result.scalar_one_or_none()
+        if not run:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        if (run.status or "").upper() not in {"COMPLETED", "FAILED", "SUCCESS"}:
+            raise HTTPException(status_code=409, detail="Run is not finished; cannot rate yet")
+
+        run.csat_score = score
+        run.csat_comment = (comment or None)
+        await self.db.commit()
+        await self.db.refresh(run)
+        return run
 
     async def cancel_execution(
         self, execution_id: UUID, company_id: UUID, user_role: str = None

@@ -13,6 +13,7 @@ from src.ai.schemas.enums import RunStatus
 __all__ = [
     "ExecutionRunCreate",
     "ExecutionRefineRequest",
+    "CSATRequest",
     "LLMInteractionLogResponse",
     "ToolInteractionLogResponse",
     "HumanApprovalResponse",
@@ -24,6 +25,12 @@ __all__ = [
 class ExecutionRunCreate(BaseModel):
     entity_id: UUID
     input_data: Dict[str, Any]
+
+
+class CSATRequest(BaseModel):
+    """A +1/-1 CSAT rating on a completed run (Phase 12 `07` §6, P-O2)."""
+    score: int  # +1 = thumbs up, -1 = thumbs down
+    comment: Optional[str] = None
 
 
 class ExecutionRefineRequest(BaseModel):
@@ -96,6 +103,8 @@ class ExecutionRunSummary(BaseModel):
     billed_amount: Optional[float] = None  # TB formula result — user-facing charge
     total_tokens: int = 0
     execution_time_ms: Optional[int] = None
+    csat_score: Optional[int] = None
+    csat_comment: Optional[str] = None
     trace_id: Optional[UUID] = None
     started_at: Optional[datetime]
     completed_at: Optional[datetime]

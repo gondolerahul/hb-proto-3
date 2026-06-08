@@ -694,6 +694,10 @@ class AgentLoop:
             outcome=observation.outcome,
             decision=decision.next,
             cost_iter_usd=float(action_result.cost_usd),
+            # Human-readable iteration narrative (review gap #5): the SSE stream
+            # carries WHAT happened, not just the status transition.
+            narrative=(observation.summary or "")[:500],
+            reflection=(reflection.what_didnt or reflection.what_worked or "")[:300],
         )
 
     # ------------------------------------------------------------------

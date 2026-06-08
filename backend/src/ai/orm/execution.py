@@ -62,6 +62,12 @@ class ExecutionRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # First-party CSAT signal on a completed run (Phase 12 `07` §6, P-O2): the
+    # only ground-truth "was this good?" signal — feeds critic false-pass
+    # calibration. +1 = thumbs up, -1 = thumbs down, NULL = not yet rated.
+    csat_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    csat_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     company: Mapped["Company"] = relationship("Company")
     entity: Mapped["HierarchicalEntity"] = relationship("HierarchicalEntity", back_populates="execution_runs")
     parent_run: Mapped["ExecutionRun | None"] = relationship("ExecutionRun", remote_side=[id], backref="child_runs")

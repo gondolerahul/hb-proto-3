@@ -9,7 +9,7 @@ from src.auth.models import User
 from src.ai.schemas import (
     HierarchicalEntityCreate, HierarchicalEntityUpdate, HierarchicalEntityResponse, 
     ExecutionRunCreate, ExecutionRunResponse, ExecutionRunSummary, EntityType,
-    DocumentResponse, DocumentSearchResult, ExecutionRefineRequest
+    DocumentResponse, DocumentSearchResult, ExecutionRefineRequest, CSATRequest
 )
 from src.ai.service import AIService
 
@@ -187,6 +187,20 @@ async def get_execution(
     service = AIService(db)
     execution = await service.get_execution(execution_id, current_user.company_id, current_user.role)
     return execution
+
+@router.post("/executions/{execution_id}/csat", response_model=ExecutionRunResponse)
+async def record_execution_csat(
+    execution_id: UUID,
+    payload: CSATRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Capture a +1/-1 CSAT rating on a completed run (Phase 12 `07` §6)."""
+    service = AIService(db)
+    return await service.record_csat(
+        execution_id, current_user.company_id,
+        payload.score, payload.comment, current_user.role,
+    )
 
 @router.get("/executions/{execution_id}/agent_state")
 async def get_agent_state(
