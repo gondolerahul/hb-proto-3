@@ -195,12 +195,24 @@ v4 board exists; all v5 capabilities unbuilt.
 - [ ] **06 §5 — intelligence → planner wiring + rule lifecycle**. *(M)*
 - [ ] **06 §4 — close the learning loop** (Curator-ON + composition graph). *(L)*
 - [ ] **06 §6 — Meta-Agent self-modification** (prompt-evolution LLM diff + reseed). *(L)*
-- [ ] **06 §2 — TOOL SYNTHESIS (marquee)** — the `02` substrate is ready:
-      ContainerRuntime (S4) + real `hb-sandbox` image (built + smoke-validated) +
-      security review (S6/§6) all landed. Synthesized tools can exec in the
-      container today; the only remaining `02` gate for *network-using* synthesized
-      tools is the egress allow-list proxy. *(XL)*
-- [ ] **06 §3.2 — LLM-Strategist pilot** (Meta-Agent only). *(M)*
+- [◐] **06 §2 — TOOL SYNTHESIS (marquee)** — **safety core landed.**
+      `schemas/tools.py::ToolSpec` (+ `NetworkPolicy`, `ToolExample`) and
+      `meta/tool_validator.py::ToolValidator` (AST static-analysis gate: import
+      allow-list, network-policy gating, dynamic-code/escape/process/secret
+      rejection, Tool-subclass structure — 16 tests) are in. The `02` substrate
+      (ContainerRuntime S4 + real `hb-sandbox` image + §6 review) is ready, so
+      synthesized tools can exec in the container. **Remaining:** the ToolSmith
+      role (LLM writes the `Tool` subclass), the sandbox-test-against-examples
+      loop, the LLM red-team, DRAFT-status registration + the `tool_synthesis`
+      meta-tool gated to `is_meta_agent`, and the `meta_agent.tool_synthesis_enabled`
+      kill switch — all need live LLM + the egress proxy for network tools. *(XL)*
+- [ ] **06 §3.1 — introspection tools** — **DONE.** `agent_introspect`
+      (read-only budget/iteration/subgoals/rules/viewport snapshot) +
+      `agent_reflect` (run-scoped + candidate CORTEX write); `resolve_meta_cognition`
+      gains `self_introspection`/`reflection` matrix defaults; auto-injected in
+      `step_executor`. 12 tests.
+- [ ] **06 §3.2 — LLM-Strategist pilot** (Meta-Agent only). *(M)* — the eval
+      harness (`07` §5) is now in place to A/B it vs deterministic.
 
 ---
 
@@ -235,13 +247,22 @@ Phase 11 did Stage-A groundwork.
 
 ## 6. Stage 4 — Hardening / KPI / DX (Track E, trailing)
 
-- [ ] **07 §5 — A/B / eval harness** (`tests/eval/`) — seeds exist
-      (`tests/parity/`, `tests/regression/`); build the replay-corpus + delta
-      report. *(M)*
-- [ ] **07 §1 — MCP tool adapter** *(L)*; **07 §2 — budget-aware REACT** *(S)*;
-      **07 §3 — provenance trust-score learning** *(M)*.
-- [ ] **P-O1** Grafana/Metabase panel JSON *(M)*; **07 §6 smalls** (CSAT,
-      INTERNAL_KEYS doc-test, seed hygiene, SSE-narrative check) *(S each)*.
+- [x] **07 §5 — A/B / eval harness** (`tests/eval/`) — **DONE.** `metrics.py`
+      (pure: `aggregate` → `delta_report` with two-proportion z for rates +
+      Welch's t for cost/latency, p via `math.erfc`, `render_report`), `runner.py`
+      (`grade` + corpus replay via injected `run_fn`, DB-gated integration),
+      `config.py` (`EvalConfig` flag bundles). Corpus = `tests/regression/cases`.
+      14 hermetic tests.
+- [ ] **07 §1 — MCP tool adapter** *(L)*; **07 §3 — provenance trust-score
+      learning** *(M)*.
+- [x] **07 §2 — budget-aware REACT** — **DONE.** Budget pressure → step prompt
+      (soft line + a "finish, don't expand" directive past
+      `agent_loop.budget_pressure_threshold`=0.70) behind
+      `agent_loop.budget_aware_react` (default ON); pure `budget_prompt_lines`.
+- [ ] **P-O1** Grafana/Metabase panel JSON *(M)*.
+- [x] **07 §6 smalls (partial)** — INTERNAL_KEYS reverse doc-rot guard +
+      embedding-SSOT regression test **DONE**; CSAT capture, seed hygiene,
+      SSE-narrative check remain.
 - [ ] **P-O3** frontend Storybook / Lighthouse / Playwright *(M)*.
 
 ---
@@ -290,7 +311,12 @@ Phase 11 did Stage-A groundwork.
 | 03 | Video tool split (generate/edit/add_sound + deprecated shim) | ✅ |
 | 04 | CORTEX package extraction | ❌ (A-groundwork ✅) |
 | 06 | v4 board exists | ✅ |
-| 06 | tool synthesis · introspection · composition graph · curator · prompt-evolution | ❌ |
+| 06 | introspection tools (agent_introspect/agent_reflect) | ✅ |
+| 06 | tool synthesis (ToolSpec + ToolValidator safety core) | ◐ |
+| 06 | tool synthesis (ToolSmith LLM loop · red-team · DRAFT register) | ❌ |
+| 06 | composition graph · curator · prompt-evolution | ❌ |
 | 07 | cost-attribution gate | ✅ |
-| 07 | MCP adapter · trust-score learning · eval harness | ❌ |
-| 07 | budget-aware REACT | ◐ |
+| 07 | eval harness (tests/eval) | ✅ |
+| 07 | budget-aware REACT | ✅ |
+| 07 | INTERNAL_KEYS reverse guard + embedding SSOT test | ✅ |
+| 07 | MCP adapter · trust-score learning | ❌ |

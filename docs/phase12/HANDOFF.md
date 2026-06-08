@@ -8,9 +8,28 @@
 > [`designs/`](./designs/).
 >
 > **Last updated:** 2026-06-08 (Stage 1 COMPLETE; new-capability tracks —
-> `02` S1–S6 + canary wiring + §6 review + image build, and `04` Stage A–C
-> landed; next: `03` video split / `06` board GA + tool synthesis)
+> `02` S1–S6, `04` Stage A–C, **`03` video split DONE**, **`07` budget-aware
+> REACT + eval harness + doc/embedding guards DONE**, **`06` §3.1 introspection
+> tools DONE + §2 tool-synthesis safety core (ToolSpec + ToolValidator) landed**;
+> next: `06` tool-synthesis LLM loop / board GA, `07` MCP adapter / trust-score)
 > **Branch:** `phase12/stage1-consolidation`
+
+> **Session addendum (2026-06-08, capability tracks):** six commits on top of the
+> base branch, each gate-green (lint 0 / typecheck 0 / unit) and hermetic:
+> - **`03` video split** — `video_generation` → `video_generate` / `video_edit` /
+>   `video_add_sound` over `tools/media/video/_ffmpeg.py` (routes through
+>   `run_sandbox_exec`); deprecated `video_generation` shim composes them.
+> - **`07` §2 budget-aware REACT** — `budget_prompt_lines` injected into the step
+>   prompt behind `agent_loop.budget_aware_react` (ON) + `..._threshold` (0.70).
+> - **`07` §6 guards** — INTERNAL_KEYS reverse doc-rot test + embedding-SSOT test.
+> - **`06` §3.1 introspection** — `agent_introspect` + `agent_reflect` meta-tools,
+>   matrix-gated via `resolve_meta_cognition` (`self_introspection`/`reflection`).
+> - **`07` §5 eval harness** — `tests/eval/` (pure metrics + delta report; DB-gated
+>   replay runner).
+> - **`06` §2 tool-synthesis safety core** — `ToolSpec` + `ToolValidator` AST gate.
+>   The LLM ToolSmith loop + sandbox-test + red-team + DRAFT registration remain
+>   (need live LLM + the `02` egress proxy). **Note:** `ToolStatus` still lacks a
+>   `DRAFT` value — add it when wiring DRAFT registration.
 
 ---
 
