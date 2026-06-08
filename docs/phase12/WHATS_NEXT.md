@@ -148,8 +148,30 @@ capabilities, `07` hardening — none started.
       (exec-in-container, bind-mount, network deny, in-container timeout,
       lifecycle) that skips without Docker. **Still required before canary:** the
       security review gate (`02` §6) + building/publishing the real image.
-- [ ] **02 S5 — persistent browser sessions** *(L)*; **02 S6 — sandbox cost
-      attribution** *(S)*.
+- [x] **02 S5 — persistent browser sessions** — **DONE (flag OFF).**
+      `SubprocessRuntime.open_browser_session(user_data_dir=...)` uses
+      `launch_persistent_context` so cookies/logins survive across calls;
+      `resolve_persistent_browser_dir` layers the flag (context >
+      `sandbox.persistent_browser_enabled` per-company > settings master) and
+      roots the profile at `/tmp/sandbox/<company>/.browser/<persona>` (the
+      bind-mounted path, consistent across runtimes). Real-Chromium persistence
+      tests (gated on the binary).
+- [x] **02 S6 — sandbox cost attribution** — **DONE.** New `sandbox`
+      CostAttribution; `run_sandbox_exec` (the single metered exec entry point)
+      + browser session metering bill duration→seconds against the
+      `sandbox-runtime` SKU (cost_unit `second`, APP-owned; seed with
+      `scripts/seed_sandbox_sku.py`). Unit + cost-attribution integration tests.
+- [x] **02 per-company canary wiring** — `resolve_sandbox_runtime(context)`
+      resolves `sandbox.container_runtime_enabled` per company and threads it
+      into the tool context; all three tools route through it.
+- [x] **02 §6 security review** — `docs/phase12/security_review_02_sandbox.md`
+      (controls-vs-threats, residuals, pre-canary checklist). **Real `hb-sandbox`
+      image built (4.52GB) + smoke-validated** via ContainerRuntime (python/node/
+      pptxgenjs/ffmpeg/soffice/docfactory, non-root, read-only root). **Remaining
+      prod gates:** egress proxy + image CVE scan before a network-granting prod
+      canary; registry publish.
+- [ ] **02 S7 — canary one company → default ON** (prod; needs the egress proxy
+      + CVE scan from the security review). *(ops)*
 - [ ] **03 V1–V5 — split `video_generation`** into `video_generate`/`video_edit`/
       `video_add_sound` *(`03` §4)*. *(L)*
 
@@ -163,10 +185,11 @@ v4 board exists; all v5 capabilities unbuilt.
 - [ ] **06 §5 — intelligence → planner wiring + rule lifecycle**. *(M)*
 - [ ] **06 §4 — close the learning loop** (Curator-ON + composition graph). *(L)*
 - [ ] **06 §6 — Meta-Agent self-modification** (prompt-evolution LLM diff + reseed). *(L)*
-- [ ] **06 §2 — TOOL SYNTHESIS (marquee)** — `02` S4 (ContainerRuntime) is now
-      code-complete behind the flag, so the substrate exists; the remaining gate
-      is the `02` security review + a real `hb-sandbox` build before any canary
-      runs model-written code in a container. *(XL)*
+- [ ] **06 §2 — TOOL SYNTHESIS (marquee)** — the `02` substrate is ready:
+      ContainerRuntime (S4) + real `hb-sandbox` image (built + smoke-validated) +
+      security review (S6/§6) all landed. Synthesized tools can exec in the
+      container today; the only remaining `02` gate for *network-using* synthesized
+      tools is the egress allow-list proxy. *(XL)*
 - [ ] **06 §3.2 — LLM-Strategist pilot** (Meta-Agent only). *(M)*
 
 ---
@@ -250,7 +273,10 @@ Phase 11 did Stage-A groundwork.
 | 01 | C13 drop deprecated engine_type/reasoning_mode | ✅ |
 | 02 | Sandbox runtime S1–S2 (Protocol + SubprocessRuntime) | ✅ |
 | 02 | Sandbox S3–S4 (hb-sandbox image + ContainerRuntime/manager, flag OFF) | ✅ |
-| 02 | Sandbox S5 persistent browser · S6 cost attribution · S7 canary | ❌ |
+| 02 | Sandbox S5 persistent browser (flag OFF) | ✅ |
+| 02 | Sandbox S6 cost attribution (`sandbox` SKU) | ✅ |
+| 02 | Sandbox per-company canary wiring + §6 security review + real image build | ✅ |
+| 02 | Sandbox S7 canary→default ON (prod; egress proxy + CVE scan gates) | ❌ |
 | 03 | Video tool split | ❌ |
 | 04 | CORTEX package extraction | ❌ (A-groundwork ✅) |
 | 06 | v4 board exists | ✅ |

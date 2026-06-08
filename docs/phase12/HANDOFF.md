@@ -8,7 +8,8 @@
 > [`designs/`](./designs/).
 >
 > **Last updated:** 2026-06-08 (Stage 1 COMPLETE; new-capability tracks —
-> `02` S1–S4 + `04` Stage A–C landed; next: `02` security review / `03` / `06`)
+> `02` S1–S6 + canary wiring + §6 review + image build, and `04` Stage A–C
+> landed; next: `03` video split / `06` board GA + tool synthesis)
 > **Branch:** `phase12/stage1-consolidation`
 
 ---
@@ -283,15 +284,19 @@ Run the **G4 soak**, then Phase B (PR-5..PR-11). This unblocks **C2** and the re
 of **C3** as fallout.
 
 ### C. The rest of Phase 12 (each its own track; see plans)
-- `02` Sandbox runtime / per-tenant containers — **S1–S4 DONE** (S1–S2: the
-  `SandboxRuntime` Protocol + `SubprocessRuntime`; S3: the `hb-sandbox` image in
-  `backend/docker/sandbox/`; S4: `ContainerRuntime` + `TenantSandboxManager`
-  behind `sandbox.container_runtime_enabled` / `SANDBOX_CONTAINER_RUNTIME_ENABLED`,
-  default OFF, bind-mounting the tenant dir at the identical path so tools are
-  unchanged; Docker-gated integration tests, CI stays Docker-free). **Before
-  canary:** the `02` §6 security review + a real image build/publish. **S5**
-  (persistent in-container browser) and **S6** (sandbox cost attribution) remain.
-  Unblocks the `06` tool-synthesis substrate.
+- `02` Sandbox runtime / per-tenant containers — **S1–S6 DONE** (all behind
+  default-OFF flags). S1–S2: `SandboxRuntime` Protocol + `SubprocessRuntime`.
+  S3: the `hb-sandbox` image (`backend/docker/sandbox/`) — **built (4.52GB) +
+  smoke-validated**. S4: `ContainerRuntime` + `TenantSandboxManager` behind
+  `sandbox.container_runtime_enabled`, bind-mounting the tenant dir at the
+  identical path (tools unchanged); Docker-gated integration tests, CI Docker-free.
+  **Per-company canary wiring**: `resolve_sandbox_runtime(context)`. S5:
+  persistent browser profile (`sandbox.persistent_browser_enabled`). S6: `sandbox`
+  cost attribution via `run_sandbox_exec` + the `sandbox-runtime` SKU
+  (`scripts/seed_sandbox_sku.py`). **§6 security review** done
+  (`security_review_02_sandbox.md`). **Remaining = prod/ops only:** egress proxy
+  + image CVE scan + registry publish, then **S7** canary→default-ON. The `06`
+  tool-synthesis substrate is ready.
 - `03` Video tool split (0%).
 - `04` CORTEX pip package — **DONE through Stage C** (Stage A Protocols, Stage B
   full code-move to a host-free `backend/cortex_memory/` package on injected
@@ -378,12 +383,13 @@ billing/planning notes.
 3. Push the pending commits (or confirm the human did).
 4. **Stage 1 is complete; `04` is done through Stage C and `02` S1–S2 landed.**
    Pick up / continue a new-capability track from §6.C / `WHATS_NEXT.md`:
-   - **`02` S1–S4 DONE** (container runtime code-complete behind the OFF flag).
-     Next on `02`: the §6 **security review** + a real `hb-sandbox` build/publish
-     (both prod/ops gates), then **S5** (persistent in-container browser) / **S6**
-     (sandbox cost attribution). Keep CI Docker-free; the container integration
-     test is Docker-gated.
-   - **`03`** video tool split, or **`06`** board GA on the AgentLoop + introspection
-     (the `02` S4 substrate now exists for `06` §2 tool synthesis).
+   - **`02` S1–S6 DONE** (all behind default-OFF flags) — runtime + container +
+     per-company canary wiring + persistent browser + cost attribution; image
+     built + smoke-validated; §6 security review written. Remaining on `02` is
+     **prod/ops only**: egress proxy + image CVE scan + registry publish, then
+     **S7** canary→default-ON. Keep CI Docker-free; container/persistent-browser
+     integration tests are Docker-/Chromium-gated.
+   - **`03`** video tool split, or **`06`** board GA on the AgentLoop + tool
+     synthesis (the `02` substrate is ready). These are the recommended next tracks.
    - **`04`** is feature-complete in-repo; the only remainder is **publish** (PyPI).
    - **Do NOT** re-open C13 or the deleted `execute_run` path.
