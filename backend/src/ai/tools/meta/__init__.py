@@ -20,6 +20,7 @@ from src.ai.tools.meta.platform_introspect import MetaPlatformIntrospectTool
 from src.ai.tools.meta.spec_critic import MetaSpecCriticTool
 from src.ai.tools.meta.agent_introspect import AgentIntrospectTool
 from src.ai.tools.meta.agent_reflect import AgentReflectTool
+from src.ai.tools.meta.tool_synthesis import ToolSynthesisTool
 
 __all__ = [
     "MetaRegistrySearchTool",
@@ -30,4 +31,5 @@ __all__ = [
     "MetaSpecCriticTool",
     "AgentIntrospectTool",
     "AgentReflectTool",
+    "ToolSynthesisTool",
 ]

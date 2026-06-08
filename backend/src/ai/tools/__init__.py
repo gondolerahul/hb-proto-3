@@ -196,6 +196,7 @@ from src.ai.tools.meta import (
     MetaEntityCreatorTool, MetaEntityExecutorTool,
     MetaPlatformIntrospectTool,
     AgentIntrospectTool, AgentReflectTool,
+    ToolSynthesisTool,
 )
 ToolRegistry.register(MetaPlatformIntrospectTool())
 ToolRegistry.register(MetaRegistrySearchTool())
@@ -206,6 +207,10 @@ ToolRegistry.register(MetaEntityExecutorTool())
 # reflection, auto-injected per the meta-cognition matrix.
 ToolRegistry.register(AgentIntrospectTool())
 ToolRegistry.register(AgentReflectTool())
+# Tool synthesis (Phase 12 `06` §2) — EXPERIMENTAL: needs the per-company
+# tools.experimental.tool_synthesis opt-in to be visible, plus the in-tool
+# is_meta_agent + meta_agent.tool_synthesis_enabled kill-switch gates.
+ToolRegistry.register(ToolSynthesisTool())
 
 __all__ = [
     "Tool", "ToolRegistry",
@@ -258,7 +263,7 @@ __all__ = [
     # Meta-Agent tools
     "MetaPlatformIntrospectTool", "MetaRegistrySearchTool",
     "MetaSchemaValidatorTool", "MetaEntityCreatorTool",
-    "MetaEntityExecutorTool",
+    "MetaEntityExecutorTool", "ToolSynthesisTool",
     "AgentIntrospectTool", "AgentReflectTool",
 ]
 

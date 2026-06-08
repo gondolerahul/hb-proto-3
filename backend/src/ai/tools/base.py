@@ -23,6 +23,11 @@ class ToolStatus(str, Enum):
     ACTIVE       = "ACTIVE"
     EXPERIMENTAL = "EXPERIMENTAL"
     DEPRECATED   = "DEPRECATED"
+    # A freshly synthesized tool (Phase 12 `06` §2). Like EXPERIMENTAL it needs
+    # an explicit per-company ``tools.experimental.{id}`` opt-in to be visible,
+    # but it is ALSO never registered globally — only as a tenant tool for the
+    # authoring company — and carries trust=low until a human promotes it.
+    DRAFT        = "DRAFT"
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +210,7 @@ class ToolRegistry:
             status = getattr(tool, "status", ToolStatus.ACTIVE)
             if status == ToolStatus.DEPRECATED and not include_deprecated:
                 continue
-            if status == ToolStatus.EXPERIMENTAL:
+            if status in (ToolStatus.EXPERIMENTAL, ToolStatus.DRAFT):
                 try:
                     enabled = await flags.is_on(
                         f"tools.experimental.{name}",
