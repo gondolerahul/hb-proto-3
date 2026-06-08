@@ -126,8 +126,28 @@ capabilities, `07` hardening — none started.
       (zero behavior change; terminal/browser e2e green). Next: **S3** `hb-sandbox`
       image, **S4** `ContainerRuntime`/`TenantSandboxManager` (needs Docker + a
       security-review gate).
-- [ ] **02 S3–S4 — `hb-sandbox` image + `ContainerRuntime`/`TenantSandboxManager`**
-      *(`02` §3)* — needs a security review gate. *(XL)*
+- [x] **02 S3–S4 — `hb-sandbox` image + `ContainerRuntime`/`TenantSandboxManager`**
+      *(`02` §3)* — **DONE (code-complete, behind flag OFF).**
+      **S3:** `backend/docker/sandbox/` — the `hb-sandbox` Dockerfile
+      (Playwright-python base pinned to Playwright 1.58.0 + ffmpeg + LibreOffice
+      + Document Factory libs/scripts, non-root, `/workspace` mount point) +
+      `build.sh` (stages a minimal context, pins the digest to `image.pin`) +
+      README. **S4:** `tools/sandbox/tenant_manager.py` (`TenantSandboxManager`:
+      one container per company via the docker CLI; non-root / read-only-root /
+      tmpfs-`/tmp` / `--cap-drop ALL` / `no-new-privileges` / `--network none` /
+      cpu-mem-pids limits; the host `/tmp/sandbox/<company_id>` bind-mounted at
+      the **identical path** so tools are unchanged + the workspace persists;
+      pause/resume/destroy/reap) and `tools/sandbox/container_runtime.py`
+      (`ContainerRuntime`: `docker exec` wrapped in coreutils `timeout`, host-side
+      file ops over the bind-mount, browser sessions delegated to
+      `SubprocessRuntime` until S5). `get_sandbox_runtime` selects it behind
+      `settings.SANDBOX_CONTAINER_RUNTIME_ENABLED` / a `context["container_runtime"]`
+      override / the `sandbox.container_runtime_enabled` flag (all default OFF),
+      falling back to `SubprocessRuntime` on any error. Tests: hermetic unit
+      (selection + exec mapping, mocked docker) + a Docker-gated integration suite
+      (exec-in-container, bind-mount, network deny, in-container timeout,
+      lifecycle) that skips without Docker. **Still required before canary:** the
+      security review gate (`02` §6) + building/publishing the real image.
 - [ ] **02 S5 — persistent browser sessions** *(L)*; **02 S6 — sandbox cost
       attribution** *(S)*.
 - [ ] **03 V1–V5 — split `video_generation`** into `video_generate`/`video_edit`/
@@ -143,7 +163,10 @@ v4 board exists; all v5 capabilities unbuilt.
 - [ ] **06 §5 — intelligence → planner wiring + rule lifecycle**. *(M)*
 - [ ] **06 §4 — close the learning loop** (Curator-ON + composition graph). *(L)*
 - [ ] **06 §6 — Meta-Agent self-modification** (prompt-evolution LLM diff + reseed). *(L)*
-- [ ] 🚧 **06 §2 — TOOL SYNTHESIS (marquee)** — blocked by `02` S4. *(XL)*
+- [ ] **06 §2 — TOOL SYNTHESIS (marquee)** — `02` S4 (ContainerRuntime) is now
+      code-complete behind the flag, so the substrate exists; the remaining gate
+      is the `02` security review + a real `hb-sandbox` build before any canary
+      runs model-written code in a container. *(XL)*
 - [ ] **06 §3.2 — LLM-Strategist pilot** (Meta-Agent only). *(M)*
 
 ---
@@ -225,7 +248,9 @@ Phase 11 did Stage-A groundwork.
 | 01 | C3 finish (engine MetaReviewer use gone) | ✅ |
 | 01 | C12 mypy --strict (all 6 ai/ packages clean + gated) | ✅ |
 | 01 | C13 drop deprecated engine_type/reasoning_mode | ✅ |
-| 02 | Sandbox runtime / container / browser | ❌ |
+| 02 | Sandbox runtime S1–S2 (Protocol + SubprocessRuntime) | ✅ |
+| 02 | Sandbox S3–S4 (hb-sandbox image + ContainerRuntime/manager, flag OFF) | ✅ |
+| 02 | Sandbox S5 persistent browser · S6 cost attribution · S7 canary | ❌ |
 | 03 | Video tool split | ❌ |
 | 04 | CORTEX package extraction | ❌ (A-groundwork ✅) |
 | 06 | v4 board exists | ✅ |

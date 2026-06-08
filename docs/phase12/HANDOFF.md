@@ -7,8 +7,8 @@
 > [`plans/`](./plans/) files (the original spec), and the two C4 design docs in
 > [`designs/`](./designs/).
 >
-> **Last updated:** 2026-06-07 (Stage 1 COMPLETE; new-capability tracks started —
-> `02` S1–S2 + `04` Stage A–C landed; `02` S3–S4 in progress)
+> **Last updated:** 2026-06-08 (Stage 1 COMPLETE; new-capability tracks —
+> `02` S1–S4 + `04` Stage A–C landed; next: `02` security review / `03` / `06`)
 > **Branch:** `phase12/stage1-consolidation`
 
 ---
@@ -283,11 +283,15 @@ Run the **G4 soak**, then Phase B (PR-5..PR-11). This unblocks **C2** and the re
 of **C3** as fallout.
 
 ### C. The rest of Phase 12 (each its own track; see plans)
-- `02` Sandbox runtime / per-tenant containers — **S1–S2 DONE** (the
-  `SandboxRuntime` Protocol + `SubprocessRuntime` in `tools/sandbox/runtime.py`;
-  all three tools delegate to it, zero behavior change). **S3–S4 in progress**
-  (the `hb-sandbox` image + `ContainerRuntime`/`TenantSandboxManager` behind
-  `sandbox.container_runtime_enabled`, OFF). Hard-dep of `06` tool synth.
+- `02` Sandbox runtime / per-tenant containers — **S1–S4 DONE** (S1–S2: the
+  `SandboxRuntime` Protocol + `SubprocessRuntime`; S3: the `hb-sandbox` image in
+  `backend/docker/sandbox/`; S4: `ContainerRuntime` + `TenantSandboxManager`
+  behind `sandbox.container_runtime_enabled` / `SANDBOX_CONTAINER_RUNTIME_ENABLED`,
+  default OFF, bind-mounting the tenant dir at the identical path so tools are
+  unchanged; Docker-gated integration tests, CI stays Docker-free). **Before
+  canary:** the `02` §6 security review + a real image build/publish. **S5**
+  (persistent in-container browser) and **S6** (sandbox cost attribution) remain.
+  Unblocks the `06` tool-synthesis substrate.
 - `03` Video tool split (0%).
 - `04` CORTEX pip package — **DONE through Stage C** (Stage A Protocols, Stage B
   full code-move to a host-free `backend/cortex_memory/` package on injected
@@ -374,11 +378,12 @@ billing/planning notes.
 3. Push the pending commits (or confirm the human did).
 4. **Stage 1 is complete; `04` is done through Stage C and `02` S1–S2 landed.**
    Pick up / continue a new-capability track from §6.C / `WHATS_NEXT.md`:
-   - **`02` S3–S4** (in progress) — the `hb-sandbox` image +
-     `ContainerRuntime`/`TenantSandboxManager` behind
-     `sandbox.container_runtime_enabled` (OFF). Unblocks `06` tool synthesis.
-     Keep CI Docker-free (`SubprocessRuntime` stays the test default); gate any
-     container integration test on Docker availability.
-   - **`03`** video tool split, or **`06`** board GA on the AgentLoop + introspection.
+   - **`02` S1–S4 DONE** (container runtime code-complete behind the OFF flag).
+     Next on `02`: the §6 **security review** + a real `hb-sandbox` build/publish
+     (both prod/ops gates), then **S5** (persistent in-container browser) / **S6**
+     (sandbox cost attribution). Keep CI Docker-free; the container integration
+     test is Docker-gated.
+   - **`03`** video tool split, or **`06`** board GA on the AgentLoop + introspection
+     (the `02` S4 substrate now exists for `06` §2 tool synthesis).
    - **`04`** is feature-complete in-repo; the only remainder is **publish** (PyPI).
    - **Do NOT** re-open C13 or the deleted `execute_run` path.
