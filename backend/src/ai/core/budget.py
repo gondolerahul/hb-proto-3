@@ -16,7 +16,27 @@ from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from typing import Any, Literal, Optional
 
-__all__ = ["Budget", "BudgetAxis"]
+__all__ = ["Budget", "BudgetAxis", "budget_prompt_lines"]
+
+
+def budget_prompt_lines(pressure: float, threshold: float) -> dict[str, str]:
+    """Prompt constraint lines for budget-aware REACT (Phase 12 `07` §2).
+
+    Always surfaces the consumed fraction; past ``threshold`` it adds an
+    explicit "finish, don't expand" directive so the LLM plans within budget
+    rather than relying on the hard engine cap alone. Pure (no I/O) so it is
+    unit-testable; the step executor resolves the flag/threshold and merges the
+    result into its execution-constraints block.
+    """
+    lines = {"Budget pressure": f"{pressure:.0%} of budget consumed"}
+    if pressure >= threshold:
+        lines["Budget directive"] = (
+            "Budget is nearly exhausted — finish the task NOW with the cheapest "
+            "sufficient action. Do not expand scope, add steps, or start new "
+            "subtasks; produce the best final answer you can with what you "
+            "already have."
+        )
+    return lines
 
 
 BudgetAxis = Literal["tokens", "usd", "wall_s", "iters"]

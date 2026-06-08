@@ -43,6 +43,11 @@ DEFAULTS: dict[str, bool] = {
     "agent_loop.executor_dialog_enabled": False,
     "agent_loop.executor_skill_enabled": False,
     "agent_loop.executor_tool_burst_enabled": False,
+    # Budget-aware REACT (Phase 12 `07` §2): thread budget pressure into the
+    # step prompt as a soft constraint, with an explicit "finish, don't expand"
+    # directive past ``agent_loop.budget_pressure_threshold``. The hard engine
+    # cap still applies; this nudges the LLM to plan within budget. Default ON.
+    "agent_loop.budget_aware_react": True,
     # Meta-Agent board is the default routing path (see the canonical entry
     # below; this alias kept ON for consistency).
     "meta_agent.board_routing": True,
@@ -111,6 +116,9 @@ DEFAULTS: dict[str, bool] = {
 
 NUMERIC_DEFAULTS: dict[str, float] = {
     "bandit.epsilon": 0.10,
+    # Budget pressure (0..1) past which budget-aware REACT injects the explicit
+    # "finish, don't expand" directive (Phase 12 `07` §2).
+    "agent_loop.budget_pressure_threshold": 0.70,
     "critic_pipeline.budget_share_cap": 0.20,
     # Meta-Agent test driver suite budget (USD).
     "meta_agent.testdriver_budget_usd": 3.00,

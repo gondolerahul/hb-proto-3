@@ -682,6 +682,39 @@ class StepExecutorService:
         if max_depth:
             exec_constraints["Max recursion depth"] = str(max_depth)
 
+        # Budget-aware REACT (Phase 12 `07` §2): surface budget pressure as a
+        # soft constraint and, past a threshold, an explicit "finish, don't
+        # expand" directive so the LLM plans within budget instead of relying on
+        # the hard engine cap alone. budget_pressure is published by the loop in
+        # the materialised context (__agent_state__).
+        budget_pressure: Optional[float] = None
+        _astate = context.get("__agent_state__") if isinstance(context, dict) else None
+        if isinstance(_astate, dict) and _astate.get("budget_pressure") is not None:
+            try:
+                budget_pressure = float(_astate["budget_pressure"])
+            except (TypeError, ValueError):
+                budget_pressure = None
+        if budget_pressure is not None:
+            try:
+                from src.ai.core.feature_flags import FeatureFlags
+                _ff = FeatureFlags(self.db)
+                if await _ff.is_on(
+                    "agent_loop.budget_aware_react",
+                    company_id=run.company_id,
+                    entity_id=getattr(entity, "id", None),
+                ):
+                    _threshold = await _ff.get_float(
+                        "agent_loop.budget_pressure_threshold",
+                        company_id=run.company_id,
+                        entity_id=getattr(entity, "id", None),
+                    )
+                    from src.ai.core.budget import budget_prompt_lines
+                    exec_constraints.update(
+                        budget_prompt_lines(budget_pressure, _threshold)
+                    )
+            except Exception as _bp_err:  # noqa: BLE001 - prompt nudge is best-effort
+                logger.debug(f"budget-aware REACT injection skipped: {_bp_err}")
+
         # --- Build tools ---
         # Only AUTONOMOUS and BOTH tools are injected into the LLM prompt.
         # PLANNED-only tools are executed deterministically by the static plan executor.

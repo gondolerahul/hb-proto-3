@@ -67,6 +67,27 @@ def test_every_internal_key_documented() -> None:
 
 
 # ---------------------------------------------------------------------------
+# ...and the reverse: every key the table documents still exists in the
+# constants set, so the doc can't rot by retaining a removed key
+# (Phase 12 `07` §6 — INTERNAL_CONTEXT_KEYS doc enforcement, both directions).
+# ---------------------------------------------------------------------------
+
+
+def test_no_orphan_documented_internal_keys() -> None:
+    from src.ai.constants import INTERNAL_CONTEXT_KEYS
+
+    doc = (AI_ROOT / "core" / "INTERNAL_KEYS.md").read_text()
+    # Inventory rows look like:  | `key` | writer | reader | ... |
+    documented = set(re.findall(r"^\|\s*`([^`]+)`\s*\|", doc, flags=re.MULTILINE))
+    assert documented, "could not parse any documented keys from INTERNAL_KEYS.md"
+    orphans = sorted(k for k in documented if k not in INTERNAL_CONTEXT_KEYS)
+    assert not orphans, (
+        "INTERNAL_KEYS.md documents keys no longer in INTERNAL_CONTEXT_KEYS "
+        "(remove the rows or restore the keys): " + ", ".join(orphans)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Phase 11 RETROSPECTIVE exists
 # ---------------------------------------------------------------------------
 

@@ -172,8 +172,18 @@ capabilities, `07` hardening — none started.
       canary; registry publish.
 - [ ] **02 S7 — canary one company → default ON** (prod; needs the egress proxy
       + CVE scan from the security review). *(ops)*
-- [ ] **03 V1–V5 — split `video_generation`** into `video_generate`/`video_edit`/
-      `video_add_sound` *(`03` §4)*. *(L)*
+- [x] **03 V1–V6 — split `video_generation`** into `video_generate`/`video_edit`/
+      `video_add_sound` *(`03` §4)* — **DONE.** Three composable tools under
+      `tools/media/video/` over a shared `_ffmpeg.py` that routes every ffmpeg
+      call through `run_sandbox_exec` (container-when-enabled, metered as
+      compute). `video_generate` = single-segment generation (refuses >8s with a
+      structured compose-hint); `video_edit` = concat/trim/resize/transition/
+      overlay + an `extend` planning op (no model cost); `video_add_sound` =
+      file/tts/generated audio mux+mix (tts/generated return structured
+      provider-unavailable errors until a provider is wired). `video_generation`
+      kept as a **DEPRECATED shim** composing the three (no seed references it;
+      remove on the next release). Cost/latency/category maps updated; 22
+      hermetic tests (ffmpeg faked); package `mypy --strict` clean.
 
 ---
 
@@ -277,7 +287,7 @@ Phase 11 did Stage-A groundwork.
 | 02 | Sandbox S6 cost attribution (`sandbox` SKU) | ✅ |
 | 02 | Sandbox per-company canary wiring + §6 security review + real image build | ✅ |
 | 02 | Sandbox S7 canary→default ON (prod; egress proxy + CVE scan gates) | ❌ |
-| 03 | Video tool split | ❌ |
+| 03 | Video tool split (generate/edit/add_sound + deprecated shim) | ✅ |
 | 04 | CORTEX package extraction | ❌ (A-groundwork ✅) |
 | 06 | v4 board exists | ✅ |
 | 06 | tool synthesis · introspection · composition graph · curator · prompt-evolution | ❌ |
