@@ -10,6 +10,17 @@ class Settings(BaseSettings):
     STREAMING_HOST: str = "localhost:8002"
     STREAMING_PROTOCOL: str = "ws"
 
+    # Phase 12 `02` S4 — per-tenant container sandbox. OFF by default;
+    # SubprocessRuntime stays the dev/CI default and the production rollback.
+    SANDBOX_CONTAINER_RUNTIME_ENABLED: bool = False
+    SANDBOX_IMAGE: str = "hb-sandbox:local"
+    SANDBOX_NETWORK: str = "none"
+    SANDBOX_MEMORY: str = "1g"
+    SANDBOX_CPUS: str = "1.0"
+    SANDBOX_PIDS_LIMIT: int = 256
+    SANDBOX_IDLE_PAUSE_SECONDS: int = 900
+    SANDBOX_REAP_SECONDS: int = 86400
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

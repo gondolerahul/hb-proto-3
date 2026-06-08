@@ -83,6 +83,11 @@ DEFAULTS: dict[str, bool] = {
     "planner.invariants_enforced": True,
     "planner.judge_enabled": True,
     "planner.priors_enabled": True,
+    # Per-tenant container sandbox canary (Phase 12 `02` S4). Default OFF;
+    # SubprocessRuntime stays the default substrate. A caller resolves this and
+    # threads it into the tool context as ``container_runtime`` for per-company
+    # rollout; the process-wide master is settings.SANDBOX_CONTAINER_RUNTIME_ENABLED.
+    "sandbox.container_runtime_enabled": False,
     # Memory v2 canonicalisation defaults.
     "memory.v2_canonical": True,
     "memory.viewport_compact": True,

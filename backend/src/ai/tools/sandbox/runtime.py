@@ -259,15 +259,45 @@ class SubprocessRuntime:
         return None
 
 
+def _container_runtime_selected(context: Optional[Mapping[str, Any]]) -> bool:
+    """Whether the per-tenant ``ContainerRuntime`` should be used.
+
+    An explicit ``context["container_runtime"]`` wins (this is where a caller
+    threads a resolved per-company ``sandbox.container_runtime_enabled`` feature
+    flag); otherwise the process-wide ``SANDBOX_CONTAINER_RUNTIME_ENABLED``
+    setting decides. Default OFF.
+    """
+    if context is not None and "container_runtime" in context:
+        return bool(context["container_runtime"])
+    try:
+        from src.common.config import settings
+
+        return bool(settings.SANDBOX_CONTAINER_RUNTIME_ENABLED)
+    except Exception:  # noqa: BLE001 - config import must never break tools
+        return False
+
+
 def get_sandbox_runtime(context: Optional[Mapping[str, Any]] = None) -> SandboxRuntime:
     """Return the runtime the sandbox tools should use.
 
-    Today this is always ``SubprocessRuntime``. The (S4) per-tenant
-    ``ContainerRuntime`` lands behind ``sandbox.container_runtime_enabled``
-    (default OFF) and is selected here, so the tools never change.
+    Defaults to ``SubprocessRuntime`` (today's behavior, the dev/CI default and
+    the production rollback path). When the per-tenant container runtime is
+    enabled (settings/flag, default OFF) this returns a ``ContainerRuntime``;
+    importing it is deferred so a host without Docker support never pays for it,
+    and any import failure falls back to ``SubprocessRuntime``. The tools never
+    change.
     """
     company_id = None
     if context:
         cid = context.get("company_id")
         company_id = str(cid) if cid else None
+
+    if _container_runtime_selected(context):
+        try:
+            from src.ai.tools.sandbox.container_runtime import ContainerRuntime
+
+            return ContainerRuntime(company_id=company_id)
+        except Exception:  # noqa: BLE001 - never let container selection break a tool
+            return SubprocessRuntime(company_id=company_id)
+
     return SubprocessRuntime(company_id=company_id)
