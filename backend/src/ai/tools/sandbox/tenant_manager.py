@@ -74,8 +74,12 @@ class TenantSandboxManager:
         self.config = config or TenantSandboxConfig()
 
     @staticmethod
-    def container_name(company_id: str) -> str:
-        return f"{_LABEL}-{company_id}"
+    def container_name(company_id: str, *, egress: bool = False) -> str:
+        # Egress and no-network containers are kept separate (a running
+        # container's network is fixed) so switching a company's NetworkPolicy
+        # never has to mutate a live container's network.
+        suffix = "-egress" if egress else ""
+        return f"{_LABEL}-{company_id}{suffix}"
 
     @classmethod
     def _lock_for(cls, company_id: str) -> asyncio.Lock:
@@ -153,11 +157,28 @@ class TenantSandboxManager:
     # lifecycle
     # ------------------------------------------------------------------
 
-    async def ensure(self, company_id: str) -> str:
+    async def ensure(self, company_id: str, *, egress: bool = False) -> str:
         """Return the name of a running container for ``company_id``, creating,
-        starting, or unpausing it as needed."""
-        name = self.container_name(company_id)
-        async with self._lock_for(company_id):
+        starting, or unpausing it as needed.
+
+        When ``egress`` is set the container joins the allow-list egress network
+        (`02`/`06` ``NetworkPolicy.ALLOWLIST``) instead of ``--network none``;
+        the :class:`EgressProxyManager` is ensured first and its proxy is
+        injected as ``HTTP(S)_PROXY``.
+        """
+        name = self.container_name(company_id, egress=egress)
+        network = self.config.network
+        proxy_env: List[str] = []
+        if egress:
+            from src.ai.tools.sandbox.egress_proxy import EgressProxyManager
+
+            proxy = EgressProxyManager()
+            proxy_url = await proxy.ensure()
+            network = proxy.internal_network
+            for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+                proxy_env += ["-e", f"{key}={proxy_url}"]
+
+        async with self._lock_for(name):
             status = await self._status(name)
             if status == "running":
                 return name
@@ -167,10 +188,17 @@ class TenantSandboxManager:
             if status in {"exited", "created", "dead"}:
                 # A stopped container can't take new run-flags; recreate clean.
                 await self._docker("rm", "-f", name, check=False)
-            await self._create(company_id, name)
+            await self._create(company_id, name, network=network, extra_env=proxy_env)
             return name
 
-    async def _create(self, company_id: str, name: str) -> None:
+    async def _create(
+        self,
+        company_id: str,
+        name: str,
+        *,
+        network: Optional[str] = None,
+        extra_env: Optional[List[str]] = None,
+    ) -> None:
         cfg = self.config
         args = [
             "run",
@@ -191,7 +219,7 @@ class TenantSandboxManager:
             "--security-opt",
             "no-new-privileges",
             "--network",
-            cfg.network,
+            network or cfg.network,
             "--memory",
             cfg.memory,
             "--cpus",
@@ -199,10 +227,11 @@ class TenantSandboxManager:
             "--pids-limit",
             str(cfg.pids_limit),
         ]
+        args += extra_env or []
         args += self._mounts(company_id)
         args += [cfg.image]
         await self._docker(*args, timeout=120.0)
-        logger.info("created sandbox container %s", name)
+        logger.info("created sandbox container %s (network=%s)", name, network or cfg.network)
 
     async def pause(self, company_id: str) -> None:
         name = self.container_name(company_id)

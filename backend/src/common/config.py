@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     # Chromium profile under the tenant workspace so cookies/logins survive across
     # calls. OFF by default (ephemeral context = today's behavior).
     SANDBOX_PERSISTENT_BROWSER_ENABLED: bool = False
+    # S7 egress proxy (Phase 12 `02`/`06`): the network gate for synthesized /
+    # network-using tools. When ALLOWLIST is in force the sandbox container joins
+    # an --internal docker network (no direct internet) whose only route out is a
+    # dual-homed tinyproxy enforcing SANDBOX_EGRESS_ALLOWLIST. OFF by default
+    # (NetworkPolicy.NONE → --network none stays today's behavior).
+    SANDBOX_EGRESS_PROXY_ENABLED: bool = False
+    SANDBOX_EGRESS_IMAGE: str = "hb-egress-proxy:local"
+    SANDBOX_EGRESS_NETWORK: str = "hb-egress-internal"
+    SANDBOX_EGRESS_UPLINK_NETWORK: str = "hb-egress-uplink"
+    SANDBOX_EGRESS_PROXY_PORT: int = 8888
+    # Comma-separated host allow-list the proxy permits (suffix match). Default
+    # is the Google API surface the tools already depend on.
+    SANDBOX_EGRESS_ALLOWLIST: str = "googleapis.com,google.com"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

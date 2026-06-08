@@ -69,11 +69,18 @@ Smoke-validated on the built image (uid=10001 confirmed; `touch /root/x` →
    *Follow-up:* drop the RO mount once tools read scripts from the in-image
    `/opt/docfactory/scripts` exclusively.
 
-3. **No egress allow-list proxy yet.** Default-deny (`--network none`) is the
-   safe posture, but the browser tool and any network-needing synthesized tool
-   will require *some* egress. *Follow-up (gating tool synthesis with network):*
-   a per-tenant DNS + domain allow-list egress proxy (plan §3.2) on a dedicated
-   bridge network — **do not** grant blanket `--network bridge`.
+3. **Egress allow-list proxy — IMPLEMENTED + verified.** Default-deny
+   (`--network none`) remains the default; for network-needing tools the
+   `hb-egress-proxy` (`backend/docker/egress-proxy/`, tinyproxy with
+   `FilterDefaultDeny`) is the gate. `EgressProxyManager` stands up an
+   `--internal` sandbox network (no direct internet) plus a **dual-homed** proxy
+   on an uplink bridge; `TenantSandboxManager.ensure(..., egress=True)` joins a
+   sandbox to the internal net with `HTTP(S)_PROXY` injected. Verified
+   end-to-end against real Docker (`tests/integration/test_egress_proxy_docker.py`):
+   allow-listed host reachable, non-allow-listed host refused, no direct egress
+   without the proxy. **Never** grant blanket `--network bridge`. *Remaining
+   prod gate:* image CVE scan + registry publish; optional per-company
+   allow-lists (today one process-wide `SANDBOX_EGRESS_ALLOWLIST`).
 
 4. **Timeout kill is best-effort across the docker-exec boundary.** The
    in-container `timeout` covers the normal case; a process that ignores
@@ -100,7 +107,8 @@ Smoke-validated on the built image (uid=10001 confirmed; `touch /root/x` →
 - [x] In-container exec timeout.
 - [x] Cost attribution (S6).
 - [x] Docker-gated integration tests; CI stays Docker-free.
-- [ ] **Egress proxy** before enabling network for any in-sandbox tool.
+- [x] **Egress proxy** (`hb-egress-proxy` + `EgressProxyManager`) — implemented
+      + Docker-verified (allow/deny/no-direct-egress). Enables `NetworkPolicy.ALLOWLIST`.
 - [ ] **Image CVE scan** in the publish pipeline.
 - [ ] Named `/workspace` volume migration (hardening, not blocking the keyless
       canary).
