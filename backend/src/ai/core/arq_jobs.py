@@ -9,7 +9,7 @@ Extracted from worker.py during Phase 10A restructuring.
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, Sequence, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -965,6 +965,39 @@ async def skill_promotion_scan(ctx: dict[str, Any]) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+async def _propose_prompt_update(db: Any, entity: Any, recent: Sequence[Any]) -> Any:
+    """Run the critic-of-critic over an entity's recent runs (`06` §6.1).
+
+    Best-effort: any failure returns an empty proposal so the cron still writes a
+    no-op candidate row. Never raises.
+    """
+    from src.ai.meta.prompt_evolution import PromptEvolutionCritic, PromptUpdateProposal, RunSample
+
+    try:
+        samples = [
+            RunSample(
+                run_id=str(r.id),
+                outcome=str(getattr(r, "status", "") or ""),
+                cost_usd=float(getattr(r, "total_cost_usd", 0) or 0),
+            )
+            for r in recent
+        ]
+        logic_gate = getattr(entity, "logic_gate", None)
+        current_prompt = (
+            getattr(entity, "system_prompt", None)
+            or getattr(entity, "prompt", None)
+            or (logic_gate.get("system_prompt", "") if isinstance(logic_gate, dict) else "")
+            or ""
+        )
+        from src.ai.llm.router import LLMRouter
+
+        llm = LLMRouter(db=db, company_id=entity.company_id)
+        return await PromptEvolutionCritic().propose(str(current_prompt), samples, llm=llm)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("prompt-evolution proposal failed: %s", exc)
+        return PromptUpdateProposal()
+
+
 async def meta_agent_prompt_evolution(ctx: dict[str, Any]) -> dict[str, Any]:
     """Weekly: write Meta-Agent prompt-update candidates (HITL-gated).
 
@@ -1002,15 +1035,17 @@ async def meta_agent_prompt_evolution(ctx: dict[str, Any]) -> dict[str, Any]:
                 if len(recent) < 3:
                     continue
                 tree = MetaIntelligenceTree(db, me.company_id)
+                proposal = await _propose_prompt_update(db, me, recent)
                 try:
                     await tree.add_prompt_update_candidate(
-                        prompt_diff="",  # filled by P2 LLM critic-of-critic
+                        prompt_diff=proposal.prompt_diff,
                         rationale=(
-                            f"Weekly automated review of {len(recent)} recent "
-                            "Meta-Agent runs. Awaiting LLM critic-of-critic "
-                            "implementation to populate prompt_diff."
+                            proposal.rationale
+                            or f"Weekly automated review of {len(recent)} recent "
+                               "Meta-Agent runs; no systemic issue found."
                         ),
-                        evidence_run_ids=[str(r.id) for r in recent[:5]],
+                        evidence_run_ids=proposal.evidence_run_ids
+                        or [str(r.id) for r in recent[:5]],
                     )
                     proposed += 1
                 except Exception as e:                                      # noqa: BLE001

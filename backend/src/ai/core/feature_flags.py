@@ -75,6 +75,9 @@ DEFAULTS: dict[str, bool] = {
     "meta_agent.skill_promotion_cron": True,
     "meta_agent.prompt_evolution_cron": True,
     "meta_agent.curator_consolidation_enabled": False,
+    # Third-model tiebreak for high-stakes spec-critic disagreements (Phase 12
+    # `06` §4.3). Default OFF; enabled per company.
+    "meta_agent.spec_critic_tiebreak": False,
     # Tool synthesis kill switch (Phase 12 `06` §2.2 control 5). Default OFF;
     # the marquee/most-dangerous capability. Even when ON, the tool_synthesis
     # meta-tool stays Meta-Agent-only + container-only-exec + DRAFT-register-only.
