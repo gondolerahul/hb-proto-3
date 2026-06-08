@@ -108,6 +108,10 @@ DEFAULTS: dict[str, bool] = {
     "memory.scope_policy_enforced": True,
     "memory.dreaming_outcome_trigger": True,
     "memory.embedding_resolver_v2": True,
+    # In-tenant provenance trust-score learning (Phase 12 `07` §3). Default OFF;
+    # when ON, source outcomes are folded into a learned per-source trust score
+    # the planner/critic can weight evidence by.
+    "memory.trust_score_learning": False,
     # Legacy alias kept for any pre-Track-6 code paths.
     "memory_v2.canonical": True,
 }
