@@ -170,8 +170,12 @@ capabilities, `07` hardening — none started.
       pptxgenjs/ffmpeg/soffice/docfactory, non-root, read-only root). **Remaining
       prod gates:** egress proxy + image CVE scan before a network-granting prod
       canary; registry publish.
-- [ ] **02 S7 — canary one company → default ON** (prod; needs the egress proxy
-      + CVE scan from the security review). *(ops)*
+- [◐] **02 S7 — canary one company → default ON** — **egress proxy DONE**
+      (`backend/docker/egress-proxy/` + `EgressProxyManager` +
+      `TenantSandboxManager.ensure(egress=True)`; `--internal` net + dual-homed
+      tinyproxy allow-list; Docker-verified allow/deny/no-direct-egress; backs
+      `NetworkPolicy.ALLOWLIST`). **Remaining = ops:** image CVE scan + registry
+      publish, then the per-company default-ON flip. *(ops)*
 - [x] **03 V1–V6 — split `video_generation`** into `video_generate`/`video_edit`/
       `video_add_sound` *(`03` §4)* — **DONE.** Three composable tools under
       `tools/media/video/` over a shared `_ffmpeg.py` that routes every ffmpeg
@@ -307,7 +311,8 @@ Phase 11 did Stage-A groundwork.
 | 02 | Sandbox S5 persistent browser (flag OFF) | ✅ |
 | 02 | Sandbox S6 cost attribution (`sandbox` SKU) | ✅ |
 | 02 | Sandbox per-company canary wiring + §6 security review + real image build | ✅ |
-| 02 | Sandbox S7 canary→default ON (prod; egress proxy + CVE scan gates) | ❌ |
+| 02 | Sandbox egress allow-list proxy (NetworkPolicy.ALLOWLIST) | ✅ |
+| 02 | Sandbox S7 canary→default ON (remaining: CVE scan + publish) | ◐ |
 | 03 | Video tool split (generate/edit/add_sound + deprecated shim) | ✅ |
 | 04 | CORTEX package extraction | ❌ (A-groundwork ✅) |
 | 06 | v4 board exists | ✅ |

@@ -27,9 +27,17 @@
 > - **`07` §5 eval harness** — `tests/eval/` (pure metrics + delta report; DB-gated
 >   replay runner).
 > - **`06` §2 tool-synthesis safety core** — `ToolSpec` + `ToolValidator` AST gate.
->   The LLM ToolSmith loop + sandbox-test + red-team + DRAFT registration remain
->   (need live LLM + the `02` egress proxy). **Note:** `ToolStatus` still lacks a
->   `DRAFT` value — add it when wiring DRAFT registration.
+>   The LLM ToolSmith loop + sandbox-test + red-team + DRAFT registration remain.
+>   **Note:** `ToolStatus` still lacks a `DRAFT` value — add it when wiring DRAFT
+>   registration.
+> - **Track A: Vertex creds wired** — `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION`
+>   in `backend/.env` (local); real embedding + generation verified via the VM's
+>   metadata SA. This VM is **not** keyless (see §1.7).
+> - **Track B: egress proxy DONE** — `02` S7's network gate. `hb-egress-proxy`
+>   image + `EgressProxyManager` (`--internal` net + dual-homed tinyproxy,
+>   allow-list) + `TenantSandboxManager.ensure(egress=True)`. Backs
+>   `NetworkPolicy.ALLOWLIST`. Docker-verified (allow/deny/no-direct-egress). The
+>   `02` S7 remainder is now just CVE scan + registry publish.
 
 ---
 
@@ -107,9 +115,16 @@
    real-DB parity checks as helper functions called from that one test**, not as
    new test functions. (PR-2/PR-3 follow this.)
 
-7. **No LLM API keys, but DB + Redis are live** (Postgres `localhost:5433`, Redis
-   `localhost:6379`). There is no live arq worker; the async child path is
-   exercised hermetically via the in-process drainer `tests/parity/worker_sim.py`.
+7. **DB + Redis are live** (Postgres `localhost:5433`, Redis `localhost:6379`).
+   There is no live arq worker; the async child path is exercised hermetically
+   via the in-process drainer `tests/parity/worker_sim.py`. **LLM is NOT keyless
+   on this VM** (correcting an earlier assumption): the box's attached service
+   account `hirebuddha-vertex-ai@hirebuddha-production` gives Vertex AI access via
+   ADC (metadata server, `cloud-platform` scope). Set `GOOGLE_CLOUD_PROJECT=`
+   `hirebuddha-production` + `GOOGLE_CLOUD_LOCATION=us-central1` in `backend/.env`
+   (done locally; `.env` is gitignored) and real Vertex embedding + `gemini-2.5-flash`
+   generation work — verified. The test suites still use a deterministic mock LLM
+   on purpose; real creds are only needed to run agents end-to-end.
 
 8. **The comment-narration lint is `error` mode.** Don't write comments matching
    `# Phase 12`, `# Fix X:`, `# RACE-N`, etc. in `backend/src/ai/**.py`.
