@@ -301,3 +301,56 @@ def get_sandbox_runtime(context: Optional[Mapping[str, Any]] = None) -> SandboxR
             return SubprocessRuntime(company_id=company_id)
 
     return SubprocessRuntime(company_id=company_id)
+
+
+# Feature-flag sources that represent an EXPLICIT per-scope decision (a DB row),
+# as opposed to the env/default fall-through that the settings master covers.
+_EXPLICIT_FLAG_SOURCES = {"entity", "entity_row", "company", "global"}
+
+
+async def _resolve_company_container_flag(company_id: Optional[str]) -> Optional[bool]:
+    """Resolve ``sandbox.container_runtime_enabled`` for a company from the DB.
+
+    Returns the flag value only when an explicit per-scope row exists (entity /
+    company / global); otherwise ``None`` so the caller falls through to the
+    process-wide ``SANDBOX_CONTAINER_RUNTIME_ENABLED`` setting. Any error (no DB,
+    no migration) is swallowed → ``None``.
+    """
+    if not company_id:
+        return None
+    try:
+        from uuid import UUID
+
+        from src.ai.core.feature_flags import FeatureFlags
+        from src.common.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            res = await FeatureFlags(db).resolve(
+                "sandbox.container_runtime_enabled",
+                company_id=UUID(str(company_id)),
+            )
+        if res.source in _EXPLICIT_FLAG_SOURCES:
+            return bool(res.value)
+        return None
+    except Exception:  # noqa: BLE001 - flag resolution must never break a tool
+        return None
+
+
+async def resolve_sandbox_runtime(
+    context: Optional[Mapping[str, Any]] = None,
+) -> "SandboxRuntime":
+    """Async runtime selection that honors the per-company canary flag.
+
+    The sync :func:`get_sandbox_runtime` can't await DB flag resolution, so tools
+    call this instead: it resolves the per-company
+    ``sandbox.container_runtime_enabled`` flag and threads the result into the
+    context as ``container_runtime`` (an explicit override the sync factory then
+    respects), with the process-wide setting as the fallback when no explicit
+    flag row exists.
+    """
+    ctx: dict[str, Any] = dict(context or {})
+    if "container_runtime" not in ctx:
+        flag = await _resolve_company_container_flag(ctx.get("company_id"))
+        if flag is not None:
+            ctx["container_runtime"] = flag
+    return get_sandbox_runtime(ctx)

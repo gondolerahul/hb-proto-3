@@ -13,11 +13,13 @@ from typing import Optional
 
 import pytest
 
+from src.ai.tools.sandbox import runtime as runtime_mod
 from src.ai.tools.sandbox.container_runtime import ContainerRuntime
 from src.ai.tools.sandbox.runtime import (
     SandboxRuntime,
     SubprocessRuntime,
     get_sandbox_runtime,
+    resolve_sandbox_runtime,
 )
 from src.ai.tools.sandbox.tenant_manager import (
     SandboxDockerError,
@@ -60,6 +62,62 @@ def test_factory_settings_enables_container(monkeypatch) -> None:
 
 def test_container_name() -> None:
     assert TenantSandboxManager.container_name("abc-123") == "hb-sandbox-abc-123"
+
+
+# --------------------------------------------------------------------------
+# async per-company canary resolution
+# --------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_resolve_explicit_db_flag_overrides_settings(monkeypatch) -> None:
+    from src.common import config
+
+    monkeypatch.setattr(config.settings, "SANDBOX_CONTAINER_RUNTIME_ENABLED", False)
+
+    async def _flag(_cid):
+        return True  # an explicit company/global row says ON
+
+    monkeypatch.setattr(runtime_mod, "_resolve_company_container_flag", _flag)
+    rt = await resolve_sandbox_runtime({"company_id": "c1"})
+    assert isinstance(rt, ContainerRuntime)
+
+
+@pytest.mark.asyncio
+async def test_resolve_no_db_flag_falls_through_to_settings(monkeypatch) -> None:
+    from src.common import config
+
+    monkeypatch.setattr(config.settings, "SANDBOX_CONTAINER_RUNTIME_ENABLED", True)
+
+    async def _none(_cid):
+        return None  # no explicit row → settings master decides
+
+    monkeypatch.setattr(runtime_mod, "_resolve_company_container_flag", _none)
+    rt = await resolve_sandbox_runtime({"company_id": "c1"})
+    assert isinstance(rt, ContainerRuntime)
+
+
+@pytest.mark.asyncio
+async def test_resolve_db_flag_off_overrides_settings_on(monkeypatch) -> None:
+    from src.common import config
+
+    monkeypatch.setattr(config.settings, "SANDBOX_CONTAINER_RUNTIME_ENABLED", True)
+
+    async def _off(_cid):
+        return False  # explicit opt-OUT row wins over the settings master
+
+    monkeypatch.setattr(runtime_mod, "_resolve_company_container_flag", _off)
+    rt = await resolve_sandbox_runtime({"company_id": "c1"})
+    assert isinstance(rt, SubprocessRuntime)
+
+
+@pytest.mark.asyncio
+async def test_resolve_explicit_context_skips_db(monkeypatch) -> None:
+    def _boom(_cid):  # must not be called when context is explicit
+        raise AssertionError("flag resolution should be skipped")
+
+    monkeypatch.setattr(runtime_mod, "_resolve_company_container_flag", _boom)
+    rt = await resolve_sandbox_runtime({"company_id": "c1", "container_runtime": True})
+    assert isinstance(rt, ContainerRuntime)
 
 
 # --------------------------------------------------------------------------

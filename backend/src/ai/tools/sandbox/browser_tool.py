@@ -141,10 +141,10 @@ class HeadlessBrowserTool(Tool):
         """Open a browser session via the SandboxRuntime, execute the action on
         its page, and return the result. The runtime owns browser lifecycle
         (launch/context/teardown); the action logic stays here."""
-        from src.ai.tools.sandbox.runtime import get_sandbox_runtime
+        from src.ai.tools.sandbox.runtime import resolve_sandbox_runtime
 
         try:
-            runtime = get_sandbox_runtime(context)
+            runtime = await resolve_sandbox_runtime(context)
             async with runtime.open_browser_session(timeout_ms=timeout_ms) as session:
                 page = session.page
                 if action == "navigate":

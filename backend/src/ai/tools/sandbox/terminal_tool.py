@@ -178,7 +178,7 @@ class TerminalTool(Tool):
         # 3. Execute
         _cmd_start_ts = time.time()
         try:
-            result = await self._run_subprocess(command, working_dir, timeout_s)
+            result = await self._run_subprocess(command, working_dir, timeout_s, context)
         except Exception as exc:
             logger.error(f"TerminalTool unexpected error: {exc}", exc_info=True)
             return json.dumps({
@@ -206,13 +206,18 @@ class TerminalTool(Tool):
         return result
 
     async def _run_subprocess(
-        self, command: str, working_dir: str, timeout_s: int
+        self,
+        command: str,
+        working_dir: str,
+        timeout_s: int,
+        context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Run ``bash -c command`` via the SandboxRuntime; shape the result
         into the tool's JSON contract (output cap + wording unchanged)."""
-        from src.ai.tools.sandbox.runtime import get_sandbox_runtime
+        from src.ai.tools.sandbox.runtime import resolve_sandbox_runtime
 
-        res = await get_sandbox_runtime().exec(
+        runtime = await resolve_sandbox_runtime(context)
+        res = await runtime.exec(
             ["/bin/bash", "-c", command],
             cwd=working_dir,
             timeout=float(timeout_s),
