@@ -193,23 +193,38 @@ capabilities, `07` hardening — none started.
 
 ## 4. Stage 2 — Meta-Agent v5 (Track B)
 
-v4 board exists; all v5 capabilities unbuilt.
+v4 board exists; the v5 capabilities are now built (code-complete behind
+default-OFF flags; GA flips are in `OPS_REMAINDER.md`).
 
-- [ ] **06 §3 — board GA on the AgentLoop + introspection tools** *(after C4)*. *(L)*
-- [ ] **06 §5 — intelligence → planner wiring + rule lifecycle**. *(M)*
-- [ ] **06 §4 — close the learning loop** (Curator-ON + composition graph). *(L)*
-- [ ] **06 §6 — Meta-Agent self-modification** (prompt-evolution LLM diff + reseed). *(L)*
-- [◐] **06 §2 — TOOL SYNTHESIS (marquee)** — **safety core landed.**
-      `schemas/tools.py::ToolSpec` (+ `NetworkPolicy`, `ToolExample`) and
-      `meta/tool_validator.py::ToolValidator` (AST static-analysis gate: import
-      allow-list, network-policy gating, dynamic-code/escape/process/secret
-      rejection, Tool-subclass structure — 16 tests) are in. The `02` substrate
-      (ContainerRuntime S4 + real `hb-sandbox` image + §6 review) is ready, so
-      synthesized tools can exec in the container. **Remaining:** the ToolSmith
-      role (LLM writes the `Tool` subclass), the sandbox-test-against-examples
-      loop, the LLM red-team, DRAFT-status registration + the `tool_synthesis`
-      meta-tool gated to `is_meta_agent`, and the `meta_agent.tool_synthesis_enabled`
-      kill switch — all need live LLM + the egress proxy for network tools. *(XL)*
+- [◐] **06 §3 — board GA on the AgentLoop + introspection tools** — introspection
+      tools DONE (§3.1); board-on-AgentLoop re-platform + GA flip remain *(canary)*.
+- [x] **06 §5 — intelligence → planner wiring + rule lifecycle** — **DONE.**
+      `memory/rule_lifecycle.py` (pure candidate→confirmed→retired policy +
+      `filter_for_prompt`); the Perceiver drops retired rules and, behind
+      `memory.rule_lifecycle_confirmed_only` (OFF), injects confirmed-only (legacy
+      lifecycle-less rules stay eligible). task_classifier v1-vs-v2 A/B remains an
+      eval-harness run *(ops)*.
+- [x] **06 §4 — close the learning loop** — **DONE.** §4.1 Curator consolidation
+      merge-plans (`meta/consolidation.py`, propose-only + HITL, gated by
+      `meta_agent.curator_consolidation_enabled`); §4.2 composition graph
+      (`MetaIntelligenceTree.record_composition`/`query_compositions`); §4.3
+      high-stakes third-model spec tiebreak (`meta/spec_tiebreak.py`,
+      `meta_agent.spec_critic_tiebreak` OFF); §4.4 TestDriver goldens
+      (`meta/board/golden_outcomes.py`).
+- [x] **06 §6 — Meta-Agent self-modification** — **DONE.** §6.1 prompt-evolution
+      LLM diff (`meta/prompt_evolution.py` critic-of-critic, wired into the
+      `meta_agent_prompt_evolution` cron, HITL-gated); §6.3 version-aware reseed
+      preserving evolved prompts (`meta/reseed_meta_agent.py`). §6.2 tool-set
+      evolution is covered by the tool-synthesis need-detector + the
+      prompt_update_candidate mechanism.
+- [x] **06 §2 — TOOL SYNTHESIS (marquee)** — **DONE.** Full pipeline:
+      `meta/board/tool_smith.py` (LLM writes the `Tool` subclass) →
+      `meta/tool_validator.py` (AST gate) → `meta/tool_sandbox_tester.py`
+      (container replay) → `meta/tool_red_team.py` (adversarial LLM) →
+      `meta/tool_synthesis_pipeline.py` (DRAFT registration). Gated meta-tool
+      `tools/meta/tool_synthesis.py` (EXPERIMENTAL visibility + `__is_meta_agent__`
+      + `meta_agent.tool_synthesis_enabled` kill switch, OFF); `ToolStatus.DRAFT`
+      added; runtime `SandboxedSynthesizedTool` execs only in the sandbox. 13 tests.
 - [ ] **06 §3.1 — introspection tools** — **DONE.** `agent_introspect`
       (read-only budget/iteration/subgoals/rules/viewport snapshot) +
       `agent_reflect` (run-scoped + candidate CORTEX write); `resolve_meta_cognition`
@@ -257,8 +272,12 @@ Phase 11 did Stage-A groundwork.
       (`grade` + corpus replay via injected `run_fn`, DB-gated integration),
       `config.py` (`EvalConfig` flag bundles). Corpus = `tests/regression/cases`.
       14 hermetic tests.
-- [ ] **07 §1 — MCP tool adapter** *(L)*; **07 §3 — provenance trust-score
-      learning** *(M)*.
+- [x] **07 §1 — MCP tool adapter** — **DONE.** `tools/mcp/` — transport-agnostic
+      `MCPClient` Protocol + `MCPToolAdapter` (read-only-first, per-company
+      allow-list, `mcp` cost attribution, EXPERIMENTAL visibility) + `bind_mcp_server`.
+- [x] **07 §3 — provenance trust-score learning** — **DONE.** `memory/trust_learning.py`
+      (Beta-posterior learned trust over in-tenant source outcomes) +
+      `source_trust_scores` table; flag `memory.trust_score_learning` (OFF).
 - [x] **07 §2 — budget-aware REACT** — **DONE.** Budget pressure → step prompt
       (soft line + a "finish, don't expand" directive past
       `agent_loop.budget_pressure_threshold`=0.70) behind
@@ -317,11 +336,17 @@ Phase 11 did Stage-A groundwork.
 | 04 | CORTEX package extraction | ❌ (A-groundwork ✅) |
 | 06 | v4 board exists | ✅ |
 | 06 | introspection tools (agent_introspect/agent_reflect) | ✅ |
-| 06 | tool synthesis (ToolSpec + ToolValidator safety core) | ◐ |
-| 06 | tool synthesis (ToolSmith LLM loop · red-team · DRAFT register) | ❌ |
-| 06 | composition graph · curator · prompt-evolution | ❌ |
+| 06 | tool synthesis (ToolSpec + ToolValidator safety core) | ✅ |
+| 06 | tool synthesis (ToolSmith LLM loop · red-team · DRAFT register) | ✅ |
+| 06 | composition graph (§4.2) · curator consolidation (§4.1) | ✅ |
+| 06 | spec tiebreak (§4.3) · TestDriver goldens (§4.4) | ✅ |
+| 06 | rule lifecycle + confirmed-only planner gate (§5) | ✅ |
+| 06 | prompt-evolution LLM diff (§6.1) · version-aware reseed (§6.3) | ✅ |
+| 06 | board GA flip · LLM-Strategist pilot · task_classifier A/B | ◐ (canary/eval) |
 | 07 | cost-attribution gate | ✅ |
 | 07 | eval harness (tests/eval) | ✅ |
 | 07 | budget-aware REACT | ✅ |
 | 07 | INTERNAL_KEYS reverse guard + embedding SSOT test | ✅ |
-| 07 | MCP adapter · trust-score learning | ❌ |
+| 07 | MCP adapter (§1) · trust-score learning (§3) | ✅ |
+| 07 | CSAT capture (§6) · SSE narrative (§6) | ✅ |
+| P-O1 | Phase 12 dashboards (CSAT/sandbox+MCP/synthesis/trust) | ✅ |

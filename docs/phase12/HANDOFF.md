@@ -14,6 +14,27 @@
 > next: `06` tool-synthesis LLM loop / board GA, `07` MCP adapter / trust-score)
 > **Branch:** `phase12/stage1-consolidation`
 
+> **Session addendum (2026-06-08, capability completion):** Phase 12 capability
+> tracks finished out — ten more gate-green commits (unit 746 / parity 2 / lint 0
+> / mypy --strict 0 over 113 files):
+> - **`06` §2 tool synthesis (marquee) DONE** — ToolSmith → ToolValidator →
+>   sandbox replay → red-team → DRAFT register; gated meta-tool + `ToolStatus.DRAFT`
+>   + `meta_agent.tool_synthesis_enabled` kill switch (all OFF). See
+>   [[phase12-06-tool-synthesis]].
+> - **`07` §1 MCP adapter** (`tools/mcp/`), **`07` §3 trust-score learning**
+>   (`memory/trust_learning.py` + `source_trust_scores` migration).
+> - **`07` §6 smalls** — CSAT capture (`execution_runs.csat_score` + endpoint),
+>   SSE iteration narrative, seed-hygiene verified.
+> - **`06` §4** consolidation merge-plans + composition graph + spec tiebreak +
+>   TestDriver goldens; **§5** rule lifecycle + confirmed-only planner gate;
+>   **§6.1** prompt-evolution LLM diff (cron wired) + **§6.3** version-aware reseed.
+> - **P-O1** `infra/dashboards/phase12/` + **`OPS_REMAINDER.md`** (the build-done/
+>   ship-pending list: `02` S7 CVE+publish, `04` PyPI, GA canary flips, frontend).
+> - New flags (all default OFF): `meta_agent.tool_synthesis_enabled`,
+>   `meta_agent.spec_critic_tiebreak`, `memory.trust_score_learning`,
+>   `memory.rule_lifecycle_confirmed_only`. New migrations:
+>   `p12_source_trust_scores`, `p12_run_csat`.
+>
 > **Session addendum (2026-06-08, capability tracks):** six commits on top of the
 > base branch, each gate-green (lint 0 / typecheck 0 / unit) and hermetic:
 > - **`03` video split** — `video_generation` → `video_generate` / `video_edit` /
