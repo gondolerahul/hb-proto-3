@@ -115,6 +115,11 @@ DEFAULTS: dict[str, bool] = {
     # when ON, source outcomes are folded into a learned per-source trust score
     # the planner/critic can weight evidence by.
     "memory.trust_score_learning": False,
+    # IntelligenceTree rule lifecycle (Phase 12 `06` §5): when ON, only
+    # `confirmed` rules (candidate→confirmed→retired) enter planner/critic
+    # prompts. Retired rules are always dropped; default OFF keeps legacy
+    # (lifecycle-less) rules eligible so enabling never blanks prompts.
+    "memory.rule_lifecycle_confirmed_only": False,
     # Legacy alias kept for any pre-Track-6 code paths.
     "memory_v2.canonical": True,
 }

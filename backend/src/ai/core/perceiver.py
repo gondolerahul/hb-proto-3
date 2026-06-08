@@ -146,8 +146,26 @@ class Perceiver:
             except Exception:
                 continue
             if isinstance(result, list):
-                return [self._coerce_dict(r) for r in result]
+                return await self._apply_rule_lifecycle(
+                    [self._coerce_dict(r) for r in result], state)
         return []
+
+    async def _apply_rule_lifecycle(
+        self, rules: list[dict[str, Any]], state: AgentState,
+    ) -> list[dict[str, Any]]:
+        """Drop retired rules; with the flag, keep only confirmed (`06` §5)."""
+        from src.ai.memory.rule_lifecycle import filter_for_prompt
+
+        confirmed_only = False
+        try:
+            from src.ai.core.feature_flags import FeatureFlags
+            confirmed_only = await FeatureFlags().is_on(
+                "memory.rule_lifecycle_confirmed_only",
+                company_id=getattr(state, "company_id", None),
+            )
+        except Exception:
+            confirmed_only = False
+        return filter_for_prompt(rules, confirmed_only=confirmed_only)
 
     async def _gather_similar_runs(self, state: AgentState) -> list[dict[str, Any]]:
         if self.memory is None:
