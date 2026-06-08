@@ -143,12 +143,18 @@ class HeadlessBrowserTool(Tool):
         (launch/context/teardown); the action logic stays here."""
         import time as _time
 
-        from src.ai.tools.sandbox.runtime import resolve_sandbox_runtime
+        from src.ai.tools.sandbox.runtime import (
+            resolve_persistent_browser_dir,
+            resolve_sandbox_runtime,
+        )
 
         runtime = await resolve_sandbox_runtime(context)
+        user_data_dir = await resolve_persistent_browser_dir(context)
         _session_start = _time.monotonic()
         try:
-            async with runtime.open_browser_session(timeout_ms=timeout_ms) as session:
+            async with runtime.open_browser_session(
+                timeout_ms=timeout_ms, user_data_dir=user_data_dir
+            ) as session:
                 page = session.page
                 if action == "navigate":
                     result = await self._action_navigate(page, args, timeout_ms)

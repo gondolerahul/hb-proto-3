@@ -152,12 +152,18 @@ class ContainerRuntime:
         viewport: Optional[Mapping[str, int]] = None,
         user_agent: Optional[str] = None,
         persona: Optional[str] = None,
+        user_data_dir: Optional[str] = None,
     ) -> AsyncIterator[BrowserSession]:
+        # The browser runs on the host for now (S5 persistence via the profile
+        # dir, which lives on the bind-mounted tenant workspace so it is the same
+        # bytes the container would see); running Chromium *inside* the container
+        # over CDP is a later hardening.
         async with self._browser_fallback.open_browser_session(
             timeout_ms=timeout_ms,
             viewport=viewport,
             user_agent=user_agent,
             persona=persona,
+            user_data_dir=user_data_dir,
         ) as session:
             yield session
 

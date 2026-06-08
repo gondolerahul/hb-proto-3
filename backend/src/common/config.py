@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # (IntegrationRegistry.service_sku, owned by the APP company; cost_unit
     # "second"). Seed it with scripts/seed_sandbox_sku.py.
     SANDBOX_COST_SKU: str = "sandbox-runtime"
+    # S5 persistent browser: when enabled, headless_browser uses a persistent
+    # Chromium profile under the tenant workspace so cookies/logins survive across
+    # calls. OFF by default (ephemeral context = today's behavior).
+    SANDBOX_PERSISTENT_BROWSER_ENABLED: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

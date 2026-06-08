@@ -136,8 +136,13 @@ class SandboxRuntime(Protocol):
         viewport: Optional[Mapping[str, int]] = None,
         user_agent: Optional[str] = None,
         persona: Optional[str] = None,
+        user_data_dir: Optional[str] = None,
     ) -> "contextlib.AbstractAsyncContextManager[BrowserSession]":
-        """Async context manager yielding a ``BrowserSession``."""
+        """Async context manager yielding a ``BrowserSession``.
+
+        ``user_data_dir`` (S5): when set, a persistent Chromium profile rooted
+        there is reused, so cookies/logins survive across sessions.
+        """
         ...
 
     # --- file ops (host FS today; tenant volume under ContainerRuntime) ---
@@ -213,21 +218,39 @@ class SubprocessRuntime:
         timeout_ms: int = 30000,
         viewport: Optional[Mapping[str, int]] = None,
         user_agent: Optional[str] = None,
-        persona: Optional[str] = None,  # noqa: ARG002 - persistence is S5
+        persona: Optional[str] = None,  # noqa: ARG002 - reserved for callers
+        user_data_dir: Optional[str] = None,
     ) -> AsyncIterator[BrowserSession]:
         # Imported lazily so the module loads without Playwright; the caller
         # catches ImportError to reproduce the tool's "not installed" message.
         from playwright.async_api import async_playwright
 
         pw = await async_playwright().start()
-        browser = await pw.chromium.launch(headless=True)
-        ctx = await browser.new_context(
-            viewport=dict(viewport) if viewport else dict(_DEFAULT_VIEWPORT),
-            user_agent=user_agent or _DEFAULT_USER_AGENT,
-        )
-        page = await ctx.new_page()
-        page.set_default_timeout(timeout_ms)
-        session = BrowserSession(page, _playwright=pw, _browser=browser, _context=ctx)
+        if user_data_dir:
+            # S5 persistent profile: launch_persistent_context owns the browser,
+            # so there is no separate browser handle; closing the context tears
+            # everything down. The profile dir persists cookies/logins on close.
+            os.makedirs(user_data_dir, exist_ok=True)
+            ctx = await pw.chromium.launch_persistent_context(
+                user_data_dir,
+                headless=True,
+                viewport=dict(viewport) if viewport else dict(_DEFAULT_VIEWPORT),
+                user_agent=user_agent or _DEFAULT_USER_AGENT,
+            )
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            page.set_default_timeout(timeout_ms)
+            session = BrowserSession(page, _playwright=pw, _browser=None, _context=ctx)
+        else:
+            browser = await pw.chromium.launch(headless=True)
+            ctx = await browser.new_context(
+                viewport=dict(viewport) if viewport else dict(_DEFAULT_VIEWPORT),
+                user_agent=user_agent or _DEFAULT_USER_AGENT,
+            )
+            page = await ctx.new_page()
+            page.set_default_timeout(timeout_ms)
+            session = BrowserSession(
+                page, _playwright=pw, _browser=browser, _context=ctx
+            )
         try:
             yield session
         finally:
@@ -308,13 +331,14 @@ def get_sandbox_runtime(context: Optional[Mapping[str, Any]] = None) -> SandboxR
 _EXPLICIT_FLAG_SOURCES = {"entity", "entity_row", "company", "global"}
 
 
-async def _resolve_company_container_flag(company_id: Optional[str]) -> Optional[bool]:
-    """Resolve ``sandbox.container_runtime_enabled`` for a company from the DB.
+async def _resolve_company_flag(
+    flag_key: str, company_id: Optional[str]
+) -> Optional[bool]:
+    """Resolve a per-company sandbox flag from the DB.
 
-    Returns the flag value only when an explicit per-scope row exists (entity /
+    Returns the value only when an explicit per-scope row exists (entity /
     company / global); otherwise ``None`` so the caller falls through to the
-    process-wide ``SANDBOX_CONTAINER_RUNTIME_ENABLED`` setting. Any error (no DB,
-    no migration) is swallowed → ``None``.
+    process-wide setting. Any error (no DB, no migration) is swallowed → ``None``.
     """
     if not company_id:
         return None
@@ -326,14 +350,18 @@ async def _resolve_company_container_flag(company_id: Optional[str]) -> Optional
 
         async with AsyncSessionLocal() as db:
             res = await FeatureFlags(db).resolve(
-                "sandbox.container_runtime_enabled",
-                company_id=UUID(str(company_id)),
+                flag_key, company_id=UUID(str(company_id))
             )
         if res.source in _EXPLICIT_FLAG_SOURCES:
             return bool(res.value)
         return None
     except Exception:  # noqa: BLE001 - flag resolution must never break a tool
         return None
+
+
+async def _resolve_company_container_flag(company_id: Optional[str]) -> Optional[bool]:
+    """Per-company ``sandbox.container_runtime_enabled`` (see _resolve_company_flag)."""
+    return await _resolve_company_flag("sandbox.container_runtime_enabled", company_id)
 
 
 async def resolve_sandbox_runtime(
@@ -354,6 +382,51 @@ async def resolve_sandbox_runtime(
         if flag is not None:
             ctx["container_runtime"] = flag
     return get_sandbox_runtime(ctx)
+
+
+async def resolve_persistent_browser_dir(
+    context: Optional[Mapping[str, Any]] = None,
+) -> Optional[str]:
+    """Return the persistent Chromium profile dir for this call, or ``None``.
+
+    Persistence (S5) is on when an explicit ``context["persistent_browser"]`` is
+    truthy, or the per-company ``sandbox.persistent_browser_enabled`` flag is set,
+    or the ``SANDBOX_PERSISTENT_BROWSER_ENABLED`` setting is on. Requires a
+    ``company_id``; the profile lives under the tenant workspace (so it is the
+    same dir the container sees via the bind-mount), namespaced by ``persona``.
+    """
+    if context is None:
+        return None
+    company_id = context.get("company_id")
+    if not company_id:
+        return None
+
+    enabled: Optional[bool] = None
+    if "persistent_browser" in context:
+        enabled = bool(context["persistent_browser"])
+    if enabled is None:
+        flag = await _resolve_company_flag("sandbox.persistent_browser_enabled", company_id)
+        if flag is not None:
+            enabled = flag
+    if enabled is None:
+        try:
+            from src.common.config import settings
+
+            enabled = bool(settings.SANDBOX_PERSISTENT_BROWSER_ENABLED)
+        except Exception:  # noqa: BLE001
+            enabled = False
+    if not enabled:
+        return None
+
+    persona = str(context.get("persona") or "default")
+    base = os.path.join(_sandbox_base_dir(), str(company_id), ".browser", persona)
+    return base
+
+
+def _sandbox_base_dir() -> str:
+    import tempfile
+
+    return os.path.join(tempfile.gettempdir(), "sandbox")
 
 
 async def run_sandbox_exec(

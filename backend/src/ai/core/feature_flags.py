@@ -88,6 +88,11 @@ DEFAULTS: dict[str, bool] = {
     # threads it into the tool context as ``container_runtime`` for per-company
     # rollout; the process-wide master is settings.SANDBOX_CONTAINER_RUNTIME_ENABLED.
     "sandbox.container_runtime_enabled": False,
+    # Per-tenant persistent browser profile canary (Phase 12 `02` S5). Default
+    # OFF (ephemeral context). Resolved per-company and threaded into the tool
+    # context as ``persistent_browser``; master is
+    # settings.SANDBOX_PERSISTENT_BROWSER_ENABLED.
+    "sandbox.persistent_browser_enabled": False,
     # Memory v2 canonicalisation defaults.
     "memory.v2_canonical": True,
     "memory.viewport_compact": True,
