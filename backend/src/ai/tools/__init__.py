@@ -195,12 +195,17 @@ from src.ai.tools.meta import (
     MetaRegistrySearchTool, MetaSchemaValidatorTool,
     MetaEntityCreatorTool, MetaEntityExecutorTool,
     MetaPlatformIntrospectTool,
+    AgentIntrospectTool, AgentReflectTool,
 )
 ToolRegistry.register(MetaPlatformIntrospectTool())
 ToolRegistry.register(MetaRegistrySearchTool())
 ToolRegistry.register(MetaSchemaValidatorTool())
 ToolRegistry.register(MetaEntityCreatorTool())
 ToolRegistry.register(MetaEntityExecutorTool())
+# Introspection meta-tools (Phase 12 `06` §3.1) — opt-in self-introspection +
+# reflection, auto-injected per the meta-cognition matrix.
+ToolRegistry.register(AgentIntrospectTool())
+ToolRegistry.register(AgentReflectTool())
 
 __all__ = [
     "Tool", "ToolRegistry",
@@ -254,5 +259,6 @@ __all__ = [
     "MetaPlatformIntrospectTool", "MetaRegistrySearchTool",
     "MetaSchemaValidatorTool", "MetaEntityCreatorTool",
     "MetaEntityExecutorTool",
+    "AgentIntrospectTool", "AgentReflectTool",
 ]
 

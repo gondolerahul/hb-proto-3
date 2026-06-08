@@ -830,6 +830,10 @@ def resolve_meta_cognition(entity: Any) -> Dict[str, Any]:
         "platform_awareness": explicit.get("platform_awareness", True),
         "registry_search": explicit.get("registry_search", False),
         "self_modification": explicit.get("self_modification", False),
+        # Introspection meta-tools (`06` §3.1). Defaults are filled in by
+        # entity type below (per the §1 matrix) unless explicitly set.
+        "self_introspection": explicit.get("self_introspection", None),
+        "reflection": explicit.get("reflection", None),
         "max_runtime_creations": explicit.get("max_runtime_creations", 3),
         "max_registry_searches": explicit.get("max_registry_searches", 5),
     }
@@ -881,6 +885,14 @@ def resolve_meta_cognition(entity: Any) -> Dict[str, Any]:
     if is_meta_agent:
         config["registry_search"] = True
         config["self_modification"] = True
+
+    # Introspection defaults per the §1 matrix (only when not explicitly set):
+    #   self-introspection → SKILL (r/o) + AGENT + PROCESS
+    #   reflection         → AGENT + PROCESS (SKILL is run-scoped only)
+    if config["self_introspection"] is None:
+        config["self_introspection"] = entity_type in ("SKILL", "AGENT", "PROCESS")
+    if config["reflection"] is None:
+        config["reflection"] = entity_type in ("AGENT", "PROCESS")
 
     return config
 

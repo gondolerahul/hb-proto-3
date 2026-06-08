@@ -18,6 +18,8 @@ from src.ai.tools.meta.entity_creator import MetaEntityCreatorTool
 from src.ai.tools.meta.entity_executor import MetaEntityExecutorTool
 from src.ai.tools.meta.platform_introspect import MetaPlatformIntrospectTool
 from src.ai.tools.meta.spec_critic import MetaSpecCriticTool
+from src.ai.tools.meta.agent_introspect import AgentIntrospectTool
+from src.ai.tools.meta.agent_reflect import AgentReflectTool
 
 __all__ = [
     "MetaRegistrySearchTool",
@@ -26,4 +28,6 @@ __all__ = [
     "MetaEntityExecutorTool",
     "MetaPlatformIntrospectTool",
     "MetaSpecCriticTool",
+    "AgentIntrospectTool",
+    "AgentReflectTool",
 ]

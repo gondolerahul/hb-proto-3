@@ -744,6 +744,12 @@ class StepExecutorService:
                 if meta_tool not in tool_ids:
                     tool_ids.append(meta_tool)
             logger.debug(f"Tier 3: Auto-injected meta_entity_creator/executor for {entity.name}")
+
+        # Introspection meta-tools (Phase 12 `06` §3.1) per the §1 matrix.
+        if meta_config.get("self_introspection") and "agent_introspect" not in tool_ids:
+            tool_ids.append("agent_introspect")
+        if meta_config.get("reflection") and "agent_reflect" not in tool_ids:
+            tool_ids.append("agent_reflect")
         # ───────────────────────────────────────────────────────────────
 
         tool_schemas = ToolExecutor.get_tool_schemas(tool_ids)
