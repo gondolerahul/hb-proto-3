@@ -353,7 +353,7 @@ class PlatformSchemaCompiler:
             "document": ["pdf_generator", "file_writer", "docx_tool", "pptx_tool", "excel"],
             "communication": ["email_ingest", "email_classify", "email_draft", "email_send",
                               "whatsapp_send_tenant"],
-            "media": ["image_generation", "video_generation"],
+            "media": ["image_generation", "video_generate", "video_edit", "video_add_sound"],
             "code": ["sandbox_code", "terminal_tool"],
             "browser": ["headless_browser"],
             "social": ["linkedin", "twitter", "facebook", "instagram", "youtube",

@@ -20,6 +20,11 @@ from src.ai.tools.core.file_writer import FileWriterTool
 from src.ai.tools.email.email_tool import EmailIngestTool, EmailClassifyTool, EmailDraftTool, EmailSendTool
 from src.ai.tools.media.image_generation import ImageGenerationTool
 from src.ai.tools.media.video_generation import VideoGenerationTool
+from src.ai.tools.media.video import (
+    VideoGenerateTool,
+    VideoEditTool,
+    VideoAddSoundTool,
+)
 from src.ai.tools.sandbox.sandbox_executor import SandboxCodeTool
 from src.ai.tools.sandbox.terminal_tool import TerminalTool
 from src.ai.tools.sandbox.browser_tool import HeadlessBrowserTool
@@ -50,6 +55,11 @@ ToolRegistry.register(EmailSendTool())
 
 # Media generation tools
 ToolRegistry.register(ImageGenerationTool())
+# Composable video tools (Phase 12 `03`): generate / edit / add-sound.
+ToolRegistry.register(VideoGenerateTool())
+ToolRegistry.register(VideoEditTool())
+ToolRegistry.register(VideoAddSoundTool())
+# Deprecated mega-tool shim — composes the three above; remove after seeds migrate.
 ToolRegistry.register(VideoGenerationTool())
 
 # Sandbox execution tool (Ph-A: asyncio subprocess tier)
@@ -197,7 +207,9 @@ __all__ = [
     "CalculatorTool", "WebSearchTool", "BatchWebSearchTool", "ExcelTool", "ScraperTool",
     "PDFGeneratorTool", "FileWriterTool",
     "EmailIngestTool", "EmailClassifyTool", "EmailDraftTool", "EmailSendTool",
-    "ImageGenerationTool", "VideoGenerationTool", "SandboxCodeTool", "TerminalTool",
+    "ImageGenerationTool", "VideoGenerationTool",
+    "VideoGenerateTool", "VideoEditTool", "VideoAddSoundTool",
+    "SandboxCodeTool", "TerminalTool",
     "HeadlessBrowserTool",
     "DocxTool", "PptxTool", "DocumentSaveTool",
     # Social

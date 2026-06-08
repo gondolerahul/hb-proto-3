@@ -36,6 +36,9 @@ TOOL_BASELINE_COST: dict[str, Decimal] = {
     "sandbox_executor": Decimal("0.02"),
     "scraper_tool":     Decimal("0.02"),
     "video_generation": Decimal("0.10"),
+    "video_generate":   Decimal("0.10"),
+    "video_edit":       Decimal("0.01"),
+    "video_add_sound":  Decimal("0.01"),
     "web_search":       Decimal("0.005"),
     "xlsx_engine":      Decimal("0.01"),
 }
@@ -78,6 +81,9 @@ _TOOL_LATENCY_S = {
     "headless_browser": 10,
     "image_generation": 15,
     "video_generation": 60,
+    "video_generate":   60,
+    "video_edit":       10,
+    "video_add_sound":  10,
     "pdf_generator":    4,
 }
 _DEFAULT_TOOL_LATENCY_S = 4
