@@ -42,6 +42,7 @@ SECTIONS: dict[str, str] = {
     "curator_dec":     "🧠 Curator Decisions",
     "tool_reliab":     "🔧 Tool Reliability",
     "prompt_cand":     "📝 Prompt-Update Candidates",
+    "composition":     "🔗 Composition Graph",
 }
 
 # Cap on how many anti-pattern nodes we keep per section. The Critic
@@ -170,13 +171,41 @@ class MetaIntelligenceTree:
         if not title:
             raise ValueError(f"Unknown MetaIntelligenceTree section: {section_key}")
         tree = await self.ensure_tree()
-        return (await self.db.execute(
+        node = (await self.db.execute(
             select(CortexNode).where(
                 CortexNode.tree_id == tree.id,
                 CortexNode.parent_id == tree.root_node_id,
                 CortexNode.title == title,
             )
         )).scalar_one_or_none()
+        if node is not None:
+            return node
+        # Lazily create a section missing on an older tree (a new SECTIONS entry
+        # added after the tree was first built). Idempotent.
+        return await self._create_section(tree, title)
+
+    async def _create_section(self, tree: Any, title: str) -> Any:
+        from sqlalchemy import func, select
+        from src.ai.memory.cortex_models import CortexNode, CortexNodeStatus, CortexNodeType
+        order = (await self.db.execute(
+            select(func.coalesce(func.max(CortexNode.sibling_order), -1))
+            .where(CortexNode.parent_id == tree.root_node_id)
+        )).scalar() + 1
+        section = CortexNode(
+            id=uuid4(),
+            tree_id=tree.id,
+            parent_id=tree.root_node_id,
+            node_type=CortexNodeType.GROUP,
+            title=title,
+            summary=f"Meta-intelligence section: {title}",
+            content=None,
+            status=CortexNodeStatus.ACTIVE,
+            depth=1,
+            sibling_order=order,
+        )
+        self.db.add(section)
+        await self.db.flush()
+        return section
 
     # ------------------------------------------------------------------
     # Anti-patterns (Critic)
@@ -356,6 +385,63 @@ class MetaIntelligenceTree:
         )
 
     # ------------------------------------------------------------------
+    # Cross-entity composition graph (Phase 12 `06` §4.2)
+    # ------------------------------------------------------------------
+
+    async def record_composition(
+        self, *, parent_id: UUID, child_id: UUID, outcome_score: float,
+    ) -> Optional[UUID]:
+        """Record a ``parent composed child`` edge + its rolling outcome score.
+
+        ``outcome_score`` ∈ [0,1]; repeated edges accumulate a running mean so the
+        Curator/Architect can prefer proven compositions over novel ones.
+        """
+        section = await self.section_node("composition")
+        if section is None:
+            return None
+        title = f"{parent_id}->{child_id}"[:120]
+        score = max(0.0, min(1.0, float(outcome_score)))
+        existing = await self._find_in_section(section.id, title)
+        if existing is not None:
+            meta = dict(existing.metadata_extra or {})
+            n = int(meta.get("count", 0)) + 1
+            mean = float(meta.get("outcome_score", 0.0))
+            meta["count"] = n
+            meta["outcome_score"] = mean + (score - mean) / n  # incremental mean
+            existing.metadata_extra = meta
+            await self.db.flush()
+            return cast(UUID, existing.id)
+        return await self._add_node(
+            section_id=section.id, kind="composition", title=title,
+            summary=f"{parent_id} composed {child_id}",
+            content=json.dumps({"parent_id": str(parent_id), "child_id": str(child_id)}),
+            metadata={"parent_id": str(parent_id), "child_id": str(child_id),
+                      "count": 1, "outcome_score": score},
+        )
+
+    async def query_compositions(
+        self, *, parent_id: Optional[UUID] = None, child_id: Optional[UUID] = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """List composition edges, optionally filtered by parent and/or child."""
+        rows = await self._list_kind("composition", "composition", limit * 4)
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            meta = r.get("metadata") or {}
+            if parent_id and meta.get("parent_id") != str(parent_id):
+                continue
+            if child_id and meta.get("child_id") != str(child_id):
+                continue
+            out.append({
+                "parent_id": meta.get("parent_id"),
+                "child_id": meta.get("child_id"),
+                "count": int(meta.get("count", 0)),
+                "outcome_score": float(meta.get("outcome_score", 0.0)),
+            })
+        out.sort(key=lambda d: (d["outcome_score"], d["count"]), reverse=True)
+        return out[:limit]
+
+    # ------------------------------------------------------------------
     # Spec patterns / skill candidates (Curator + SkillLibrary)
     # ------------------------------------------------------------------
 
@@ -516,6 +602,7 @@ class MetaIntelligenceTree:
             "test_failure":            CortexNodeType.FINDING,
             "tool_reliability":        CortexNodeType.FINDING,
             "prompt_update_candidate": CortexNodeType.INSTRUCTION,
+            "composition":             CortexNodeType.FINDING,
         }.get(kind, CortexNodeType.FINDING)
 
         section = (await self.db.execute(
