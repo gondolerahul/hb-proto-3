@@ -214,10 +214,10 @@ class TerminalTool(Tool):
     ) -> str:
         """Run ``bash -c command`` via the SandboxRuntime; shape the result
         into the tool's JSON contract (output cap + wording unchanged)."""
-        from src.ai.tools.sandbox.runtime import resolve_sandbox_runtime
+        from src.ai.tools.sandbox.runtime import run_sandbox_exec
 
-        runtime = await resolve_sandbox_runtime(context)
-        res = await runtime.exec(
+        res = await run_sandbox_exec(
+            context,
             ["/bin/bash", "-c", command],
             cwd=working_dir,
             timeout=float(timeout_s),

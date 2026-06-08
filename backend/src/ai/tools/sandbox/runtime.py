@@ -354,3 +354,30 @@ async def resolve_sandbox_runtime(
         if flag is not None:
             ctx["container_runtime"] = flag
     return get_sandbox_runtime(ctx)
+
+
+async def run_sandbox_exec(
+    context: Optional[Mapping[str, Any]],
+    argv: Sequence[str],
+    *,
+    cwd: Optional[str] = None,
+    timeout: float = 30.0,
+    env: Optional[Mapping[str, str]] = None,
+) -> ExecResult:
+    """Resolve the runtime (with per-company canary), run ``argv``, and meter the
+    cost (Phase 12 `02` S6). The single entry point the exec-based sandbox tools
+    use so runtime selection + cost attribution live in one place."""
+    runtime = await resolve_sandbox_runtime(context)
+    res = await runtime.exec(argv, cwd=cwd, timeout=timeout, env=env)
+    try:
+        from src.ai.tools.sandbox.metering import meter_sandbox_usage
+
+        await meter_sandbox_usage(
+            context,
+            duration_ms=res.duration_ms,
+            runtime_name=type(runtime).__name__,
+            kind="exec",
+        )
+    except Exception:  # noqa: BLE001 - metering must never break a tool
+        pass
+    return res

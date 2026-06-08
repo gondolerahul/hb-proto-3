@@ -41,6 +41,7 @@ class CostAttribution(str, Enum):
     EMBEDDING        = "embedding"
     META_SPEC_CRITIC = "meta_spec_critic"
     TEST_DRIVER      = "test_driver"
+    SANDBOX          = "sandbox"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}

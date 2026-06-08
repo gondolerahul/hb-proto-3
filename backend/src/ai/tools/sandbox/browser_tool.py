@@ -141,10 +141,13 @@ class HeadlessBrowserTool(Tool):
         """Open a browser session via the SandboxRuntime, execute the action on
         its page, and return the result. The runtime owns browser lifecycle
         (launch/context/teardown); the action logic stays here."""
+        import time as _time
+
         from src.ai.tools.sandbox.runtime import resolve_sandbox_runtime
 
+        runtime = await resolve_sandbox_runtime(context)
+        _session_start = _time.monotonic()
         try:
-            runtime = await resolve_sandbox_runtime(context)
             async with runtime.open_browser_session(timeout_ms=timeout_ms) as session:
                 page = session.page
                 if action == "navigate":
@@ -162,11 +165,23 @@ class HeadlessBrowserTool(Tool):
                 else:
                     result = {"error": f"Unknown action: {action}"}
 
-                return json.dumps(result)
+                result_json = json.dumps(result)
         except ImportError:
             return json.dumps({
                 "error": "Playwright is not installed. Run: pip install playwright && playwright install chromium"
             })
+        finally:
+            try:
+                from src.ai.tools.sandbox.metering import meter_sandbox_usage
+                await meter_sandbox_usage(
+                    context,
+                    duration_ms=int((_time.monotonic() - _session_start) * 1000),
+                    runtime_name=type(runtime).__name__,
+                    kind="browser",
+                )
+            except Exception:  # noqa: BLE001 - metering must never break a tool
+                pass
+        return result_json
 
     # ------------------------------------------------------------------
     # Action implementations

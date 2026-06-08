@@ -298,6 +298,57 @@ async def test_embedding_usage_is_attributed(db, test_company_id) -> None:
     assert usage.log_metadata.get("embedding_phase") == "retrieval"
 
 
+async def _seed_sandbox_sku(db, app_company_id: uuid.UUID, service_sku: str) -> uuid.UUID:
+    """Insert a per-second sandbox runtime SKU (cost_unit 'second' → divisor 1)."""
+    from sqlalchemy import text
+    sku_id = uuid.uuid4()
+    await db.execute(
+        text(
+            """
+            INSERT INTO integration_registry (
+                id, company_id, provider_name, model_name, service_sku,
+                component_type, service_category, status,
+                internal_cost, cost_unit, created_at, updated_at
+            ) VALUES (
+                :id, :company_id, 'hirebuddha', 'sandbox-runtime', :sku,
+                'sandbox', 'SANDBOX', 'active',
+                0.000020, 'second', now(), now()
+            )
+            """
+        ),
+        {"id": str(sku_id), "company_id": str(app_company_id), "sku": service_sku},
+    )
+    await db.flush()
+    return sku_id
+
+
+async def test_sandbox_usage_is_attributed(db, test_company_id) -> None:
+    """Sandbox runtime seconds land on usage_logs tagged ``sandbox`` with the
+    per-second cost (mirrors what meter_sandbox_usage records in production)."""
+    from src.ai.services.cost_attribution import CostAttribution
+    from src.ai.usage_service import UsageService
+
+    app_co = await _resolve_app_company(db)
+    sku = f"sandbox-runtime-{uuid.uuid4().hex[:6]}"
+    await _seed_sandbox_sku(db, app_co, sku)
+    run_id = await _seed_run(db, test_company_id)
+
+    svc = UsageService(db)
+    usage = await svc.log_usage(
+        company_id=test_company_id,
+        service_sku=sku,
+        raw_quantity=2.5,                         # seconds
+        execution_id=run_id,
+        metadata={"sandbox_runtime": "ContainerRuntime", "sandbox_kind": "exec"},
+        attribution=CostAttribution.SANDBOX.value,
+    )
+    assert usage is not None, "sandbox usage did not persist"
+    assert usage.attribution == "sandbox"
+    # 2.5 sec × $0.000020 / 1 = 0.00005
+    assert usage.calculated_cost == pytest.approx(Decimal("0.00005"), abs=Decimal("1e-9"))
+    assert usage.log_metadata.get("sandbox_runtime") == "ContainerRuntime"
+
+
 async def test_no_usage_log_is_unattributed(db, test_company_id) -> None:
     """CI invariant: every usage_logs row carries a valid attribution.
 

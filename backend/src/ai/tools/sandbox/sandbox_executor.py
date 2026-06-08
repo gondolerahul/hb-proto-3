@@ -409,7 +409,7 @@ class SandboxCodeTool(Tool):
     async def _run_subprocess(self, interpreter: str, script_path: str, timeout_s: int, working_dir: str = None, context: Optional[Dict[str, Any]] = None) -> str:
         """Run the script via the SandboxRuntime; shape the result into the
         tool's string contract (output cap + error wording unchanged)."""
-        from src.ai.tools.sandbox.runtime import resolve_sandbox_runtime
+        from src.ai.tools.sandbox.runtime import run_sandbox_exec
 
         # Build env — include node_modules/.bin for npm tools (e.g. pptxgenjs)
         node_bin = os.path.join(working_dir, "node_modules", ".bin") if working_dir else ""
@@ -422,8 +422,8 @@ class SandboxCodeTool(Tool):
             "SAL_USE_VCLPLUGIN": "svp",  # LibreOffice headless rendering
         }
 
-        runtime = await resolve_sandbox_runtime(context)
-        res = await runtime.exec(
+        res = await run_sandbox_exec(
+            context,
             [interpreter, script_path],
             cwd=working_dir,
             timeout=float(timeout_s),

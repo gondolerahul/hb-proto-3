@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     SANDBOX_PIDS_LIMIT: int = 256
     SANDBOX_IDLE_PAUSE_SECONDS: int = 900
     SANDBOX_REAP_SECONDS: int = 86400
+    # S6 cost attribution: sandbox runtime time is metered against this SKU
+    # (IntegrationRegistry.service_sku, owned by the APP company; cost_unit
+    # "second"). Seed it with scripts/seed_sandbox_sku.py.
+    SANDBOX_COST_SKU: str = "sandbox-runtime"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
