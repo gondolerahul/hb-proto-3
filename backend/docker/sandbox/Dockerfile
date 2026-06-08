@@ -29,12 +29,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NODE_PATH=/opt/sandbox/node_modules \
     HOME=/tmp
 
-# System binaries the tools shell out to (Node already present in the base).
+# System binaries the tools shell out to. The Playwright *python* base ships
+# Chromium but not the Node CLI, so install nodejs+npm here (the JS pptx path).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ffmpeg \
         libreoffice-calc libreoffice-impress libreoffice-writer \
         fonts-liberation \
+        nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Python document-generation libraries (the Document Factory deps).
