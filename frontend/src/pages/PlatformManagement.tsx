@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useEffect, useState } from 'react';
 import { GlassCard, JellyButton } from '@/components/ui';
 import { companyService } from '@/services/company.service';
@@ -232,7 +233,7 @@ export const PlatformManagement: React.FC = () => {
                                     </div>
                                     <div className="meta-row">
                                         <span className="label">REGISTERED</span>
-                                        <span className="value">{partner.created_at ? new Date(partner.created_at).toLocaleDateString() : 'N/A'}</span>
+                                        <span className="value">{partner.created_at ? parseServerDate(partner.created_at).toLocaleDateString() : 'N/A'}</span>
                                     </div>
                                 </div>
                                 <div className="card-actions">
@@ -273,7 +274,7 @@ export const PlatformManagement: React.FC = () => {
                                     </div>
                                     <div className="meta-row">
                                         <span className="label">REGISTERED</span>
-                                        <span className="value">{tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : 'N/A'}</span>
+                                        <span className="value">{tenant.created_at ? parseServerDate(tenant.created_at).toLocaleDateString() : 'N/A'}</span>
                                     </div>
                                 </div>
                                 <div className="card-actions">

@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LucideIcon } from 'lucide-react';
 import {
@@ -404,7 +405,7 @@ export const Artifacts: React.FC = () => {
                                     <div className="artifact-meta-row">
                                         <span>{formatFileSize(artifact.file_size)}</span>
                                         {artifact.duration_seconds && <span>{formatDuration(artifact.duration_seconds)}</span>}
-                                        <span>{new Date(artifact.created_at).toLocaleDateString()}</span>
+                                        <span>{parseServerDate(artifact.created_at).toLocaleDateString()}</span>
                                     </div>
                                 </div>
                             </div>

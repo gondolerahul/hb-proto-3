@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { GlassCard, JellyButton } from '@/components/ui';
@@ -44,7 +45,7 @@ export const ExecutionHistory: React.FC = () => {
     };
 
     const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
+        const date = parseServerDate(dateString);
         return date.toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',

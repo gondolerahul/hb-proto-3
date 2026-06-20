@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { GlassCard } from '@/components/ui';
@@ -350,7 +351,7 @@ export const PhoneNumbersPage: React.FC = () => {
                                                 {pn.is_active ? 'Active' : 'Inactive'}
                                             </span>
                                         </td>
-                                        <td>{pn.assigned_at ? new Date(pn.assigned_at).toLocaleDateString() : '—'}</td>
+                                        <td>{pn.assigned_at ? parseServerDate(pn.assigned_at).toLocaleDateString() : '—'}</td>
                                         <td className="actions">
                                             <button
                                                 className="btn-icon"

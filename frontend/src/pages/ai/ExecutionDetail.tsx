@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GlassCard, JellyButton } from '@/components/ui';
@@ -386,7 +387,7 @@ const TraceNode: React.FC<{ run: ExecutionRun; depth: number }> = ({ run, depth 
                         <span className="node-duration">{(run.execution_time_ms / 1000).toFixed(2)}s</span>
                     ) : run.completed_at && run.started_at && (
                         <span className="node-duration">
-                            {((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000).toFixed(2)}s
+                            {((parseServerDate(run.completed_at).getTime() - parseServerDate(run.started_at).getTime()) / 1000).toFixed(2)}s
                         </span>
                     )}
                 </div>
@@ -1013,7 +1014,7 @@ export const ExecutionDetail: React.FC = () => {
                         <div className="space-y-6">
                             <div className="context-item">
                                 <label className="context-label">Timeline</label>
-                                <span className="context-value">{new Date(run.created_at).toLocaleString()}</span>
+                                <span className="context-value">{parseServerDate(run.created_at).toLocaleString()}</span>
                             </div>
 
                             <div className="grid grid-cols-1 gap-4">

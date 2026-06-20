@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -313,7 +314,7 @@ const HitlSlaTab: React.FC = () => {
                                 <td><span className="badge badge-pending">{a.status}</span></td>
                                 <td className="num">{a.age_hours.toFixed(1)}</td>
                                 <td>{a.is_overdue ? <span className="badge badge-failed">YES</span> : <span className="badge badge-active">No</span>}</td>
-                                <td>{new Date(a.requested_at).toLocaleString()}</td>
+                                <td>{parseServerDate(a.requested_at).toLocaleString()}</td>
                             </tr>
                         ))}
                     </tbody>

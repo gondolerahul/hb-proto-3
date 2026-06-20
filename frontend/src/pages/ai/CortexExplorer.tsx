@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 /**
  * CortexExplorer — Memory Tree Management Page
  * 
@@ -66,7 +67,7 @@ export const CortexExplorer: React.FC = () => {
 
     const formatDate = (dateStr: string | null): string => {
         if (!dateStr) return '—';
-        return new Date(dateStr).toLocaleString('en-US', {
+        return parseServerDate(dateStr).toLocaleString('en-US', {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
         });
     };

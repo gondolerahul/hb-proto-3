@@ -2,17 +2,22 @@
 Artifact Router — REST API for artifact management (list, upload, download, delete).
 All routes are at /api/v1/artifacts.
 """
+import logging
 import mimetypes
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
+from urllib.parse import urlparse, quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Query, status
 from fastapi.security import OAuth2PasswordBearer
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from src.common.database import get_db
 from src.auth.router import get_current_user
@@ -144,6 +149,7 @@ async def get_artifact(
 @router.get("/{artifact_id}/download", summary="Download/stream artifact file")
 async def download_artifact(
     artifact_id: UUID,
+    request: Request,
     token: Optional[str] = Query(None, description="JWT token for media preview (alternative to Authorization header)"),
     db: AsyncSession = Depends(get_db),
     header_token: Optional[str] = Depends(OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)),
@@ -160,15 +166,87 @@ async def download_artifact(
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
 
+    media_type = artifact.mime_type or mimetypes.guess_type(artifact.file_name)[0] or "application/octet-stream"
+
+    # Some artifacts (e.g. call recordings) are stored as remote provider-hosted
+    # URLs (Tata Tele / Twilio) rather than local files. Detect and proxy-stream
+    # those so the client downloads through us without exposing the upstream URL.
+    if _is_remote_url(artifact.file_path):
+        return await _proxy_remote_file(
+            url=artifact.file_path,
+            filename=artifact.file_name,
+            fallback_media_type=media_type,
+            range_header=request.headers.get("range"),
+        )
+
     file_path = Path(artifact.file_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Artifact file not found on disk")
 
-    media_type = artifact.mime_type or mimetypes.guess_type(artifact.file_name)[0] or "application/octet-stream"
     return FileResponse(
         path=str(file_path),
         filename=artifact.file_name,
         media_type=media_type,
+    )
+
+
+def _is_remote_url(path: Optional[str]) -> bool:
+    """True when the stored file_path is an http(s) URL rather than a disk path."""
+    if not path:
+        return False
+    return urlparse(path).scheme in ("http", "https")
+
+
+async def _proxy_remote_file(
+    url: str,
+    filename: str,
+    fallback_media_type: str,
+    range_header: Optional[str] = None,
+) -> StreamingResponse:
+    """
+    Stream a remote (provider-hosted) file through the backend to the client.
+
+    A client Range header is forwarded upstream so the inline audio player can seek;
+    the upstream status (200 or 206) and range headers are passed back through. The
+    upstream connection stays open for the lifetime of the generator and is closed
+    when streaming finishes or the client disconnects.
+    """
+    upstream_headers = {"Range": range_header} if range_header else {}
+    client = httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30.0, read=300.0))
+    try:
+        req = client.build_request("GET", url, headers=upstream_headers)
+        upstream = await client.send(req, stream=True)
+    except httpx.HTTPError as e:
+        await client.aclose()
+        logger.warning(f"Failed to reach upstream artifact URL {url}: {e}")
+        raise HTTPException(status_code=502, detail="Could not fetch recording from provider")
+
+    if upstream.status_code not in (200, 206):
+        await upstream.aclose()
+        await client.aclose()
+        logger.warning(f"Upstream artifact URL {url} returned {upstream.status_code}")
+        raise HTTPException(status_code=404, detail="Artifact file not found at provider")
+
+    async def _stream():
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    media_type = upstream.headers.get("content-type") or fallback_media_type
+    headers = {"Content-Disposition": f'attachment; filename="{quote(filename)}"'}
+    # Pass through size / range metadata so the browser can show progress and seek.
+    for h in ("content-length", "content-range", "accept-ranges"):
+        if h in upstream.headers:
+            headers[h] = upstream.headers[h]
+
+    return StreamingResponse(
+        _stream(),
+        status_code=upstream.status_code,
+        media_type=media_type,
+        headers=headers,
     )
 
 

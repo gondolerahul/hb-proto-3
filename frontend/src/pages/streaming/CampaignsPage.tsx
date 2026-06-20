@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -346,7 +347,7 @@ export const CampaignsPage: React.FC = () => {
                                                             {call.status}
                                                         </span>
                                                     </td>
-                                                    <td>{call.called_at ? new Date(call.called_at).toLocaleString() : '—'}</td>
+                                                    <td>{call.called_at ? parseServerDate(call.called_at).toLocaleString() : '—'}</td>
                                                     <td>
                                                         {call.voice_session_id && (
                                                             <button
@@ -382,7 +383,7 @@ export const CampaignsPage: React.FC = () => {
                                 {selectedCampaign.scheduled_start && (
                                     <div className="detail-item">
                                         <span className="label">Scheduled Window</span>
-                                        <strong>{new Date(selectedCampaign.scheduled_start).toLocaleString()}</strong>
+                                        <strong>{parseServerDate(selectedCampaign.scheduled_start).toLocaleString()}</strong>
                                     </div>
                                 )}
                             </div>

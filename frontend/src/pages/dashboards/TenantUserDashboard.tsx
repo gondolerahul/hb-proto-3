@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect } from 'react';
 import { reportsService, PersonalTasksData, HitlData } from '@/services/reports.service';
 import { Activity, Clock, ShieldAlert, CheckCircle } from 'lucide-react';
@@ -115,7 +116,7 @@ export const TenantUserDashboard: React.FC = () => {
                                 <td><span className={`badge badge-${t.status.toLowerCase()}`}>{t.status}</span></td>
                                 <td>{t.execution_time_ms ? `${t.execution_time_ms}ms` : '—'}</td>
                                 <td>{t.total_tokens}</td>
-                                <td>{new Date(t.created_at).toLocaleString()}</td>
+                                <td>{parseServerDate(t.created_at).toLocaleString()}</td>
                             </tr>
                         ))}
                     </tbody>

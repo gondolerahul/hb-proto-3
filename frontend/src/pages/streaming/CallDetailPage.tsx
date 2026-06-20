@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -92,7 +93,7 @@ export const CallDetailPage: React.FC = () => {
   };
 
   const formatDate = (iso: string) => {
-    const d = new Date(iso);
+    const d = parseServerDate(iso);
     return d.toLocaleString('en-IN', {
       dateStyle: 'medium',
       timeStyle: 'short',
@@ -435,7 +436,7 @@ export const CallDetailPage: React.FC = () => {
                         </span>
                         {turn.timestamp && (
                           <span className="bubble-time">
-                            {new Date(turn.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            {parseServerDate(turn.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
                         )}
                       </div>

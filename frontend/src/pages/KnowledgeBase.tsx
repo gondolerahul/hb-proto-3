@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useRef, useEffect } from 'react';
 import { GlassCard, JellyButton } from '@/components/ui';
 import { Upload, FileText, Trash2, Loader, Search } from 'lucide-react';
@@ -119,7 +120,7 @@ export const KnowledgeBase: React.FC = () => {
     };
 
     const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('en-US', {
+        return parseServerDate(dateString).toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'short',
             day: 'numeric',

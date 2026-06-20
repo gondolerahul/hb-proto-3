@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -95,7 +96,7 @@ const TaskHistoryTab: React.FC = () => {
                                     <td className="num">{t.execution_time_ms ? `${(t.execution_time_ms / 1000).toFixed(1)}s` : '—'}</td>
                                     <td className="num">{(t.total_tokens || 0).toLocaleString()}</td>
                                     <td className="num">${(t.billed_amount != null ? t.billed_amount : t.total_cost_usd).toFixed(6)}</td>
-                                    <td>{new Date(t.created_at).toLocaleDateString()}</td>
+                                    <td>{parseServerDate(t.created_at).toLocaleDateString()}</td>
                                     <td>
                                         <button className="btn-icon" onClick={() => setExpanded(expanded === t.id ? null : t.id)}>
                                             {expanded === t.id ? '▲' : '▼'}
@@ -119,11 +120,11 @@ const TaskHistoryTab: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <p className="expand-label">Started</p>
-                                                        <p className="expand-val">{t.started_at ? new Date(t.started_at).toLocaleString() : '—'}</p>
+                                                        <p className="expand-val">{t.started_at ? parseServerDate(t.started_at).toLocaleString() : '—'}</p>
                                                     </div>
                                                     <div>
                                                         <p className="expand-label">Completed</p>
-                                                        <p className="expand-val">{t.completed_at ? new Date(t.completed_at).toLocaleString() : '—'}</p>
+                                                        <p className="expand-val">{t.completed_at ? parseServerDate(t.completed_at).toLocaleString() : '—'}</p>
                                                     </div>
                                                 </div>
                                                 {t.input_data && (
@@ -165,7 +166,7 @@ const TimeSavedTab: React.FC = () => {
     // Group tasks by week for chart
     const byDate: Record<string, number> = {};
     tasks.forEach(t => {
-        const d = new Date(t.created_at);
+        const d = parseServerDate(t.created_at);
         const week = `${d.getFullYear()}-W${Math.ceil((d.getDate()) / 7)}`;
         byDate[week] = (byDate[week] || 0) + 1;
     });

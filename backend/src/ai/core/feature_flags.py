@@ -95,11 +95,11 @@ DEFAULTS: dict[str, bool] = {
     "planner.invariants_enforced": True,
     "planner.judge_enabled": True,
     "planner.priors_enabled": True,
-    # Per-tenant container sandbox canary (Phase 12 `02` S4). Default OFF;
-    # SubprocessRuntime stays the default substrate. A caller resolves this and
-    # threads it into the tool context as ``container_runtime`` for per-company
-    # rollout; the process-wide master is settings.SANDBOX_CONTAINER_RUNTIME_ENABLED.
-    "sandbox.container_runtime_enabled": False,
+    # Per-tenant container sandbox canary (Phase 12 `02` S4). Default ON
+    # (globally enabled as of Phase 12 go-live — Step 1.3 of phase12_ops_guide.md).
+    # A global DB row (company_id IS NULL) also enforces this; the code default
+    # ensures the flag is True even on fresh installs before the DB row is present.
+    "sandbox.container_runtime_enabled": True,
     # Per-tenant persistent browser profile canary (Phase 12 `02` S5). Default
     # OFF (ephemeral context). Resolved per-company and threaded into the tool
     # context as ``persistent_browser``; master is

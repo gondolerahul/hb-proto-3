@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -197,8 +198,8 @@ const SubscriptionTab: React.FC = () => {
                                 <td>Tier {s.plan_tier}</td>
                                 <td className="num">${s.monthly_fee.toFixed(2)}</td>
                                 <td><span className={`badge badge-${s.status}`}>{s.status}</span></td>
-                                <td>{s.next_billing_date ? new Date(s.next_billing_date).toLocaleDateString() : '—'}</td>
-                                <td>{new Date(s.created_at).toLocaleDateString()}</td>
+                                <td>{s.next_billing_date ? parseServerDate(s.next_billing_date).toLocaleDateString() : '—'}</td>
+                                <td>{parseServerDate(s.created_at).toLocaleDateString()}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -600,8 +601,8 @@ const HitlTab: React.FC = () => {
                                 <td>{a.checkpoint_trigger}</td>
                                 <td><span className={`badge badge-${a.status.toLowerCase()}`}>{a.status}</span></td>
                                 <td className="num" style={{ color: a.is_overdue ? '#e8885a' : 'inherit' }}>{a.age_hours.toFixed(1)}</td>
-                                <td>{new Date(a.requested_at).toLocaleDateString()}</td>
-                                <td>{a.responded_at ? new Date(a.responded_at).toLocaleDateString() : '—'}</td>
+                                <td>{parseServerDate(a.requested_at).toLocaleDateString()}</td>
+                                <td>{a.responded_at ? parseServerDate(a.responded_at).toLocaleDateString() : '—'}</td>
                             </tr>
                         ))}
                     </tbody>

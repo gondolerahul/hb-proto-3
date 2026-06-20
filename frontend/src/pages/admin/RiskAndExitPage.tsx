@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 /**
  * pages/admin/RiskAndExitPage — Phase 11 Track 15 risk dashboard.
  *
@@ -331,7 +332,7 @@ function formatMetric(v: number): string {
 function fmtTs(ts: string): string {
     if (!ts) return '—';
     try {
-        const d = new Date(ts);
+        const d = parseServerDate(ts);
         return d.toLocaleString();
     } catch {
         return ts;

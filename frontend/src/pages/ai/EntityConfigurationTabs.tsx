@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { JellyButton } from '@/components/ui';
 import { Info, Brain, Settings, Route, Wrench, Shield, Plus, Trash2, Volume2, VolumeX, ChevronDown, ChevronRight, AlertTriangle, Sliders, Database, Upload, User, GitBranch, Search, CheckSquare, Square, File, X, FolderOpen, Lock, FileText, Image, Music, Video, FileSpreadsheet } from 'lucide-react';
@@ -1571,7 +1572,7 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                                             <span className="cs-modal-item-meta">
                                                                 {a.file_category || a.file_type}
                                                                 {a.file_size ? ` • ${formatFileSize(Number(a.file_size))}` : ''}
-                                                                {a.created_at ? ` • ${new Date(a.created_at).toLocaleDateString()}` : ''}
+                                                                {a.created_at ? ` • ${parseServerDate(a.created_at).toLocaleDateString()}` : ''}
                                                             </span>
                                                         </div>
                                                         {isSelected && <span className="cs-modal-item-check">✓ Added</span>}
@@ -1622,7 +1623,7 @@ export const EntityConfigurationTabs: React.FC<EntityConfigurationTabsProps> = (
                                                             <span className="cs-modal-item-meta">
                                                                 <span className={`cs-tree-status cs-tree-${t.status}`}>{t.status}</span>
                                                                 {` • ${t.total_nodes || 0} nodes`}
-                                                                {t.created_at ? ` • ${new Date(t.created_at).toLocaleDateString()}` : ''}
+                                                                {t.created_at ? ` • ${parseServerDate(t.created_at).toLocaleDateString()}` : ''}
                                                             </span>
                                                         </div>
                                                         {isSelected && <span className="cs-modal-item-check">✓ Added</span>}

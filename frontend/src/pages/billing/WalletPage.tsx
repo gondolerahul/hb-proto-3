@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect } from 'react';
 import { Wallet, CreditCard, CheckCircle, AlertTriangle, RefreshCw, Star } from 'lucide-react';
 import { creditsService, CreditBalance, Subscription } from '@/services/credits.service';
@@ -19,7 +20,7 @@ function CreditBucket({ label, amount, expiry, accent }: {
                 <div className="bucket-fill" style={{ width: `${pct}%` }} />
             </div>
             {expiry && (
-                <p className="bucket-expiry">Expires: {new Date(expiry).toLocaleDateString()}</p>
+                <p className="bucket-expiry">Expires: {parseServerDate(expiry).toLocaleDateString()}</p>
             )}
         </div>
     );
@@ -271,7 +272,7 @@ export const WalletPage: React.FC = () => {
                             <p className="sub-fee">${subscription.monthly_fee}/mo</p>
                             <p className="sub-bonus">+{subscription.bonus_pct}% Bonus Credits</p>
                             {subscription.next_billing_date && (
-                                <p className="sub-next">Next billing: {new Date(subscription.next_billing_date).toLocaleDateString()}</p>
+                                <p className="sub-next">Next billing: {parseServerDate(subscription.next_billing_date).toLocaleDateString()}</p>
                             )}
                         </div>
                         <button

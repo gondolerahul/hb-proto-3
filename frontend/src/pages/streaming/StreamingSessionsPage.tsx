@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -218,7 +219,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                                     {session.status}
                                                 </span>
                                             </td>
-                                            <td>{new Date(session.started_at).toLocaleString()}</td>
+                                            <td>{parseServerDate(session.started_at).toLocaleString()}</td>
                                             <td>{formatDuration(session.duration_seconds)}</td>
                                             <td>{formatCost(session.billed_amount)}</td>
                                             <td>
@@ -271,10 +272,10 @@ export const StreamingSessionsPage: React.FC = () => {
                                                     {session.status}
                                                 </span>
                                             </td>
-                                            <td>{new Date(session.started_at).toLocaleString()}</td>
+                                            <td>{parseServerDate(session.started_at).toLocaleString()}</td>
                                             <td>
                                                 {session.last_message_at
-                                                    ? new Date(session.last_message_at).toLocaleString()
+                                                    ? parseServerDate(session.last_message_at).toLocaleString()
                                                     : 'N/A'}
                                             </td>
                                             <td>{session.message_count}</td>
@@ -423,7 +424,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                                 <strong>{turn.speaker === 'agent' ? '🤖 Agent' : '👤 Customer'}</strong>
                                                 {turn.timestamp && (
                                                     <span className="timestamp">
-                                                        {new Date(turn.timestamp).toLocaleTimeString()}
+                                                        {parseServerDate(turn.timestamp).toLocaleTimeString()}
                                                     </span>
                                                 )}
                                             </div>
@@ -445,7 +446,7 @@ export const StreamingSessionsPage: React.FC = () => {
                                                 <div className="message-header">
                                                     <strong>{turn.speaker}</strong>
                                                     <span className="timestamp">
-                                                        {new Date(turn.timestamp).toLocaleTimeString()}
+                                                        {parseServerDate(turn.timestamp).toLocaleTimeString()}
                                                     </span>
                                                 </div>
                                                 <div className="message-content">{turn.content}</div>

@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LucideIcon } from 'lucide-react';
 import { Search, Upload, Filter, Image, Video, Mic, Download, Trash2, X, Play, Pause, ZoomIn } from 'lucide-react';
@@ -300,7 +301,7 @@ export const AssetLibrary: React.FC = () => {
                                     <div className="asset-meta-row">
                                         <span>{formatFileSize(asset.file_size)}</span>
                                         {asset.duration_seconds && <span>{formatDuration(asset.duration_seconds)}</span>}
-                                        <span>{new Date(asset.created_at).toLocaleDateString()}</span>
+                                        <span>{parseServerDate(asset.created_at).toLocaleDateString()}</span>
                                     </div>
                                 </div>
                             </div>

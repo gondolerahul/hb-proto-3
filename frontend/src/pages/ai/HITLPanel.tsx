@@ -1,3 +1,4 @@
+import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect } from 'react';
 import { GlassCard, JellyButton } from '@/components/ui';
 import { CheckCircle, XCircle, Clock, Shield } from 'lucide-react';
@@ -81,7 +82,7 @@ export const HITLPanel: React.FC = () => {
                                         <span>REQUESTED AT</span>
                                         <div className="flex items-center gap-1.5 text-secondary">
                                             <Clock size={12} />
-                                            {new Date(approval.requested_at).toLocaleTimeString()}
+                                            {parseServerDate(approval.requested_at).toLocaleTimeString()}
                                         </div>
                                     </div>
                                 </div>
