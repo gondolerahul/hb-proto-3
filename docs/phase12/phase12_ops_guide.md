@@ -156,11 +156,11 @@ All commands below run inside `~/cortex-memory` (the standalone repo root, **not
 2. Open [pyproject.toml](file:///home/rahul/workspace/hb-proto-3/backend/pyproject.toml) and add the PyPI dependency:
    ```toml
    [tool.poetry.dependencies]
-   cortex-memory = "0.1.0"
+   hb-cortex-memory = "0.1.0"
    ```
 3. Regenerate Poetry locks and install the dependency:
    ```bash
-   poetry update cortex-memory
+   poetry update hb-cortex-memory
    ```
 4. Run tests to verify that imports now correctly point to the PyPI package:
    ```bash
@@ -169,13 +169,13 @@ All commands below run inside `~/cortex-memory` (the standalone repo root, **not
 5. Commit the removal and lock-file update:
    ```bash
    git add backend/pyproject.toml poetry.lock
-   git commit -m "chore: replace local cortex_memory with PyPI package cortex-memory==0.1.0"
+   git commit -m "chore: replace local cortex_memory with PyPI package hb-cortex-memory==0.1.0"
    git push origin phase12/stage1-consolidation
    ```
 
 > [!NOTE]
 > Review [04_cortex_package.md](file:///home/rahul/workspace/hb-proto-3/docs/phase12/plans/04_cortex_package.md) to ensure K1–K7 decisions remain locked:
-> * **K1**: Package name is `cortex-memory`; imported as `cortex_memory`.
+> * **K1**: Package name is `hb-cortex-memory`; imported as `cortex_memory`.
 > * **K2**: Licensed under Apache-2.0.
 > * **K5**: Database foreign keys are represented as opaque nullable UUIDs in the package models.
 > * **K6**: Task classification stays on the host side (package remains memory-only).
