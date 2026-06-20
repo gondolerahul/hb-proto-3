@@ -84,27 +84,76 @@ Publish the scanned images to your production container registry (e.g., Google A
 ## 2. `04` — Publish `cortex-memory` to PyPI
 
 ### Goal
-Move the standalone `cortex_memory` package out of the repository, upload it to PyPI, and consume it via Poetry.
+Move the standalone `cortex_memory` package out of the repository into its own GitHub repo, publish it to PyPI, and consume it via Poetry in the main platform.
 
-### Step 2.1: Publish Package to PyPI
-1. Create a new public repository on GitHub (e.g., `github.com/hirebuddha/cortex-memory`).
-2. Move the contents of `backend/cortex_memory/` into that repository.
-3. Build the package distribution wheel:
+> [!IMPORTANT]
+> The package **must be copied** into the new GitHub repo and successfully pushed **before** it is removed from `hb-proto-3`. Do not `rm -rf` until the PyPI upload is confirmed.
+
+### Step 2.1: Clone the New Repo and Copy the Package
+
+The new GitHub repo (`github.com/gondolerahul/cortex-memory`) has already been created.
+
+1. Clone it to a location **outside** of `hb-proto-3`:
+   ```bash
+   cd ~
+   git clone https://github.com/gondolerahul/cortex-memory.git
+   cd cortex-memory
+   ```
+2. Copy the package contents from `hb-proto-3` into the new repo root:
+   ```bash
+   cp -R ~/workspace/hb-proto-3/backend/cortex_memory/. .
+   ```
+3. Verify the structure looks correct (pyproject.toml should be at the repo root):
+   ```bash
+   ls pyproject.toml README.md LICENSE cortex_memory/ tests/
+   ```
+
+### Step 2.2: Commit and Push to GitHub
+
+1. Stage all files and make the initial commit:
+   ```bash
+   git add .
+   git commit -m "chore: initial publish of cortex-memory package (migrated from hb-proto-3)"
+   ```
+2. Push to GitHub:
+   ```bash
+   git push origin main
+   ```
+3. Confirm the repo at `https://github.com/gondolerahul/cortex-memory` shows the full package source before continuing.
+
+### Step 2.3: Build and Publish to PyPI
+
+All commands below run inside `~/cortex-memory` (the standalone repo root, **not** inside `hb-proto-3`).
+
+1. Install build tools:
    ```bash
    pip install build twine
+   ```
+2. Build the source distribution and wheel:
+   ```bash
    python -m build
    ```
-4. Upload to PyPI using twine (supply your PyPI token):
+3. Verify `dist/` contains both a `.tar.gz` and a `.whl` before uploading:
+   ```bash
+   ls dist/
+   ```
+4. Upload to PyPI (supply your PyPI API token when prompted):
    ```bash
    twine upload dist/*
    ```
+5. Confirm the package is live at `https://pypi.org/project/cortex-memory/`.
 
-### Step 2.2: Drop Local Copy and Reference PyPI Package
-1. In the main platform codebase, remove the local source folder:
+### Step 2.4: Drop Local Copy from `hb-proto-3` and Reference PyPI Package
+
+> [!CAUTION]
+> Only proceed once Step 2.3 is fully confirmed — the package must be live on PyPI and the GitHub repo must have the full source.
+
+1. Remove the local source folder from the main platform repo:
    ```bash
+   cd ~/workspace/hb-proto-3
    rm -rf backend/cortex_memory/
    ```
-2. Open [pyproject.toml](file:///home/rahul/workspace/hb-proto-3/backend/pyproject.toml) and add the package dependency:
+2. Open [pyproject.toml](file:///home/rahul/workspace/hb-proto-3/backend/pyproject.toml) and add the PyPI dependency:
    ```toml
    [tool.poetry.dependencies]
    cortex-memory = "0.1.0"
@@ -113,9 +162,15 @@ Move the standalone `cortex_memory` package out of the repository, upload it to 
    ```bash
    poetry update cortex-memory
    ```
-4. Run tests to verify that imports now correctly point to the PyPI package and execute properly:
+4. Run tests to verify that imports now correctly point to the PyPI package:
    ```bash
    poetry run pytest tests/unit
+   ```
+5. Commit the removal and lock-file update:
+   ```bash
+   git add backend/pyproject.toml poetry.lock
+   git commit -m "chore: replace local cortex_memory with PyPI package cortex-memory==0.1.0"
+   git push origin phase12/stage1-consolidation
    ```
 
 > [!NOTE]
