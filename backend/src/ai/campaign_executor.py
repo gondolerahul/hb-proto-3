@@ -109,6 +109,7 @@ class CampaignExecutor:
                     "agent_id": campaign.agent_id,
                     "provider": campaign.provider,
                     "name": campaign.name,
+                    "max_concurrent_calls": campaign.max_concurrent_calls or 5,
                 }
 
                 calls_data = [
@@ -162,8 +163,43 @@ class CampaignExecutor:
                     await db.commit()
                 return
 
+            # Warm the agent-context cache so the first dialed lead doesn't
+            # pay the ~5s cold load during call setup.
+            try:
+                from src.voice.agent_loader import AgentContextLoader
+                async with AsyncSessionLocal() as db:
+                    await AgentContextLoader(db).load_agent_for_session(
+                        agent_id=campaign_data["agent_id"],
+                        customer_id=uuid4(),
+                        channel="voice",
+                    )
+                logger.info(
+                    f"Warmed agent context cache for agent {campaign_data['agent_id']}"
+                )
+            except Exception as e:
+                logger.warning(f"Agent cache warm failed (non-fatal): {e}")
+
             # Process calls sequentially, each with its own session
+            halted_status = None
             for call_info in calls_data:
+                # Honor pause/stop issued while the campaign runs: the status
+                # PATCH only writes the DB row, so the dial loop must re-read
+                # it (previously it dialed the whole list regardless).
+                current_status = await cls._get_campaign_status(campaign_id)
+                if current_status != "running":
+                    halted_status = current_status
+                    logger.info(
+                        f"Campaign {campaign_id} is '{current_status}' — "
+                        f"halting dialing with calls remaining"
+                    )
+                    break
+
+                # Enforce max_concurrent_calls: the Kanakia run showed 6-8
+                # simultaneous call setups starving the audio pipeline (5-27s
+                # of dead air per call). Wait until a slot frees up.
+                await cls._wait_for_concurrency_slot(
+                    campaign_data["id"], campaign_data["max_concurrent_calls"]
+                )
                 try:
                     await cls._place_call_safe(campaign_data, call_info)
                 except Exception as e:
@@ -173,6 +209,26 @@ class CampaignExecutor:
                     )
                 # Delay between calls to respect rate limits
                 await asyncio.sleep(2)
+
+            if halted_status is not None:
+                # Leave the user-set status (paused keeps pending calls for
+                # resume); on stop, mark undialed leads as skipped.
+                if halted_status in ("stopped", "completed", "failed"):
+                    async with AsyncSessionLocal() as db:
+                        await db.execute(
+                            update(CampaignCall)
+                            .where(
+                                CampaignCall.campaign_id == campaign_id,
+                                CampaignCall.status == "pending",
+                            )
+                            .values(
+                                status="skipped",
+                                outcome_notes=f"campaign_{halted_status}",
+                            )
+                        )
+                        await db.commit()
+                logger.info(f"Campaign {campaign_id} halted as '{halted_status}'")
+                return
 
             # Mark campaign as completed
             async with AsyncSessionLocal() as db:
@@ -203,6 +259,83 @@ class CampaignExecutor:
             except Exception:
                 logger.error(f"Failed to mark campaign {campaign_id} as failed")
 
+    @staticmethod
+    def normalize_phone(raw: Optional[str], default_cc: Optional[str] = None) -> str:
+        """Coerce a contact number into E.164-ish form for the dialer.
+
+        The Kanakia follow-up campaign failed every placement with Tata HTTP
+        422 because contacts like '+8149603309' carried a '+' but no country
+        code. 10-digit numbers get DEFAULT_PHONE_COUNTRY_CODE prepended; a
+        leading trunk '0' on an 11-digit number is dropped first.
+        """
+        import re
+
+        cc = default_cc or settings.DEFAULT_PHONE_COUNTRY_CODE
+        digits = re.sub(r"[^\d]", "", str(raw or ""))
+        if len(digits) == 11 and digits.startswith("0"):
+            digits = digits[1:]
+        if len(digits) == 10:
+            digits = cc + digits
+        return f"+{digits}" if digits else ""
+
+    @classmethod
+    async def _get_campaign_status(cls, campaign_id: UUID) -> str:
+        """Fresh read of the campaign status in an isolated session."""
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Campaign.status).where(Campaign.id == campaign_id)
+                )
+                return result.scalar() or "unknown"
+        except Exception as e:
+            logger.warning(f"Could not read campaign {campaign_id} status: {e}")
+            return "running"  # fail open — don't halt dialing on a read blip
+
+    @classmethod
+    async def _wait_for_concurrency_slot(
+        cls, campaign_id: UUID, max_concurrent: int, max_wait_seconds: int = 180
+    ) -> None:
+        """Block until fewer than max_concurrent calls are in 'calling' state.
+
+        Waits at most max_wait_seconds so calls stuck in 'calling' (missed
+        webhooks) can't deadlock the dialer; when the cap trips we log and
+        proceed. Returns early if the campaign leaves 'running' so a stop
+        issued during the wait takes effect promptly.
+        """
+        if max_concurrent <= 0:
+            return
+        from sqlalchemy import func
+
+        waited = 0
+        while waited < max_wait_seconds:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(func.count(CampaignCall.id)).where(
+                        and_(
+                            CampaignCall.campaign_id == campaign_id,
+                            CampaignCall.status == "calling",
+                        )
+                    )
+                )
+                active = result.scalar() or 0
+            if active < max_concurrent:
+                return
+            if await cls._get_campaign_status(campaign_id) != "running":
+                return  # stop/pause during the wait — dial loop re-checks
+            if waited == 0:
+                logger.info(
+                    f"Campaign {campaign_id}: {active} calls active, "
+                    f"waiting for a slot (max_concurrent={max_concurrent})"
+                )
+            await asyncio.sleep(3)
+            waited += 3
+
+        logger.warning(
+            f"Campaign {campaign_id}: concurrency wait capped at "
+            f"{max_wait_seconds}s — proceeding despite {max_concurrent}+ "
+            f"calls still marked 'calling'"
+        )
+
     @classmethod
     async def _place_call_safe(
         cls,
@@ -220,7 +353,10 @@ class CampaignExecutor:
         """
         call_id = call_info["id"]
         contact = call_info["contact_data"]
-        phone = contact.get("phone")
+        raw_phone = contact.get("phone")
+        phone = cls.normalize_phone(raw_phone)
+        if phone != (raw_phone or "").strip():
+            logger.info(f"Normalized contact number {raw_phone!r} → {phone!r}")
         campaign_id = campaign_data["id"]
         company_id = campaign_data["company_id"]
         agent_id = campaign_data["agent_id"]
@@ -357,7 +493,12 @@ class CampaignExecutor:
                     await db.execute(
                         update(CampaignCall)
                         .where(CampaignCall.id == call_id)
-                        .values(status="failed")
+                        .values(
+                            status="failed",
+                            outcome="placement_error",
+                            outcome_notes=str(e)[:500],
+                            disposition="failed",
+                        )
                     )
                     await db.commit()
                     await cls._increment_stat(db, campaign_id, "calls_failed")
@@ -396,24 +537,8 @@ class CampaignExecutor:
             Call SID from Twilio
         """
         # 1. Retrieve Twilio credentials from Integration Registry
-        result = await db.execute(
-            select(IntegrationRegistry).where(
-                IntegrationRegistry.company_id == company_id,
-                IntegrationRegistry.provider_name == "twilio",
-                IntegrationRegistry.status == "active"
-            )
-        )
-        entry = result.scalars().first()
-
-        # Extract credentials from registry entry
-        account_sid = None
-        auth_token = None
-
-        if entry:
-            auth_token = decrypt_api_key(entry.encrypted_api_key) if entry.encrypted_api_key else None
-            # Look for account_sid in service_metadata
-            if entry.service_metadata:
-                account_sid = entry.service_metadata.get("account_sid")
+        from src.voice.twilio_api import get_twilio_credentials
+        account_sid, auth_token = await get_twilio_credentials(db, company_id)
 
         if not account_sid or not auth_token:
             raise ValueError(
@@ -518,17 +643,28 @@ class CampaignExecutor:
         Returns:
             Call SID/reference from Tata Tele
         """
-        # 1. Retrieve Tata Tele API key from integration registry
+        # 1. Retrieve Tata Tele API key from integration registry.
+        # Prefer service_metadata["api_key"] — it is the click-to-call
+        # credential specifically. encrypted_api_key is only a fallback: users
+        # editing the integration (e.g. to add the hangup auth_token) have
+        # overwritten it, which broke every placement with HTTP 422.
         config_service = ConfigService(db)
-        api_key = await config_service.get_api_key_by_provider(
+        entry = await config_service.get_integration_by_provider(
             company_id=company_id,
-            provider_name="tata_tele"
+            provider_name="tata_tele",
         )
+        api_key = (entry.service_metadata or {}).get("api_key") if entry else None
+        if not api_key:
+            api_key = await config_service.get_api_key_by_provider(
+                company_id=company_id,
+                provider_name="tata_tele"
+            )
 
         if not api_key:
             raise ValueError(
                 "Tata Tele API key not found. Please ensure you have a 'tata_tele' "
-                "integration configured in the Integration Registry."
+                "integration configured in the Integration Registry with the "
+                "click-to-call api_key in service_metadata."
             )
 
         # 2. Clean phone numbers

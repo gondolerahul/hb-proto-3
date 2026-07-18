@@ -50,6 +50,7 @@ pydub = "^0.25.1"       # Audio manipulation
 numpy = "^1.24.0"       # Numerical operations
 websockets = "^13.0"    # WebSocket support (>=13 required by google-genai)
 twilio = "^9.0.0"       # Voice calls, SMS, WhatsApp
+hb-cortex-memory = "0.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

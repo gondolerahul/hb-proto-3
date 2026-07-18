@@ -13,9 +13,38 @@ from sqlalchemy import select
 from src.ai.models import HierarchicalEntity
 from src.voice.models import ConversationHistory
 from src.config.models import IntegrationRegistry
+from src.common.config import settings
 from src.common.security import decrypt_api_key
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Agent base-context cache. The DB-heavy part of agent loading (persona,
+# tools, context-source file extraction, API key) took ~4.5-5s cold and sits
+# on the call-setup hot path; every call in a campaign shares one agent, so
+# cache it. Per-call parts (conversation history, contact injection) are
+# never cached. Agent edits propagate within the TTL.
+# ---------------------------------------------------------------------------
+try:
+    from cachetools import TTLCache
+    _AGENT_BASE_CACHE: Optional[TTLCache] = (
+        TTLCache(maxsize=128, ttl=settings.VOICE_AGENT_CACHE_TTL_SECONDS)
+        if settings.VOICE_AGENT_CACHE_TTL_SECONDS > 0
+        else None
+    )
+except ImportError:
+    _AGENT_BASE_CACHE = None
+
+
+def bust_agent_cache(agent_id: Optional[UUID] = None) -> None:
+    """Drop cached agent base contexts (all, or one agent's)."""
+    if _AGENT_BASE_CACHE is None:
+        return
+    if agent_id is None:
+        _AGENT_BASE_CACHE.clear()
+        return
+    for key in [k for k in list(_AGENT_BASE_CACHE.keys()) if k[0] == agent_id]:
+        _AGENT_BASE_CACHE.pop(key, None)
 
 
 class AgentContext:
@@ -63,6 +92,10 @@ class AgentContextLoader:
         """
         Load agent context for a streaming session.
 
+        The agent-level base (persona, tools, context sources, API key) is
+        TTL-cached; conversation history and contact-data injection are
+        per-call and applied to a copy.
+
         Args:
             agent_id: Agent UUID
             customer_id: Customer UUID
@@ -70,6 +103,46 @@ class AgentContextLoader:
             session_metadata: Optional session metadata containing campaign
                 contact_data for template variable injection.
         """
+        base = await self._load_agent_base(agent_id, channel)
+
+        # Per-call: conversation history (last 10 interactions)
+        history = await self._load_conversation_history(
+            customer_id=customer_id,
+            agent_id=agent_id,
+            channel=channel,
+            limit=10
+        )
+
+        # Per-call: campaign contact data injection on a copy of the base
+        system_instruction = base["system_instruction"]
+        contact_data = (session_metadata or {}).get("contact_data", {})
+        if contact_data:
+            system_instruction = self._inject_contact_data(
+                system_instruction, contact_data
+            )
+
+        return AgentContext(
+            agent_id=agent_id,
+            system_instruction=system_instruction,
+            conversation_history=history,
+            llm_config=base["llm_config"],
+            capabilities=base["capabilities"],
+            tools=list(base["tools"]),
+            api_key=base["api_key"],
+            voice_config=base["voice_config"],
+            live_model=base["live_model"],
+            max_call_duration_seconds=base["max_call_duration_seconds"],
+        )
+
+    async def _load_agent_base(self, agent_id: UUID, channel: str) -> Dict[str, Any]:
+        """Load (or fetch from cache) the customer-independent agent context."""
+        cache_key = (agent_id, channel)
+        if _AGENT_BASE_CACHE is not None:
+            cached = _AGENT_BASE_CACHE.get(cache_key)
+            if cached is not None:
+                logger.debug(f"Agent base cache hit for {agent_id} ({channel})")
+                return cached
+
         # 1. Load HierarchicalEntity from database
         result = await self.db.execute(
             select(HierarchicalEntity).where(HierarchicalEntity.id == agent_id)
@@ -113,14 +186,6 @@ class AgentContextLoader:
             system_instruction += f"\n\n## Goals & Operational Steps\n{goal_text}"
             logger.info(f"Injected goal ({len(goal_text)} chars) into voice system instruction")
         
-        # 3. Load conversation history (last 10 interactions)
-        history = await self._load_conversation_history(
-            customer_id=customer_id,
-            agent_id=agent_id,
-            channel=channel,
-            limit=10
-        )
-        
         # 4. Extract LLM config (from unified JSON structure)
         llm_config = (entity.logic_gate or {}).get("reasoning_config", {})
         
@@ -145,16 +210,6 @@ class AgentContextLoader:
                     f"Injected {len(context_sources)} context source(s) "
                     f"({len(context_text)} chars) into voice system instruction"
                 )
-        
-        # 5c. Inject campaign contact data (CSV fields) into system instruction.
-        # This enables two features:
-        #   1. {{variable}} template replacement in the system prompt
-        #   2. A "Call Context" section so the agent knows who it's calling
-        contact_data = (session_metadata or {}).get("contact_data", {})
-        if contact_data:
-            system_instruction = self._inject_contact_data(
-                system_instruction, contact_data
-            )
         
         # 6. Load tools if configured (future)
         tools = await self._load_agent_tools(entity)
@@ -197,18 +252,19 @@ class AgentContextLoader:
         else:
             max_call_duration = int(max_call_duration)
 
-        return AgentContext(
-            agent_id=agent_id,
-            system_instruction=system_instruction,
-            conversation_history=history,
-            llm_config=llm_config,
-            capabilities=capabilities,
-            tools=tools,
-            api_key=api_key,
-            voice_config=voice_config,
-            live_model=live_model,
-            max_call_duration_seconds=max_call_duration,
-        )
+        base = {
+            "system_instruction": system_instruction,
+            "llm_config": llm_config,
+            "capabilities": capabilities,
+            "tools": tools,
+            "api_key": api_key,
+            "voice_config": voice_config,
+            "live_model": live_model,
+            "max_call_duration_seconds": max_call_duration,
+        }
+        if _AGENT_BASE_CACHE is not None:
+            _AGENT_BASE_CACHE[cache_key] = base
+        return base
     
     def _build_system_instruction(
         self,

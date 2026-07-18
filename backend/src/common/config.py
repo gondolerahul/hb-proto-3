@@ -42,6 +42,54 @@ class Settings(BaseSettings):
     # is the Google API surface the tools already depend on.
     SANDBOX_EGRESS_ALLOWLIST: str = "googleapis.com,google.com"
 
+    # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
+    # Voicemail detection: disconnect instead of pitching to a mailbox.
+    VOICEMAIL_DETECTION_ENABLED: bool = True
+    # Outbound call with no lead speech (neither transcript nor audio energy)
+    # for this long after the agent's first audio → treated as an answering
+    # machine. Must comfortably exceed a polite listen-through of the intro.
+    VOICEMAIL_NO_SPEECH_SECONDS: int = 25
+    # Voicemail greeting phrases are only scanned during this window from
+    # pipeline start; later mentions ("just leave me a message on WhatsApp")
+    # are normal conversation.
+    VOICEMAIL_PHRASE_WINDOW_SECONDS: int = 30
+    # Activity watchdog: no first agent audio within this window of the
+    # greeting trigger → pipeline stall, call is torn down as failed.
+    VOICE_PIPELINE_STALL_SECONDS: int = 10
+    # Both sides idle (no agent audio sent AND no lead speech) for this long
+    # → wind-down prompt, then disconnect.
+    VOICE_SILENCE_DISCONNECT_SECONDS: int = 15
+    # No silence enforcement during the first N seconds of the pipeline
+    # (covers setup + greeting latency).
+    VOICE_SILENCE_GRACE_SECONDS: int = 20
+    # Agent produced no audio for this long after the lead's turn ended →
+    # nudge the model; hard-disconnect at 2x only if the flag below is on
+    # (tool calls legitimately exceed this window).
+    VOICE_AGENT_STALL_SECONDS: int = 10
+    VOICE_AGENT_STALL_DISCONNECT: bool = False
+    # RMS threshold on 16-bit PCM inbound audio above which the lead counts
+    # as speaking (μ-law frames flow continuously even in silence).
+    VOICE_VAD_RMS_THRESHOLD: int = 300
+    # Echo suppression: while agent audio is playing at the provider, inbound
+    # frames quieter than this are NOT forwarded to the model. PSTN echo of
+    # the agent's own voice (attenuated, typically rms<600) was triggering
+    # Gemini's barge-in and gibberish transcripts; real interjections are
+    # much louder. 0 disables the gate.
+    VOICE_ECHO_SUPPRESS_RMS: int = 600
+    # An interruption only flushes the provider's playback buffer when
+    # inbound speech at least this loud was heard in the last ~1.5s —
+    # otherwise the "interruption" was echo/noise and wiping the buffer cuts
+    # the agent off mid-sentence.
+    VOICE_BARGE_IN_RMS_THRESHOLD: int = 1000
+    # Agent context cache TTL (seconds); 0 disables. Agent edits take up to
+    # this long to reach new calls.
+    VOICE_AGENT_CACHE_TTL_SECONDS: int = 300
+    # Smartflo login-JWT cache TTL for account APIs (e.g. /v1/call/hangup).
+    TATA_AUTH_TOKEN_TTL_SECONDS: int = 43200
+    # Country code prepended to 10-digit campaign contact numbers that lack
+    # one (Tata rejects non-E.164 numbers with HTTP 422 "Invalid details").
+    DEFAULT_PHONE_COUNTRY_CODE: str = "91"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

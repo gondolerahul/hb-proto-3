@@ -26,6 +26,7 @@ const AIModelConfigPage = lazy(() => import('@/pages/ai-config/AIModelConfigPage
 // Streaming pages
 const StreamingSessionsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.StreamingSessionsPage })));
 const CampaignsPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CampaignsPage })));
+const CampaignDetailPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CampaignDetailPage })));
 const CallDetailPage = lazy(() => import('@/pages/streaming').then(m => ({ default: m.CallDetailPage })));
 
 const Artifacts = lazy(() => import('@/pages/artifacts/Artifacts').then(m => ({ default: m.Artifacts })));
@@ -371,6 +372,18 @@ export const AppRouter: React.FC = () => {
                             <ProtectedRoute>
                                 <MainLayout>
                                     <CampaignsPage />
+                                </MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Streaming - Campaign Detail */}
+                    <Route
+                        path="/streaming/campaigns/:campaignId"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout>
+                                    <CampaignDetailPage />
                                 </MainLayout>
                             </ProtectedRoute>
                         }

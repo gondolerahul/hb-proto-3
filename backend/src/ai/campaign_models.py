@@ -6,11 +6,45 @@ Stores campaign metadata, execution state, and call tracking.
 from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import (
-    Column, String, Integer, Boolean, DateTime, Text, ForeignKey
+    Column, String, Integer, Boolean, DateTime, Text, ForeignKey, case
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from src.common.database import Base
+
+# Report ordering: positive responses first, then descending usefulness.
+# Applied to both the campaign detail API and the Excel export.
+DISPOSITION_PRIORITY = {
+    "interested": 0,
+    "not_interested": 1,
+    "voicemail": 3,
+    "rejected": 4,
+    "busy": 5,
+    "no_answer": 6,
+    "failed": 7,
+}
+
+# Fallback rank for calls without a disposition yet: completed calls (awaiting
+# LLM classification) outrank every failure bucket; in-flight calls sort last.
+_STATUS_FALLBACK_PRIORITY = {
+    "completed": 2,
+    "completed-voicemail": 3,
+    "failed": 7,
+}
+
+
+def campaign_call_sort_order():
+    """SQL CASE expression ranking CampaignCall rows by disposition,
+    falling back to status for unclassified rows."""
+    return case(
+        DISPOSITION_PRIORITY,
+        value=CampaignCall.disposition,
+        else_=case(
+            _STATUS_FALLBACK_PRIORITY,
+            value=CampaignCall.status,
+            else_=50,
+        ),
+    )
 
 
 class Campaign(Base):
@@ -78,12 +112,20 @@ class CampaignCall(Base):
     contact_data = Column(JSONB, nullable=False)  # Phone, name, custom fields
     
     # Call status
-    status = Column(String(20), nullable=False, default="pending")  # pending | calling | completed | failed | skipped
+    status = Column(String(20), nullable=False, default="pending")  # pending | calling | completed | completed-voicemail | failed | skipped
     call_sid = Column(String(100), nullable=True)
-    
+
     # Outcome
-    outcome = Column(String(50), nullable=True)  # success | no_answer | busy | failed | refused
+    outcome = Column(String(50), nullable=True)  # success | no_answer | busy | failed | refused | voicemail
     outcome_notes = Column(Text, nullable=True)
+    # Structured result for report sorting; see DISPOSITION_PRIORITY.
+    # interested | not_interested | voicemail | rejected | busy | no_answer | failed
+    # NULL while pending/calling, or for answered calls awaiting LLM classification.
+    disposition = Column(String(30), nullable=True)
+    # Why the lead was not interested (LLM-classified, only when
+    # disposition = not_interested); see NOT_INTERESTED_REASONS in call_guards.
+    # budget_low | not_suitable | not_investing | already_bought | other
+    disposition_reason = Column(String(30), nullable=True)
     
     # Timing
     scheduled_at = Column(DateTime, nullable=True)

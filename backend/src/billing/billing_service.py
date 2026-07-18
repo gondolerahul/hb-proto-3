@@ -49,6 +49,23 @@ def calculate_tb(
     }
 
 
+def compute_billed_amount(base_cost: Decimal, config: Optional["BillingConfig"]) -> Decimal:
+    """
+    Customer-billed amount for a given internal cost under a billing config.
+
+    Falls back to the identity formula (no fees/discounts) when the company
+    has no active config, matching the per-call credit deduction behavior.
+    """
+    if config is None:
+        mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
+    else:
+        mf = Decimal(str(config.multiplier_factor))
+        pf = Decimal(str(config.platform_fee_pct))
+        spf = Decimal(str(config.sales_partner_fee_pct))
+        d = Decimal(str(config.discount_pct))
+    return calculate_tb(Decimal(str(base_cost)), mf, pf, spf, d)["total_billing"]
+
+
 class BillingService:
     def __init__(self, db: AsyncSession):
         self.db = db

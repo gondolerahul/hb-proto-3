@@ -169,10 +169,12 @@ async def twilio_status_callback(
     call_status = form_data.get("CallStatus")
     call_duration = form_data.get("CallDuration")
     recording_url = form_data.get("RecordingUrl")
+    answered_by = form_data.get("AnsweredBy")  # Async AMD result
 
     logger.info(
         f"Twilio status callback: {call_sid} status={call_status} "
-        f"duration={call_duration} recording={bool(recording_url)}"
+        f"duration={call_duration} recording={bool(recording_url)} "
+        f"answered_by={answered_by}"
     )
 
     # ── Step 1: Find session (status-agnostic to handle race with cleanup) ──
@@ -184,6 +186,42 @@ async def twilio_status_callback(
 
     db = session_manager.db
     duration = int(call_duration) if call_duration else None
+
+    # ── Step 1b: Async AMD result — machine answered → hang up now ──────
+    # AMD callbacks arrive separately from terminal status callbacks (the
+    # stream handler runs in another process, so the REST hangup is the only
+    # cross-process-safe disconnect).
+    from src.voice.call_guards import is_twilio_machine
+    if answered_by:
+        if is_twilio_machine(answered_by):
+            logger.info(
+                f"Twilio AMD detected machine ({answered_by}) for {call_sid} — hanging up"
+            )
+            try:
+                from src.ai.campaign_models import CampaignCall
+                await db.execute(
+                    sa_update(CampaignCall)
+                    .where(CampaignCall.voice_session_id == session.id)
+                    .values(
+                        status="completed-voicemail",
+                        outcome="voicemail",
+                        disposition="voicemail",
+                        outcome_notes=f"twilio_amd={answered_by}",
+                        completed_at=datetime.utcnow(),
+                    )
+                )
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to mark CampaignCall voicemail: {e}")
+                await db.rollback()
+            try:
+                from src.voice.twilio_api import hangup_twilio_call
+                await hangup_twilio_call(db, session.company_id, call_sid)
+            except Exception as e:
+                logger.error(f"Twilio AMD hangup failed for {call_sid}: {e}")
+            return {"status": "ok", "answered_by": answered_by, "action": "hangup"}
+        else:
+            logger.info(f"Twilio AMD: {answered_by} for {call_sid} — continuing")
 
     # ── Step 2: Save recording reference if available ───────────────────
     if recording_url:
@@ -269,16 +307,42 @@ async def twilio_status_callback(
         if campaign_call:
             old_status = campaign_call.status
 
+            # In-call detection already finalized this record (e.g. voicemail);
+            # only backfill timing fields, never the status/outcome/disposition.
+            if old_status == "completed-voicemail":
+                await db.execute(
+                    sa_update(CampaignCall)
+                    .where(CampaignCall.id == campaign_call.id)
+                    .values(
+                        completed_at=datetime.utcnow(),
+                        duration_seconds=duration if duration and duration > 0 else None,
+                    )
+                )
+                await db.commit()
+                return {"status": "ok", "session_id": str(session.id), "outcome": "voicemail"}
+
+            # Structured disposition from the telephony outcome; answered calls
+            # stay NULL until the post-call LLM classification fills them.
+            disposition = (
+                outcome_detail
+                if outcome_detail in ("busy", "no_answer", "rejected", "failed")
+                else None
+            )
+
+            values = dict(
+                status=call_outcome,
+                outcome=outcome_detail,
+                outcome_notes=f"twilio_status={call_status}",
+                completed_at=datetime.utcnow(),
+                duration_seconds=duration if duration and duration > 0 else None,
+            )
+            if disposition:
+                values["disposition"] = disposition
+
             await db.execute(
                 sa_update(CampaignCall)
                 .where(CampaignCall.id == campaign_call.id)
-                .values(
-                    status=call_outcome,
-                    outcome=outcome_detail,
-                    outcome_notes=f"twilio_status={call_status}",
-                    completed_at=datetime.utcnow(),
-                    duration_seconds=duration if duration and duration > 0 else None,
-                )
+                .values(**values)
             )
 
             # Increment campaign counter only if transitioning from "calling"
@@ -827,16 +891,58 @@ async def _process_tata_status(data: dict, db: AsyncSession):
         if campaign_call:
             old_status = campaign_call.status
 
+            # In-call detection already finalized this record (e.g. voicemail);
+            # only backfill timing fields, never the status/outcome/disposition.
+            if old_status == "completed-voicemail":
+                await db.execute(
+                    sa_update(CampaignCall)
+                    .where(CampaignCall.id == campaign_call.id)
+                    .values(
+                        completed_at=datetime.utcnow(),
+                        duration_seconds=duration if duration > 0 else None,
+                    )
+                )
+                await db.commit()
+                return {
+                    "status": "ok",
+                    "session_id": str(voice_session.id),
+                    "outcome": "voicemail",
+                }
+
+            # Structured disposition from the telephony outcome; answered calls
+            # stay NULL until the post-call LLM classification fills them.
+            _DISPOSITION_BY_DETAIL = {
+                "busy": "busy",
+                "no_answer": "no_answer",
+                "missed": "no_answer",
+                "rejected": "rejected",
+                "unreachable": "failed",
+                "invalid_number": "failed",
+                "failed": "failed",
+                "unspecified": "failed",
+            }
+            disposition = (
+                _DISPOSITION_BY_DETAIL.get(outcome_detail)
+                if call_outcome == "failed"
+                else None
+            )
+
+            values = dict(
+                status=call_outcome,
+                outcome=outcome_detail,
+                outcome_notes=f"hangup_cause={hangup_cause}, call_status={call_status}",
+                completed_at=datetime.utcnow(),
+                duration_seconds=duration if duration > 0 else None,
+            )
+            if call_outcome == "failed" and not disposition:
+                disposition = "failed"
+            if disposition:
+                values["disposition"] = disposition
+
             await db.execute(
                 sa_update(CampaignCall)
                 .where(CampaignCall.id == campaign_call.id)
-                .values(
-                    status=call_outcome,
-                    outcome=outcome_detail,
-                    outcome_notes=f"hangup_cause={hangup_cause}, call_status={call_status}",
-                    completed_at=datetime.utcnow(),
-                    duration_seconds=duration if duration > 0 else None,
-                )
+                .values(**values)
             )
 
             # Increment campaign counter only if transitioning from "calling"

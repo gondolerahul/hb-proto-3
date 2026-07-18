@@ -222,6 +222,7 @@ async def list_campaigns(
         for c in campaigns:
             sc = counts_map.get(c.id, {})
             completed = sc.get("completed", 0)
+            voicemail = sc.get("completed-voicemail", 0)
             failed = sc.get("failed", 0)
             calling = sc.get("calling", 0)
             pending = sc.get("pending", 0)
@@ -237,8 +238,9 @@ async def list_campaigns(
                 "description": c.description,
                 "status": effective_status,
                 "total_contacts": c.total_contacts,
-                "calls_initiated": completed + failed + calling,
+                "calls_initiated": completed + voicemail + failed + calling,
                 "calls_completed": completed,
+                "calls_voicemail": voicemail,
                 "calls_failed": failed,
                 "calls_calling": calling,
                 "calls_pending": pending,
@@ -256,6 +258,162 @@ async def list_campaigns(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/interested/download")
+async def download_interested_leads(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Download all leads with disposition 'interested' across every campaign
+    of the current user's company as an Excel file.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from src.ai.campaign_models import Campaign, CampaignCall
+
+    try:
+        result = await db.execute(
+            select(CampaignCall, Campaign.name)
+            .join(Campaign, Campaign.id == CampaignCall.campaign_id)
+            .where(
+                Campaign.company_id == UUID(str(current_user.company_id)),
+                CampaignCall.disposition == "interested",
+            )
+            .order_by(Campaign.name.asc(), CampaignCall.called_at.asc())
+        )
+        rows = result.all()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Interested Leads"
+
+        headers = ["#", "Campaign", "Contact Name", "Phone Number", "Company", "Called At"]
+        header_font = Font(name="Calibri", bold=True, size=12, color="FFFFFF")
+        header_fill = PatternFill(start_color="2B3A67", end_color="2B3A67", fill_type="solid")
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+        for i, width in enumerate([6, 30, 25, 20, 20, 22], 1):
+            ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
+
+        for idx, (call, campaign_name) in enumerate(rows, 1):
+            contact = call.contact_data or {}
+            ws.append([
+                idx,
+                campaign_name,
+                contact.get("name", "Unknown"),
+                contact.get("phone", ""),
+                contact.get("company", ""),
+                call.called_at.strftime("%Y-%m-%d %H:%M:%S") if call.called_at else "—",
+            ])
+
+        ws.freeze_panes = "A2"
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        filename = f"Interested_Leads_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating interested leads report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/retry-failed")
+async def retry_failed_calls(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Re-queue all failed calls across every campaign of the current user's
+    company: failed calls are reset to 'pending' and each affected campaign
+    is re-enqueued for execution.
+
+    Campaigns currently 'running' are skipped — their dial loop already has a
+    snapshot of pending calls and a second concurrent run could double-dial.
+    """
+    from sqlalchemy import update as sa_update
+    from src.ai.campaign_models import Campaign, CampaignCall
+
+    service = CampaignService(db)
+
+    try:
+        result = await db.execute(
+            select(CampaignCall.id, CampaignCall.campaign_id)
+            .join(Campaign, Campaign.id == CampaignCall.campaign_id)
+            .where(
+                Campaign.company_id == UUID(str(current_user.company_id)),
+                Campaign.status != "running",
+                CampaignCall.status == "failed",
+            )
+        )
+        failed_rows = result.all()
+
+        if not failed_rows:
+            return {"campaigns_queued": 0, "calls_queued": 0,
+                    "message": "No failed calls to retry"}
+
+        call_ids = [row.id for row in failed_rows]
+        campaign_ids = {row.campaign_id for row in failed_rows}
+
+        # Reset the failed calls so the executor picks them up again.
+        # voice_session_id/call_sid are left in place — they are overwritten
+        # when the call is re-dialed.
+        await db.execute(
+            sa_update(CampaignCall)
+            .where(CampaignCall.id.in_(call_ids))
+            .values(
+                status="pending",
+                outcome=None,
+                outcome_notes=None,
+                disposition=None,
+                disposition_reason=None,
+                completed_at=None,
+                duration_seconds=None,
+                retry_count=CampaignCall.retry_count + 1,
+            )
+        )
+        await db.commit()
+
+        # Mark campaigns running and enqueue execution tasks
+        from arq import create_pool
+        from arq.connections import RedisSettings
+        from src.common.config import settings
+        from urllib.parse import urlparse
+
+        parsed = urlparse(settings.REDIS_URL or "redis://localhost:6379")
+        redis_settings = RedisSettings(host=parsed.hostname or "localhost", port=parsed.port or 6379)
+        redis = await create_pool(redis_settings)
+        try:
+            for campaign_id in campaign_ids:
+                await service.update_campaign_status(campaign_id, "running")
+                await redis.enqueue_job('execute_campaign_task', str(campaign_id))
+        finally:
+            await redis.close()
+
+        logger.info(
+            f"Retry-failed: reset {len(call_ids)} calls across "
+            f"{len(campaign_ids)} campaigns for company {current_user.company_id}"
+        )
+        return {
+            "campaigns_queued": len(campaign_ids),
+            "calls_queued": len(call_ids),
+            "message": f"Retrying {len(call_ids)} failed calls across {len(campaign_ids)} campaigns"
+        }
+
+    except Exception as e:
+        logger.error(f"Error retrying failed calls: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{campaign_id}")
 async def get_campaign(
     campaign_id: UUID,
@@ -265,14 +423,14 @@ async def get_campaign(
     """
     Get campaign details with real-time call status counts and individual call records.
     """
-    from src.ai.campaign_models import CampaignCall
+    from src.ai.campaign_models import CampaignCall, campaign_call_sort_order
     from sqlalchemy import func
 
     service = CampaignService(db)
-    
+
     try:
         campaign = await service.get_campaign(campaign_id)
-        
+
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
 
@@ -287,17 +445,18 @@ async def get_campaign(
         )
         status_counts = {row.status: row.count for row in status_result}
 
-        # Fetch individual call records
+        # Fetch individual call records, best dispositions first
         calls_result = await db.execute(
             select(CampaignCall)
             .where(CampaignCall.campaign_id == campaign_id)
-            .order_by(CampaignCall.created_at.asc())
+            .order_by(campaign_call_sort_order().asc(), CampaignCall.created_at.asc())
         )
         calls = calls_result.scalars().all()
 
         # Derive effective campaign status from call states
         total = campaign.total_contacts
         completed = status_counts.get("completed", 0)
+        voicemail = status_counts.get("completed-voicemail", 0)
         failed = status_counts.get("failed", 0)
         calling = status_counts.get("calling", 0)
         pending = status_counts.get("pending", 0)
@@ -313,8 +472,9 @@ async def get_campaign(
             "description": campaign.description,
             "status": effective_status,
             "total_contacts": total,
-            "calls_initiated": completed + failed + calling,
+            "calls_initiated": completed + voicemail + failed + calling,
             "calls_completed": completed,
+            "calls_voicemail": voicemail,
             "calls_failed": failed,
             "calls_calling": calling,
             "calls_pending": pending,
@@ -335,6 +495,8 @@ async def get_campaign(
                     "contact_company": c.contact_data.get("company", "") if c.contact_data else "",
                     "status": c.status,
                     "outcome": c.outcome,
+                    "disposition": c.disposition,
+                    "disposition_reason": c.disposition_reason,
                     "outcome_notes": c.outcome_notes,
                     "called_at": c.called_at.isoformat() if c.called_at else None,
                     "completed_at": c.completed_at.isoformat() if c.completed_at else None,
@@ -483,10 +645,13 @@ async def download_campaign_report(
     Returns:
         StreamingResponse with Excel file
     """
+    import math
+    from decimal import Decimal
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from src.ai.campaign_models import CampaignCall
+    from src.ai.campaign_models import CampaignCall, campaign_call_sort_order
     from src.voice.models import VoiceSession, ConversationHistory
+    from src.billing.billing_service import BillingService, compute_billed_amount
     from sqlalchemy import func
 
     service = CampaignService(db)
@@ -510,13 +675,17 @@ async def download_campaign_report(
         )
         status_counts = {row.status: row.count for row in status_result}
 
-        # Fetch all call records
+        # Fetch all call records, best dispositions first
         calls_result = await db.execute(
             select(CampaignCall)
             .where(CampaignCall.campaign_id == campaign_id)
-            .order_by(CampaignCall.created_at.asc())
+            .order_by(campaign_call_sort_order().asc(), CampaignCall.created_at.asc())
         )
         calls = calls_result.scalars().all()
+
+        # Billing config for customer-billed (TB) amounts; recomputed with the
+        # current config, not the config at call time.
+        billing_config = await BillingService(db).get_billing_config(campaign.company_id)
 
         # ── Batch-load linked VoiceSession data ──────────────────────────
         voice_session_ids = [
@@ -593,6 +762,21 @@ async def download_campaign_report(
             ctx = vs.context_state or {}
             return (ctx.get("next_action") or "")[:MAX_CELL_CHARS]
 
+        def _get_billed_usd(call) -> Optional[float]:
+            """Customer-billed (TB) amount for a call, from its VoiceSession cost."""
+            if not call.voice_session_id or call.voice_session_id not in voice_sessions_map:
+                return None
+            vs = voice_sessions_map[call.voice_session_id]
+            if vs.total_cost_usd is None:
+                return None
+            billed = compute_billed_amount(Decimal(str(vs.total_cost_usd)), billing_config)
+            return float(round(billed, 4))
+
+        total_billed_usd = sum(
+            (b for b in (_get_billed_usd(c) for c in calls) if b is not None),
+            0.0,
+        )
+
         # ── Build Excel workbook ──────────────────────────────────────
         wb = Workbook()
 
@@ -625,9 +809,12 @@ async def download_campaign_report(
             ("", ""),
             ("Total Contacts", campaign.total_contacts),
             ("Calls Completed", status_counts.get("completed", 0)),
+            ("Calls Voicemail", status_counts.get("completed-voicemail", 0)),
             ("Calls Failed", status_counts.get("failed", 0)),
             ("Calls Pending", status_counts.get("pending", 0)),
             ("Calls In Progress", status_counts.get("calling", 0)),
+            ("", ""),
+            ("Total Billed Amount (USD)", round(total_billed_usd, 4)),
             ("", ""),
             ("Created At", campaign.created_at.strftime("%Y-%m-%d %H:%M:%S") if campaign.created_at else "—"),
             ("Started At", campaign.started_at.strftime("%Y-%m-%d %H:%M:%S") if campaign.started_at else "—"),
@@ -654,8 +841,10 @@ async def download_campaign_report(
 
         call_headers = [
             "#", "Contact Name", "Phone Number", "Company",
-            "Status", "Outcome", "Outcome Notes",
-            "Called At", "Completed At", "Duration (sec)",
+            "Status", "Outcome", "Disposition", "Not Interested Reason",
+            "Outcome Notes",
+            "Called At", "Completed At", "Duration (min)",
+            "Billing Amount (USD)",
             "Transcription", "Call Summary", "Next Action",
             "Call SID", "Retry Count"
         ]
@@ -668,13 +857,14 @@ async def download_campaign_report(
             cell.alignment = Alignment(horizontal="center")
 
         # Set column widths
-        col_widths = [6, 25, 20, 20, 12, 15, 30, 22, 22, 14, 50, 40, 40, 25, 12]
+        col_widths = [6, 25, 20, 20, 16, 15, 16, 20, 30, 22, 22, 14, 18, 50, 40, 40, 25, 12]
         for i, width in enumerate(col_widths, 1):
             ws_calls.column_dimensions[ws_calls.cell(row=1, column=i).column_letter].width = width
 
         # Status color fills
         status_fills = {
             "completed": PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid"),
+            "completed-voicemail": PatternFill(start_color="EDE7F6", end_color="EDE7F6", fill_type="solid"),
             "failed": PatternFill(start_color="FFEBEE", end_color="FFEBEE", fill_type="solid"),
             "calling": PatternFill(start_color="E3F2FD", end_color="E3F2FD", fill_type="solid"),
             "pending": PatternFill(start_color="FFF3E0", end_color="FFF3E0", fill_type="solid"),
@@ -683,6 +873,7 @@ async def download_campaign_report(
         # Write call data rows
         for idx, call in enumerate(calls, 1):
             contact = call.contact_data or {}
+            billed_usd = _get_billed_usd(call)
             row_data = [
                 idx,
                 contact.get("name", "Unknown"),
@@ -690,10 +881,14 @@ async def download_campaign_report(
                 contact.get("company", ""),
                 call.status or "—",
                 call.outcome or "—",
+                call.disposition or "—",
+                call.disposition_reason.replace("_", " ") if call.disposition_reason else "—",
                 call.outcome_notes or "",
                 call.called_at.strftime("%Y-%m-%d %H:%M:%S") if call.called_at else "—",
                 call.completed_at.strftime("%Y-%m-%d %H:%M:%S") if call.completed_at else "—",
-                call.duration_seconds if call.duration_seconds is not None else "—",
+                # Billing rounds duration up to the next full minute
+                math.ceil(call.duration_seconds / 60) if call.duration_seconds is not None else "—",
+                billed_usd if billed_usd is not None else "—",
                 _get_transcript_text(call),
                 _get_summary(call),
                 _get_next_action(call),
@@ -709,7 +904,7 @@ async def download_campaign_report(
                 if col_idx == 5 and call.status in status_fills:
                     cell.fill = status_fills[call.status]
                 # Wrap text for transcript, summary, next action columns
-                if col_idx in (11, 12, 13):
+                if col_idx in (14, 15, 16):
                     cell.alignment = Alignment(wrap_text=True, vertical="top")
 
         # Freeze header row

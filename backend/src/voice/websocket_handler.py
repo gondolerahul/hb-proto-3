@@ -37,8 +37,19 @@ from src.voice.conversation_logger import ConversationLogger
 from src.voice.models import ConversationHistory, VoiceSession
 from src.voice.number_router import NumberRouter
 from src.voice.usage_logger import VoiceUsageLogger
+from src.voice.call_guards import (
+    ActivityState,
+    END_CALL_SYSTEM_SUFFIX,
+    END_CALL_TOOL,
+    detect_voicemail_phrase,
+    effective_agent_audio_at,
+    evaluate_activity,
+    parse_disposition,
+    parse_not_interested_reason,
+)
 from src.billing.credit_service import CreditService
 from src.billing.billing_service import BillingService
+from src.common.config import settings
 from src.common.database import AsyncSessionLocal
 from decimal import Decimal
 
@@ -100,6 +111,32 @@ class BaseStreamHandler:
 
         # Issue #7: Configurable call duration limit
         self.max_call_duration_seconds: int = 300  # Default 5 min, overridden by agent config
+
+        # Call guardrails — activity timestamps (time.time()) + termination state
+        self._pipeline_started_at: Optional[float] = None
+        self._greeting_sent_at: Optional[float] = None
+        self._first_audio_received = False
+        self._first_agent_audio_sent_at: Optional[float] = None
+        self._last_agent_audio_at: Optional[float] = None
+        # Playback horizon: audio is sent to the provider in fast bursts but
+        # plays out in real time from the provider's buffer (8kHz μ-law).
+        self._agent_playback_until: float = 0.0
+        # Rolling loudness of the agent's own audio — the echo gate threshold
+        # scales with it (echo is an attenuated copy of the agent's voice).
+        self._agent_audio_rms_ema: Optional[float] = None
+        self._last_lead_speech_at: Optional[float] = None      # RMS energy VAD
+        self._last_strong_speech_at: Optional[float] = None    # barge-in-loud audio
+        self._last_lead_transcript_at: Optional[float] = None  # model transcription
+        self._provider_stopped = False  # provider sent 'stop' — call already dead
+        self._silence_winddown_at: Optional[float] = None
+        self._agent_stall_nudge_at: Optional[float] = None
+        self._termination_reason: Optional[str] = None
+        self._voicemail_detected = False
+        self._llm_disposition: Optional[str] = None
+        self._llm_disposition_reason: Optional[str] = None
+        self._vm_phrase_window = ""
+        self._end_call_pushback_sent = False
+        self._ringback_task: Optional[asyncio.Task] = None
 
     # ------------------------------------------------------------------
     # Recording helpers (P0.4)
@@ -195,37 +232,24 @@ class BaseStreamHandler:
         # Block outbound calls when credits are exhausted.
         # Inbound calls are allowed through with a warning (so users
         # don't miss important calls), but we still deduct at end.
-        try:
+        # Runs concurrently with the agent load (call-setup hot path); uses
+        # its own DB session because self.db can't serve parallel queries.
+        async def _credit_gate():
             from src.billing.credit_service import CreditService, InsufficientCreditsError
-            credit_svc = CreditService(self.db)
-            await credit_svc.check_sufficient_for_execution(
-                company_id=self.voice_session.company_id,
-                entity_type="AGENT",
-            )
-        except InsufficientCreditsError as e:
-            direction = getattr(self.voice_session, 'direction', 'unknown')
-            if direction == "outbound":
-                logger.warning(
-                    f"Blocking outbound call {self.session_id} — insufficient credits: {e}"
-                )
-                try:
-                    await self.websocket.send_json({
-                        "event": "error",
-                        "error": "insufficient_credits",
-                        "message": str(e),
-                    })
-                    await self.websocket.close(code=4002, reason="Insufficient credits")
-                except Exception:
-                    pass
-                return
-            else:
-                # Allow inbound calls through with a warning
-                logger.warning(
-                    f"Inbound call {self.session_id} proceeding with $0 balance: {e}"
-                )
-        except Exception as e:
-            # Don't block calls if the credit check itself fails
-            logger.error(f"Credit check error (non-blocking): {e}")
+            try:
+                async with AsyncSessionLocal() as _credit_db:
+                    await CreditService(_credit_db).check_sufficient_for_execution(
+                        company_id=self.voice_session.company_id,
+                        entity_type="AGENT",
+                    )
+            except InsufficientCreditsError as e:
+                return e
+            except Exception as e:
+                # Don't block calls if the credit check itself fails
+                logger.error(f"Credit check error (non-blocking): {e}")
+            return None
+
+        credit_task = asyncio.create_task(_credit_gate())
 
         # Open recording temp file before audio starts flowing
         self._open_recording_file()
@@ -237,13 +261,39 @@ class BaseStreamHandler:
             session_metadata=self.voice_session.session_metadata,
         )
 
+        credit_error = await credit_task
+        if credit_error is not None:
+            direction = getattr(self.voice_session, 'direction', 'unknown')
+            if direction == "outbound":
+                logger.warning(
+                    f"Blocking outbound call {self.session_id} — insufficient credits: {credit_error}"
+                )
+                try:
+                    await self.websocket.send_json({
+                        "event": "error",
+                        "error": "insufficient_credits",
+                        "message": str(credit_error),
+                    })
+                    await self.websocket.close(code=4002, reason="Insufficient credits")
+                except Exception:
+                    pass
+                return
+            else:
+                # Allow inbound calls through with a warning
+                logger.warning(
+                    f"Inbound call {self.session_id} proceeding with $0 balance: {credit_error}"
+                )
+
         # Resolve the correct live streaming client from task defaults
         factory = LiveClientFactory(
             db=self.db,
             company_id=self.voice_session.company_id,
         )
+        system_instruction = agent_context.system_instruction
+        if settings.VOICEMAIL_DETECTION_ENABLED:
+            system_instruction = system_instruction + END_CALL_SYSTEM_SUFFIX
         live_client_or_tuple, provider = await factory.create_client(
-            system_instruction=agent_context.system_instruction,
+            system_instruction=system_instruction,
             voice_config=agent_context.voice_config,
             generation_config=agent_context.llm_config.get("parameters", {}),
             conversation_history=agent_context.conversation_history,
@@ -261,7 +311,9 @@ class BaseStreamHandler:
             # connect() returns an async context manager; we must enter it
             # to get the actual live session with .receive()/.send_realtime_input()
             # Phase 3: Pass loaded tools into the Gemini session config
-            voice_tools = agent_context.tools or []
+            voice_tools = list(agent_context.tools or [])
+            if settings.VOICEMAIL_DETECTION_ENABLED:
+                voice_tools.append(END_CALL_TOOL)
             session_cm = await gemini_client.connect(tools=voice_tools)
             self._live_session_cm = session_cm
             self.gemini_session = await session_cm.__aenter__()
@@ -283,9 +335,12 @@ class BaseStreamHandler:
             # For gemini-3.1-flash-live-preview, send_client_content is only for
             # seeding history. Must use send_realtime_input for live messages.
             await self.gemini_session.send_realtime_input(text=greeting)
+            self._greeting_sent_at = time.time()
             logger.info(f"Sent greeting trigger for session {self.session_id}")
         except Exception as _ge:
             logger.warning(f"Greeting trigger failed (non-fatal): {_ge}")
+
+        self._pipeline_started_at = time.time()
 
         tasks = [
             asyncio.create_task(self._receive_from_provider()),
@@ -294,6 +349,7 @@ class BaseStreamHandler:
             asyncio.create_task(self._send_to_provider()),
             asyncio.create_task(self._flush_transcripts()),
             asyncio.create_task(self._call_duration_watchdog()),
+            asyncio.create_task(self._activity_watchdog()),
         ]
         try:
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -343,6 +399,7 @@ class BaseStreamHandler:
 
                 elif event_type == "stop":
                     logger.info(f"Provider call stopped: {event}")
+                    self._provider_stopped = True
                     self.call_ended_at = datetime.utcnow()
                     self.is_running = False
                     break
@@ -365,7 +422,7 @@ class BaseStreamHandler:
             self.session_id,
             {"stream_sid": self.stream_sid, "status": "active"},
         )
-        await self._play_initial_ringback()
+        self._start_ringback()
 
     async def _handle_media_event(self, event: Dict[str, Any]):
         """Decode base64 mulaw payload and push to incoming buffer."""
@@ -378,19 +435,43 @@ class BaseStreamHandler:
     # Audio pipeline
     # ------------------------------------------------------------------
 
-    async def _play_initial_ringback(self):
-        """Play ringback tone while Gemini connects (reduces perceived latency)."""
+    def _start_ringback(self):
+        """Launch the ringback loop that masks setup latency until first audio."""
+        if self._ringback_task is None or self._ringback_task.done():
+            self._ringback_task = asyncio.create_task(self._play_ringback_until_first_audio())
+
+    def _stop_ringback(self):
+        if self._ringback_task and not self._ringback_task.done():
+            self._ringback_task.cancel()
+        self._ringback_task = None
+
+    async def _play_ringback_until_first_audio(self):
+        """Stream ringback tone until the model produces audio.
+
+        Setup latency under concurrent dialing was observed at 5-27s; a fixed
+        4s burst left leads listening to dead air and hanging up. Frames are
+        paced at real time (20ms) so ringback stops as soon as the agent
+        speaks instead of sitting pre-buffered at the provider.
+        """
         try:
             ringback_mulaw = self.audio_processor.generate_ringback_tone(4)
             chunks = self.audio_processor.ensure_chunk_size(ringback_mulaw)
-            for chunk in chunks:
-                b64_chunk = base64.b64encode(chunk).decode("ascii")
-                await self.websocket.send_text(json.dumps({
-                    "event": "media",
-                    "streamSid": self.stream_sid,
-                    "media": {"payload": b64_chunk},
-                }))
-            logger.info("Sent initial ringback tone.")
+            if not chunks:
+                return
+            i = 0
+            while self.is_running and not self._first_audio_received:
+                if self.stream_sid:
+                    chunk = chunks[i % len(chunks)]
+                    i += 1
+                    b64_chunk = base64.b64encode(chunk).decode("ascii")
+                    await self.websocket.send_text(json.dumps({
+                        "event": "media",
+                        "streamSid": self.stream_sid,
+                        "media": {"payload": b64_chunk},
+                    }))
+                await asyncio.sleep(0.02)
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             logger.error(f"Failed to send ringback: {e}")
 
@@ -403,11 +484,59 @@ class BaseStreamHandler:
             while self.is_running:
                 if self.incoming_audio_buffer:
                     mulaw_chunk = self.incoming_audio_buffer.popleft()
+                    forward_to_model = True
 
                     # Recording mix: inbound linear + outbound linear → write to file
                     try:
                         import audioop
                         inbound_lin = audioop.ulaw2lin(mulaw_chunk, 2)
+                        # Energy VAD: μ-law frames flow continuously even in
+                        # silence, so lead activity = frames with real energy
+                        _rms = audioop.rms(inbound_lin, 2)
+                        if _rms > settings.VOICE_VAD_RMS_THRESHOLD:
+                            if self._last_lead_speech_at is None:
+                                logger.info(
+                                    f"[GUARD] First lead speech energy "
+                                    f"(rms={_rms}) for session {self.session_id}"
+                                )
+                            self._last_lead_speech_at = time.time()
+                        if _rms > settings.VOICE_BARGE_IN_RMS_THRESHOLD:
+                            self._last_strong_speech_at = time.time()
+                        # Echo gate: while the agent is audibly playing, the
+                        # PSTN feeds an attenuated echo of the agent's own
+                        # voice back to us. Forwarding it made Gemini's VAD
+                        # fire spurious interruptions and produce gibberish
+                        # "lead" transcripts. Scope is deliberately narrow —
+                        # a flat threshold muted a real lead speaking at
+                        # rms~400 for 26s ("main sun nahi paa rahi thi"):
+                        #   * greeting phase only (off after the first real
+                        #     lead transcript)
+                        #   * threshold adapts to the agent's own loudness
+                        #     (echo is an attenuated copy of it), capped by
+                        #     VOICE_ECHO_SUPPRESS_RMS, floor 300
+                        if (
+                            settings.VOICE_ECHO_SUPPRESS_RMS > 0
+                            and self._last_lead_transcript_at is None
+                            and time.time() < self._agent_playback_until
+                        ):
+                            _gate = min(
+                                settings.VOICE_ECHO_SUPPRESS_RMS,
+                                max(300, int(0.2 * (self._agent_audio_rms_ema or 0))),
+                            )
+                            if _rms < _gate:
+                                forward_to_model = False
+                        # Outbound greeting protection: the lead's pickup
+                        # "Hello?" reaching Gemini while it is still
+                        # generating the greeting barged in and cancelled the
+                        # greeting before a single word played (and left the
+                        # session mute). Hold inbound audio until the model's
+                        # first audio exists — the greeting talks over the
+                        # pickup-hello, which is normal for outbound calls.
+                        if (
+                            not self._first_audio_received
+                            and getattr(self.voice_session, "direction", "") == "outbound"
+                        ):
+                            forward_to_model = False
                         mix_len = len(inbound_lin)
                         out_chunk = self._outbound_recording_buffer[:mix_len]
                         del self._outbound_recording_buffer[:mix_len]
@@ -419,7 +548,14 @@ class BaseStreamHandler:
                     except Exception:
                         pass
 
-                    pcm16_chunk = self.audio_processor.mulaw_to_pcm16(mulaw_chunk)
+                    # Gated frames become SILENCE, not gaps: dropping frames
+                    # outright fed Gemini choppy speech fragments and its VAD
+                    # never saw a clean end-of-turn (one giant delayed
+                    # transcript). PCM16@16k is 4 bytes per μ-law byte.
+                    if forward_to_model:
+                        pcm16_chunk = self.audio_processor.mulaw_to_pcm16(mulaw_chunk)
+                    else:
+                        pcm16_chunk = b"\x00" * (len(mulaw_chunk) * 4)
                     if pcm16_chunk and self.gemini_session:
                         try:
                             # google-genai SDK v1.71.0+ — use send_realtime_input
@@ -456,8 +592,15 @@ class BaseStreamHandler:
                     # ── 1. Audio PCM from model ──────────────────────────────
                     audio_data = response.data
                     if audio_data:
-                        if not getattr(self, "_first_audio_received", False):
+                        if not self._first_audio_received:
                             self._first_audio_received = True
+                            self._stop_ringback()
+                            if self._greeting_sent_at:
+                                logger.info(
+                                    f"[GUARD] First model audio "
+                                    f"{time.time() - self._greeting_sent_at:.1f}s "
+                                    f"after greeting for session {self.session_id}"
+                                )
                             # Drain leftover ringback from queue
                             while not self.outgoing_audio_queue.empty():
                                 try:
@@ -492,10 +635,25 @@ class BaseStreamHandler:
                         # ── 2a. Interruption signal ─────────────────────────
                         # When the user speaks while the model is generating,
                         # Gemini cancels generation and sends interrupted=True.
-                        # We MUST flush our local audio buffers immediately.
+                        # Flush the playback buffers ONLY when loud inbound
+                        # speech corroborates a real barge-in — line echo and
+                        # noise also trip Gemini's VAD, and an uncorroborated
+                        # flush wipes the agent's buffered sentence at the
+                        # provider (heard as the agent stopping mid-word).
                         if getattr(sc, 'interrupted', False):
-                            logger.info(f"[INTERRUPT] Gemini signaled interruption for session {self.session_id}")
-                            await self._handle_interruption()
+                            now = time.time()
+                            strong_speech_recent = (
+                                self._last_strong_speech_at is not None
+                                and now - self._last_strong_speech_at < 1.5
+                            )
+                            if strong_speech_recent:
+                                logger.info(f"[INTERRUPT] Gemini signaled interruption for session {self.session_id}")
+                                await self._handle_interruption()
+                            else:
+                                logger.info(
+                                    f"[INTERRUPT] Ignoring uncorroborated interruption "
+                                    f"(no strong inbound speech) for session {self.session_id}"
+                                )
 
                         output_transcript = getattr(sc, "output_transcription", None)
                         if output_transcript and getattr(output_transcript, "text", None):
@@ -513,6 +671,36 @@ class BaseStreamHandler:
                                 # Phase 4: Track when user stops speaking for TTFB
                                 self._user_speech_end_time = time.time()
                                 self._ttfb_logged = False
+                                # Guardrails: inbound speech signals + voicemail
+                                # greeting phrases ("please leave a message...").
+                                # Phrase scan only near call start — later
+                                # mentions are normal conversation.
+                                now = time.time()
+                                if self._last_lead_transcript_at is None:
+                                    logger.info(
+                                        f"[GUARD] First lead transcript for "
+                                        f"session {self.session_id}: {text[:60]!r}"
+                                    )
+                                self._last_lead_transcript_at = now
+                                self._last_lead_speech_at = now
+                                in_phrase_window = (
+                                    self._pipeline_started_at is not None
+                                    and now - self._pipeline_started_at
+                                    < settings.VOICEMAIL_PHRASE_WINDOW_SECONDS
+                                )
+                                if (
+                                    settings.VOICEMAIL_DETECTION_ENABLED
+                                    and not self._voicemail_detected
+                                    and in_phrase_window
+                                ):
+                                    self._vm_phrase_window = (
+                                        self._vm_phrase_window + " " + text.lower()
+                                    )[-300:]
+                                    phrase = detect_voicemail_phrase(self._vm_phrase_window)
+                                    if phrase:
+                                        self._terminate_call(
+                                            f"voicemail_phrase:{phrase}", "voicemail"
+                                        )
 
                         if response.text:
                             logger.info(f"Gemini text response: {response.text}")
@@ -562,6 +750,10 @@ class BaseStreamHandler:
         # 3. Clear outbound recording buffer
         self._outbound_recording_buffer.clear()
 
+        # 4. The provider's playback buffer was flushed — the agent is no
+        # longer audible from this moment.
+        self._agent_playback_until = time.time()
+
         # Phase 4: Log interrupt latency
         if self._last_transcript_time > 0:
             interrupt_latency_ms = int((time.time() - self._last_transcript_time) * 1000)
@@ -569,6 +761,124 @@ class BaseStreamHandler:
                         f"drained {drained} audio chunks")
         else:
             logger.info(f"[INTERRUPT] Drained {drained} audio chunks, sent clear to provider")
+
+    def _terminate_call(self, reason: str, disposition: Optional[str] = None):
+        """Stop the pipeline; asyncio.wait(FIRST_COMPLETED) unwinds into _cleanup().
+
+        The activity watchdog exits within a second of is_running flipping,
+        which completes the task group and cancels the blocking readers.
+        """
+        if not self.is_running:
+            return
+        logger.info(
+            f"[GUARD] Terminating call {self.session_id}: {reason} "
+            f"(disposition={disposition})"
+        )
+        self._termination_reason = reason
+        if disposition == "voicemail":
+            self._voicemail_detected = True
+        self.call_ended_at = datetime.utcnow()
+        self.is_running = False
+
+    async def _activity_watchdog(self):
+        """Silence/stall/voicemail guardrails, evaluated once per second.
+
+        Decision logic lives in call_guards.evaluate_activity(); this task
+        owns the timestamps and side effects (nudges, wind-down, disconnect).
+        """
+        try:
+            while self.is_running:
+                await asyncio.sleep(1)
+                if not self.is_running:
+                    break
+
+                now = time.time()
+
+                # Perceived agent speech time: the lead keeps hearing the
+                # agent until the provider's playback buffer drains.
+                agent_audio_at = effective_agent_audio_at(
+                    now, self._last_agent_audio_at, self._agent_playback_until
+                )
+
+                # Lead speech after a wind-down means the call resumed
+                if (
+                    self._silence_winddown_at
+                    and (self._last_lead_speech_at or 0) > self._silence_winddown_at
+                ):
+                    self._silence_winddown_at = None
+                # Agent audio after a nudge means the stall resolved
+                if (
+                    self._agent_stall_nudge_at
+                    and (agent_audio_at or 0) > self._agent_stall_nudge_at
+                ):
+                    self._agent_stall_nudge_at = None
+
+                state = ActivityState(
+                    now=now,
+                    direction=getattr(self.voice_session, "direction", "inbound"),
+                    pipeline_started_at=self._pipeline_started_at,
+                    greeting_sent_at=self._greeting_sent_at,
+                    first_audio_received=self._first_audio_received,
+                    first_agent_audio_sent_at=self._first_agent_audio_sent_at,
+                    last_agent_audio_at=agent_audio_at,
+                    last_lead_speech_at=self._last_lead_speech_at,
+                    last_lead_transcript_at=self._last_lead_transcript_at,
+                    user_speech_end_time=self._user_speech_end_time,
+                    silence_winddown_at=self._silence_winddown_at,
+                    agent_stall_nudge_at=self._agent_stall_nudge_at,
+                    voicemail_detection_enabled=settings.VOICEMAIL_DETECTION_ENABLED,
+                )
+                action = evaluate_activity(state, settings)
+                if action is None:
+                    continue
+
+                logger.info(f"[GUARD] Activity watchdog action: {action} "
+                            f"for session {self.session_id}")
+
+                if action == "pipeline_stall":
+                    self._terminate_call("pipeline_stall")
+                elif action == "voicemail_no_speech":
+                    self._terminate_call("voicemail_no_speech", "voicemail")
+                elif action == "silence_winddown":
+                    self._silence_winddown_at = now
+                    await self._send_system_text(
+                        "[SYSTEM: The line has been silent for a while. "
+                        "Politely say goodbye and end the conversation.]"
+                    )
+                elif action == "silence_disconnect":
+                    await self._wait_for_playback_drain(max_wait_seconds=15)
+                    self._terminate_call("silence_timeout")
+                elif action == "agent_stall_nudge":
+                    self._agent_stall_nudge_at = now
+                    await self._send_system_text(
+                        "[SYSTEM: You have not responded to the caller. "
+                        "Reply now or briefly say you are still there.]"
+                    )
+                elif action == "agent_stall_disconnect":
+                    self._terminate_call("agent_stall")
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning(f"[GUARD] Error in activity watchdog: {e}")
+
+    async def _send_system_text(self, text: str):
+        """Best-effort system prompt injection into the live session."""
+        try:
+            if self.gemini_session:
+                await self.gemini_session.send_realtime_input(text=text)
+        except Exception as e:
+            logger.warning(f"[GUARD] Failed to send system text: {e}")
+
+    async def _wait_for_playback_drain(self, max_wait_seconds: float = 15.0):
+        """Wait until the provider's playback buffer finishes playing.
+
+        Audio reaches the provider in fast bursts, so terminating right after
+        the last send cuts the lead off mid-sentence.
+        """
+        deadline = time.time() + max_wait_seconds
+        while self.is_running and time.time() < min(self._agent_playback_until, deadline):
+            await asyncio.sleep(0.2)
 
     async def _handle_tool_call(self, tool_call):
         """
@@ -586,6 +896,78 @@ class BaseStreamHandler:
 
         # Preserve original FunctionCall objects for their `id` field
         original_fcs = list(tool_call.function_calls)
+
+        # end_call is synthetic (not in ToolRegistry): acknowledge it so the
+        # model isn't left hanging, give the goodbye a moment to flush, then
+        # tear the call down.
+        end_call_fc = next((fc for fc in original_fcs if fc.name == "end_call"), None)
+        if end_call_fc:
+            reason = (dict(end_call_fc.args or {})).get("reason", "conversation_complete")
+            logger.info(f"[GUARD] Model requested end_call (reason={reason}) "
+                        f"for session {self.session_id}")
+
+            # Corroboration gate: the model has claimed voicemail on live
+            # conversations. Accept a voicemail claim only when our own
+            # signals agree (no lead transcript yet, or a greeting phrase
+            # matched); otherwise push back once before accepting a repeat.
+            if reason == "voicemail":
+                corroborated = (
+                    self._last_lead_transcript_at is None
+                    or detect_voicemail_phrase(self._vm_phrase_window) is not None
+                )
+                if not corroborated and not self._end_call_pushback_sent:
+                    self._end_call_pushback_sent = True
+                    logger.info(
+                        f"[GUARD] Rejecting uncorroborated voicemail end_call "
+                        f"for session {self.session_id} — lead has spoken"
+                    )
+                    try:
+                        from google.genai import types as genai_types
+                        await self.gemini_session.send_tool_response(
+                            function_responses=[
+                                genai_types.FunctionResponse(
+                                    id=getattr(end_call_fc, 'id', None),
+                                    name="end_call",
+                                    response={
+                                        "output": (
+                                            "A live person appears to be on the "
+                                            "line — they have spoken during this "
+                                            "call. Do not end the call. Continue "
+                                            "the conversation; ask 'Can you hear "
+                                            "me?' if unsure."
+                                        ),
+                                        "success": False,
+                                    },
+                                )
+                            ],
+                        )
+                    except Exception as e:
+                        logger.warning(f"[GUARD] Failed to push back on end_call: {e}")
+                    return
+
+            try:
+                from google.genai import types as genai_types
+                await self.gemini_session.send_tool_response(
+                    function_responses=[
+                        genai_types.FunctionResponse(
+                            id=getattr(end_call_fc, 'id', None),
+                            name="end_call",
+                            response={"output": "Call will now end.", "success": True},
+                        )
+                    ],
+                )
+            except Exception as e:
+                logger.warning(f"[GUARD] Failed to ack end_call: {e}")
+            # Let the goodbye actually reach the lead: give the model a
+            # moment to emit it, then wait for the provider's playback
+            # buffer to drain (audio is sent in fast bursts).
+            await asyncio.sleep(1.5)
+            await self._wait_for_playback_drain(max_wait_seconds=15)
+            self._terminate_call(
+                f"model_end_call:{reason}",
+                "voicemail" if reason == "voicemail" else None,
+            )
+            return
 
         function_calls = []
         for fc in original_fcs:
@@ -673,6 +1055,28 @@ class BaseStreamHandler:
                     ttfb_ms = int((time.time() - self._user_speech_end_time) * 1000)
                     logger.info(f"[PERF] TTFB: {ttfb_ms}ms for session {self.session_id}")
                     self._ttfb_logged = True
+
+                # Guardrails: agent audio activity (queue carries model audio
+                # only; ringback bypasses it). Track the playback horizon —
+                # μ-law at 8kHz is 1 byte/sample, so this chunk occupies
+                # len/8000 seconds of the lead's ear once it plays out.
+                _now = time.time()
+                self._last_agent_audio_at = _now
+                if self._first_agent_audio_sent_at is None:
+                    self._first_agent_audio_sent_at = _now
+                self._agent_playback_until = (
+                    max(_now, self._agent_playback_until) + len(mulaw_chunk) / 8000.0
+                )
+                try:
+                    import audioop
+                    _rms_out = audioop.rms(audioop.ulaw2lin(mulaw_chunk, 2), 2)
+                    self._agent_audio_rms_ema = (
+                        _rms_out
+                        if self._agent_audio_rms_ema is None
+                        else 0.9 * self._agent_audio_rms_ema + 0.1 * _rms_out
+                    )
+                except Exception:
+                    pass
 
                 self.outbound_chunk_counter += 1
                 payload = base64.b64encode(mulaw_chunk).decode("utf-8")
@@ -797,6 +1201,17 @@ class BaseStreamHandler:
                 "NEXT ACTIONS:\n"
                 "List specific follow-up actions as bullet points. If no "
                 "actions were agreed upon, write 'No follow-up actions identified.'\n\n"
+                "DISPOSITION:\n"
+                "Exactly one word from this list describing the customer's "
+                "buying interest: interested | not_interested | voicemail | "
+                "neutral. Use 'voicemail' only if the call reached an "
+                "answering machine; 'neutral' if interest is unclear.\n\n"
+                "REASON:\n"
+                "Only if the disposition is not_interested, exactly one word "
+                "from this list describing why: budget_low | not_suitable | "
+                "not_investing | already_bought | other. Use 'not_suitable' "
+                "when the project/product does not fit the customer's needs. "
+                "For any other disposition write 'none'.\n\n"
                 f"Transcript:\n{formatted[:8000]}"
             )
 
@@ -878,11 +1293,23 @@ class BaseStreamHandler:
             next_action = None
             if "NEXT ACTIONS:" in summary:
                 actions_part = summary.split("NEXT ACTIONS:")[-1].strip()
+                # The DISPOSITION section follows NEXT ACTIONS in the output
+                if "DISPOSITION" in actions_part:
+                    actions_part = actions_part.split("DISPOSITION")[0].strip()
                 # Filter out the "no actions" placeholder
                 if "no follow-up" not in actions_part.lower():
                     next_action = actions_part
             elif "NEXT ACTION:" in summary:
                 next_action = summary.split("NEXT ACTION:")[-1].strip()
+
+            # Structured disposition for campaign reporting (Item 5)
+            disposition = parse_disposition(summary)
+            if disposition:
+                self._llm_disposition = disposition
+            disposition_reason = None
+            if disposition == "not_interested":
+                disposition_reason = parse_not_interested_reason(summary)
+                self._llm_disposition_reason = disposition_reason
 
             # Persist in context_state
             from sqlalchemy import update as sa_update
@@ -892,6 +1319,10 @@ class BaseStreamHandler:
             existing_ctx["call_summary"] = summary
             if next_action:
                 existing_ctx["next_action"] = next_action
+            if disposition:
+                existing_ctx["disposition"] = disposition
+            if disposition_reason:
+                existing_ctx["disposition_reason"] = disposition_reason
 
             await db_session.execute(
                 sa_update(VS)
@@ -943,6 +1374,7 @@ class BaseStreamHandler:
     async def _cleanup(self):
         """End session, persist recording, log usage, deduct credits."""
         logger.info(f"Cleaning up session {self.session_id}")
+        self._stop_ringback()
 
         if self.voice_session and self.started_at:
             end_time = self.call_ended_at or datetime.utcnow()
@@ -1149,16 +1581,64 @@ class BaseStreamHandler:
             if not campaign_call:
                 return  # Not a campaign call
 
+            # The LLM-classified disposition applies even when the webhook
+            # already finalized the status; never overwrite an existing one.
+            if self._llm_disposition and not self._voicemail_detected:
+                await db_session.execute(
+                    sa_update(CampaignCall)
+                    .where(
+                        CampaignCall.id == campaign_call.id,
+                        CampaignCall.disposition.is_(None),
+                    )
+                    .values(
+                        disposition=self._llm_disposition,
+                        disposition_reason=self._llm_disposition_reason,
+                    )
+                )
+
+            # In-call voicemail detection wins over webhook data: the webhook
+            # only sees a "completed" call, not why it ended.
+            if self._voicemail_detected:
+                await db_session.execute(
+                    sa_update(CampaignCall)
+                    .where(CampaignCall.id == campaign_call.id)
+                    .values(
+                        status="completed-voicemail",
+                        outcome="voicemail",
+                        disposition="voicemail",
+                        outcome_notes=f"updated_by={self._termination_reason or 'voicemail_detection'}",
+                        completed_at=datetime.utcnow(),
+                        duration_seconds=duration if duration > 0 else None,
+                    )
+                )
+                if campaign_call.campaign_id and campaign_call.status == "calling":
+                    await self._increment_campaign_counter(
+                        db_session, campaign_call.campaign_id, "calls_completed"
+                    )
+                await db_session.commit()
+                logger.info(
+                    f"[Campaign] Cleanup updated CampaignCall {campaign_call.id}: "
+                    f"{campaign_call.status} → completed-voicemail "
+                    f"({self._termination_reason}, duration={duration}s)"
+                )
+                return
+
             # Only update if status is still "calling" (webhook hasn't arrived yet)
             if campaign_call.status != "calling":
                 logger.debug(
                     f"[Campaign] CampaignCall {campaign_call.id} already updated "
                     f"(status={campaign_call.status}), skipping cleanup update"
                 )
+                await db_session.commit()  # persist the disposition update above
                 return
 
-            call_outcome = "completed" if duration > 0 else "failed"
-            outcome_detail = "answered" if duration > 0 else "no_media"
+            if self._termination_reason == "pipeline_stall":
+                call_outcome, outcome_detail = "failed", "no_media"
+            else:
+                call_outcome = "completed" if duration > 0 else "failed"
+                outcome_detail = "answered" if duration > 0 else "no_media"
+
+            notes = f"updated_by={self._termination_reason or 'websocket_cleanup'}"
 
             await db_session.execute(
                 sa_update(CampaignCall)
@@ -1169,26 +1649,23 @@ class BaseStreamHandler:
                 .values(
                     status=call_outcome,
                     outcome=outcome_detail,
-                    outcome_notes="updated_by=websocket_cleanup",
+                    outcome_notes=notes,
                     completed_at=datetime.utcnow(),
                     duration_seconds=duration if duration > 0 else None,
+                    **(
+                        {"disposition": "failed"}
+                        if call_outcome == "failed"
+                        else {}
+                    ),
                 )
             )
 
             # Increment campaign counter
             if campaign_call.campaign_id:
                 stat_field = "calls_completed" if call_outcome == "completed" else "calls_failed"
-                camp_result = await db_session.execute(
-                    select(Campaign).where(Campaign.id == campaign_call.campaign_id)
+                await self._increment_campaign_counter(
+                    db_session, campaign_call.campaign_id, stat_field
                 )
-                campaign = camp_result.scalar_one_or_none()
-                if campaign:
-                    current_val = getattr(campaign, stat_field, 0) or 0
-                    await db_session.execute(
-                        sa_update(Campaign)
-                        .where(Campaign.id == campaign.id)
-                        .values({stat_field: current_val + 1})
-                    )
 
             await db_session.commit()
             logger.info(
@@ -1200,6 +1677,23 @@ class BaseStreamHandler:
             pass  # campaign_models not available — skip silently
         except Exception as e:
             logger.warning(f"[Campaign] Post-cleanup update error: {e}")
+
+    @staticmethod
+    async def _increment_campaign_counter(db_session, campaign_id, stat_field: str):
+        from src.ai.campaign_models import Campaign
+        from sqlalchemy import select, update as sa_update
+
+        camp_result = await db_session.execute(
+            select(Campaign).where(Campaign.id == campaign_id)
+        )
+        campaign = camp_result.scalar_one_or_none()
+        if campaign:
+            current_val = getattr(campaign, stat_field, 0) or 0
+            await db_session.execute(
+                sa_update(Campaign)
+                .where(Campaign.id == campaign.id)
+                .values({stat_field: current_val + 1})
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1217,6 +1711,26 @@ class TwilioStreamHandler(BaseStreamHandler):
     def __init__(self, websocket: WebSocket, session_id: UUID, db: AsyncSession):
         super().__init__(websocket, db)
         self.session_id = session_id
+
+    async def _cleanup(self):
+        """Twilio-specific cleanup — force-complete the PSTN leg first.
+
+        Closing the media WebSocket alone doesn't end the phone call, so
+        agent-initiated terminations (voicemail, silence, duration) need the
+        REST hangup.
+        """
+        if self.call_sid and self.voice_session and not self._provider_stopped:
+            try:
+                from src.voice.twilio_api import hangup_twilio_call
+
+                async with AsyncSessionLocal() as db_session:
+                    await hangup_twilio_call(
+                        db_session, self.voice_session.company_id, self.call_sid
+                    )
+            except Exception as e:
+                logger.error(f"Error during Twilio hangup execution: {e}", exc_info=True)
+
+        await super()._cleanup()
 
     async def handle(self):
         """Main entry-point for Twilio WebSocket connections."""
@@ -1279,7 +1793,7 @@ class TataStreamHandler(BaseStreamHandler):
                 await self.websocket.close()
                 return
 
-            await self._play_initial_ringback()
+            self._start_ringback()
             await self._setup_live_and_run()
 
         except Exception as e:
@@ -1396,3 +1910,77 @@ class TataStreamHandler(BaseStreamHandler):
             {"stream_sid": self.stream_sid, "status": "active"},
         )
         logger.info(f"Created inbound Tata session: {self.session_id}")
+
+    async def _cleanup(self):
+        """Tata-specific cleanup — stop stream and call hangup API first."""
+        # 1. Send WebSocket stop event
+        if self.stream_sid:
+            try:
+                await self.websocket.send_text(
+                    json.dumps({"event": "stop", "streamSid": self.stream_sid})
+                )
+                logger.info(f"Sent stop event to Tata for stream {self.stream_sid}")
+            except Exception as e:
+                logger.debug(f"Failed to send stop event to Tata: {e}")
+
+        # 2. Hang up telephone call (skip when the provider already reported
+        # the call over — hangup then just 422s with "Invalid Call ID")
+        if self.call_sid and self.voice_session and not self._provider_stopped:
+            try:
+                from src.common.database import AsyncSessionLocal
+                from src.voice.tata_auth import (
+                    get_smartflo_auth_token,
+                    SMARTFLO_BASE_URL,
+                )
+                import httpx
+
+                async with AsyncSessionLocal() as db_session:
+                    auth_token = await get_smartflo_auth_token(
+                        db_session, self.voice_session.company_id
+                    )
+
+                    if auth_token:
+                        api_url = f"{SMARTFLO_BASE_URL}/v1/call/hangup"
+                        payload = {"call_id": self.call_sid}
+
+                        logger.info(f"Calling Tata hangup API for call: {self.call_sid}")
+                        async with httpx.AsyncClient() as client:
+                            for attempt in ("cached", "refreshed"):
+                                headers = {
+                                    "Authorization": auth_token,
+                                    "Content-Type": "application/json",
+                                    "accept": "application/json"
+                                }
+                                resp = await client.post(
+                                    api_url,
+                                    json=payload,
+                                    headers=headers,
+                                    timeout=10.0
+                                )
+                                logger.info(
+                                    f"Tata hangup API response ({attempt} token) "
+                                    f"status={resp.status_code}: {resp.text}"
+                                )
+                                token_rejected = (
+                                    resp.status_code in (401, 403)
+                                    or "blacklisted" in resp.text.lower()
+                                )
+                                if not token_rejected or attempt == "refreshed":
+                                    break
+                                auth_token = await get_smartflo_auth_token(
+                                    db_session,
+                                    self.voice_session.company_id,
+                                    force_refresh=True,
+                                )
+                                if not auth_token:
+                                    break
+                    else:
+                        logger.warning(
+                            f"Could not retrieve Tata Tele auth token for company {self.voice_session.company_id}"
+                        )
+            except Exception as e:
+                logger.error(f"Error during Tata hangup execution: {e}", exc_info=True)
+
+        # 3. Call base cleanup
+        await super()._cleanup()
+

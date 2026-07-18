@@ -1,9 +1,8 @@
-import { parseServerDate } from '@/utils/datetime';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { GlassCard, JellyButton } from '@/components/ui';
-import { Plus, Play, Pause, Square, Info, RefreshCw, PhoneForwarded, X, Download } from 'lucide-react';
+import { Plus, Play, Pause, Square, Info, RefreshCw, PhoneForwarded, Download, RotateCcw } from 'lucide-react';
 import { CampaignCreateModal } from './CampaignCreateModal';
 import './CampaignsPage.css';
 
@@ -27,9 +26,10 @@ export const CampaignsPage: React.FC = () => {
     const navigate = useNavigate();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const [downloadingInterested, setDownloadingInterested] = useState(false);
+    const [retryingFailed, setRetryingFailed] = useState(false);
 
     const campaignsRef = useRef<Campaign[]>([]);
 
@@ -69,38 +69,53 @@ export const CampaignsPage: React.FC = () => {
         }
     };
 
-    const viewCampaignDetails = async (campaignId: string) => {
+    const downloadInterestedLeads = async () => {
+        setDownloadingInterested(true);
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/campaigns/${campaignId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await response.json();
-            setSelectedCampaign(data);
-        } catch (error) {
-            console.error('Error fetching campaign details:', error);
-        }
-    };
-
-    const downloadReport = async (campaignId: string, campaignName: string) => {
-        try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/campaigns/${campaignId}/download`, {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/campaigns/interested/download`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            if (!response.ok) throw new Error('Failed to download report');
+            if (!response.ok) throw new Error('Failed to download interested leads');
 
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Campaign_Report_${campaignName.replace(/\s+/g, '_')}.xlsx`;
+            a.download = 'Interested_Leads.xlsx';
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
-            console.error('Error downloading report:', error);
-            alert('Failed to download campaign report');
+            console.error('Error downloading interested leads:', error);
+            alert('Failed to download interested leads');
+        } finally {
+            setDownloadingInterested(false);
+        }
+    };
+
+    const retryFailedCalls = async () => {
+        if (!window.confirm('Retry all failed calls across all campaigns? The affected campaigns will start running again.')) {
+            return;
+        }
+        setRetryingFailed(true);
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/campaigns/retry-failed`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Failed to retry calls');
+
+            const data = await response.json();
+            alert(data.message);
+            await fetchCampaigns(false);
+        } catch (error) {
+            console.error('Error retrying failed calls:', error);
+            alert('Failed to retry failed calls');
+        } finally {
+            setRetryingFailed(false);
         }
     };
 
@@ -130,6 +145,7 @@ export const CampaignsPage: React.FC = () => {
             'running': 'green',
             'paused': 'yellow',
             'completed': 'purple',
+            'completed-voicemail': 'blue',
             'failed': 'red',
             'stopped': 'red'
         };
@@ -159,6 +175,22 @@ export const CampaignsPage: React.FC = () => {
                     <p className="subtitle">Orchestrate and monitor high-volume outbound AI calling</p>
                 </div>
                 <div className="header-actions">
+                    <JellyButton
+                        variant="secondary"
+                        onClick={downloadInterestedLeads}
+                        disabled={downloadingInterested}
+                    >
+                        <Download size={16} />
+                        {downloadingInterested ? 'Downloading...' : 'Download Interested'}
+                    </JellyButton>
+                    <JellyButton
+                        variant="secondary"
+                        onClick={retryFailedCalls}
+                        disabled={retryingFailed}
+                    >
+                        <RotateCcw size={16} />
+                        {retryingFailed ? 'Queueing...' : 'Retry Failed'}
+                    </JellyButton>
                     <JellyButton roseGold onClick={() => setIsCreateModalOpen(true)}>
                         <Plus size={20} />
                         Launch Campaign
@@ -258,7 +290,7 @@ export const CampaignsPage: React.FC = () => {
 
                                         <button
                                             className="btn-view"
-                                            onClick={() => viewCampaignDetails(campaign.id)}
+                                            onClick={() => navigate(`/streaming/campaigns/${campaign.id}`)}
                                         >
                                             <Info size={16} /> Details
                                         </button>
@@ -275,142 +307,6 @@ export const CampaignsPage: React.FC = () => {
                 onClose={() => setIsCreateModalOpen(false)}
                 onSuccess={() => fetchCampaigns()}
             />
-
-            {selectedCampaign && (
-                <div className="modal-overlay" onClick={() => setSelectedCampaign(null)}>
-                    <div className="modal-content campaign-details glass" onClick={e => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>{selectedCampaign.name}</h2>
-                            <button className="close-btn" onClick={() => setSelectedCampaign(null)}><X size={20} /></button>
-                        </div>
-
-                        <div className="detail-section">
-                            <h3>Campaign Metrics</h3>
-                            <div className="detail-grid">
-                                <div className="detail-item">
-                                    <span className="label">Current Status</span>
-                                    <span className={`status-badge ${getStatusColor(selectedCampaign.status)}`}>
-                                        {selectedCampaign.status}
-                                    </span>
-                                </div>
-                                <div className="detail-item">
-                                    <span className="label">Outreach Engine</span>
-                                    <strong>{selectedCampaign.provider === 'tata_tele' ? 'Tata Tele' : 'Twilio'}</strong>
-                                </div>
-                                <div className="detail-item">
-                                    <span className="label">Total Contacts</span>
-                                    <strong>{selectedCampaign.total_contacts}</strong>
-                                </div>
-                                <div className="detail-item">
-                                    <span className="label">Completed</span>
-                                    <strong className="success">{selectedCampaign.calls_completed ?? 0}</strong>
-                                </div>
-                                <div className="detail-item">
-                                    <span className="label">In Progress</span>
-                                    <strong style={{ color: '#3b82f6' }}>{selectedCampaign.calls_calling ?? 0}</strong>
-                                </div>
-                                <div className="detail-item">
-                                    <span className="label">Pending</span>
-                                    <strong>{selectedCampaign.calls_pending ?? 0}</strong>
-                                </div>
-                                <div className="detail-item">
-                                    <span className="label">Failed</span>
-                                    <strong className="danger">{selectedCampaign.calls_failed ?? 0}</strong>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Individual Call Records */}
-                        {selectedCampaign.calls && selectedCampaign.calls.length > 0 && (
-                            <div className="detail-section">
-                                <h3>Call Records</h3>
-                                <div className="call-records-table">
-                                    <table className="data-table compact">
-                                        <thead>
-                                            <tr>
-                                                <th>Contact</th>
-                                                <th>Phone</th>
-                                                <th>Company</th>
-                                                <th>Status</th>
-                                                <th>Called At</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {selectedCampaign.calls.map((call: any) => (
-                                                <tr key={call.id}>
-                                                    <td>{call.contact_name}</td>
-                                                    <td className="phone-number">{call.contact_phone}</td>
-                                                    <td>{call.contact_company || '—'}</td>
-                                                    <td>
-                                                        <span className={`status-badge ${getStatusColor(call.status)}`}>
-                                                            {call.status}
-                                                        </span>
-                                                    </td>
-                                                    <td>{call.called_at ? parseServerDate(call.called_at).toLocaleString() : '—'}</td>
-                                                    <td>
-                                                        {call.voice_session_id && (
-                                                            <button
-                                                                className="btn-view"
-                                                                onClick={() => {
-                                                                    setSelectedCampaign(null);
-                                                                    navigate(`/streaming/calls/${call.voice_session_id}`);
-                                                                }}
-                                                            >
-                                                                <Info size={14} /> View Call
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="detail-section">
-                            <h3>Configuration</h3>
-                            <div className="detail-grid">
-                                <div className="detail-item">
-                                    <span className="label">Concurrency</span>
-                                    <strong>{selectedCampaign.max_concurrent_calls || 5} streams</strong>
-                                </div>
-                                <div className="detail-item">
-                                    <span className="label">Target Zone</span>
-                                    <strong>{selectedCampaign.provider === 'tata_tele' ? 'India' : 'International'}</strong>
-                                </div>
-                                {selectedCampaign.scheduled_start && (
-                                    <div className="detail-item">
-                                        <span className="label">Scheduled Window</span>
-                                        <strong>{parseServerDate(selectedCampaign.scheduled_start).toLocaleString()}</strong>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {selectedCampaign.description && (
-                            <div className="detail-section">
-                                <h3>Operational Objective</h3>
-                                <p className="description-text">{selectedCampaign.description}</p>
-                            </div>
-                        )}
-
-                        <div className="modal-footer">
-                            <JellyButton
-                                variant="secondary"
-                                onClick={() => downloadReport(selectedCampaign.id, selectedCampaign.name)}
-                            >
-                                <Download size={16} />
-                                Download Report
-                            </JellyButton>
-                            <JellyButton variant="primary" onClick={() => setSelectedCampaign(null)}>
-                                Close Monitor
-                            </JellyButton>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
