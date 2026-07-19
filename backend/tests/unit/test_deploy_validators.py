@@ -88,4 +88,11 @@ class TestRunAll:
     def test_all_pass_for_clean_entity(self):
         results = run_governance_deploy_checks({"governance": {"autonomy_level": "A1"}})
         assert all(passed for _, passed, _ in results)
-        assert len(results) == 3
+        assert len(results) == 4  # karuna, sod, autonomy, parent_of_loop
+
+    def test_parent_of_loop_rejected(self):
+        results = run_governance_deploy_checks({
+            "type": "LOOP", "parent_id": "x", "parent_type": "PROCESS",
+            "governance": {"autonomy_level": "A1"},
+        })
+        assert any(name == "parent_of_loop" and not passed for name, passed, _ in results)
