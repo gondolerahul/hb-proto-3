@@ -24,6 +24,10 @@ from src.ai.orm.usage import UsageLog
 from src.ai.orm.tools import ToolRegistryEntry
 from src.ai.orm.trace import ExecutionTraceEvent
 from src.ai.orm.trust import SourceTrustScore
+# NOTE: the signal-bus models (src/ai/signals/models.py) are deliberately NOT
+# imported here — they import this package's submodules for FK registration,
+# so importing them back would be circular. They self-register on import and
+# nothing in orm/ FK-references them.
 
 # Re-export enums from schemas (callers historically imported these from
 # ``src.ai.models``).

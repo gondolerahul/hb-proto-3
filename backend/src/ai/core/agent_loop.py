@@ -57,6 +57,7 @@ from src.ai.planning.retry_strategies import (
     pick_retry,
 )
 from src.ai.schemas.enums import EntityType, RunStatus
+from src.ai.signals.service import emit_completion_for_run
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +239,7 @@ class AgentLoop:
         await self._finalize_bandit(state, outcome_status)
         await self._enqueue_dreaming_trigger(state, outcome_status)
         await self._persist_final(run, state, outcome_status, last_error, last_output)
+        await emit_completion_for_run(self.db, self.redis, run)  # SIG §18.5; never raises
         await self._maybe_resume_parent(run)
 
         return AgentLoopOutcome(
@@ -1496,5 +1498,3 @@ class AgentLoop:
             return state.last_observation.summary
         out = state.context_state.get("output") or state.context_state.get("result")
         return str(out) if out else ""
-
-

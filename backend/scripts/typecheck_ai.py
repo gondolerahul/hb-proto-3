@@ -42,6 +42,7 @@ CLEAN_PACKAGES: list[str] = [
     "meta",
     "memory",
     "core",
+    "signals",
 ]
 
 

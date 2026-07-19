@@ -48,6 +48,9 @@ from src.ai.campaign_worker import (
     pause_campaign_task,
     stop_campaign_task,
 )
+from src.ai.signals.dispatcher import dispatch_signal
+from src.ai.signals.email_poll import email_inbound_poll
+from src.ai.signals.sweeper import signal_sweeper
 
 # Model imports needed by arq at module scope
 from src.common.database import AsyncSessionLocal  # noqa: F401
@@ -78,6 +81,8 @@ class WorkerSettings:
         resume_parent_run,
         # Outcome-triggered Dreaming.
         dreaming_outcome_trigger,
+        # Signal bus (Increment 1 / SIG).
+        dispatch_signal,
     ]
     # Register CORTEX scheduled wake-up cron
     cron_jobs = [
@@ -118,6 +123,11 @@ try:
         # /9: Nightly cost-estimator baseline refresh from
         # telemetry (02:30 UTC — quiet hour, follows the daily aggregate).
         cron(cost_estimator_refresh, hour=2, minute=30),
+        # Signal-bus sweeper: every minute — re-dispatch stale PENDING,
+        # review PARKED, drive retry backoff (Inc 1 / SIG §18.2–.3).
+        cron(signal_sweeper, minute=set(range(60))),
+        # Inbound email poll → email.inbound signals (subscription-gated).
+        cron(email_inbound_poll, minute={m for m in range(0, 60, 2)}),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions
