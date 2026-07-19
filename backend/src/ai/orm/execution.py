@@ -124,6 +124,9 @@ class HumanApproval(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=False)
     checkpoint_trigger: Mapped[str] = mapped_column(String, nullable=False)
+    # GOV §20.2: the hitl_checkpoint_defs key this approval is an instance of
+    # (nullable for legacy rows + non-policy triggers).
+    checkpoint_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     status: Mapped[str | None] = mapped_column(String, default="PENDING")  # PENDING, APPROVED, REJECTED, TIMEOUT
     requested_by: Mapped[str | None] = mapped_column(String, nullable=True)
     responded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

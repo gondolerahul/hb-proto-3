@@ -68,7 +68,18 @@ class ValidatorRole:
             self._governance_caps_set(spec),
             self._cost_estimate_under_cap(spec),
             self._review_mechanism_consistent(spec),
+            # GOV §20.5 deploy-time governance checks (fail closed).
+            *self._governance_deploy_checks(spec),
         ])
+
+    @staticmethod
+    def _governance_deploy_checks(spec: dict[str, Any]) -> list["CheckResult"]:
+        from src.ai.governance.deploy_validators import run_governance_deploy_checks
+
+        return [
+            CheckResult(name=name, passed=passed, reason=reason)
+            for name, passed, reason in run_governance_deploy_checks(spec)
+        ]
 
     # ------------------------------------------------------------------
     # Individual checks

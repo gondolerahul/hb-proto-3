@@ -24,13 +24,39 @@ class AIService:
         self.db = db
 
     # Entity CRUD
+    @staticmethod
+    def _enforce_governance_deploy(entity_data: dict) -> None:
+        """GOV §20.5 — fail closed on Karuna/SoD/autonomy violations at publish.
+
+        Templates are blueprints, not deployed entities, so they are exempt;
+        the checks fire when a real (non-template) entity is created/updated.
+        """
+        if entity_data.get("is_template"):
+            return
+        from src.ai.governance.deploy_validators import run_governance_deploy_checks
+
+        failures = [
+            (name, reason)
+            for name, passed, reason in run_governance_deploy_checks(entity_data)
+            if not passed
+        ]
+        if failures:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "governance_deploy_check_failed",
+                        "failures": [{"check": n, "reason": r} for n, r in failures]},
+            )
+
     async def create_entity(self, entity_in: HierarchicalEntityCreate, company_id: UUID, user_id: UUID = None) -> HierarchicalEntity:
         # Prepare data, handling nested Pydantic models and ensuring JSON serializability (e.g. UUID -> str)
         entity_data = entity_in.model_dump(mode='json')
-        
+
+        # GOV §20.5 deploy-time governance checks (fail closed).
+        self._enforce_governance_deploy(entity_data)
+
         # Templates are public — no company association
         effective_company_id = None if entity_data.get("is_template") else company_id
-        
+
         # Flatten identity if provided as nested model to JSONB column
         entity = HierarchicalEntity(**entity_data, company_id=effective_company_id, created_by=user_id)
         self.db.add(entity)

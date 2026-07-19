@@ -57,6 +57,7 @@ from src.ai.planning.retry_strategies import (
     pick_retry,
 )
 from src.ai.schemas.enums import EntityType, RunStatus
+from src.ai.governance.policy_gate import PolicyGate, gate_and_maybe_stop
 from src.ai.signals.service import emit_completion_for_run
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,7 @@ class AgentLoop:
         # trigger a synchronous lazy-load → MissingGreenlet on the async
         # session). Set at the top of ``run()``.
         self._run_id: Optional[UUID] = None
+        self.policy_gate = PolicyGate(db=db, redis=redis)  # GOV §20.3 — no LLM/IO
 
         # Composed lazily once state.entity_type / state.cortex_tree_id known.
         self.perceiver: Optional[Perceiver] = None
@@ -446,16 +448,14 @@ class AgentLoop:
             open_subgoals=len(state.open_subgoals),
         )
 
-        # 3. Pre-critic
-        # Skip the pre-critic for plan-driven moves. A move that dispatches a
-        # step from an already-reconciled, invariant-checked plan
-        # (SingleStep / ChildEntity / DAG carrying a plan_fragment) must not be
-        # second-guessed here: the deterministic Strategist re-proposes the
-        # IDENTICAL move every iteration, so a single pre-critic BLOCK becomes 3
-        # consecutive blocks → circuit-breaker ABORT with zero work done and $0
-        # billed (Phase 11 AgentLoop incident #2 follow-up). The pre-critic still
-        # guards open-ended moves (recursive goal expansion, or SingleStep with
-        # no concrete fragment), where blocking is actionable.
+        # 2b. PolicyGate — deterministic governance before the Pre-Critic (§20.3).
+        if await gate_and_maybe_stop(self.policy_gate, move, self._entity, state):
+            return
+
+        # 3. Pre-critic — skipped for plan-driven moves: the deterministic
+        # Strategist re-proposes the IDENTICAL move every iteration, so one
+        # pre-critic BLOCK would become 3 → circuit-breaker ABORT, $0 billed
+        # (Phase 11 incident #2). It still guards open-ended moves.
         if move.plan_fragment:
             pre_verdict = PreCriticVerdict(kind="PASS")
         else:
