@@ -51,6 +51,10 @@ from src.ai.campaign_worker import (
 from src.ai.signals.dispatcher import dispatch_signal
 from src.ai.signals.email_poll import email_inbound_poll
 from src.ai.signals.sweeper import signal_sweeper
+from src.ai.tenant_schema.maintenance import (
+    tenant_db_hibernation,
+    tenant_db_nightly_backup,
+)
 
 # Model imports needed by arq at module scope
 from src.common.database import AsyncSessionLocal  # noqa: F401
@@ -128,6 +132,10 @@ try:
         cron(signal_sweeper, minute=set(range(60))),
         # Inbound email poll → email.inbound signals (subscription-gated).
         cron(email_inbound_poll, minute={m for m in range(0, 60, 2)}),
+        # Tenant-DB hibernation (container backend only; no-op on schema).
+        cron(tenant_db_hibernation, minute={m for m in range(0, 60, 5)}),
+        # Nightly per-tenant backup (03:40 UTC — quiet hour).
+        cron(tenant_db_nightly_backup, hour=3, minute=40),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

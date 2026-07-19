@@ -42,6 +42,22 @@ class Settings(BaseSettings):
     # is the Google API surface the tools already depend on.
     SANDBOX_EGRESS_ALLOWLIST: str = "googleapis.com,google.com"
 
+    # ── Increment 1 / SCH — the tenant data plane (technical doc §10.4, §23.4) ──
+    # Backend for per-tenant business data. "schema" (default): a per-tenant
+    # Postgres schema on the control-plane DB — the dev/CI/test path, zero infra.
+    # "container": a dedicated hb-tenant-db container per tenant (prod), managed
+    # by TenantDatabaseManager with tiered hibernation. One record-service
+    # codepath serves both.
+    TENANT_DB_BACKEND: str = "schema"
+    TENANT_DB_IMAGE: str = "hb-tenant-db:local"
+    # Per-tier idle window before a tenant DB container hibernates (Solo:
+    # aggressive; Growth+: always-on = 0 disables). Decision 2026-07-19.
+    TENANT_DB_SOLO_IDLE_SECONDS: int = 900        # 15 min
+    TENANT_DB_SOLO_SHARED_BUFFERS: str = "256MB"
+    TENANT_DB_GROWTH_SHARED_BUFFERS: str = "1GB"
+    # Bounded per-tenant engine cache (control-plane pooling keyed by tenant).
+    TENANT_DB_ENGINE_CACHE_SIZE: int = 64
+
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.
     VOICEMAIL_DETECTION_ENABLED: bool = True

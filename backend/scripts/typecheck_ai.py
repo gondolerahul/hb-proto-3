@@ -43,6 +43,7 @@ CLEAN_PACKAGES: list[str] = [
     "memory",
     "core",
     "signals",
+    "tenant_schema",
 ]
 
 

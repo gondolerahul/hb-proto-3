@@ -81,6 +81,9 @@ from src.ai.api.admin import router as kernel_admin_router
 
 from src.ai.signals.api import router as signals_router
 app.include_router(signals_router, prefix="/api/v1")
+
+from src.ai.tenant_schema.api import router as tenant_schema_router
+app.include_router(tenant_schema_router, prefix="/api/v1")
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

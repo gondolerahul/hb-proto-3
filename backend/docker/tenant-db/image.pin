@@ -1,0 +1,6 @@
+# hb-tenant-db pinned image digest (Increment 1 / SCH).
+# Ops fills this after: docker build -t hb-tenant-db:<tag> docker/tenant-db/ &&
+# trivy image hb-tenant-db:<tag> && docker push <registry>/hb-tenant-db@<digest>
+# Until published, TENANT_DB_BACKEND stays "schema" (the dev/CI default) and no
+# tenant-db container is launched.
+hb-tenant-db:local

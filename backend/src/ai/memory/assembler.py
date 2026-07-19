@@ -27,6 +27,7 @@ async def assemble_memory(
     memory_scope: str = "FULL",
     runtime_tree: Any = None,
     long_running: bool = False,                             # noqa: ARG001 (compat)
+    allowed_domains: Optional["frozenset[str]"] = None,
 ) -> Dict[str, Any]:
     """Unified entry point for memory retrieval (v2, canonical).
 
@@ -68,7 +69,31 @@ async def assemble_memory(
         except Exception as exc:                                            # noqa: BLE001
             logger.debug(f"Legacy episodic top-up skipped: {exc}")
 
+    # §24.3 need-to-know viewport: drop any assembled node whose domain tag is
+    # outside the entity's memory_domains allow-list. A no-op when unrestricted;
+    # becomes fully effective as the §24.4 retrieval upgrade (Inc 2) stamps
+    # per-node domains end-to-end.
+    if allowed_domains is not None:
+        result = _apply_domain_viewport(result, allowed_domains)
+
     return result
+
+
+def _apply_domain_viewport(
+    memory_context: Dict[str, Any], allowed: "frozenset[str]",
+) -> Dict[str, Any]:
+    from src.ai.memory.domain_viewport import filter_by_domain
+
+    def _domain_of(node: Any) -> Optional[str]:
+        if isinstance(node, dict):
+            return node.get("domain") or node.get("domain_tag")
+        return getattr(node, "domain_tag", None) or getattr(node, "domain", None)
+
+    for key in ("__episodic_memory__", "__intelligence_rules__", "__knowledge__"):
+        nodes = memory_context.get(key)
+        if isinstance(nodes, list):
+            memory_context[key] = filter_by_domain(nodes, allowed, domain_getter=_domain_of)
+    return memory_context
 
 
 async def _assemble_v2(
