@@ -125,6 +125,33 @@ async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
             capture_payloads=_capture,
         )
 
+        # ── Wallet-hold admission (Inc 1 / LOOP §23.3) ────────────────────────
+        # Reserve cash for this top-level run under a FOR UPDATE lock so two
+        # runs racing a wallet that funds only one cannot both be admitted (the
+        # E3 race). Child runs don't hold — the top-level hold covers the tree.
+        if getattr(guard_run, "parent_run_id", None) is None:
+            from src.billing.credit_service import InsufficientCreditsError
+            from src.ai.loop.wallet_holds import place_hold
+
+            try:
+                et = str(getattr(guard_run.entity, "type", "AGENT") or "AGENT")
+                await place_hold(db, company_id, run_id, et)
+                await db.commit()
+            except InsufficientCreditsError as exc:
+                # The only condition that blocks admission (closes the E3 race).
+                await db.rollback()
+                logger.warning("[dispatch] run %s not admitted: %s", run_id, exc)
+                guard_run.status = RunStatus.FAILED.value
+                guard_run.error_message = f"insufficient_funds: {exc}"
+                await db.commit()
+                await redis_pool.close()
+                return
+            except Exception as exc:                                          # noqa: BLE001
+                # A hold-placement hiccup must never wedge a run (fail-open,
+                # like billing settlement) — only true insolvency blocks.
+                await db.rollback()
+                logger.warning("hold placement skipped (non-fatal) for %s: %s", run_id, exc)
+
         with set_recorder(recorder):
             from src.ai.core.agent_loop import AgentLoop
 
@@ -134,6 +161,23 @@ async def run_execution_recursive(ctx: dict[str, Any], run_id_str: str) -> Any:
                 feature_flags=flags,
             )
             await loop.run(run_id)
+
+        # Settle the hold: release the residual, record the actual spend.
+        if guard_run.parent_run_id is None:
+            try:
+                from src.ai.loop.wallet_holds import settle_hold
+
+                from decimal import Decimal as _Decimal
+
+                fresh = (await db.execute(
+                    select(ExecutionRun).where(ExecutionRun.id == run_id)
+                )).scalar_one_or_none()
+                actual = getattr(fresh, "total_cost_usd", None) if fresh else None
+                await settle_hold(db, run_id, _Decimal(str(actual or 0)))
+                await db.commit()
+            except Exception as exc:                                          # noqa: BLE001
+                await db.rollback()
+                logger.warning("hold settlement failed for run %s: %s", run_id, exc)
 
     await redis_pool.close()
 

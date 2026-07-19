@@ -29,6 +29,7 @@ class EntityType(str, Enum):
     SKILL = "SKILL"
     AGENT = "AGENT"
     PROCESS = "PROCESS"
+    LOOP = "LOOP"       # Increment 1 / LOOP — the standing top tier (Sheel); §17
 
 
 class RunStatus(str, Enum):

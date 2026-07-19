@@ -115,10 +115,22 @@ def check_autonomy_cap(spec: dict[str, Any]) -> tuple[str, bool, str]:
     return ("autonomy_cap", True, "")
 
 
+def check_parent_of_loop(spec: dict[str, Any]) -> tuple[str, bool, str]:
+    """§17.6: only a LOOP may parent a LOOP (federation composition rule)."""
+    if str(spec.get("type", "")).upper() != "LOOP":
+        return ("parent_of_loop", True, "")
+    parent_type = str(spec.get("parent_type", "") or "").upper()
+    if spec.get("parent_id") and parent_type and parent_type != "LOOP":
+        return ("parent_of_loop", False,
+                f"a LOOP may only be parented by a LOOP, not {parent_type}")
+    return ("parent_of_loop", True, "")
+
+
 def run_governance_deploy_checks(spec: dict[str, Any]) -> list[tuple[str, bool, str]]:
-    """All three checks; used by the manual publish path."""
+    """All deploy-time governance checks; used by the manual publish path."""
     return [
         check_karuna_gate(spec),
         check_sod_conflicts(spec),
         check_autonomy_cap(spec),
+        check_parent_of_loop(spec),
     ]

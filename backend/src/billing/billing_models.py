@@ -67,6 +67,10 @@ class CreditWallet(Base):
     subscription_bonus_credits = Column(Numeric(12, 4), nullable=False, default=0.0)
     sub_credits_expire_at = Column(DateTime, nullable=True)
 
+    # Bounded overdraft from graceful mid-run exhaustion (§23.3): settled from
+    # the next top-up before any new spending. Capped at max($1, 5% of hold).
+    wallet_debt = Column(Numeric(12, 4), nullable=False, default=0)
+
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     company = relationship("Company")

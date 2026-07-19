@@ -55,6 +55,8 @@ from src.ai.tenant_schema.maintenance import (
     tenant_db_hibernation,
     tenant_db_nightly_backup,
 )
+from src.ai.loop.heartbeat import loop_heartbeat
+from src.ai.loop.watchdog import loop_watchdog
 
 # Model imports needed by arq at module scope
 from src.common.database import AsyncSessionLocal  # noqa: F401
@@ -136,6 +138,10 @@ try:
         cron(tenant_db_hibernation, minute={m for m in range(0, 60, 5)}),
         # Nightly per-tenant backup (03:40 UTC — quiet hour).
         cron(tenant_db_nightly_backup, hour=3, minute=40),
+        # Loop heartbeat scan (every minute; per-Loop pacing is heartbeat_interval_s).
+        cron(loop_heartbeat, minute=set(range(60))),
+        # Loop watchdog: flag stalled heartbeats (every 2 minutes).
+        cron(loop_watchdog, minute={m for m in range(0, 60, 2)}),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

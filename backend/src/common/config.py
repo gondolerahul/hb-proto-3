@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     # Bounded per-tenant engine cache (control-plane pooling keyed by tenant).
     TENANT_DB_ENGINE_CACHE_SIZE: int = 64
 
+    # ── Increment 1 / LOOP+ENV — Loop runtime + budget (technical doc §17, §20.4) ──
+    # Single platform heartbeat scan interval; per-Loop pacing is loop_runtime.
+    # heartbeat_interval_s. "Simple but configurable" (decision 2026-07-19).
+    LOOP_HEARTBEAT_SCAN_SECONDS: int = 60
+    LOOP_WATCHDOG_MISS_INTERVALS: int = 3
+    # One uniform, configurable default budget envelope (no per-tier defaults in
+    # Inc 1; per-tenant override via API). Placeholder until the E1 idle-cost
+    # model (Inc 2) derives real numbers.
+    LOOP_DEFAULT_ENVELOPE_USD: str = "100.00"
+    LOOP_DEFAULT_RESERVE_PCT: int = 10          # protected carve-out (P14/P17)
+    LOOP_ENVELOPE_DOWNSHIFT_PCT: int = 80
+
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.
     VOICEMAIL_DETECTION_ENABLED: bool = True

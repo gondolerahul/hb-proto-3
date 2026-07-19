@@ -44,6 +44,7 @@ CLEAN_PACKAGES: list[str] = [
     "core",
     "signals",
     "tenant_schema",
+    "loop",
 ]
 
 
