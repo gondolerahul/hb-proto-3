@@ -966,7 +966,7 @@ function serializeFlow(nodes: ReactFlowNode[], edges: ReactFlowEdge[]): any {
 
 ---
 
-## 17. LOOP Runtime Architecture — ⬜ road map (design v3.0.2, closes register B1)
+## 17. LOOP Runtime Architecture — ✅ shipped (Increment 1 / LOOP+ENV, 2026-07-19; design v3.0.2, closes register B1)
 
 > **Design principle: a Loop is a scheduler and an aggregator — never a run.** The shipped AgentLoop's run-based model (finite runs, suspend/resume, per-run billing) is untouched. The LOOP tier is a thin standing layer built from shipped machinery: Arq cron, CORTEX, the CostLedger.
 
@@ -1247,7 +1247,7 @@ Any model-fleet change (new model, version bump, provider deprecation, BabyBuddh
 
 ---
 
-## 23. Concurrency, Consistency & the Tenant Data Plane — ◐ (Increment 1 / SCH, 2026-07-19: §23.1–.2 write ownership + CAS shipped, §23.4 tenant data plane shipped; §23.3 wallet holds are Inc-1 LOOP+ENV). Design v3.0.5, closes register B6 + E3
+## 23. Concurrency, Consistency & the Tenant Data Plane — ✅ shipped (Increment 1: §23.1–.2 write ownership + CAS and §23.4 tenant data plane in SCH; §23.3 wallet holds + graceful-finish debt in LOOP+ENV, 2026-07-19). Design v3.0.5, closes register B6 + E3
 
 > **Design principle: one owner per object, one hold per run, one engine per tenant.** Three decisions (2026-07-18) anchor this section: writes are owner-mediated, wallet exhaustion finishes gracefully with bounded debt, and every tenant runs a uniform Postgres-in-sandbox data plane.
 

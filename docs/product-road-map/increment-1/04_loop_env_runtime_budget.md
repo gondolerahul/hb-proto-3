@@ -1,6 +1,6 @@
 # Increment 1 / LOOP+ENV — Loop Runtime Lite, Budget Envelopes & Wallet Holds
 
-> **Status:** Draft — for brainstorm review · **Branch:** `inc1/loop-env` · **Register findings:** B1, A6, E3 (designs closed; this executes them)
+> **Status:** ✅ **Built (2026-07-19)** — tasks T1–T8 done on `inc1/loop-env`; gates green (mypy --strict incl. `loop`, 934 unit + 45 integration, parity, eval; layout lint clean). See §6 build notes. · **Branch:** `inc1/loop-env` · **Register findings:** B1, A6, E3 (designs closed; this executed them)
 > **Design authority:** technical doc §17, §20.4, §23.3 (v3.0.5) — restated in full below.
 > **Depends on:** SIG (schedule/incident signals, parked-sweep), GOV (governance block's `budget.envelope_ref`). Merges last of the four workstreams.
 
@@ -115,3 +115,15 @@ The wallet-hold work touches the platform's most sensitive invariant (money). Re
 1. **Heartbeat topology** — accepted: one platform cron scanning `loop_runtime` rows whose interval has elapsed, until fleet scale (B14, Inc 7). **Keep it simple but configurable:** the scan interval is a platform config setting (default 60s), and per-Loop pacing stays in `loop_runtime.heartbeat_interval_s` — no per-tenant cron registrations.
 2. **Default envelope** — **one uniform, configurable platform default** (single config value applied to every tenant, per-tenant override via API; no per-tier defaults in Inc 1). Placeholder value $100/month, reserve 10%, until the E1 idle-cost model (Inc 2) derives real numbers.
 3. **Hold sizing** — accepted: hold = max(planner estimate, tier minimum), capped per tier (PROCESS $5) so a wild estimate can't lock the whole wallet.
+
+## 6. Build Notes — deltas discovered during implementation (2026-07-19)
+
+Everything in §1 shipped as designed; the notable implementation facts:
+
+1. **Admission + settlement wire into `run_execution_recursive` (arq_jobs), not the AgentLoop.** The single run-drive entry point places the hold before driving the loop and settles after — keeping the change out of `agent_loop.py` (which is at its 1500-line cap) and covering every run path (signal-dispatched, gateway, campaign) through one seam. Child runs don't hold; the top-level hold covers the tree.
+2. **The E3 race fix needed a lock-safe balance read.** `place_hold` computes available from the **`FOR UPDATE`-locked wallet row directly** (`_locked_available`), *not* via `CreditService.get_balance` — because `get_balance`'s daily-credit auto-injection commits, which would release the admission lock mid-check and re-open the very race the hold closes. The race test proves it: a wallet funding one hold + two concurrent admissions → exactly one admitted.
+3. **Hold placement fails open; only true insolvency blocks.** An `InsufficientCreditsError` fails the run (`insufficient_funds`); any other hiccup in hold placement logs and proceeds — a billing-plumbing bug must never wedge every run (the same fail-open principle as billing settlement and the PolicyGate).
+4. **The heartbeat is billed as flat platform overhead ≈ $0 (§17.4)** — it does deterministic bookkeeping (schedule dispatch, parked sweep, cost rollup, stamp) and dispatches no LLM work of its own, so there is no per-beat SKU to meter; every real dollar is spent in the child runs it may trigger, at the existing tier thresholds. (The shipped repo has no `docs/current/billing_rates_by_primitive.md` to amend; recorded here instead.)
+5. **Envelope rollup reads `usage_logs.calculated_cost` / `timestamp`** (the shipped cost-attribution ledger's columns), tenant-wide into the Loop envelope; per-Process envelopes arrive with the Solo Pack (Inc 2). The protected reserve is enforced at the *spendable* boundary (`envelope − reserved`), so P14/P17 headroom is pre-funded, never an exemption (register A6).
+6. **Sheel seeding is an explicit data migration** (`loop002_seed_sheel`) — visible and auditable per the decision; it seeded the root Loop + `loop_runtime` + default envelope for every existing tenant, and the partial unique index (`loop001`) provably rejects a second root. New tenants get Sheel lazily via `ensure_sheel`.
+7. **The heartbeat is one platform scanning cron** over `loop_runtime` (per-Loop pacing via `heartbeat_interval_s`), "simple but configurable" — no per-tenant cron registration until fleet scale (B14, Inc 7).
