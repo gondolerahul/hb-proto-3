@@ -1,6 +1,6 @@
 # Increment 1 / GOV — Governance Schema & Enforcement
 
-> **Status:** Draft — for brainstorm review · **Branch:** `inc1/gov` · **Register findings:** B5 (design closed; this executes it). §20.4 budget envelopes are built in [04](./04_loop_env_runtime_budget.md).
+> **Status:** ✅ **Built (2026-07-19)** — tasks T1–T5 done on `inc1/gov`; T6 no-op (see §6). Gates green (mypy --strict incl. `governance`, 879 unit + 59 governance + 21 integration, parity, eval). See §6 build notes. · **Branch:** `inc1/gov` · **Register findings:** B5 (design closed; this executed it). §20.4 budget envelopes are built in [04](./04_loop_env_runtime_budget.md).
 > **Design authority:** technical doc §20.1–.3, .5, .6 (v3.0.2) + Blueprint §9 — restated in full below.
 > **Depends on:** SIG only for the `trust` field the PolicyGate reads (build-able first with the field mocked). **Depended on by:** SCH (cross-owner-write checkpoint), LOOP+ENV (envelope ref), all of Increment 2.
 
@@ -91,3 +91,15 @@ The PolicyGate is the one Increment-1 change inside the AgentLoop's stage contra
 1. **The 18-checkpoint seed list** — agreed: extracted from Blueprint §9.7 into the T2 fixture, reviewed in the PR.
 2. **Authority bands for unset entities** — **pass-through until Inc 2 seeds real bands** (folded into §1.3 above); Inc 2's Solo Pack seeding must leave no channel-facing entity without explicit bands.
 3. **`sod_class` on existing entities** — backfill `none` everywhere; real classes assigned when the Solo Pack agents are seeded in Inc 2.
+
+## 6. Build Notes — deltas discovered during implementation (2026-07-19)
+
+Everything in §1 shipped as designed; the notable implementation facts:
+
+1. **PolicyGate placement — a dedicated loop stage, not inside `RealCriticPipeline`.** The design said "inside the critic pipeline, before the LLM Pre-Critic," but the shipped pipeline is flag-gated (`critic_pipeline.v2_enabled`) and has a NoOp variant. Governance must be **unconditional** (standing rule 1: nothing flag-OFF on the sellable path), so the gate runs as its own deterministic step in `agent_loop._iterate` right before the pre-critic (`gate_and_maybe_stop` in `ai/governance/policy_gate.py`). Same position in the sequence, but never behind a flag.
+2. **T6 parity re-capture was a no-op** — and that's the strongest possible result. The gate only touches *categorised* acts (payout/refund/contract/… via `action_category` or a tool→category map); the parity suite's entities do uncategorised reasoning/tool work, so the gate PASSes them without side effects and **no golden drifted**. Parity + eval stayed green with zero re-capture. The design anticipated deliberate re-capture; reality was cleaner.
+3. **Save-time validation is free at the API boundary.** The entity schemas already type `governance: Optional[Governance]`, so extending that Pydantic model *is* the 422-on-malformed enforcement — no separate validation hook. `extra="allow"` was set so kernel-consumed keys (`max_concurrent_children`, breaker settings) survive a round-trip instead of being silently dropped — this also fixes a latent field-drop bug. Tightening to `extra="forbid"` awaits a full field audit (Inc 2).
+4. **`hitl_checkpoints` name kept for the shipped structured field; the registry opt-in list is `checkpoint_keys`.** The design's governance JSON showed `hitl_checkpoints` as a list of key strings, but that field already exists as `List[HITLCheckpoint]` (structured trigger configs the kernel consumes). Clobbering it would break the shipped HITL path, so the registry-key opt-in list is `governance.checkpoint_keys`.
+5. **Checkpoint mandatory-ness needs no CRUD guard yet.** `hitl_checkpoint_defs` is platform seed data with no mutation API in Inc 1 (frontend deferral), so mandatory rows are trivially undeletable. The `platform_mandatory` flag is carried for the per-entity opt-out validation that lands with checkpoint tuning (Inc 2).
+6. **Runtime SoD is deploy-time only.** The §20.3 line lists "SoD class" among the gate's inputs, but SoD is a graph property (maker≠checker across *distinct* entities) that is only enforceable at deploy — so it lives in the deploy validators (§20.5), evaluated over capability-tag pairs. The runtime gate carries `sod_class` for completeness but decides on autonomy + authority + trust. Cross-entity SoD graph checks deepen when the Solo Pack seeds real entities (Inc 2).
+7. **The tool→category seed is small by necessity.** No payout/refund/contract tools ship yet (Inc 2/4 add them), so `TOOL_CATEGORY_MAP` seeds the names they'll use plus supports an explicit `action_category` on a plan step. The machinery is complete; the mapping grows as the tools land.

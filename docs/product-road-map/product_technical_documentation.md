@@ -1122,7 +1122,7 @@ FKs on the link table; record deletion defaults to soft delete (`deleted_at`) so
 
 ---
 
-## 20. Governance Schema & Enforcement — ⬜ road map (design v3.0.2, closes register B5; §20.4 closes A6)
+## 20. Governance Schema & Enforcement — ✅ shipped §20.1–.3/.5/.6 (Increment 1 / GOV, 2026-07-19); ⬜ §20.4 budget envelopes (Inc-1 LOOP+ENV). Design v3.0.2, closes register B5; §20.4 closes A6
 
 > **Design principle: deterministic policy before LLM judgment.** Blueprint §9's constructs stop being prose and become: a typed config schema, two small platform tables, a pure-function gate in front of the shipped Pre-Critic, and deploy-time checks in the shipped Board Validator.
 
