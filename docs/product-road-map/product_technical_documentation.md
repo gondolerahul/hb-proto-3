@@ -2,7 +2,7 @@
 
 > **Target Platform Version:** 3.0.0 (road-map target state)
 > **Author:** Buddha Cognitive Lab
-> **Last Updated:** July 2026 — v3.0.5 (v3.0.1 errata + maturity re-labeling; v3.0.2 adds the §17–§20 road-map designs; v3.0.3 adds §11.3 + §21–§22 designs and legalizes LOOP federation; v3.0.4 owner directives: §10.3 predefined HBS, §10.4 sandbox-resident tenant DB, §10.5 master/tenant segregation, GenUI ground-up frontend; v3.0.5 adds the §23–§24 concurrency and memory designs)
+> **Last Updated:** July 2026 — v3.0.6 (v3.0.1 errata + maturity re-labeling; v3.0.2 adds the §17–§20 road-map designs; v3.0.3 adds §11.3 + §21–§22 designs and legalizes LOOP federation; v3.0.4 owner directives: §10.3 predefined HBS, §10.4 sandbox-resident tenant DB, §10.5 master/tenant segregation, GenUI ground-up frontend; v3.0.5 adds the §23–§24 concurrency and memory designs; v3.0.6 decision 2026-07-19: KB + CORTEX memory live in the **control plane permanently** — §10.4/§10.5/§23.4/§24.4 amended, tenant export bundle includes a KB+memory dump)
 > **Status:** Architecture & Systems Manual — **target state**, not shipped state. Phase-2 subsystems carry a status column in §0; the shipped architecture is documented in `docs/current/` (2.0.0) and [codebase_current_state_analysis.md](./codebase_current_state_analysis.md). Maturity legend: ✅ shipped · 🚩 flag-gated · ◐ partial · ⬜ road map.
 > **Revision:** Phase 2 — supersedes Phase 1 (2.0.0). Adds the Intelligence Engine & Model Router (BabyBuddha + frontier fleet), multimodal generation services, the Meta Agent build-loop, the Learning System, Generative UI, self-evolving code, the dynamic per-tenant schema, the **Loop** entity tier, and Pragya's account-manager runtime.
 
@@ -608,7 +608,9 @@ Dynamic does not mean empty. Every tenant DB is initialized with the **HireBuddh
 Per-tenant evolution (§10.2) **extends and specializes** this baseline — it never starts from a blank page. Field-level module design is Increment-1 (spine) and Increment-4 (depth) build work in the road map.
 
 ### 10.4 Storage Placement — the Tenant Sandbox — v3.0.4 owner directive
-The tenant's schema and business data live in a **tenant-scoped database hosted on the tenant's docker-backed persistent sandbox** (the shipped `TenantSandboxManager` + persistent-volume container runtime): `tenant_entity_defs`, `tenant_records`, `tenant_record_links` (§19), and the tenant knowledge base reside in the sandbox volume. This gives hard physical isolation per tenant and makes the exit/portability promise literal — **the tenant's business is a portable volume**. Platform services reach it over the sandbox network under the existing egress controls.
+The tenant's schema and business data live in a **tenant-scoped database hosted on the tenant's docker-backed persistent sandbox** (the shipped `TenantSandboxManager` + persistent-volume container runtime): `tenant_entity_defs`, `tenant_records`, and `tenant_record_links` (§19) reside in the sandbox volume. This gives hard physical isolation per tenant and makes the exit/portability promise literal — **the tenant's business is a portable volume** *(v3.0.6: plus the control-plane KB+memory dump included in every export, see §10.5)*. Platform services reach it over the sandbox network under the existing egress controls.
+
+> **v3.0.6 (decision 2026-07-19): the knowledge base and CORTEX memory stay in the control plane permanently** — they are on the hot path of every run stage, heartbeat, and Dreaming cron; placing them in the tenant DB would keep it perpetually warm (defeating §23.4 hibernation), add a sandbox network hop to every memory read, and put memory-hungry vector indexes inside the small-footprint tenant containers. The shipped `hb-cortex-memory` + documents/chunks storage is therefore the permanent home; data residency (Inc 7, B14) is served by regional control planes.
 
 **Engineering consequences — settled in §23.4 (v3.0.5):** uniform Postgres+pgvector per tenant sandbox with tiered hibernation; nightly encrypted dumps + weekly volume snapshots; platform-side pooled connections; signals stay control-plane; cross-tenant analytics impossible by construction (opt-in benchmarking deferred to D5). Fleet-scale topology itself remains register B14 (Increment 7).
 
@@ -617,14 +619,17 @@ The tenant's schema and business data live in a **tenant-scoped database hosted 
 | Master / common platform DB (control plane) | Tenant DB in the sandbox (data plane) |
 |---|---|
 | Identity & tenancy: companies, users, auth, partner hierarchy | Business objects: HBS records + dynamic extensions + links (§19) |
-| Billing: wallets, cost ledger, SKUs, subscriptions, payments | Knowledge base: documents, chunks, semantic index |
-| Registries: models, tools, integrations (credentials in the Key Vault), entity templates, checkpoint defs | Memory: CORTEX trees, episodic history, conversation logs |
-| Governance config & feature flags; entity definitions (configs, not business data) | Artifacts and generated files |
-| Execution fabric: runs, traces, routing decisions, signals* | Tenant-specific reports and exports |
+| Billing: wallets, cost ledger, SKUs, subscriptions, payments | Artifacts and generated files |
+| Registries: models, tools, integrations (credentials in the Key Vault), entity templates, checkpoint defs | Tenant-specific reports and exports |
+| Governance config & feature flags; entity definitions (configs, not business data) | |
+| Execution fabric: runs, traces, routing decisions, signals* | |
+| Knowledge base & memory** — documents, chunks, semantic index; CORTEX trees, episodic history, conversation logs | |
 
-\* Signals and run records stay in the control plane initially — billing attribution and the `SKIP LOCKED` dispatcher need one operational store; whether business-event signals additionally mirror into the tenant DB for portability is an Increment-1 decision (with B6).
+\* Signals and run records stay in the control plane — billing attribution and the `SKIP LOCKED` dispatcher need one operational store (settled with B6, §23.4); tenant portability of business events is served by the export API.
 
-**Rule of thumb: the control plane knows *about* the business; only the tenant DB knows the business.**
+\** v3.0.6 (decision 2026-07-19): KB + memory are **control-plane permanent** — see the §10.4 note for rationale. The tenant export bundle always includes a KB+memory dump alongside the tenant-DB dump, keeping the portability promise whole.
+
+**Rule of thumb: the control plane knows *about* the business and remembers it for the platform's machinery; the tenant DB holds the business's records — and the export bundle reunites the two.**
 
 ---
 
@@ -1283,7 +1288,7 @@ The cost consequence is handled by **lifecycle, not architecture**:
 * **Small-footprint config:** capped `shared_buffers`/`work_mem` per tier; connection caps per tenant DB with platform-side pooling keyed by tenant.
 * The realized idle cost per tier is a **required input to the E1 idle-cost model** (roadmap Increment 2) — the free-tier economics are now a measured number, not a hope.
 
-**Backup/DR:** nightly encrypted logical dump (`pg_dump`) per tenant to object storage + weekly volume snapshot; restore = provision sandbox, restore dump. The tenant-triggerable **export** (the §12 portability promise) is the same dump path, always available.
+**Backup/DR:** nightly encrypted logical dump (`pg_dump`) per tenant to object storage + weekly volume snapshot; restore = provision sandbox, restore dump. The tenant-triggerable **export** (the §12 portability promise) is the same dump path, always available — *v3.0.6: the export bundle additionally includes the control-plane KB+memory dump (§10.5), since KB/CORTEX are control-plane permanent.*
 
 **Signal mirroring (the §10.5 open decision — settled):** signals stay **control-plane only** in v1; tenant portability of business events is served by the export API (consumed-signal history filtered by `company_id`). Revisit only if exit-portability audits demand physical co-location.
 
@@ -1318,7 +1323,7 @@ Knowledge and episodic nodes carry **domain tags** (e.g., `payroll`, `legal`, `f
 
 ### 24.4 Retrieval Stack Upgrade
 Replaces the under-specified v2 stack (500-char chunks, top-5 cosine @0.70):
-* **Hybrid retrieval:** Postgres full-text (lexical) + pgvector (semantic), fused by reciprocal-rank fusion — both indexes live in the tenant DB (§23.4).
+* **Hybrid retrieval:** Postgres full-text (lexical) + pgvector (semantic), fused by reciprocal-rank fusion — both indexes live in the control-plane DB with the KB they index (*v3.0.6 placement decision, §10.5*).
 * **Structure-aware chunking:** 1–2k-character chunks split on document structure, carrying heading context; chunk size tunable per source type.
 * **Schema-aware filters:** retrieval accepts metadata predicates from the tenant schema (object type, counterparty, date range) so "invoices for Acme since March" filters before it ranks.
 * **Optional reranking:** a cross-encoder rerank stage behind a per-tier flag (Growth+), applied to the fused top-50.

@@ -95,6 +95,8 @@ graph TD
 
 Sizing is relative (S < M < L < XL), not calendar time. Each increment ends in a state you can demo, and Increment 2 ends in a state you can *sell*.
 
+> **Per-increment working docs** live in subfolders of this directory — [increment-1/](./increment-1/00_overview.md) (full design + implementation plan) and charter stubs for [increment-2](./increment-2/00_charter.md) through [increment-7](./increment-7/00_charter.md), each deepened just-in-time when its turn comes (with a clarifying-questions round first).
+
 ### Increment 0 — Ops & Flag Debt *(S–M, mostly ops)*
 Clear the "built but not live" backlog (`docs/phase12/OPS_REMAINDER.md`): push pending commits · publish `hb-cortex-memory` to PyPI and delete the in-repo copy · sandbox image CVE scan + registry publish + S7 canary→default-ON · Meta-Agent board GA flip · frontend polish items. **Outcome:** the shipped platform *is* the baseline document, with no flag-gated asterisks on the MVP path.
 
@@ -164,3 +166,5 @@ Every remaining open finding has exactly one home. When an increment starts, its
 | 2026-07-18 | v1.0 — initial road map: dependency graph (F2) + increment plan with MVP cut at the Solo Pack (F3). |
 | 2026-07-18 | v1.1 — owner directives folded in: SCH is the predefined HBS in a sandbox-resident tenant DB with master/tenant segregation (Inc 1, depth in Inc 4); Pragya v1 implements the nine-stage engagement flow (Inc 3; C8 closed at protocol level); GenUI is a ground-up new frontend behind a mandatory Design Gate (Inc 6). |
 | 2026-07-18 | v1.2 — B6/B8/E3 closed at design level (technical §23–§24): uniform Postgres-in-sandbox data plane with tiered hibernation, owner-writes/others-propose, wallet holds with graceful-finish + bounded debt, share-knowledge-not-habits memory scoping. Increment 1 now has zero open design questions; §24.4 retrieval upgrade may trail into Increment 2. |
+| 2026-07-18 | v1.3 — Increment 0 complete (ops debt cleared); per-increment doc subfolders created: increment-1/ full plan (4 workstream docs + overview), increment-2..7/ charter stubs. Inc-1 build decisions recorded: data plane built in Inc 1 (not staged), HBS spine drafted-then-reviewed, no new frontend in Inc 1. |
+| 2026-07-19 | v1.4 — Increment-1 brainstorm closed: all open questions answered (decisions recorded in each increment-1/ doc §5). Notable: email ingest is SIG's first channel producer; PolicyGate passes unset authority bands through until Inc-2 seeding; uniform configurable default envelope; **KB + CORTEX memory are control-plane permanent** (technical doc v3.0.6 — §10.4/§10.5/§23.4/§24.4 amended; export bundle includes KB+memory dump). Increment 1 is clear to build. |
