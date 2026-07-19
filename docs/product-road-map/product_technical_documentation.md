@@ -1081,7 +1081,7 @@ No matching trigger → `PARKED` with a `park_review_at` timer (re-swept by §17
 
 ---
 
-## 19. Canonical Object Graph Storage — ⬜ road map (design v3.0.2, closes register B3)
+## 19. Canonical Object Graph Storage — ✅ shipped (Increment 1 / SCH, 2026-07-19; design v3.0.2, closes register B3)
 
 > **Design principle: documents for shape, edges for the graph.** `tenant_records` stays JSONB (per-tenant shape flexibility); the graph the Blueprint's §3.2 lifecycle chains require becomes a first-class, typed **link table** — not JSON references that can dangle.
 
@@ -1247,7 +1247,7 @@ Any model-fleet change (new model, version bump, provider deprecation, BabyBuddh
 
 ---
 
-## 23. Concurrency, Consistency & the Tenant Data Plane — ⬜ road map (design v3.0.5, closes register B6 + E3)
+## 23. Concurrency, Consistency & the Tenant Data Plane — ◐ (Increment 1 / SCH, 2026-07-19: §23.1–.2 write ownership + CAS shipped, §23.4 tenant data plane shipped; §23.3 wallet holds are Inc-1 LOOP+ENV). Design v3.0.5, closes register B6 + E3
 
 > **Design principle: one owner per object, one hold per run, one engine per tenant.** Three decisions (2026-07-18) anchor this section: writes are owner-mediated, wallet exhaustion finishes gracefully with bounded debt, and every tenant runs a uniform Postgres-in-sandbox data plane.
 
