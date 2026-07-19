@@ -1,6 +1,6 @@
 # Increment 1 / SIG — Signal Bus & Trigger Registry
 
-> **Status:** Draft — for brainstorm review · **Branch:** `inc1/sig` · **Register findings:** B2 (design closed; this executes it)
+> **Status:** ✅ **Built (2026-07-19)** — all tasks T1–T9 done on `inc1/sig`; gates green (mypy --strict incl. `signals`, 825 unit, 16 integration, parity, eval). See §6 build notes for the deltas discovered during implementation. · **Register findings:** B2 (design closed; this executed it)
 > **Design authority:** technical doc §18 (v3.0.2) + Blueprint §3.3 — restated in full below.
 > **Depends on:** nothing unbuilt. **Depended on by:** SCH (proposal/conflict signals), LOOP+ENV (schedule signals), everything in Increment 2.
 
@@ -112,3 +112,13 @@ Concurrency tests follow the existing chaos-suite patterns (`backend/tests/`): i
 1. **Sweep interval + park SLA defaults** — agreed: sweeper every 60s; default `park_review_at` = 15 min; ESCALATED after 3 unresolved reviews.
 2. **First channel producer** — the **email ingest path** (not WhatsApp): `email.inbound` emitted where IMAP ingest lands messages, `dedupe_key` = RFC Message-ID.
 3. **Signal taxonomy seed** — confirmed sufficient for this increment: `schedule.*`, `object.change_proposed`, `object.write_conflict`, `incident.governance`, `incident.platform`, `email.inbound`. The full Blueprint taxonomy arrives with Inc 2.
+
+## 6. Build Notes — deltas discovered during implementation (2026-07-19)
+
+Everything in §1 shipped as designed; five implementation facts are worth recording:
+
+1. **Escalation card deferred to Inc 2.** `human_approvals.run_id` is NOT NULL and a parked signal has no run, so forcing a card would mean schema surgery on a shipped table. ESCALATED signals are surfaced via `GET /ai/signals?status=ESCALATED` + a `signals.signal.escalated` telemetry event; the approvals-panel card lands with the Inc-2 admin UI (which owns that schema change if still wanted).
+2. **Unsubscribed `*.completed` signals self-consume** as audit records instead of parking — otherwise every completion would march to ESCALATED and drown the queue the escalations exist to serve.
+3. **`park_review_at`/`attempts` are dual-purpose by design:** retry not-before + dispatch attempts on PENDING (exponential backoff 60s·2ⁿ), review timer + review count on PARKED. One extra column added beyond the spec: `last_error` (DEAD-queue triage).
+4. **The email producer is a subscription-gated poll cron** (`email_poll.py`, every 2 min): no inbound email path existed to hook (ingest was an agent tool), so the poller fetches UNSEEN via IMAP and only polls companies with an enabled trigger matching `email.inbound` — sensing without a subscriber would only manufacture escalation noise.
+5. **Claims are one-row-per-transaction** in the sweeper: a batch claim's row locks all release on the first per-signal commit, so batch-claim-then-loop would reopen the race the locks exist to close.

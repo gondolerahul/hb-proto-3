@@ -1018,7 +1018,7 @@ The composition rule is formally amended: **a LOOP row may parent LOOP rows** �
 
 ---
 
-## 18. Signal Bus & Trigger Registry — ⬜ road map (design v3.0.2, closes register B2)
+## 18. Signal Bus & Trigger Registry — ✅ shipped (Increment 1 / SIG, 2026-07-19; design v3.0.2, closes register B2)
 
 > **Design principle: Postgres is the bus.** Signals are transactional rows (outbox pattern) claimed with `FOR UPDATE SKIP LOCKED`; Arq is the delivery muscle. No new infrastructure — this is the same Postgres + Redis/Arq pair the platform already runs, and the gateway dispatcher already routes inbound webhooks this way.
 
