@@ -84,6 +84,10 @@ class SignalTypes:
     """Increment-1 seed taxonomy (01_sig doc §5; full Blueprint taxonomy in Inc 2)."""
 
     EMAIL_INBOUND = "email.inbound"
+    # KAR (Inc 2): raw inbound from the messaging + voice channels — consumed by
+    # the KAR-03 / KAR-01 gateways, same shape as email.inbound.
+    MESSAGE_INBOUND = "message.inbound"
+    VOICE_INBOUND = "voice.inbound"
     OBJECT_CHANGE_PROPOSED = "object.change_proposed"
     OBJECT_WRITE_CONFLICT = "object.write_conflict"
     INCIDENT_GOVERNANCE = "incident.governance"

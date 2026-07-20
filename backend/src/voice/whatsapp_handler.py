@@ -91,7 +91,26 @@ class WhatsAppHandler:
             if not session:
                 logger.error(f"Could not create WhatsApp session for {customer_phone}")
                 return "Sorry, we're experiencing technical difficulties. Please try again later."
-            
+
+            # SIG cutover (KAR): a tenant with the Solo Pack / a bundle activated
+            # routes WhatsApp through the governed signal bus (KAR-03 gateway →
+            # loop, with HITL), not this legacy direct-Gemini reply. Subscription-
+            # gated, so tenants not on SIG are untouched; fail-safe, so any error
+            # falls through to the legacy path below.
+            try:
+                from src.ai.signals.whatsapp_inbound import emit_whatsapp_inbound
+                sig_id = await emit_whatsapp_inbound(
+                    self.db, session.company_id,
+                    from_number=from_number, to_number=to_number,
+                    body=message_body, message_sid=message_sid, provider=provider,
+                )
+                if sig_id is not None:
+                    logger.info(
+                        f"WhatsApp routed to signal bus ({sig_id}); governed reply is async")
+                    return ""  # the loop responds asynchronously via the gateway
+            except Exception as sig_exc:
+                logger.warning(f"WhatsApp SIG routing failed; using legacy path: {sig_exc}")
+
             # 2. Log customer message
             await self.conversation_logger.log_turn(
                 company_id=session.company_id,
