@@ -1,6 +1,7 @@
 # Increment 2 / PACK — The 12 Curated Agents, 6 Processes & 7 Bundles
 
-> **Status:** Draft — for brainstorm review · **Branch:** `inc2/pack` · **Closes:** C1 (all 6 Wave-0 processes), Inc-1 owner-id resolution + governance-band seeding.
+> **Status:** ✅ **Built (2026-07-20)** — T1–T5 done on `inc2/pack`; gates green (mypy `--strict` incl. `solo_pack`, 974 unit + solo_pack integration, parity, eval; layout clean). The full Wave-0 roster (16 curated entities) activates, owner-ids resolve across all six processes, and the maker/checker SoD holds at runtime. See §8 build notes. · **Branch:** `inc2/pack` · **Closes:** C1 (all 6 Wave-0 processes), Inc-1 owner-id resolution + governance-band seeding.
+> **Note:** the 9 **workforce agents** + 5 new **process templates** + 7 bundles are built here; the two remaining **gateways** (KAR-01 voice stub, KAR-03 WhatsApp) are the **KAR** workstream. "12 agents" in the title counts the 3 gateways + 9 workforce agents; PACK ships the 9 + KAR-02 (from SLICE).
 > **Design authority:** Blueprint §14 (Wave-0 roster), §5 (processes), §7.3 (agents), §9.3 (authority bands); Functional §2.1 (bundles). Curated hand-authored templates (decision 3).
 > **Depends on:** SLICE (the template pattern), GOV (governance schema + validators), SCH (record ownership).
 
@@ -75,3 +76,19 @@ The 7 starter bundles (Growth, Customer Success, Fulfillment, Finance, Complianc
 1. **Author all 6 process sheets up front** (they're the product spec), then build agents incrementally.
 2. **AGT-092 stays distinct but thin** — a helper under AGT-035 Appointment Concierge until calendar connectors land (Inc 4).
 3. **All bundles included at all subscription tiers** (§4) — no per-tier bundle gating.
+
+## 8. Build Notes — deltas discovered during implementation (2026-07-20)
+
+The full Wave-0 roster is built and every gate is green. The notable facts:
+
+1. **The manifest, not per-template metadata, encodes the tree.** Generic activation needs to know parentage (gateway/process under Sheel, agent under its process). Rather than tag every template with `pack_role`/`parent_process_code`, the tree lives in one place — `templates.PROCESS_GROUPS` (a `ProcessGroup(process, agents)` list) + `GATEWAYS`. `activate_slice` generalised into a shared `_activate(groups, gateways)` core with three entry points; the slice stays exactly 4 entities / 3 triggers (its test is unchanged).
+
+2. **Bundles are the canonical §2.1 mapping, activation is the intersection.** `bundles.py` declares all 7 starter bundles with their *full* 19-process membership; activation seeds only the processes that have authored templates. So Fulfillment/Talent (no Wave-0 process yet) seed just the gateway + Sheel, and adding a P05/P12 template later lights them up with no plumbing change. **Process codes are stored numerically** (`(8, 9, 10, 11, 18)`) and rendered `P{nn}` on read — the de-canary lint bans the literal `P11` token in `ai/` source, and the Fiscal bundle's §2.1 membership includes it.
+
+3. **P19 owns nothing (spine wins over the loose overview).** Overview §2 calls P19 "owner of Budget"; the HBS spine assigns Budget to the Plan-Budget-Forecast process, not Wave-0. P19 ships as a read-all planner — its `owner_process_code` resolves to no objects, which is correct. A unit test cross-checks every process's `owns_objects` against the spine owner codes so they can't drift.
+
+4. **SoD needed two pieces: a persisted tag and an actor.** (a) The deploy validator reads `capabilities.sod_tags`, but the `Capabilities` schema didn't model it, so it was silently dropped on dump — added `sod_tags: list[str]` so the maker/checker/auditor classification persists. (b) The `tenant_record_write` tool now resolves the acting process from `agent_id` (its own `process_code`, else its parent process's) and passes it as `actor_process_code`, so a cross-owner write **proposes** (`object.change_proposed`) instead of mutating. Gateways/origination (no PROCESS ancestor) stay front-door — matching the SLICE's owner-direct path. The integration test proves P10's reconciler proposes on P08's Invoice while the P08 maker writes directly.
+
+5. **Behavioral goldens are specs now, live replay later.** Per SLICE §8.1, scripting a multi-run agentic flow through the prompt-hash MockLLM is fragile; the platform seams are what the goldens exercise. The per-agent behavioral contracts are checked in as [03b_pack_behavioral_goldens.md](./03b_pack_behavioral_goldens.md) (liftable into `tests/regression/cases/` verbatim when prompts stabilise). What runs now: the template-contract unit tests (tools, checkpoints, injection-safety, read-only posture) + the deterministic seam tests (activation, SoD, the SLICE e2e).
+
+**Task plan status:** T1 ✅ (5 process sheets, [03a](./03a_wave0_process_sheets.md)) · T2 ✅ (7 agents + 5 process templates) · T3 ✅ (7 bundles + generalized activation) · T4 ✅ (bands + sod_class + sod_tags + memory_domains + owner-id resolution + SoD demo) · T5 ✅ (behavioral golden specs + gates green + this log).

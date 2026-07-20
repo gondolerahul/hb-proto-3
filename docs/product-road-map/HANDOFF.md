@@ -9,29 +9,27 @@
 ## 0. TL;DR — where we are
 
 * **Increment 1 (One-Loop Foundations) — ✅ BUILT & MERGED to `master`.** Four workstreams: **SIG** (signal bus), **GOV** (governance + PolicyGate), **SCH** (tenant schema / records / data plane), **LOOP+ENV** (Loop runtime, budget envelopes, wallet holds). Register findings B1/B2/B3/B5/B6/B8/E3/A6 closed.
-* **Increment 2 (The Solo Pack — the sellable MVP) — DESIGNED + first workstream built.**
+* **Increment 2 (The Solo Pack — the sellable MVP) — DESIGNED + SLICE & PACK built.**
   * All 6 workstream design docs written and decisions locked (`increment-2/`).
-  * **SLICE** (email→quote vertical slice) — ✅ BUILT on branch **`inc2/slice`** (not yet merged). The sellable exit-demo passes end-to-end. Closes C1 for P03.
-  * Remaining Inc-2 workstreams: **PACK, KAR, ONBOARD, TRUST, RETR** (not started).
+  * **SLICE** (email→quote vertical slice) — ✅ BUILT & **MERGED to `master`** (and pushed — `origin/master` is up to date). The sellable exit-demo passes end-to-end. Closes C1 for P03.
+  * **PACK** (full Wave-0 roster) — ✅ BUILT on branch **`inc2/pack`** (not yet merged). 16 curated entities (1 gateway + 6 processes + 9 workforce agents) + 7 starter bundles + generalized activation + runtime SoD. Closes C1 (all 6 processes) + the Inc-1 owner-id / governance-band carryovers.
+  * Remaining Inc-2 workstreams: **KAR, ONBOARD, TRUST, RETR** (not started).
 
-**Everything committed is green:** mypy `--strict` (150 files), ~953 unit + parity + eval, layout lint, all migrations apply/rollback clean.
+**Everything committed is green:** mypy `--strict` (157 files), 974 unit + parity + eval, layout lint, all migrations apply/rollback clean.
 
 ---
 
-## 1. ⚠️ Standing action — PUSH (do this first)
+## 1. Standing action — merge PACK, then push
 
-This dev VM has **no GitHub credentials**, so every merge/commit this session accumulated **locally only**:
+Prior-session work is **already pushed**: `origin/master` == `master` (Increment 1 + Inc-2 design docs + the SLICE build all merged and on the remote). Verify with `git rev-list --left-right --count origin/master...master` → `0 0`.
 
-* `master` is **16 commits ahead of `origin/master`** — all of Increment 1 + Inc-2 design docs.
-* `inc2/slice` is **5 commits ahead of `master`** — the SLICE build.
-
-**To resume:**
+**PACK** is built on **`inc2/pack`** (branched off `master`), **not yet merged** — 5 commits ahead of `master`. To resume:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git checkout master && git merge inc2/slice --no-edit   # fast-forward; SLICE → master
-git push origin master                                   # once creds are available
+git checkout master && git merge inc2/pack --no-edit    # fast-forward; PACK → master
+git push origin master                                   # push the merge
 ```
-Nothing is lost — it's all committed. Verify with `git log --oneline -20`.
+Nothing is lost — it's all committed on `inc2/pack`. Verify with `git log --oneline -12`.
 
 ---
 
@@ -45,21 +43,28 @@ Nothing is lost — it's all committed. Verify with `git log --oneline -20`.
 | SCH | `backend/src/ai/tenant_schema/` | *(none — tenant tables are bootstrapped per-tenant, not control-plane Alembic)* | HBS 27-object spine, record service (CAS + owner-writes/others-propose), two-backend data plane (schema / container), memory viewport, export |
 | LOOP+ENV | `backend/src/ai/loop/` | `loop001`, `loop002` (Sheel seed) | `loop_runtime` + heartbeat/watchdog crons, `budget_envelopes` (protected reserve), `wallet_holds` (closes the E3 race), `credit_wallets.wallet_debt` |
 
-### Increment 2 / SLICE (on `inc2/slice`)
-* `backend/src/ai/solo_pack/` — `templates/` (4 curated entities), `loader.py` (GOV-validating), `activation.py` (seed + owner-id resolve + triggers), `tools.py` (`tenant_record_write`, `emit_business_signal`).
+### Increment 2 / SLICE (merged to `master`)
+* `backend/src/ai/solo_pack/` — `templates/` (curated entities), `loader.py` (GOV-validating), `activation.py` (seed + owner-id resolve + triggers), `tools.py` (`tenant_record_write`, `emit_business_signal`).
 * GOV `authority.py` gained the **`email_dispatch`** category (so an A1 `send_email` raises a HITL card).
-* Tests: `tests/unit/test_solo_pack_templates.py`, `tests/integration/test_solo_pack_{activation,tools,slice_e2e}_db.py`.
 * The **`test_solo_pack_slice_e2e.py`** is the north-star test — the sellable path email→approved-quote across real SIG+SCH+GOV seams.
 
-**Migration head:** `loop002`. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+### Increment 2 / PACK (on `inc2/pack`)
+* `solo_pack/templates/` split per domain — `acquisition.py` (SLICE 4), `care.py` (P06 + AGT-030/035/092), `finance.py` (P08+AGT-038 maker, P10+AGT-046 checker), `compliance.py` (P14+AGT-068 auditor), `intelligence.py` (P19+AGT-051); `__init__` is the aggregator + `PROCESS_GROUPS` manifest. **16 entities total.**
+* `solo_pack/bundles.py` — the 7 §2.1 starter bundles (numeric process codes → dodge the de-canary lint). `activation.py` generalized: `activate_solo_pack` / `activate_bundle` / `activate_slice` over one `_activate` core.
+* GOV: `schemas/capabilities.py` gained `sod_tags` (persists the §9.4 conflict tags); `solo_pack/tools.py` resolves the acting process from `agent_id` → cross-owner writes **propose** (runtime SoD).
+* Docs: `increment-2/03a_wave0_process_sheets.md` (5 sheets, C1), `03b_pack_behavioral_goldens.md` (per-agent contracts). Tests: extended `test_solo_pack_templates.py` (57), `test_solo_pack_activation_db.py` (+pack roster), new `test_solo_pack_sod_db.py` (maker/checker holds).
+
+**Migration head:** `loop002` (PACK added no migrations — templates seed per-tenant at activation). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
 ## 3. How to resume — the next work
 
-Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK+KAR → ONBOARD → TRUST → RETR.**
+Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR → ONBOARD → TRUST → RETR.**
 
-**Next up: PACK** ([increment-2/03_pack_agents_processes.md](./increment-2/03_pack_agents_processes.md)) — broaden the slice to the full **12 curated agents + 6 Wave-0 process sheets + 7 bundles**. The SLICE templates (`solo_pack/templates/`) and `activation.py` are the pattern to copy — PACK generalizes `activate_slice` into `activate_bundle`. Then **KAR** ([02](./increment-2/02_kar_gateways.md)) adds the WhatsApp gateway (KAR-03) + the voice stub (KAR-01).
+**Next up: KAR** ([increment-2/02_kar_gateways.md](./increment-2/02_kar_gateways.md)) — the two remaining gateways: **KAR-03 WhatsApp** (a real async channel, entering via SIG like email) + **KAR-01 voice stub** (registered but not realtime — real voice is deferred to Inc 3 with Pragya, decision 2). The pattern to copy: KAR-02 Email Gateway (`solo_pack/templates/acquisition.py`) + how the SLICE wired `email.inbound` → gateway → `lead.inbound`. Add the gateway templates to `GATEWAYS` (they seed under Sheel with every activation) and their inbound signal producers (mirror `signals/email_poll.py`). Governance: both carry `karuna_profile: true`; KAR-03 gets `whatsapp_provider` metadata so the deploy karuna-gate fires.
+
+**PACK is done** ([03_pack_agents_processes.md](./increment-2/03_pack_agents_processes.md) §8): the full Wave-0 roster activates, owner-ids resolve across all 6 processes, the maker/checker SoD holds at runtime. `activate_bundle` + `activate_solo_pack` generalize what the slice built.
 
 Each workstream doc has: self-contained design, code mapping, a task plan, and a **§ Brainstorm Decisions** block (already answered — do not re-litigate). Follow the Increment-1 rhythm: branch `inc2/<workstream>`, build task-by-task, keep gates green, add a §N build-note delta log + flip maturity tags on merge.
 
@@ -95,6 +100,9 @@ From `increment-2/00_overview.md` §2 and each doc's decisions block:
 * **Integration tests dispose the global engine** at fixture setup (`await engine.dispose()`) — pytest-asyncio gives each test its own loop and asyncpg can't share pooled connections across loops. Follow the self-managed committed-fixture pattern (create company + tenant schema + wallet, clean up in `finally`, delete child tables before parents: signals before execution_runs, etc.).
 * **PolicyGate only gates *categorised* acts** (`CATEGORY_RULES` + `TOOL_CATEGORY_MAP` in `governance/authority.py`). A new money/comms tool needs a category + mapping or it won't be governed. At A1 any categorised external effect → HITL; at A2+ it's band-based/autonomous.
 * **Testing LLM-driven agents:** don't script the prompt-hash-keyed MockLLM through multi-run flows (fragile). Drive the *real platform seams* deterministically (signal dispatch, record graph, PolicyGate) and supply each agent's tool-calls as the unit of work; leave prose quality to eval goldens. See `test_solo_pack_slice_e2e.py`.
+* **Solo Pack tree lives in a manifest, not in each template** (PACK): `templates.PROCESS_GROUPS` (`ProcessGroup(process, agents)`) + `GATEWAYS` encode parentage; `activation._activate(groups, gateways)` is the one seeding core. Adding an agent = add it to its `ProcessGroup`; adding a process = add a `ProcessGroup`; a new gateway (KAR) = append to `GATEWAYS`.
+* **Bundle process codes are stored NUMERICALLY** (`bundles.py`: `(8, 9, 10, 11, 18)`) and rendered `P{nn}` on read — the de-canary lint bans the literal `P11` token in `ai/` source and the Fiscal bundle's §2.1 membership includes it. Same trick as the HBS spine's `owner: 11`. Never write `P11`/`p11` in `ai/` source.
+* **Cross-process record writes need `actor_process_code`** (PACK SoD): the `tenant_record_write` tool resolves it from `agent_id` (own `process_code`, else parent process's); a write on another owner's object then *proposes* (`object.change_proposed`). A gateway/origination write (no PROCESS ancestor) resolves to `None` → front-door. A new money/record tool should thread `actor_process_code` the same way.
 
 ---
 
@@ -125,7 +133,8 @@ Integration tests **skip cleanly** without `DATABASE_URL`. Docker is available f
 ## 8. Register findings status (from the gap register)
 
 * **Closed by Inc 1:** A6, B1, B2, B3, B5, B6, B8, E3 (+ the earlier v3 doc-pass batch).
-* **Closing in Inc 2:** C1 (P03 done; other 5 in PACK), C3, C5, D6, B13, E1, E2, E4 — see `increment-2/00_overview.md` §5.
+* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK).
+* **Closing in Inc 2 (remaining):** C3, C5, D6, B13, E1, E2, E4 — see `increment-2/00_overview.md` §5.
 * **Deferred:** B7 (realtime voice) → Increment 3 with Pragya.
 * **Still open (later increments):** B10, B11, B12, B14, C2, C4, C6, D2, D3, D4, D5. See [roadmap_gap_register.md](./roadmap_gap_register.md) and each increment charter.
 

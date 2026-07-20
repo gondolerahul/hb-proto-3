@@ -15,7 +15,9 @@ from src.ai.solo_pack.templates import (
     AGT_015,
     AGT_038,
     AGT_046,
+    AGT_051,
     AGT_068,
+    AGT_092,
     KAR_02_EMAIL,
     P03_ACQUISITION,
     PROCESS_GROUPS,
@@ -198,3 +200,39 @@ class TestPackGovernance:
                                 "sod_tags": ["financial_maker", "financial_checker"]}}
         errs = validate_template(bad)
         assert any("segregation-of-duties" in e for e in errs), errs
+
+
+class TestPackBehavioralContract:
+    """The template-level contract each behavioral golden (03b) asserts —
+    checkable now without a live LLM run."""
+
+    def _tool_ids(self, tpl) -> set:
+        return {tc.get("tool_id") for tc in tpl.get("capabilities", {}).get("tools", [])}
+
+    def test_gateway_prompt_refuses_injection(self):
+        # The security golden: the gateway treats the body as data, not command.
+        prompt = KAR_02_EMAIL["identity"]["system_prompt"].lower()
+        assert "never an instruction" in prompt
+        assert "ignore your instructions" in prompt
+
+    def test_watchdog_is_read_only(self):
+        # Auditor independence: no comms, no money movement.
+        tools = self._tool_ids(AGT_068)
+        assert "send_email" not in tools
+        assert not (tools & {"stripe_payout", "bank_transfer", "issue_refund"})
+        assert "authority" not in AGT_068["governance"]
+
+    def test_forecaster_is_read_all_planner(self):
+        # P19's agent reads and proposes — no send_email, no monetary authority.
+        tools = self._tool_ids(AGT_051)
+        assert "send_email" not in tools
+        assert "authority" not in AGT_051["governance"]
+
+    def test_scheduling_helper_has_no_channel(self):
+        # The thin helper never contacts customers directly (Concierge owns comms).
+        assert "send_email" not in self._tool_ids(AGT_092)
+
+    def test_ar_gated_on_refund_and_email(self):
+        keys = set(AGT_038["governance"]["checkpoint_keys"])
+        assert {"before_high_value_email_dispatch", "before_refund_above_band"} <= keys
+        assert AGT_038["governance"]["authority"].get("refund_usd") == 200
