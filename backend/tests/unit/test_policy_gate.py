@@ -214,3 +214,27 @@ class TestIntentFromMove:
         intent = intent_from_move(move, entity=None, signal_trust=None)
         assert intent.action_category == "discount"
         assert intent.amount_pct == 15.0
+
+
+class TestEmailDispatch:
+    """Inc-2 SLICE: outbound email is a categorised effect — A1 quote-send → HITL."""
+
+    def test_a1_email_send_raises_hitl(self):
+        d = evaluate_policy(ActIntent("email_dispatch"), _gov(AutonomyLevel.A1))
+        assert d.decision == RAISE_HITL
+        assert d.checkpoint_key == "before_high_value_email_dispatch"
+
+    def test_a2_email_send_autonomous(self):
+        d = evaluate_policy(ActIntent("email_dispatch"), _gov(AutonomyLevel.A2))
+        assert d.decision == PASS
+
+    def test_a0_email_send_blocked(self):
+        d = evaluate_policy(ActIntent("email_dispatch"), _gov(AutonomyLevel.A0))
+        assert d.decision == BLOCK
+
+    def test_send_email_tool_maps_to_email_dispatch(self):
+        move = type("M", (), {"plan_fragment": [{
+            "target": {"tool_id": "send_email", "input_parameters": {"to": "x@y.com"}},
+        }]})()
+        intent = intent_from_move(move, entity=None, signal_trust=None)
+        assert intent.action_category == "email_dispatch"

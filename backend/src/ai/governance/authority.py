@@ -64,6 +64,12 @@ CATEGORY_RULES: dict[str, CategoryRule] = {
     "regulatory_filing": CategoryRule(
         "regulatory_filing", "before_regulatory_filing",
         None, None, None, "none", always_hitl=True),
+    # Outbound comms (a quote/proposal email, a support reply): no amount band.
+    # At A1 every external effect needs a human (→ HITL); at A2+ comms are
+    # autonomous. This is what raises the Solo Pack's A1 quote-send card.
+    "email_dispatch": CategoryRule(
+        "email_dispatch", "before_high_value_email_dispatch",
+        None, None, None, "none"),
 }
 
 # Categories that a counterparty-trust triggering signal may not drive at all
@@ -84,6 +90,10 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     "issue_refund": "refund",
     "esign_contract": "contract",
     "docusign_send": "contract",
+    # Outbound email — a categorised external effect (Inc-2 SLICE): a quote
+    # send at A1 raises a HITL card; at A2+ it's autonomous comms.
+    "send_email": "email_dispatch",
+    "email_send": "email_dispatch",
 }
 
 
