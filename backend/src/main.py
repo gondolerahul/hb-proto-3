@@ -84,6 +84,10 @@ app.include_router(signals_router, prefix="/api/v1")
 
 from src.ai.tenant_schema.api import router as tenant_schema_router
 app.include_router(tenant_schema_router, prefix="/api/v1")
+
+# Register Solo Pack agent tools (Inc 2).
+from src.ai.solo_pack.tools import register_solo_pack_tools
+register_solo_pack_tools()
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

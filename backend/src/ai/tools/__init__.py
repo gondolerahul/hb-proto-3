@@ -212,6 +212,11 @@ ToolRegistry.register(AgentReflectTool())
 # is_meta_agent + meta_agent.tool_synthesis_enabled kill-switch gates.
 ToolRegistry.register(ToolSynthesisTool())
 
+# Solo Pack agent tools (Increment 2) are registered at the entry points
+# (worker.py + main.py) via register_solo_pack_tools(), NOT here — importing
+# solo_pack.tools from this package init would cycle (solo_pack.tools imports
+# src.ai.tools.base, which runs this __init__).
+
 __all__ = [
     "Tool", "ToolRegistry",
     "CalculatorTool", "WebSearchTool", "BatchWebSearchTool", "ExcelTool", "ScraperTool",
