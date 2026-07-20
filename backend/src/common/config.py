@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     # B13 — platform-initiated spend (optimizer/self-healing/meta/sensing) draws
     # from its own capped envelope so it can never starve tenant work.
     LOOP_PLATFORM_ENVELOPE_USD: str = "10.00"
+    # C5 — graduated dunning windows (days): full-function grace, then read-only
+    # before a hard suspend (decision 1: grace 7d, configurable).
+    BILLING_GRACE_DAYS: int = 7
+    BILLING_READ_ONLY_DAYS: int = 7
 
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.

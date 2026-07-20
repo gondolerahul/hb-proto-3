@@ -15,10 +15,10 @@
   * **PACK** (full Wave-0 roster) — ✅ BUILT & **merged to local `master`** (push pending, §1). 16 entities + 7 bundles + generalized activation + runtime SoD. Closes C1 (all 6) + Inc-1 owner-id/governance carryovers.
   * **KAR** (outward gateways) — ✅ BUILT & **merged to local `master`**. KAR-03 WhatsApp (via SIG) + KAR-01 voice stub; roster **18**. Karuna threat posture + consent seam. Real voice/B7 → Inc 3.
   * **ONBOARD** (setup wizard) — ✅ **Backend built & merged to local `master`**. The wizard **step APIs** (`/ai/onboarding/*`, Pragya's Inc-3 stages) + the budget-envelope admin GET. **Frontend is a separate track, out of scope on this VM.**
-  * **TRUST** (billing safety + consent) — 🚧 **D6 + C3 + B13 built** on branch **`inc2/trust`** (not yet merged): consent registry wired into KAR's seam (`trust001`), per-checkpoint HITL SLAs + sweep (`trust002`), platform-initiated budget class + admission (`trust003`). **Remaining: C5, E1, E2, E4** (dunning/middleware + economics).
-  * Remaining Inc-2: **TRUST (C5/E1/E2/E4), RETR** (not started); ONBOARD **frontend**.
+  * **TRUST** (billing safety + consent) — 🚧 **C5 + D6 + C3 + B13 built** on branch **`inc2/trust`** (not yet merged): consent registry (`trust001`), per-checkpoint HITL SLAs (`trust002`), platform-initiated budget class (`trust003`), graduated dunning + state-aware suspension (`trust004`). **Remaining: E1, E2, E4** (economics only — the GA-gating billing-safety pieces are done).
+  * Remaining Inc-2: **TRUST (E1/E2/E4), RETR** (not started); ONBOARD **frontend**.
 
-**Everything committed is green:** mypy `--strict` (168 files), 1025 unit + parity + eval, layout lint, all migrations apply/rollback clean.
+**Everything committed is green:** mypy `--strict` (169 files), 1039 unit + parity + eval, layout lint, all migrations apply/rollback clean.
 
 ---
 
@@ -73,9 +73,10 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 * New package `ai/trust/` (added to the strict allowlist in `scripts/typecheck_ai.py`): `models.py` (`consent_records`/`dnc_entries`/`unsubscribe_log`), `consent_registry.py` (`evaluate_consent` + `TenantManagedProvider` + `install_consent_registry`). Migration **`trust001`** (off `loop002`).
 * Wired into KAR's `solo_pack/consent.py` seam via `install_consent_registry()` at `main.py` + `worker.py` boot (beside `register_solo_pack_tools`). Tests: `test_consent_registry.py`, `test_consent_registry_db.py`.
 * **C3 per-checkpoint HITL SLAs:** `governance/checkpoints.py` (per-category SLA policy + stamps the 18 seed rows), `governance/models.py` (`sla_seconds`+`on_timeout`), `governance/checkpoint_sla.py` (`apply_checkpoint_timeouts` sweep), wired into the 60s `signal_sweeper` cron. Migration `trust002`. Tests: `test_checkpoint_sla{,_db}.py`.
-* **B13 platform-initiated budget class:** `cost_attribution.py` (`PLATFORM_INITIATED_ATTRIBUTIONS`), `loop/models.py` (`budget_class` + constants), `loop/envelopes.py` (tenant rollup excludes platform attributions; `ensure_loop_envelope` class-aware), `loop/platform_budget.py` (`ensure_platform_envelope` / `platform_spend_admitted` — parks platform work at its own cap). Migration `trust003`; `LOOP_PLATFORM_ENVELOPE_USD` setting. Tests: `test_platform_budget{,_db}.py`. **Remaining TRUST (C5/E1/E2/E4) not built** — see [05](./increment-2/05_trust_billing_safety.md) §11–§13.
+* **B13 platform-initiated budget class:** `cost_attribution.py` (`PLATFORM_INITIATED_ATTRIBUTIONS`), `loop/models.py` (`budget_class`), `loop/envelopes.py` (tenant rollup excludes platform attributions; class-aware), `loop/platform_budget.py` (`platform_spend_admitted` — parks platform work at its own cap). Migration `trust003`.
+* **C5 graduated dunning + state-aware suspension:** `ai/trust/dunning.py` (the `current→…→suspended` ladder, `advance_dunning`, `agents_may_act`), `companies.subscription_status` (migration `trust004`), `common/middleware.py` (`CompanySuspensionMiddleware` now degrades to read-only — blocks agent mutations, allows GET/billing/export — before hard suspend). `BILLING_GRACE_DAYS`/`BILLING_READ_ONLY_DAYS` settings. Tests: `test_dunning{,_db}.py`. **Remaining TRUST (E1/E2/E4) not built** — economics only; see [05](./increment-2/05_trust_billing_safety.md) §11.
 
-**Migration head:** `trust003` (Inc-2 PACK/KAR/ONBOARD added none; TRUST added `trust001` consent tables, `trust002` checkpoint-SLA columns, `trust003` envelope `budget_class`). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+**Migration head:** `trust004` (Inc-2 PACK/KAR/ONBOARD added none; TRUST added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
@@ -83,7 +84,7 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 
 Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD ✅ (backend) → TRUST → RETR.**
 
-**Next up: finish TRUST** ([increment-2/05_trust_billing_safety.md](./increment-2/05_trust_billing_safety.md) §11–§13). **D6, C3, B13 are done.** The **remaining findings reach into subsystems outside `ai/`** and are best done with those in view: **C5** graduated dunning (notify → grace → **read-only** → suspend) + state-aware `CompanySuspensionMiddleware` (`billing/`, `common/middleware.py`) — the GA-gating billing-safety piece; **E1** idle-cost model (doc); **E2** free-credit abuse controls (`auth/`); **E4** fee-formula alerts (billing). (B13's envelope + `platform_spend_admitted` gate are ready; wiring them into the optimizer/meta/sensing runners lands when those are next touched.)
+**Next up: finish TRUST** ([increment-2/05_trust_billing_safety.md](./increment-2/05_trust_billing_safety.md) §11–§14) — only the **economics** findings remain (the GA-gating billing-safety pieces C5/C3/B13 are done): **E1** idle-cost model (a costing doc from Inc-1 tenant-DB metrics — the one code-free item); **E2** free-credit abuse controls (`auth/` signup verification + throttles); **E4** fee-formula clamped-negative alerts (billing). Two integration hookups also remain: what computes `days_past_due` to call C5's `advance_dunning` (billing), and wiring B13's `platform_spend_admitted` into the optimizer/meta/sensing runners.
 
 **Done this session** — PACK ([03](./increment-2/03_pack_agents_processes.md) §8): full Wave-0 roster + runtime SoD. KAR ([02](./increment-2/02_kar_gateways.md) §5): WhatsApp via SIG + gateways + injection golden + consent seam. ONBOARD backend ([04](./increment-2/04_onboard_wizard.md) §6): the `/ai/onboarding/*` wizard step APIs over `activate_bundle` + the `/ai/loop/envelope` admin GET. **The remaining ONBOARD frontend (React wizard, approvals console, FE gates) is a separate FE track** — the backend contract it calls is done.
 
@@ -154,8 +155,8 @@ Integration tests **skip cleanly** without `DATABASE_URL`. Docker is available f
 ## 8. Register findings status (from the gap register)
 
 * **Closed by Inc 1:** A6, B1, B2, B3, B5, B6, B8, E3 (+ the earlier v3 doc-pass batch).
-* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent/DNC/unsubscribe registry), **C3** (per-checkpoint HITL SLAs), **B13** (platform-initiated budget class) — all TRUST.
-* **Closing in Inc 2 (remaining):** C5, E1, E2, E4 — see `increment-2/00_overview.md` §5 + `05_trust_billing_safety.md` §11–§13.
+* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent registry), **C3** (per-checkpoint HITL SLAs), **B13** (platform-initiated budget class), **C5** (graduated dunning + state-aware suspension) — all TRUST.
+* **Closing in Inc 2 (remaining):** E1, E2, E4 (economics) — see `increment-2/00_overview.md` §5 + `05_trust_billing_safety.md` §11–§14.
 * **Deferred:** B7 (realtime voice) → Increment 3 with Pragya.
 * **Still open (later increments):** B10, B11, B12, B14, C2, C4, C6, D2, D3, D4, D5. See [roadmap_gap_register.md](./roadmap_gap_register.md) and each increment charter.
 

@@ -1,6 +1,6 @@
 # Increment 2 / TRUST — Billing Safety, Consent & the Economics Floor
 
-> **Status:** 🚧 **In progress** — **D6 ✅** (consent registry), **C3 ✅** (per-checkpoint HITL SLAs), **B13 ✅** (platform-initiated budget class) built (2026-07-20); migrations `trust001`–`trust003`; gates green. **Remaining: C5, E1, E2, E4** (dunning/middleware + economics — see §11). · **Branch:** `inc2/trust` · **Closes:** C5, **D6 ✅**, **C3 ✅**, **B13 ✅**, E1, E2, E4.
+> **Status:** 🚧 **In progress** — **C5 ✅** (graduated dunning + state-aware suspension), **D6 ✅** (consent registry), **C3 ✅** (per-checkpoint HITL SLAs), **B13 ✅** (platform-initiated budget class) built (2026-07-20); migrations `trust001`–`trust004`; gates green. **Remaining: E1, E2, E4** (economics — see §11). · **Branch:** `inc2/trust` · **Closes:** **C5 ✅**, **D6 ✅**, **C3 ✅**, **B13 ✅**, E1, E2, E4.
 > **Design authority:** Blueprint §9.6 (compliance), §10 (economics); Technical §15.2 (suspension), §20 (governance/budget). Global-neutral (decision 5), graduated dunning (decision 6).
 > **Depends on:** GOV (checkpoints/PolicyGate), LOOP+ENV (envelopes/holds/wallet_debt). Its billing-safety pieces gate GA.
 
@@ -99,4 +99,14 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 
 2. **Admission parks platform work, never tenant work.** `loop/platform_budget.py::platform_spend_admitted` checks the platform envelope's spend against its cap; over → the caller parks the platform run. Tenant work draws from the Loop envelope + wallet holds (Inc-1), untouched. `ensure_loop_envelope` is now class-aware (returns the `tenant` row even when a platform row exists on the same Loop).
 
-**Remaining TRUST (not built this session):** **C5** dunning + state-aware `CompanySuspensionMiddleware` (touches `billing/` + `common/middleware.py` — the GA-gating piece), **E1** idle-cost model, **E2** free-credit abuse controls (`auth/`), **E4** fee-formula alerts. These reach into the billing/auth/middleware subsystems outside `ai/` and are best done with that subsystem in view. The B13 wiring point — calling `platform_spend_admitted` before an optimizer/meta/sensing run — lands when those platform-work runners are next touched (the gate + envelope are ready).
+## 14. Build Notes — C5 graduated dunning + state-aware suspension (2026-07-20)
+
+**C5 built** — a lapsed tenant degrades instead of falling off a cliff:
+
+1. **The ladder is a pure state machine in `ai/trust/dunning.py`.** `status_for_days_past_due` maps days-overdue → `current → past_due → grace → read_only → suspended` with configurable windows (`BILLING_GRACE_DAYS`/`BILLING_READ_ONLY_DAYS`, both 7d — decision 1). `advance_dunning` moves `companies.subscription_status` (new column, migration `trust004`) and emits a `billing.*` transition signal — idempotent (only on a real change; recovery to `current` when the tenant pays). `agents_may_act` is the predicate the Loop/gateways read to stop acting.
+
+2. **The middleware degrades access, it doesn't kill it.** `CompanySuspensionMiddleware` is now state-aware: `suspended` (or the legacy `status='suspended'`) → 403 for everything; `read_only` → **blocks agent-facing mutations but allows GETs, billing/pay, and export** so the tenant can read, export, and recover without loss. `current/past_due/grace` are full function. Inbound signals keep parking (SIG PARKED), so nothing is dropped while read-only.
+
+**What computes `days_past_due`** — the billing/payment subsystem watching wallet/subscription lapse — is the integration that calls `advance_dunning` on a schedule; it lives in `billing/` (outside `ai/`) and is the remaining hookup. The ladder, the column, the middleware enforcement, and the signals are ready.
+
+**Remaining TRUST (not built this session):** **E1** idle-cost model (a costing doc from Inc-1 metrics), **E2** free-credit abuse controls (`auth/` signup verification + throttles), **E4** fee-formula clamped-negative alerts (billing). These are the economics findings; the GA-gating billing-safety pieces (C5/C3/B13) are done. B13's `platform_spend_admitted` still needs wiring into the optimizer/meta/sensing runners when those are next touched.

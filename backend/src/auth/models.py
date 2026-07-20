@@ -15,6 +15,9 @@ class Company(Base):
     parent_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
     logo_url = Column(String, nullable=True)
     status = Column(String, default="active")  # active, suspended
+    # C5 — graduated dunning ladder: current → past_due → grace → read_only →
+    # suspended. The state-aware middleware degrades access instead of a cliff.
+    subscription_status = Column(String, default="current", nullable=False)
     onboarding_status = Column(String, default="pending")  # pending, in_progress, completed
     onboarding_metadata = Column(JSONB, nullable=True)  # tracks completed steps & config
     default_daily_credits = Column(String, nullable=True)  # override daily credit amount for this tenant
