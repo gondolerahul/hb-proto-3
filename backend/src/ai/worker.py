@@ -61,6 +61,9 @@ from src.ai.loop.watchdog import loop_watchdog
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
 from src.ai.solo_pack.tools import register_solo_pack_tools
 register_solo_pack_tools()
+# Install the TRUST consent registry into the KAR outbound seam (Inc 2 / D6).
+from src.ai.trust.consent_registry import install_consent_registry
+install_consent_registry()
 
 # Model imports needed by arq at module scope
 from src.common.database import AsyncSessionLocal  # noqa: F401

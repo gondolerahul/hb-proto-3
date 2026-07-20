@@ -88,6 +88,9 @@ app.include_router(tenant_schema_router, prefix="/api/v1")
 # Register Solo Pack agent tools (Inc 2).
 from src.ai.solo_pack.tools import register_solo_pack_tools
 register_solo_pack_tools()
+# Install the TRUST consent registry into the KAR outbound seam (Inc 2 / D6).
+from src.ai.trust.consent_registry import install_consent_registry
+install_consent_registry()
 # Solo Pack setup-wizard step API (Inc 2 ONBOARD).
 from src.ai.solo_pack.onboarding_router import router as solo_pack_onboarding_router
 app.include_router(solo_pack_onboarding_router, prefix="/api/v1")

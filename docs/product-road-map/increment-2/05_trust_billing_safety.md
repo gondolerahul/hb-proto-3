@@ -1,6 +1,6 @@
 # Increment 2 / TRUST — Billing Safety, Consent & the Economics Floor
 
-> **Status:** Draft — for brainstorm review · **Branch:** `inc2/trust` · **Closes:** C5, D6, C3, B13, E1, E2, E4.
+> **Status:** 🚧 **In progress** — **D6 (consent registry) ✅ built (2026-07-20)**: the jurisdiction-agnostic consent/DNC/unsubscribe store + tenant-managed provider, wired into KAR's outbound seam; migration `trust001`; gates green. **Remaining: C5, C3, B13, E1, E2, E4** (dunning/middleware + economics — see §11). · **Branch:** `inc2/trust` · **Closes:** C5, **D6 ✅**, C3, B13, E1, E2, E4.
 > **Design authority:** Blueprint §9.6 (compliance), §10 (economics); Technical §15.2 (suspension), §20 (governance/budget). Global-neutral (decision 5), graduated dunning (decision 6).
 > **Depends on:** GOV (checkpoints/PolicyGate), LOOP+ENV (envelopes/holds/wallet_debt). Its billing-safety pieces gate GA.
 
@@ -72,3 +72,15 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 1. **Grace window 7 days (configurable); inbound is parked, never dropped** during read-only — signals are captured and held so nothing is lost when the tenant pays. (Reuses the SIG PARKED lifecycle.)
 2. **Consent is tenant-configured from day one** (§2) — no imposed global opt-in default; the tenant sets and owns their per-purpose posture, the registry enforces it, and the choice is logged at onboarding.
 3. **Consent-to-record is a stub** until the voice follow-on (voice is deferred).
+
+## 11. Build Notes — D6 consent registry (2026-07-20)
+
+**D6 built** — the piece that makes KAR's consent seam real. What landed:
+
+1. **A dedicated `ai/trust/` package** (added to the strict-typing allowlist) rather than overloading `solo_pack/consent.py` (which stays the KAR *seam*). `trust/models.py` holds the three control-plane tables (`consent_records`, `dnc_entries`, `unsubscribe_log`); `trust/consent_registry.py` holds the evaluation + the tenant-managed provider + the installer. Migration `trust001` (off `loop002`) creates the tables; it applies and rolls back clean.
+
+2. **Evaluation enforces explicit signals, allows otherwise** (decision 8 — no imposed global opt-in). `evaluate_consent` denies on a DNC entry, a purpose-scoped unsubscribe, or an explicit `denied` consent record; absent all three it allows. That is exactly the tenant-managed posture; a jurisdiction pack later implements `ConsentProvider` to *tighten* it. **Identities canonicalise** (digits-only phone, lower-cased email) so any formatting of the same address matches — a real bug caught in testing: `+1 (555) 111-2222` must block `whatsapp:+15551112222`.
+
+3. **Installed at both entry points via the seam**, no gateway call site changed: `install_consent_registry()` runs beside `register_solo_pack_tools()` in `main.py` + `worker.py`, calling KAR's `set_consent_checker`. The end-to-end test proves a DNC number is blocked through `check_outbound_consent`.
+
+**Remaining TRUST (not built this session):** **C5** dunning + state-aware `CompanySuspensionMiddleware` (touches `billing/` + `common/middleware.py`), **C3** per-checkpoint SLAs (`hitl_checkpoint_defs` columns + timeout worker), **B13** platform-initiated budget class (LOOP + CostLedger), **E1** idle-cost model, **E2** free-credit abuse controls (`auth/`), **E4** fee-formula alerts. These reach into the billing/auth/middleware subsystems outside `ai/` and are best done with that subsystem in view.

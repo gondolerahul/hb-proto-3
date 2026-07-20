@@ -14,10 +14,11 @@
   * **SLICE** (email→quote vertical slice) — ✅ BUILT & **MERGED to `master`** (and on the remote). Closes C1 for P03.
   * **PACK** (full Wave-0 roster) — ✅ BUILT & **merged to local `master`** (push pending, §1). 16 entities + 7 bundles + generalized activation + runtime SoD. Closes C1 (all 6) + Inc-1 owner-id/governance carryovers.
   * **KAR** (outward gateways) — ✅ BUILT & **merged to local `master`**. KAR-03 WhatsApp (via SIG) + KAR-01 voice stub; roster **18**. Karuna threat posture + consent seam. Real voice/B7 → Inc 3.
-  * **ONBOARD** (setup wizard) — ✅ **Backend built** on branch **`inc2/onboard`** (not yet merged). The wizard **step APIs** (`/ai/onboarding/*`, authored as Pragya's Inc-3 stages) + the budget-envelope admin GET. **Frontend (React wizard, approvals console, FE gates) is a separate track, out of scope on this VM.**
-  * Remaining Inc-2 workstreams: **TRUST, RETR** (not started); ONBOARD **frontend**.
+  * **ONBOARD** (setup wizard) — ✅ **Backend built & merged to local `master`**. The wizard **step APIs** (`/ai/onboarding/*`, Pragya's Inc-3 stages) + the budget-envelope admin GET. **Frontend is a separate track, out of scope on this VM.**
+  * **TRUST** (billing safety + consent) — 🚧 **D6 consent registry built** on branch **`inc2/trust`** (not yet merged): the consent/DNC/unsubscribe store + tenant-managed provider wired into KAR's seam (migration `trust001`). **Remaining: C5, C3, B13, E1, E2, E4** (dunning/middleware + economics).
+  * Remaining Inc-2: **TRUST (C5/C3/B13/E1/E2/E4), RETR** (not started); ONBOARD **frontend**.
 
-**Everything committed is green:** mypy `--strict` (163 files), 1004 unit + parity + eval, layout lint, all migrations apply/rollback clean.
+**Everything committed is green:** mypy `--strict` (166 files), 1010 unit + parity + eval, layout lint, all migrations apply/rollback clean.
 
 ---
 
@@ -25,16 +26,16 @@
 
 The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). This VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`. Nothing is lost — all committed:
 
-* **`master`** — has **PACK + KAR** merged (fast-forward), **~10 commits ahead of `origin/master`**, not yet pushed.
-* **`inc2/onboard`** — the **ONBOARD backend** build, branched off master-with-KAR, **not yet merged**.
+* **`master`** — has **PACK + KAR + ONBOARD-backend** merged, **~12 commits ahead of `origin/master`**, not yet pushed.
+* **`inc2/trust`** — the **TRUST / D6 consent registry** build, branched off master, **not yet merged**.
 
 To publish, from an environment with GitHub write access:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git checkout master && git merge inc2/onboard --no-edit   # ONBOARD → master
+git checkout master && git merge inc2/trust --no-edit   # TRUST/D6 → master
 git push origin master
 ```
-Verify with `git log --oneline -20` and `git rev-list --left-right --count origin/master...master`.
+Verify with `git log --oneline -25` and `git rev-list --left-right --count origin/master...master`.
 
 ---
 
@@ -68,7 +69,11 @@ Verify with `git log --oneline -20` and `git rev-list --left-right --count origi
 * `solo_pack/onboarding.py` — the wizard steps as functions (Pragya's Inc-3 stage contract): `list_bundles`, `governance_preview` (pure), `activate_for_company`, `onboarding_status`. `solo_pack/onboarding_router.py` — `/ai/onboarding/{bundles,governance-preview,activate,status}`, company-scoped. `loop/api.py` — `GET /ai/loop/envelope` (the envelope admin view). Both registered in `src/main.py`.
 * Admin backends: signals inspector + trigger editor were already shipped (`signals/api.py`); ONBOARD added only the envelope GET. Tests: `test_onboarding.py` (pure steps), `test_onboarding_db.py` (activate + status + envelope). **Frontend not built** (separate track).
 
-**Migration head:** `loop002` (PACK/KAR/ONBOARD added no migrations — templates seed per-tenant at activation; signals + onboarding ride existing tables). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+### Increment 2 / TRUST — D6 consent registry (on `inc2/trust`)
+* New package `ai/trust/` (added to the strict allowlist in `scripts/typecheck_ai.py`): `models.py` (`consent_records`/`dnc_entries`/`unsubscribe_log`), `consent_registry.py` (`evaluate_consent` + `TenantManagedProvider` + `install_consent_registry`). Migration **`trust001`** (off `loop002`).
+* Wired into KAR's `solo_pack/consent.py` seam via `install_consent_registry()` at `main.py` + `worker.py` boot (beside `register_solo_pack_tools`). Tests: `test_consent_registry.py` (normalise + install), `test_consent_registry_db.py` (DNC/unsubscribe/denial + end-to-end seam). **Remaining TRUST findings (C5/C3/B13/E1/E2/E4) not built** — see [05](./increment-2/05_trust_billing_safety.md) §11.
+
+**Migration head:** `trust001` (Inc-2 PACK/KAR/ONBOARD added none; TRUST/D6 added `trust001` — consent tables). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
@@ -76,7 +81,7 @@ Verify with `git log --oneline -20` and `git rev-list --left-right --count origi
 
 Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD ✅ (backend) → TRUST → RETR.**
 
-**Next up: TRUST** ([increment-2/05_trust_billing_safety.md](./increment-2/05_trust_billing_safety.md)) — the billing-safety + compliance floor a real launch needs, and the most backend-heavy remaining workstream: **graduated dunning** (notify → grace → **read-only** → suspend, C5), the **consent/DNC registry** (D6 — installs the checker into KAR's shipped `solo_pack/consent.py` seam via `set_consent_checker`), per-checkpoint **HITL SLAs** (C3), **platform-initiated spend** budget class + caps (B13), free-credit abuse controls (E2), fee-formula edge cases (E4). Its billing-safety pieces gate GA. Depends on GOV + LOOP+ENV (both shipped).
+**Next up: finish TRUST** ([increment-2/05_trust_billing_safety.md](./increment-2/05_trust_billing_safety.md) §11). **D6 (consent registry) is done** — the store + tenant-managed provider is wired into KAR's seam. The **remaining findings reach into subsystems outside `ai/`** and are best done with those in view: **C5** graduated dunning (notify → grace → **read-only** → suspend) + state-aware `CompanySuspensionMiddleware` (`billing/`, `common/middleware.py`); **C3** per-checkpoint HITL SLAs (`hitl_checkpoint_defs` columns + a timeout worker — governance, migration); **B13** platform-initiated budget class (LOOP `budget_envelopes` + CostLedger); **E1** idle-cost model (doc); **E2** free-credit abuse controls (`auth/`); **E4** fee-formula alerts (billing). C5/C3/B13 are the GA-gating billing-safety pieces.
 
 **Done this session** — PACK ([03](./increment-2/03_pack_agents_processes.md) §8): full Wave-0 roster + runtime SoD. KAR ([02](./increment-2/02_kar_gateways.md) §5): WhatsApp via SIG + gateways + injection golden + consent seam. ONBOARD backend ([04](./increment-2/04_onboard_wizard.md) §6): the `/ai/onboarding/*` wizard step APIs over `activate_bundle` + the `/ai/loop/envelope` admin GET. **The remaining ONBOARD frontend (React wizard, approvals console, FE gates) is a separate FE track** — the backend contract it calls is done.
 
@@ -147,8 +152,8 @@ Integration tests **skip cleanly** without `DATABASE_URL`. Docker is available f
 ## 8. Register findings status (from the gap register)
 
 * **Closed by Inc 1:** A6, B1, B2, B3, B5, B6, B8, E3 (+ the earlier v3 doc-pass batch).
-* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK).
-* **Closing in Inc 2 (remaining):** C3, C5, D6, B13, E1, E2, E4 — see `increment-2/00_overview.md` §5.
+* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent/DNC/unsubscribe registry — TRUST, wired into KAR's seam).
+* **Closing in Inc 2 (remaining):** C3, C5, B13, E1, E2, E4 — see `increment-2/00_overview.md` §5 + `05_trust_billing_safety.md` §11.
 * **Deferred:** B7 (realtime voice) → Increment 3 with Pragya.
 * **Still open (later increments):** B10, B11, B12, B14, C2, C4, C6, D2, D3, D4, D5. See [roadmap_gap_register.md](./roadmap_gap_register.md) and each increment charter.
 

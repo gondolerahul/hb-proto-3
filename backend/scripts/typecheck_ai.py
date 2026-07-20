@@ -46,6 +46,7 @@ CLEAN_PACKAGES: list[str] = [
     "tenant_schema",
     "loop",
     "solo_pack",
+    "trust",
 ]
 
 
