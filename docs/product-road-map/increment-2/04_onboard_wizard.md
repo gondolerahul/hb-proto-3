@@ -1,6 +1,6 @@
 # Increment 2 / ONBOARD — The Setup Wizard + Admin Surfaces
 
-> **Status:** Draft — for brainstorm review · **Branch:** `inc2/onboard` · **Register:** none directly; delivers the Inc-1 admin-UI carryover.
+> **Status:** ✅ **Backend built (2026-07-20)** — the wizard **step APIs** (Pragya's Inc-3 stage contract) + the admin-surface backends are done and green (mypy `--strict`, unit + integration, layout clean). The **frontend** (React wizard, approvals console, FE gates) is a **separate track, out of scope on this backend VM**. See §6 build notes. · **Branch:** `inc2/onboard` · **Register:** delivers the Inc-1 admin-UI carryover (backend).
 > **Design authority:** Functional §4.3 (the nine-stage flow the wizard previews), §11 (GenUI is Inc 6 — these are hand-built screens). Wizard-driven, Pragya in Inc 3 (decision 4).
 > **Depends on:** PACK (bundles to activate), KAR (channels to connect).
 
@@ -50,3 +50,15 @@ Increment 1 shipped signals/triggers/envelopes as **API-only**. ONBOARD builds t
 
 1. **The wizard's step APIs are authored as Pragya's stage APIs** — activation/connection/governance endpoints are designed as the stage APIs Pragya will drive in Inc 3, so Inc 3 is a UI swap over the same contract, not a rebuild.
 2. **Zero KB required to go live** — agents work from the HBS + curated templates; KB is optional and improves quality.
+
+## 6. Build Notes — deltas discovered during implementation (2026-07-20)
+
+**Backend built; frontend is a separate track** (Node/browser toolchain, out of scope on this VM — HANDOFF §7). What landed:
+
+1. **The wizard steps are a service + a thin router, so the contract is testable without a browser.** `solo_pack/onboarding.py` holds the four steps as functions — `list_bundles` (step 4 picker), `governance_preview` (step 3, **pure** over the curated templates), `activate_for_company` (step 4, over PACK's `activate_bundle`), `onboarding_status` (step 5). `solo_pack/onboarding_router.py` is the company-scoped FastAPI wrapper (`/ai/onboarding/{bundles,governance-preview,activate,status}`). Unit tests drive the pure steps; an integration test activates a tenant and reads status back. This *is* decision 1 realised — the same functions become Pragya's stage calls in Inc 3.
+
+2. **The bundle picker exposes future bundles honestly.** `list_bundles` returns the Solo Pack default + all 7 §2.1 bundles, each with `available_now` — Fulfillment/Talent (no Wave-0 process yet) show `false` and an empty `process_codes` while still advertising their full §2.1 membership, so the wizard can show the roadmap without pretending they activate.
+
+3. **Two of the three admin backends were already shipped in Inc 1.** The signals inspector (`/ai/signals` list + `/coverage` + `/replay`) and the trigger-registry editor (`/ai/signals/triggers` CRUD) exist. The gap was the **budget-envelope view** — added `loop/api.py` `GET /ai/loop/envelope` (read-only): utilization, the protected reserve, and downshift/cap state over the Inc-1 LOOP data. The approvals console is the shipped `human_approvals` panel (frontend).
+
+**Task plan status:** T1 ✅ (activation step API) · T2 ✅ (wizard step APIs — the backend of steps 1–5) · T3 ✅ (admin surfaces: signals + triggers already shipped, **budget-envelope GET added**) · **T4/T5 (React wizard + approvals console UI + FE gates) → frontend track, deferred off this VM.**

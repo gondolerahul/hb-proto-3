@@ -9,14 +9,15 @@
 ## 0. TL;DR — where we are
 
 * **Increment 1 (One-Loop Foundations) — ✅ BUILT & MERGED to `master`.** Four workstreams: **SIG** (signal bus), **GOV** (governance + PolicyGate), **SCH** (tenant schema / records / data plane), **LOOP+ENV** (Loop runtime, budget envelopes, wallet holds). Register findings B1/B2/B3/B5/B6/B8/E3/A6 closed.
-* **Increment 2 (The Solo Pack — the sellable MVP) — DESIGNED + SLICE, PACK & KAR built.**
+* **Increment 2 (The Solo Pack — the sellable MVP) — DESIGNED + SLICE, PACK, KAR built; ONBOARD backend built.**
   * All 6 workstream design docs written and decisions locked (`increment-2/`).
   * **SLICE** (email→quote vertical slice) — ✅ BUILT & **MERGED to `master`** (and on the remote). Closes C1 for P03.
-  * **PACK** (full Wave-0 roster) — ✅ BUILT & **merged to local `master`** (push pending, §1). 16 curated entities (1 gw + 6 processes + 9 agents) + 7 bundles + generalized activation + runtime SoD. Closes C1 (all 6) + Inc-1 owner-id/governance carryovers.
-  * **KAR** (outward gateways) — ✅ BUILT on branch **`inc2/kar`** (not yet merged). KAR-03 WhatsApp (enters via SIG) + KAR-01 voice stub; roster now **18** (3 gateways). Karuna threat posture + outbound consent seam. Async half of the outward face; real voice/B7 → Inc 3.
-  * Remaining Inc-2 workstreams: **ONBOARD, TRUST, RETR** (not started).
+  * **PACK** (full Wave-0 roster) — ✅ BUILT & **merged to local `master`** (push pending, §1). 16 entities + 7 bundles + generalized activation + runtime SoD. Closes C1 (all 6) + Inc-1 owner-id/governance carryovers.
+  * **KAR** (outward gateways) — ✅ BUILT & **merged to local `master`**. KAR-03 WhatsApp (via SIG) + KAR-01 voice stub; roster **18**. Karuna threat posture + consent seam. Real voice/B7 → Inc 3.
+  * **ONBOARD** (setup wizard) — ✅ **Backend built** on branch **`inc2/onboard`** (not yet merged). The wizard **step APIs** (`/ai/onboarding/*`, authored as Pragya's Inc-3 stages) + the budget-envelope admin GET. **Frontend (React wizard, approvals console, FE gates) is a separate track, out of scope on this VM.**
+  * Remaining Inc-2 workstreams: **TRUST, RETR** (not started); ONBOARD **frontend**.
 
-**Everything committed is green:** mypy `--strict` (160 files), 995 unit + parity + eval, layout lint, all migrations apply/rollback clean.
+**Everything committed is green:** mypy `--strict` (163 files), 1004 unit + parity + eval, layout lint, all migrations apply/rollback clean.
 
 ---
 
@@ -24,16 +25,16 @@
 
 The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). This VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`. Nothing is lost — all committed:
 
-* **`master`** — has the **PACK** build merged (fast-forward), **~6 commits ahead of `origin/master`**, not yet pushed.
-* **`inc2/kar`** — the **KAR** build (5 commits), branched off master-with-PACK, **not yet merged**.
+* **`master`** — has **PACK + KAR** merged (fast-forward), **~10 commits ahead of `origin/master`**, not yet pushed.
+* **`inc2/onboard`** — the **ONBOARD backend** build, branched off master-with-KAR, **not yet merged**.
 
 To publish, from an environment with GitHub write access:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git checkout master && git merge inc2/kar --no-edit   # KAR → master (fast-forward)
+git checkout master && git merge inc2/onboard --no-edit   # ONBOARD → master
 git push origin master
 ```
-Verify with `git log --oneline -15` and `git rev-list --left-right --count origin/master...master`.
+Verify with `git log --oneline -20` and `git rev-list --left-right --count origin/master...master`.
 
 ---
 
@@ -63,17 +64,21 @@ Verify with `git log --oneline -15` and `git rev-list --left-right --count origi
 * `signals/whatsapp_inbound.py` — the WhatsApp producer (`message.inbound`, `trust:counterparty`, SID dedupe, subscription-gated). Wired into `src/voice/whatsapp_handler.py` as a fail-safe cutover. New `SignalTypes.MESSAGE_INBOUND`/`VOICE_INBOUND`.
 * `solo_pack/consent.py` — the outbound consent/DNC seam (`check_outbound_consent` + pluggable checker; TRUST installs D6). Tests: `test_kar_gateways.py` (injection golden via pure `evaluate_policy` + consent), `test_whatsapp_inbound_db.py` (emit/dedupe/subscription/dispatch→KAR-03), gateway-posture in `test_solo_pack_templates.py`.
 
-**Migration head:** `loop002` (PACK + KAR added no migrations — templates seed per-tenant at activation; signals ride existing tables). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+### Increment 2 / ONBOARD backend (on `inc2/onboard`)
+* `solo_pack/onboarding.py` — the wizard steps as functions (Pragya's Inc-3 stage contract): `list_bundles`, `governance_preview` (pure), `activate_for_company`, `onboarding_status`. `solo_pack/onboarding_router.py` — `/ai/onboarding/{bundles,governance-preview,activate,status}`, company-scoped. `loop/api.py` — `GET /ai/loop/envelope` (the envelope admin view). Both registered in `src/main.py`.
+* Admin backends: signals inspector + trigger editor were already shipped (`signals/api.py`); ONBOARD added only the envelope GET. Tests: `test_onboarding.py` (pure steps), `test_onboarding_db.py` (activate + status + envelope). **Frontend not built** (separate track).
+
+**Migration head:** `loop002` (PACK/KAR/ONBOARD added no migrations — templates seed per-tenant at activation; signals + onboarding ride existing tables). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
 ## 3. How to resume — the next work
 
-Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD → TRUST → RETR.**
+Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD ✅ (backend) → TRUST → RETR.**
 
-**Next up: ONBOARD** ([increment-2/04_onboard_wizard.md](./increment-2/04_onboard_wizard.md)) — the setup wizard that packages activation (connect channels → upload KB → confirm A1 governance → activate a bundle) + the Inc-1 admin UI (signals/triggers/envelopes) carried over. The wizard's step APIs are authored as the stage APIs Pragya drives in Inc 3 (decision 4). **Note (from §7 of the HANDOFF):** the frontend (Node/browser toolchain) is out of scope on this backend VM — ONBOARD's backend is the wizard **step APIs** over the shipped `activate_bundle`/`activate_solo_pack`; the React wizard + admin UI are a separate FE track.
+**Next up: TRUST** ([increment-2/05_trust_billing_safety.md](./increment-2/05_trust_billing_safety.md)) — the billing-safety + compliance floor a real launch needs, and the most backend-heavy remaining workstream: **graduated dunning** (notify → grace → **read-only** → suspend, C5), the **consent/DNC registry** (D6 — installs the checker into KAR's shipped `solo_pack/consent.py` seam via `set_consent_checker`), per-checkpoint **HITL SLAs** (C3), **platform-initiated spend** budget class + caps (B13), free-credit abuse controls (E2), fee-formula edge cases (E4). Its billing-safety pieces gate GA. Depends on GOV + LOOP+ENV (both shipped).
 
-**PACK is done** ([03](./increment-2/03_pack_agents_processes.md) §8): full Wave-0 roster activates, owner-ids resolve across all 6 processes, maker/checker SoD holds at runtime. **KAR is done** ([02](./increment-2/02_kar_gateways.md) §5): WhatsApp enters via SIG (subscription-gated cutover in `src/voice/whatsapp_handler.py` → `signals/whatsapp_inbound.py`), KAR-01 voice stub registered, injection golden + consent seam. To wire a new gateway: append to `templates.GATEWAYS` + a producer mirroring `signals/whatsapp_inbound.py`.
+**Done this session** — PACK ([03](./increment-2/03_pack_agents_processes.md) §8): full Wave-0 roster + runtime SoD. KAR ([02](./increment-2/02_kar_gateways.md) §5): WhatsApp via SIG + gateways + injection golden + consent seam. ONBOARD backend ([04](./increment-2/04_onboard_wizard.md) §6): the `/ai/onboarding/*` wizard step APIs over `activate_bundle` + the `/ai/loop/envelope` admin GET. **The remaining ONBOARD frontend (React wizard, approvals console, FE gates) is a separate FE track** — the backend contract it calls is done.
 
 Each workstream doc has: self-contained design, code mapping, a task plan, and a **§ Brainstorm Decisions** block (already answered — do not re-litigate). Follow the Increment-1 rhythm: branch `inc2/<workstream>`, build task-by-task, keep gates green, add a §N build-note delta log + flip maturity tags on merge.
 

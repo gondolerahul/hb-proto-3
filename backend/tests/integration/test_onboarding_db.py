@@ -87,3 +87,24 @@ async def test_activate_a_single_bundle(onboard_tenant):
     assert "p14-continuous-guardrails" in status["entities"]
     # A finance process is NOT part of the compliance bundle.
     assert "p08-order-to-cash" not in status["entities"]
+
+
+async def test_envelope_view_after_activation(onboard_tenant):
+    # The admin envelope surface: activation ensures Sheel + its budget envelope.
+    cid = onboard_tenant
+    from sqlalchemy import select
+
+    from src.ai.loop.api import envelope_out
+    from src.ai.loop.models import BudgetEnvelope
+    from src.common.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        await activate_for_company(db, cid, "solo_pack")
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(
+            select(BudgetEnvelope).where(BudgetEnvelope.company_id == cid))).scalars().all()
+    assert len(rows) >= 1
+    view = envelope_out(rows[0])
+    assert view["utilization_pct"] >= 0.0
+    assert view["reserved_usd"] > 0.0            # the protected reserve is carved out
+    assert view["downshift"] in (True, False)
+    assert view["capped"] in (True, False)
