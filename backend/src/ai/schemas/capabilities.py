@@ -127,3 +127,7 @@ class Capabilities(BaseModel):
     memory: MemoryConfig = MemoryConfig()
     context_engineering: ContextEngineering = ContextEngineering()
     meta_cognition: MetaCognitionConfig = MetaCognitionConfig()
+    # §9.4 segregation-of-duties tags the deploy validator reads to reject a
+    # single entity holding a conflicting pair (e.g. financial_maker +
+    # financial_checker). Persisted so the SoD classification survives seeding.
+    sod_tags: List[str] = []

@@ -31,6 +31,55 @@ def _err(message: str, code: str = "solo_pack_tool_error") -> str:
     return json.dumps({"error": message, "error_code": code})
 
 
+def _process_code_of(ent: Any) -> Optional[str]:
+    """The process code an entity writes as, from its metadata or tags."""
+    meta = ent.metadata_extensions if isinstance(ent.metadata_extensions, dict) else {}
+    code = meta.get("process_code")
+    if code:
+        return str(code)
+    for tag in (ent.tags or []):
+        if isinstance(tag, str) and tag.startswith("process_code:"):
+            return tag.split(":", 1)[1]
+    return None
+
+
+async def _resolve_actor_process_code(agent_id: Optional[str]) -> Optional[str]:
+    """The process code the acting entity writes as — its own if it is a
+    PROCESS, else its parent process's. An entity with no PROCESS ancestor
+    (a gateway under Sheel) writes front-door (None): origination, not a
+    cross-owner mutation. Fails open to None so a lookup hiccup never blocks a
+    legitimate write; SoD on money acts is also defended by the PolicyGate.
+    """
+    if not agent_id:
+        return None
+    try:
+        aid = uuid.UUID(str(agent_id))
+    except (ValueError, TypeError):
+        return None
+    try:
+        from sqlalchemy import select
+
+        from src.ai.orm.entity import HierarchicalEntity
+        from src.common.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            ent = (await db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.id == aid)
+            )).scalar_one_or_none()
+            if ent is None:
+                return None
+            code = _process_code_of(ent)
+            if code or ent.parent_id is None:
+                return code
+            parent = (await db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.id == ent.parent_id)
+            )).scalar_one_or_none()
+            return _process_code_of(parent) if parent is not None else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("actor process resolution failed for %s: %s", agent_id, exc)
+        return None
+
+
 class TenantRecordWriteTool(Tool):
     """Create or update a tenant business record (Lead, Opportunity, Quote, …)."""
 
@@ -72,6 +121,9 @@ class TenantRecordWriteTool(Tool):
         cid = uuid.UUID(str(company_id))
         run_id = (context or {}).get("run_id")
         run_uuid = uuid.UUID(str(run_id)) if run_id else None
+        # The process this write acts as — so a cross-owner write on another
+        # process's object proposes (SoD) rather than mutating it silently.
+        actor = await _resolve_actor_process_code((context or {}).get("agent_id"))
         try:
             from src.ai.tenant_schema.data_plane import tenant_data_plane
             from src.ai.tenant_schema.record_service import RecordService
@@ -84,10 +136,11 @@ class TenantRecordWriteTool(Tool):
                         res = await svc.update(
                             uuid.UUID(str(params["record_id"])), data,
                             expected_version=int(params.get("expected_version", 1)),
-                            run_id=run_uuid,
+                            actor_process_code=actor, run_id=run_uuid,
                         )
                     else:
-                        res = await svc.create(def_name, data, run_id=run_uuid)
+                        res = await svc.create(
+                            def_name, data, actor_process_code=actor, run_id=run_uuid)
                 except ValidationError as ve:
                     return _err(f"validation failed: {'; '.join(ve.errors)}", "validation_error")
                 await ts.commit()

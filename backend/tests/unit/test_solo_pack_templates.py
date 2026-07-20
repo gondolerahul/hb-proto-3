@@ -190,3 +190,11 @@ class TestPackGovernance:
             tool_ids = {tc.get("tool_id") for tc in t.get("capabilities", {}).get("tools", [])}
             if "send_email" in tool_ids:
                 assert t["governance"].get("checkpoint_keys"), t["name"]
+
+    def test_deploy_validator_rejects_maker_and_checker_on_one_entity(self):
+        # The §9.4 SoD rule: no single entity may be both maker and checker.
+        bad = {**AGT_038, "name": "sod-violation",
+               "capabilities": {**AGT_038["capabilities"],
+                                "sod_tags": ["financial_maker", "financial_checker"]}}
+        errs = validate_template(bad)
+        assert any("segregation-of-duties" in e for e in errs), errs
