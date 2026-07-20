@@ -15,10 +15,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.loop.models import BudgetEnvelope
+from src.ai.loop.models import BUDGET_CLASS_TENANT, BudgetEnvelope
+from src.ai.services.cost_attribution import PLATFORM_INITIATED_ATTRIBUTIONS
 from src.common.config import settings
 
 logger = logging.getLogger(__name__)
@@ -56,12 +57,14 @@ async def ensure_loop_envelope(
         select(BudgetEnvelope).where(
             BudgetEnvelope.company_id == company_id,
             BudgetEnvelope.entity_id == loop_entity_id,
+            BudgetEnvelope.budget_class == BUDGET_CLASS_TENANT,
         )
     )).scalar_one_or_none()
     if env is not None:
         return env
     env = BudgetEnvelope(
         company_id=company_id, entity_id=loop_entity_id, cycle="monthly",
+        budget_class=BUDGET_CLASS_TENANT,
         envelope_usd=default_envelope_usd(), reserved_usd=default_reserve_usd(),
         spent_usd=Decimal("0"), downshift_at_pct=settings.LOOP_ENVELOPE_DOWNSHIFT_PCT,
         refreshed_at=datetime.utcnow(),
@@ -92,14 +95,18 @@ async def rollup_spent(
     """Sum child run cost attributed to this company since the cycle refresh.
 
     Reads the shipped ``usage_logs`` cost attribution (the CostLedger's store).
-    Inc 1 rolls up tenant-wide spend into the Loop envelope; per-Process
-    envelopes arrive with the Solo Pack (Inc 2).
+    Excludes the B13 platform-initiated classes — those roll into the separate
+    platform envelope (``loop/platform_budget.py``), never the tenant's.
     """
-    total = (await db.execute(
-        text("SELECT COALESCE(SUM(calculated_cost), 0) FROM usage_logs "
-             "WHERE company_id = :c AND timestamp >= :since"),
-        {"c": str(env.company_id), "since": env.refreshed_at},
-    )).scalar_one()
+    stmt = text(
+        "SELECT COALESCE(SUM(calculated_cost), 0) FROM usage_logs "
+        "WHERE company_id = :c AND timestamp >= :since "
+        "AND (attribution IS NULL OR attribution NOT IN :platform)"
+    ).bindparams(bindparam("platform", expanding=True))
+    total = (await db.execute(stmt, {
+        "c": str(env.company_id), "since": env.refreshed_at,
+        "platform": list(PLATFORM_INITIATED_ATTRIBUTIONS),
+    })).scalar_one()
     env.spent_usd = Decimal(str(total or 0))
     await db.flush()
     return env.spent_usd

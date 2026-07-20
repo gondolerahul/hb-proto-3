@@ -15,10 +15,10 @@
   * **PACK** (full Wave-0 roster) — ✅ BUILT & **merged to local `master`** (push pending, §1). 16 entities + 7 bundles + generalized activation + runtime SoD. Closes C1 (all 6) + Inc-1 owner-id/governance carryovers.
   * **KAR** (outward gateways) — ✅ BUILT & **merged to local `master`**. KAR-03 WhatsApp (via SIG) + KAR-01 voice stub; roster **18**. Karuna threat posture + consent seam. Real voice/B7 → Inc 3.
   * **ONBOARD** (setup wizard) — ✅ **Backend built & merged to local `master`**. The wizard **step APIs** (`/ai/onboarding/*`, Pragya's Inc-3 stages) + the budget-envelope admin GET. **Frontend is a separate track, out of scope on this VM.**
-  * **TRUST** (billing safety + consent) — 🚧 **D6 (consent registry) + C3 (per-checkpoint HITL SLAs) built** on branch **`inc2/trust`** (not yet merged): consent/DNC/unsubscribe store wired into KAR's seam (migration `trust001`) + checkpoint SLA columns/policy/sweep (`trust002`). **Remaining: C5, B13, E1, E2, E4** (dunning/middleware + economics).
-  * Remaining Inc-2: **TRUST (C5/B13/E1/E2/E4), RETR** (not started); ONBOARD **frontend**.
+  * **TRUST** (billing safety + consent) — 🚧 **D6 + C3 + B13 built** on branch **`inc2/trust`** (not yet merged): consent registry wired into KAR's seam (`trust001`), per-checkpoint HITL SLAs + sweep (`trust002`), platform-initiated budget class + admission (`trust003`). **Remaining: C5, E1, E2, E4** (dunning/middleware + economics).
+  * Remaining Inc-2: **TRUST (C5/E1/E2/E4), RETR** (not started); ONBOARD **frontend**.
 
-**Everything committed is green:** mypy `--strict` (167 files), 1022 unit + parity + eval, layout lint, all migrations apply/rollback clean.
+**Everything committed is green:** mypy `--strict` (168 files), 1025 unit + parity + eval, layout lint, all migrations apply/rollback clean.
 
 ---
 
@@ -26,13 +26,13 @@
 
 The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). This VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`. Nothing is lost — all committed:
 
-* **`master`** — has **PACK + KAR + ONBOARD-backend + TRUST/D6** merged, **~13 commits ahead of `origin/master`**, not yet pushed.
-* **`inc2/trust`** — **TRUST / C3 (per-checkpoint HITL SLAs)** on top of D6, **not yet merged**.
+* **`master`** — has **PACK + KAR + ONBOARD-backend + TRUST/D6 + TRUST/C3** merged, **~15 commits ahead of `origin/master`**, not yet pushed.
+* **`inc2/trust`** — **TRUST / B13 (platform-initiated budget class)** on top of D6+C3, **not yet merged**.
 
 To publish, from an environment with GitHub write access:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git checkout master && git merge inc2/trust --no-edit   # TRUST/C3 → master
+git checkout master && git merge inc2/trust --no-edit   # TRUST/B13 → master
 git push origin master
 ```
 Verify with `git log --oneline -25` and `git rev-list --left-right --count origin/master...master`.
@@ -72,9 +72,10 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 ### Increment 2 / TRUST — D6 consent registry (on `inc2/trust`)
 * New package `ai/trust/` (added to the strict allowlist in `scripts/typecheck_ai.py`): `models.py` (`consent_records`/`dnc_entries`/`unsubscribe_log`), `consent_registry.py` (`evaluate_consent` + `TenantManagedProvider` + `install_consent_registry`). Migration **`trust001`** (off `loop002`).
 * Wired into KAR's `solo_pack/consent.py` seam via `install_consent_registry()` at `main.py` + `worker.py` boot (beside `register_solo_pack_tools`). Tests: `test_consent_registry.py`, `test_consent_registry_db.py`.
-* **C3 per-checkpoint HITL SLAs:** `governance/checkpoints.py` (per-category SLA policy + stamps the 18 seed rows), `governance/models.py` (`sla_seconds`+`on_timeout` on `HITLCheckpointDef`), `governance/checkpoint_sla.py` (`apply_checkpoint_timeouts` sweep — auto_deny/park/escalate), wired into the 60s `signal_sweeper` cron. Migration `trust002`. Tests: `test_checkpoint_sla.py`, `test_checkpoint_sla_db.py`. **Remaining TRUST (C5/B13/E1/E2/E4) not built** — see [05](./increment-2/05_trust_billing_safety.md) §11–§12.
+* **C3 per-checkpoint HITL SLAs:** `governance/checkpoints.py` (per-category SLA policy + stamps the 18 seed rows), `governance/models.py` (`sla_seconds`+`on_timeout`), `governance/checkpoint_sla.py` (`apply_checkpoint_timeouts` sweep), wired into the 60s `signal_sweeper` cron. Migration `trust002`. Tests: `test_checkpoint_sla{,_db}.py`.
+* **B13 platform-initiated budget class:** `cost_attribution.py` (`PLATFORM_INITIATED_ATTRIBUTIONS`), `loop/models.py` (`budget_class` + constants), `loop/envelopes.py` (tenant rollup excludes platform attributions; `ensure_loop_envelope` class-aware), `loop/platform_budget.py` (`ensure_platform_envelope` / `platform_spend_admitted` — parks platform work at its own cap). Migration `trust003`; `LOOP_PLATFORM_ENVELOPE_USD` setting. Tests: `test_platform_budget{,_db}.py`. **Remaining TRUST (C5/E1/E2/E4) not built** — see [05](./increment-2/05_trust_billing_safety.md) §11–§13.
 
-**Migration head:** `trust002` (Inc-2 PACK/KAR/ONBOARD added none; TRUST added `trust001` consent tables + `trust002` checkpoint-SLA columns). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+**Migration head:** `trust003` (Inc-2 PACK/KAR/ONBOARD added none; TRUST added `trust001` consent tables, `trust002` checkpoint-SLA columns, `trust003` envelope `budget_class`). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
@@ -82,7 +83,7 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 
 Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD ✅ (backend) → TRUST → RETR.**
 
-**Next up: finish TRUST** ([increment-2/05_trust_billing_safety.md](./increment-2/05_trust_billing_safety.md) §11–§12). **D6 (consent registry) + C3 (per-checkpoint HITL SLAs) are done.** The **remaining findings reach into subsystems outside `ai/`** and are best done with those in view: **C5** graduated dunning (notify → grace → **read-only** → suspend) + state-aware `CompanySuspensionMiddleware` (`billing/`, `common/middleware.py`) — the GA-gating billing-safety piece; **B13** platform-initiated budget class (LOOP `budget_envelopes` + CostLedger); **E1** idle-cost model (doc); **E2** free-credit abuse controls (`auth/`); **E4** fee-formula alerts (billing).
+**Next up: finish TRUST** ([increment-2/05_trust_billing_safety.md](./increment-2/05_trust_billing_safety.md) §11–§13). **D6, C3, B13 are done.** The **remaining findings reach into subsystems outside `ai/`** and are best done with those in view: **C5** graduated dunning (notify → grace → **read-only** → suspend) + state-aware `CompanySuspensionMiddleware` (`billing/`, `common/middleware.py`) — the GA-gating billing-safety piece; **E1** idle-cost model (doc); **E2** free-credit abuse controls (`auth/`); **E4** fee-formula alerts (billing). (B13's envelope + `platform_spend_admitted` gate are ready; wiring them into the optimizer/meta/sensing runners lands when those are next touched.)
 
 **Done this session** — PACK ([03](./increment-2/03_pack_agents_processes.md) §8): full Wave-0 roster + runtime SoD. KAR ([02](./increment-2/02_kar_gateways.md) §5): WhatsApp via SIG + gateways + injection golden + consent seam. ONBOARD backend ([04](./increment-2/04_onboard_wizard.md) §6): the `/ai/onboarding/*` wizard step APIs over `activate_bundle` + the `/ai/loop/envelope` admin GET. **The remaining ONBOARD frontend (React wizard, approvals console, FE gates) is a separate FE track** — the backend contract it calls is done.
 
@@ -153,8 +154,8 @@ Integration tests **skip cleanly** without `DATABASE_URL`. Docker is available f
 ## 8. Register findings status (from the gap register)
 
 * **Closed by Inc 1:** A6, B1, B2, B3, B5, B6, B8, E3 (+ the earlier v3 doc-pass batch).
-* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent/DNC/unsubscribe registry — TRUST); **C3** (per-checkpoint HITL SLAs — TRUST).
-* **Closing in Inc 2 (remaining):** C5, B13, E1, E2, E4 — see `increment-2/00_overview.md` §5 + `05_trust_billing_safety.md` §11–§12.
+* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent/DNC/unsubscribe registry), **C3** (per-checkpoint HITL SLAs), **B13** (platform-initiated budget class) — all TRUST.
+* **Closing in Inc 2 (remaining):** C5, E1, E2, E4 — see `increment-2/00_overview.md` §5 + `05_trust_billing_safety.md` §11–§13.
 * **Deferred:** B7 (realtime voice) → Increment 3 with Pragya.
 * **Still open (later increments):** B10, B11, B12, B14, C2, C4, C6, D2, D3, D4, D5. See [roadmap_gap_register.md](./roadmap_gap_register.md) and each increment charter.
 

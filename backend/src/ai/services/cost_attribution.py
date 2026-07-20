@@ -47,8 +47,23 @@ class CostAttribution(str, Enum):
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}
 
+# B13 — the platform-INITIATED cost classes: work the platform starts without a
+# tenant asking (Meta-Agent iterations, self-healing/dreaming, sandbox + test
+# builds). These draw from a separate capped envelope (loop/platform_budget.py)
+# so platform work parks at its cap and can never starve tenant work.
+PLATFORM_INITIATED_ATTRIBUTIONS: frozenset[str] = frozenset({
+    CostAttribution.META_REVIEW.value,
+    CostAttribution.META_SPEC_CRITIC.value,
+    CostAttribution.DREAMING.value,
+    CostAttribution.SANDBOX.value,
+    CostAttribution.TEST_DRIVER.value,
+})
 
-__all__ = ["CostAttribution", "CostLedger", "VALID_ATTRIBUTIONS"]
+
+__all__ = [
+    "CostAttribution", "CostLedger", "VALID_ATTRIBUTIONS",
+    "PLATFORM_INITIATED_ATTRIBUTIONS",
+]
 
 
 class CostLedger:

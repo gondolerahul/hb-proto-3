@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     LOOP_DEFAULT_ENVELOPE_USD: str = "100.00"
     LOOP_DEFAULT_RESERVE_PCT: int = 10          # protected carve-out (P14/P17)
     LOOP_ENVELOPE_DOWNSHIFT_PCT: int = 80
+    # B13 — platform-initiated spend (optimizer/self-healing/meta/sensing) draws
+    # from its own capped envelope so it can never starve tenant work.
+    LOOP_PLATFORM_ENVELOPE_USD: str = "10.00"
 
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.

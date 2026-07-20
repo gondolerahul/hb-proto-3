@@ -1,6 +1,6 @@
 # Increment 2 / TRUST — Billing Safety, Consent & the Economics Floor
 
-> **Status:** 🚧 **In progress** — **D6 (consent registry) ✅** + **C3 (per-checkpoint HITL SLAs) ✅** built (2026-07-20); migrations `trust001`/`trust002`; gates green. **Remaining: C5, B13, E1, E2, E4** (dunning/middleware + economics — see §11). · **Branch:** `inc2/trust` · **Closes:** C5, **D6 ✅**, **C3 ✅**, B13, E1, E2, E4.
+> **Status:** 🚧 **In progress** — **D6 ✅** (consent registry), **C3 ✅** (per-checkpoint HITL SLAs), **B13 ✅** (platform-initiated budget class) built (2026-07-20); migrations `trust001`–`trust003`; gates green. **Remaining: C5, E1, E2, E4** (dunning/middleware + economics — see §11). · **Branch:** `inc2/trust` · **Closes:** C5, **D6 ✅**, **C3 ✅**, **B13 ✅**, E1, E2, E4.
 > **Design authority:** Blueprint §9.6 (compliance), §10 (economics); Technical §15.2 (suspension), §20 (governance/budget). Global-neutral (decision 5), graduated dunning (decision 6).
 > **Depends on:** GOV (checkpoints/PolicyGate), LOOP+ENV (envelopes/holds/wallet_debt). Its billing-safety pieces gate GA.
 
@@ -91,4 +91,12 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 
 2. **A sweep, not a per-run timer.** `governance/checkpoint_sla.py::apply_checkpoint_timeouts` joins PENDING `human_approvals` → their checkpoint def, and on an overdue row applies `on_timeout`: auto-deny sets status `TIMEOUT` + records the reason (terminal, deduped once); auto-park/escalate leave it PENDING and raise `approval.parked`/`approval.escalated` (deduped per calendar day so they resurface without spamming). Wired into the existing 60s `signal_sweeper` cron — one global pass, no new cron.
 
-**Remaining TRUST (not built this session):** **C5** dunning + state-aware `CompanySuspensionMiddleware` (touches `billing/` + `common/middleware.py`), **B13** platform-initiated budget class (LOOP + CostLedger), **E1** idle-cost model, **E2** free-credit abuse controls (`auth/`), **E4** fee-formula alerts. These reach into the billing/auth/middleware subsystems outside `ai/` and are best done with that subsystem in view.
+## 13. Build Notes — B13 platform-initiated budget class (2026-07-20)
+
+**B13 built** — platform work can no longer silently drain a tenant's wallet:
+
+1. **A class, not a new cost value.** The CostLedger already tags every `usage_logs` row with an `attribution`; B13 defines `PLATFORM_INITIATED_ATTRIBUTIONS` (meta_review, meta_spec_critic, dreaming, sandbox, test_driver) — the work the platform starts without the tenant asking. `budget_class` on `budget_envelopes` (migration `trust003`) splits a tenant's Loop envelope from a **separate platform envelope** (own cap `LOOP_PLATFORM_ENVELOPE_USD`, no reserve). The Loop rollup now *excludes* the platform attributions, and the platform envelope *includes only* them — no double-count.
+
+2. **Admission parks platform work, never tenant work.** `loop/platform_budget.py::platform_spend_admitted` checks the platform envelope's spend against its cap; over → the caller parks the platform run. Tenant work draws from the Loop envelope + wallet holds (Inc-1), untouched. `ensure_loop_envelope` is now class-aware (returns the `tenant` row even when a platform row exists on the same Loop).
+
+**Remaining TRUST (not built this session):** **C5** dunning + state-aware `CompanySuspensionMiddleware` (touches `billing/` + `common/middleware.py` — the GA-gating piece), **E1** idle-cost model, **E2** free-credit abuse controls (`auth/`), **E4** fee-formula alerts. These reach into the billing/auth/middleware subsystems outside `ai/` and are best done with that subsystem in view. The B13 wiring point — calling `platform_spend_admitted` before an optimizer/meta/sensing run — lands when those platform-work runners are next touched (the gate + envelope are ready).

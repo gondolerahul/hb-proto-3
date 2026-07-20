@@ -36,7 +36,13 @@ __all__ = [
     "WalletHold",
     "HoldStatus",
     "PROTECTED_PROCESS_CODES",
+    "BUDGET_CLASS_TENANT",
+    "BUDGET_CLASS_PLATFORM",
 ]
+
+# B13 — the two budget classes an envelope can carry.
+BUDGET_CLASS_TENANT: str = "tenant"
+BUDGET_CLASS_PLATFORM: str = "platform_initiated"
 
 # P14 Continuous Guardrails + P17 Incident-to-Resolution are "never paused":
 # their envelope share is pre-funded via reserved_usd (§20.4 / register A6).
@@ -78,6 +84,10 @@ class BudgetEnvelope(Base):
     entity_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("hierarchical_entities.id"), nullable=False)
     cycle: Mapped[str] = mapped_column(String(10), nullable=False, default="monthly")  # monthly | weekly
+    # B13 — "tenant" (the Loop's spend) or "platform_initiated" (optimizer/meta/
+    # sensing), each a separate capped envelope so platform work never starves
+    # tenant work.
+    budget_class: Mapped[str] = mapped_column(String(20), nullable=False, default="tenant")
     envelope_usd: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, default=0)
     # Protected carve-out (P14/P17), pre-funded at refresh — never exempt.
     reserved_usd: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, default=0)
