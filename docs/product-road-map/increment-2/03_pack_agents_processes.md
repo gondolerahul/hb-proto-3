@@ -23,6 +23,8 @@
 
 ## 2. The 6 Wave-0 process design sheets (closes C1)
 
+> **Full sheets:** the five new Wave-0 processes are authored step-level in **[03a_wave0_process_sheets.md](./03a_wave0_process_sheets.md)** (P03 in [SLICE §3](./01_slice_email_to_quote.md)). That doc is the C1 deliverable; the summaries below are the index.
+
 Each is a checked-in sheet (trigger list → stages → decisions → exceptions → SLAs → DoD → objects), same shape as SLICE §3 for P03. Summaries:
 
 * **P03 Cold-to-Closed Acquisition** — authored in [SLICE](./01_slice_email_to_quote.md) §3. Owner of Lead/Opportunity/Quote.
