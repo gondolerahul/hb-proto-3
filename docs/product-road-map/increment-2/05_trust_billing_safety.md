@@ -1,0 +1,74 @@
+# Increment 2 / TRUST — Billing Safety, Consent & the Economics Floor
+
+> **Status:** Draft — for brainstorm review · **Branch:** `inc2/trust` · **Closes:** C5, D6, C3, B13, E1, E2, E4.
+> **Design authority:** Blueprint §9.6 (compliance), §10 (economics); Technical §15.2 (suspension), §20 (governance/budget). Global-neutral (decision 5), graduated dunning (decision 6).
+> **Depends on:** GOV (checkpoints/PolicyGate), LOOP+ENV (envelopes/holds/wallet_debt). Its billing-safety pieces gate GA.
+
+---
+
+## 1. C5 — Graduated dunning + degraded read-only mode
+
+Today, suspension instantly kills all API access + live calls (technical §15.2). When the product *is* the tenant's operations, that's unacceptable. The graduated ladder:
+
+`current` → **`past_due`** (dunning notifications, full function) → **`grace`** (configurable window, e.g. 7d; full function, escalating notices) → **`read_only`** (agents stop *acting* — no external effects; the tenant can read, export, and pay; protected P14/P17 keep their reserved envelope) → **`suspended`** (hard, only after read-only elapses).
+
+* A `subscription_status` state machine on the company; the shipped `CompanySuspensionMiddleware` becomes state-aware (read-only allows GETs + billing + export; blocks agent action + external effects).
+* Transitions emit signals (`billing.past_due`, `billing.grace`, …) and dunning notifications.
+* The wallet-hold admission (Inc-1) already blocks new spend when funds run out; read-only mode makes the *degradation* graceful instead of a cliff.
+
+## 2. D6 — Consent / DNC / unsubscribe (global-neutral, pluggable)
+
+Chose global-neutral (decision 5): no single jurisdiction hard-coded. A **pluggable consent registry**:
+
+* Tables: `consent_records` (counterparty channel-identity → status per purpose: marketing/transactional/recording), `dnc_entries` (do-not-contact), `unsubscribe_log`.
+* **Registry adapters** — a `ConsentProvider` interface; the built-in adapter is tenant-managed lists; jurisdiction packs (India DND/TRAI, US TCPA, EU GDPR/CAN-SPAM) are pluggable adapters added per market later. The MVP ships the interface + the tenant-managed adapter.
+* **Default posture** (overview Q4) — proposal: **opt-in-required for outbound marketing** by default (safest globally), transactional replies allowed within an existing conversation, recording requires per-jurisdiction consent (a tenant setting). Every KAR outbound checks the registry (KAR §T5).
+* Closes D6's "compliance promises without infrastructure" — the registry is real and the gateways honor it.
+
+## 3. C3 — Per-checkpoint HITL SLAs
+
+The 18 checkpoints (Inc-1) get per-checkpoint SLAs + fallbacks instead of one 24h rule: each `hitl_checkpoint_defs` row gains `sla_seconds` + `on_timeout` (`auto_park` | `auto_deny` | `escalate`). The Judgment-Desk queue (approvals console) surfaces load; a payment approval's SLA differs from a marketing email's. Auto-park re-raises on the next heartbeat; auto-deny fails safe.
+
+## 4. B13 — Platform-initiated spend budget class
+
+Optimizer runs, self-healing, Meta-Agent iterations, perpetual sensing burn the wallet without the tenant asking (the #1 churn driver). A **`platform_initiated` budget class**: a separate envelope (LOOP §20.4) with its own cap + tenant-visible attribution (the CostLedger already attributes; add the class) + a consent setting. `EntityBuildRun` and the sensing crons draw from it; exceeding the cap parks platform work, never tenant work.
+
+## 5. E1 — Idle-cost model (measured, not asserted)
+
+Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hibernation build) as its key input, plus the always-on floor (heartbeat ≈ $0, gateways' idle poll, Chronos). Produces a per-tier idle-cost figure that validates (or corrects) the default envelope and the free-tier economics — replacing the Blueprint's asserted $2,000/month with a derived number.
+
+## 6. E2 — Free-credit abuse controls
+
+`$5/day free credits × every tenant` is platform COGS with no abuse controls. Add: sign-up verification gates (email/phone verification before daily credits activate), per-IP/per-device throttles on tenant creation, and a daily-credit eligibility check. Documents the COGS assumption alongside E1.
+
+## 7. E4 — Fee formula edge cases
+
+`max(total_billing, 0)` silently masks fee misconfiguration: log/alert on a clamped negative (a real config bug indicator); document the discount-vs-partner-fee ordering as intentional in the TB billing code.
+
+## 8. Code Mapping
+
+| Piece | Where |
+|---|---|
+| Dunning state machine | `billing/` — `subscription_status` + transitions + notifications |
+| State-aware suspension | `common/middleware.py` (`CompanySuspensionMiddleware`) |
+| Consent registry + adapters | `ai/solo_pack/consent.py` + `consent_records`/`dnc_entries`/`unsubscribe_log` tables |
+| Checkpoint SLAs | `hitl_checkpoint_defs` columns + the approvals timeout worker |
+| Platform-spend class | LOOP `budget_envelopes` (new class) + CostLedger attribution |
+| Idle-cost model | a report/doc + `E1` measurement harness reading Inc-1 tenant-DB metrics |
+| Abuse controls | `auth/` sign-up + daily-credit eligibility |
+
+## 9. Task Plan (outline)
+
+| # | Task | Acceptance |
+|---|---|---|
+| T1 | Dunning state machine + state-aware middleware (C5) | a lapsed tenant degrades to read-only, not instant shutdown; export still works |
+| T2 | Consent registry + adapters + KAR outbound hook (D6) | outbound blocked for a DNC counterparty; opt-in default enforced |
+| T3 | Per-checkpoint SLAs + timeout fallbacks (C3) | a checkpoint auto-parks/denies on timeout per its config |
+| T4 | Platform-initiated budget class + attribution + cap (B13) | platform work parks at cap; tenant sees attributed platform spend |
+| T5 | Idle-cost model (E1) + abuse controls (E2) + fee alerts (E4) | derived per-tier idle cost documented; abuse throttles live; clamped-negative alerts |
+
+## 10. Open Questions
+
+1. **Grace window length + read-only exact semantics** — 7 days default? Does read-only allow *inbound* signal capture (park for later) or drop it? Proposal: 7d configurable; inbound is captured + parked (never dropped) so nothing is lost when the tenant pays.
+2. **Default consent posture** — opt-in-required for marketing globally (proposed) vs tenant-configured from day one. Confirm.
+3. **Recording consent** — voice is deferred, so consent-to-record is a stub until the voice follow-on. Agree?

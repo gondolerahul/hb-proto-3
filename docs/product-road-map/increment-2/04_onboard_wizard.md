@@ -1,0 +1,52 @@
+# Increment 2 / ONBOARD — The Setup Wizard + Admin Surfaces
+
+> **Status:** Draft — for brainstorm review · **Branch:** `inc2/onboard` · **Register:** none directly; delivers the Inc-1 admin-UI carryover.
+> **Design authority:** Functional §4.3 (the nine-stage flow the wizard previews), §11 (GenUI is Inc 6 — these are hand-built screens). Wizard-driven, Pragya in Inc 3 (decision 4).
+> **Depends on:** PACK (bundles to activate), KAR (channels to connect).
+
+---
+
+## 1. Design (self-contained)
+
+A deterministic, hand-built React wizard (GenUI is Inc 6) that gets a solopreneur from sign-up to a live Solo Pack. It is the Inc-2 **stand-in for Pragya's HUB role** (overview Q3) — the conversational nine-stage flow (functional §4.3) wraps/replaces it in Inc 3 over the same APIs, so the wizard's steps map 1:1 onto Pragya's stages.
+
+**Wizard steps** (each maps to a nine-stage Pragya stage):
+
+1. **Connect channels** — OAuth/connect email (IMAP/SMTP) + WhatsApp (Twilio/Tata); each connection registers the KAR gateway triggers. *(Pragya stage 7: integration.)*
+2. **Upload knowledge** — drop docs into the KB (shipped documents/chunks, control-plane); tenant business context for the agents. *(Stages 3–4: ingestion → analysis.)*
+3. **Confirm governance** — show the A1 defaults + authority bands per the activated bundle; the owner confirms (raising above A1 is checkpoint-17, not a wizard toggle). *(Stage 5: solution engineering with the user.)*
+4. **Activate the bundle** — pick the Solo Pack (default) or a starter bundle; activation seeds the agents/processes/triggers (PACK). *(Stages 8–9: deploy → operate.)*
+5. **Go live** — a summary + the console link where HITL cards land.
+
+## 2. Admin surfaces (the Increment-1 carryover)
+
+Increment 1 shipped signals/triggers/envelopes as **API-only**. ONBOARD builds the minimal operator UI over those APIs:
+
+* **Signals inspector** — status counts (the coverage KPI), parked/escalated/dead queues, replay.
+* **Trigger registry editor** — list/enable/disable/priority (over the Inc-1 trigger API).
+* **Budget envelope view** — Sheel's envelope: utilization, reserve, downshift state (over the LOOP data).
+* **The approvals console** — where PolicyGate HITL cards land (extends the shipped approvals panel; the exit-demo's approve step).
+
+## 3. Code Mapping
+
+| Piece | Where | Notes |
+|---|---|---|
+| Wizard | `frontend/` new onboarding flow | hand-built; calls activation + connection + KB APIs |
+| Activation API | `ai/solo_pack/activation.py` (PACK) exposed via a router | POST activate bundle for the tenant |
+| Admin surfaces | `frontend/` admin area over Inc-1 signals/tenant/loop APIs | read-mostly; the signals API gains list endpoints if missing |
+| Connections | shipped email/WhatsApp connection routers | wizard wraps them + registers triggers |
+
+## 4. Task Plan (outline)
+
+| # | Task | Acceptance |
+|---|---|---|
+| T1 | Activation API + bundle-activation endpoint | wizard can activate the Solo Pack for a tenant |
+| T2 | Wizard steps 1–5 (channels, KB, governance, activate, go-live) | a new tenant completes onboarding → Solo Pack live |
+| T3 | Admin surfaces (signals inspector, trigger editor, envelope view) | operator can see parked signals + envelope utilization |
+| T4 | Approvals console (HITL cards) | the SLICE exit-demo approve step works in the UI |
+| T5 | Frontend gates (Storybook/Playwright per the shipped P-O3 track) + e2e | onboarding e2e green |
+
+## 5. Open Questions
+
+1. **Wizard ↔ Pragya API contract** — should the wizard's step APIs be authored *as* Pragya's stage APIs now (so Inc 3 is a UI swap, not a rebuild)? Proposal: yes — design the activation/connection/governance endpoints as the stage APIs Pragya will drive.
+2. **How much KB is required to go live** — zero (agents work from the HBS + templates) vs a minimum. Proposal: zero required; KB optional and improves quality.
