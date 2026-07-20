@@ -9,26 +9,31 @@
 ## 0. TL;DR — where we are
 
 * **Increment 1 (One-Loop Foundations) — ✅ BUILT & MERGED to `master`.** Four workstreams: **SIG** (signal bus), **GOV** (governance + PolicyGate), **SCH** (tenant schema / records / data plane), **LOOP+ENV** (Loop runtime, budget envelopes, wallet holds). Register findings B1/B2/B3/B5/B6/B8/E3/A6 closed.
-* **Increment 2 (The Solo Pack — the sellable MVP) — DESIGNED + SLICE & PACK built.**
+* **Increment 2 (The Solo Pack — the sellable MVP) — DESIGNED + SLICE, PACK & KAR built.**
   * All 6 workstream design docs written and decisions locked (`increment-2/`).
-  * **SLICE** (email→quote vertical slice) — ✅ BUILT & **MERGED to `master`** (and pushed — `origin/master` is up to date). The sellable exit-demo passes end-to-end. Closes C1 for P03.
-  * **PACK** (full Wave-0 roster) — ✅ BUILT on branch **`inc2/pack`** (not yet merged). 16 curated entities (1 gateway + 6 processes + 9 workforce agents) + 7 starter bundles + generalized activation + runtime SoD. Closes C1 (all 6 processes) + the Inc-1 owner-id / governance-band carryovers.
-  * Remaining Inc-2 workstreams: **KAR, ONBOARD, TRUST, RETR** (not started).
+  * **SLICE** (email→quote vertical slice) — ✅ BUILT & **MERGED to `master`** (and on the remote). Closes C1 for P03.
+  * **PACK** (full Wave-0 roster) — ✅ BUILT & **merged to local `master`** (push pending, §1). 16 curated entities (1 gw + 6 processes + 9 agents) + 7 bundles + generalized activation + runtime SoD. Closes C1 (all 6) + Inc-1 owner-id/governance carryovers.
+  * **KAR** (outward gateways) — ✅ BUILT on branch **`inc2/kar`** (not yet merged). KAR-03 WhatsApp (enters via SIG) + KAR-01 voice stub; roster now **18** (3 gateways). Karuna threat posture + outbound consent seam. Async half of the outward face; real voice/B7 → Inc 3.
+  * Remaining Inc-2 workstreams: **ONBOARD, TRUST, RETR** (not started).
 
-**Everything committed is green:** mypy `--strict` (157 files), 974 unit + parity + eval, layout lint, all migrations apply/rollback clean.
+**Everything committed is green:** mypy `--strict` (160 files), 995 unit + parity + eval, layout lint, all migrations apply/rollback clean.
 
 ---
 
 ## 1. ⚠️ Standing action — PUSH (this VM can't; do it from a credentialed host)
 
-The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). **PACK is merged into local `master`** (fast-forward) but **not on the remote**: this VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`.
+The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). This VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`. Nothing is lost — all committed:
 
-`master` is **5 commits ahead of `origin/master`** (the PACK build, T1–T5). Nothing is lost — it's all committed. To publish, from an environment with GitHub write access:
+* **`master`** — has the **PACK** build merged (fast-forward), **~6 commits ahead of `origin/master`**, not yet pushed.
+* **`inc2/kar`** — the **KAR** build (5 commits), branched off master-with-PACK, **not yet merged**.
+
+To publish, from an environment with GitHub write access:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git push origin master        # master already includes the PACK merge
+git checkout master && git merge inc2/kar --no-edit   # KAR → master (fast-forward)
+git push origin master
 ```
-Verify with `git log --oneline -12` and `git rev-list --left-right --count origin/master...master` (→ `0 5` until pushed).
+Verify with `git log --oneline -15` and `git rev-list --left-right --count origin/master...master`.
 
 ---
 
@@ -53,17 +58,22 @@ Verify with `git log --oneline -12` and `git rev-list --left-right --count origi
 * GOV: `schemas/capabilities.py` gained `sod_tags` (persists the §9.4 conflict tags); `solo_pack/tools.py` resolves the acting process from `agent_id` → cross-owner writes **propose** (runtime SoD).
 * Docs: `increment-2/03a_wave0_process_sheets.md` (5 sheets, C1), `03b_pack_behavioral_goldens.md` (per-agent contracts). Tests: extended `test_solo_pack_templates.py` (57), `test_solo_pack_activation_db.py` (+pack roster), new `test_solo_pack_sod_db.py` (maker/checker holds).
 
-**Migration head:** `loop002` (PACK added no migrations — templates seed per-tenant at activation). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+### Increment 2 / KAR (on `inc2/kar`)
+* `solo_pack/templates/gateways.py` — a shared `_karuna_gateway` builder + **KAR-03 WhatsApp** (consumes `message.inbound`) + **KAR-01 voice stub** (parks `voice.*`). Added to `GATEWAYS` → roster is **18**; `activate_slice` seeds email-only.
+* `signals/whatsapp_inbound.py` — the WhatsApp producer (`message.inbound`, `trust:counterparty`, SID dedupe, subscription-gated). Wired into `src/voice/whatsapp_handler.py` as a fail-safe cutover. New `SignalTypes.MESSAGE_INBOUND`/`VOICE_INBOUND`.
+* `solo_pack/consent.py` — the outbound consent/DNC seam (`check_outbound_consent` + pluggable checker; TRUST installs D6). Tests: `test_kar_gateways.py` (injection golden via pure `evaluate_policy` + consent), `test_whatsapp_inbound_db.py` (emit/dedupe/subscription/dispatch→KAR-03), gateway-posture in `test_solo_pack_templates.py`.
+
+**Migration head:** `loop002` (PACK + KAR added no migrations — templates seed per-tenant at activation; signals ride existing tables). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
 ## 3. How to resume — the next work
 
-Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR → ONBOARD → TRUST → RETR.**
+Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD → TRUST → RETR.**
 
-**Next up: KAR** ([increment-2/02_kar_gateways.md](./increment-2/02_kar_gateways.md)) — the two remaining gateways: **KAR-03 WhatsApp** (a real async channel, entering via SIG like email) + **KAR-01 voice stub** (registered but not realtime — real voice is deferred to Inc 3 with Pragya, decision 2). The pattern to copy: KAR-02 Email Gateway (`solo_pack/templates/acquisition.py`) + how the SLICE wired `email.inbound` → gateway → `lead.inbound`. Add the gateway templates to `GATEWAYS` (they seed under Sheel with every activation) and their inbound signal producers (mirror `signals/email_poll.py`). Governance: both carry `karuna_profile: true`; KAR-03 gets `whatsapp_provider` metadata so the deploy karuna-gate fires.
+**Next up: ONBOARD** ([increment-2/04_onboard_wizard.md](./increment-2/04_onboard_wizard.md)) — the setup wizard that packages activation (connect channels → upload KB → confirm A1 governance → activate a bundle) + the Inc-1 admin UI (signals/triggers/envelopes) carried over. The wizard's step APIs are authored as the stage APIs Pragya drives in Inc 3 (decision 4). **Note (from §7 of the HANDOFF):** the frontend (Node/browser toolchain) is out of scope on this backend VM — ONBOARD's backend is the wizard **step APIs** over the shipped `activate_bundle`/`activate_solo_pack`; the React wizard + admin UI are a separate FE track.
 
-**PACK is done** ([03_pack_agents_processes.md](./increment-2/03_pack_agents_processes.md) §8): the full Wave-0 roster activates, owner-ids resolve across all 6 processes, the maker/checker SoD holds at runtime. `activate_bundle` + `activate_solo_pack` generalize what the slice built.
+**PACK is done** ([03](./increment-2/03_pack_agents_processes.md) §8): full Wave-0 roster activates, owner-ids resolve across all 6 processes, maker/checker SoD holds at runtime. **KAR is done** ([02](./increment-2/02_kar_gateways.md) §5): WhatsApp enters via SIG (subscription-gated cutover in `src/voice/whatsapp_handler.py` → `signals/whatsapp_inbound.py`), KAR-01 voice stub registered, injection golden + consent seam. To wire a new gateway: append to `templates.GATEWAYS` + a producer mirroring `signals/whatsapp_inbound.py`.
 
 Each workstream doc has: self-contained design, code mapping, a task plan, and a **§ Brainstorm Decisions** block (already answered — do not re-litigate). Follow the Increment-1 rhythm: branch `inc2/<workstream>`, build task-by-task, keep gates green, add a §N build-note delta log + flip maturity tags on merge.
 
