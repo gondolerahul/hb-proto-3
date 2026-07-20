@@ -79,11 +79,11 @@ Each branch merges when its acceptance criteria pass and eval/parity gates stay 
 * **Governance seeding completeness** — every channel-facing Solo Pack entity gets explicit **authority bands** + real **`sod_class`** (Inc-1 GOV left unset bands pass-through) → PACK.
 * **§24.4 retrieval upgrade** → RETR.
 
-## 8. Open Questions for the Brainstorm
+## 8. Brainstorm Decisions (Rahul, 2026-07-20) — cross-workstream
 
-Cross-workstream (per-workstream questions live in each doc's final section):
+Per-workstream decisions live in each doc's final section; the cross-cutting ones:
 
-1. **Voice follow-on placement** — is deferred voice its own Increment 2.5, or folded into Increment 3 alongside Pragya (who also needs the realtime path)? Proposal: fold into Inc 3 (Pragya's "Meetings" channel needs the same collapsed-loop work).
-2. **Bundle = activation set vs pricing tier** — are the 7 bundles pure agent-activation groupings (Inc 2), with subscription pricing a separate billing concern? Proposal: yes — bundles activate/deactivate agent sets; pricing maps to the shipped subscription tiers separately.
-3. **"Pragya HUB" in the Solo Pack** — Blueprint §14 lists Pragya (HUB) in Wave 0, but full Pragya is Inc 3. Proposal: the wizard *is* the Inc-2 stand-in for Pragya's HUB role (work assignment + reporting surface); no Pragya entity ships in Inc 2.
-4. **Global-neutral default consent posture** — with no single jurisdiction, what is the *default* consent stance for a new tenant (opt-in-required everywhere = safest, vs tenant-configured)? Proposal in [05](./05_trust_billing_safety.md) §D6.
+1. **Voice folds into Increment 3** (with Pragya, who needs the same realtime/collapsed-loop path) — not a separate Increment 2.5. The KAR-01 voice stub keeps the registry complete meanwhile.
+2. **Bundles are pure activation sets, included at all subscription tiers** — no per-tier bundle gating; pricing/tiers differ on other dimensions (credits, Growth+ features, hibernation), not on bundle availability.
+3. **The wizard is the Inc-2 stand-in for Pragya's HUB** — no Pragya entity ships in Inc 2; the wizard's step APIs are authored as the stage APIs Pragya drives in Inc 3.
+4. **Consent is tenant-configured from day one** — the platform imposes no global opt-in default; each tenant sets and owns their per-purpose posture, enforced by the registry and logged at onboarding ([05](./05_trust_billing_safety.md) §2).

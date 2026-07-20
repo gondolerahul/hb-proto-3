@@ -36,7 +36,7 @@ Replaces the under-specified v2 stack (500-char chunks, top-5 cosine @0.70) with
 | T4 | Optional cross-encoder rerank behind a per-tier flag | Growth+ tenants get rerank; others unaffected |
 | T5 | Retrieval goldens in the eval harness + gates | chunking/fusion changes are regression-gated; mypy/eval green |
 
-## 4. Open Questions
+## 4. Brainstorm Decisions (Rahul, 2026-07-20)
 
-1. **Re-chunking existing KB** — re-ingest all existing documents into the new chunking, or apply new chunking only to new uploads? Proposal: background re-ingest with the lazy-upgrade pattern (like SCH's def_version), so old KB improves without a big-bang migration.
-2. **Rerank model + cost** — which cross-encoder, and does its latency/cost fit the per-tier flag economics (feeds E1)? Defer model choice to build; keep it flagged Growth+.
+1. **Lazy background re-chunking** — existing KB re-ingests into the new chunking via the background lazy-upgrade pattern (like SCH's `def_version`), so old documents improve without a big-bang migration.
+2. **Rerank model choice deferred to build; flagged Growth+** — a cross-encoder behind the per-tier flag; the specific model is picked at build time against its latency/cost budget (feeds E1).

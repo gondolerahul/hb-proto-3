@@ -22,7 +22,7 @@ Chose global-neutral (decision 5): no single jurisdiction hard-coded. A **plugga
 
 * Tables: `consent_records` (counterparty channel-identity → status per purpose: marketing/transactional/recording), `dnc_entries` (do-not-contact), `unsubscribe_log`.
 * **Registry adapters** — a `ConsentProvider` interface; the built-in adapter is tenant-managed lists; jurisdiction packs (India DND/TRAI, US TCPA, EU GDPR/CAN-SPAM) are pluggable adapters added per market later. The MVP ships the interface + the tenant-managed adapter.
-* **Default posture** (overview Q4) — proposal: **opt-in-required for outbound marketing** by default (safest globally), transactional replies allowed within an existing conversation, recording requires per-jurisdiction consent (a tenant setting). Every KAR outbound checks the registry (KAR §T5).
+* **Default posture (decision 2026-07-20): tenant-configured from day one.** The platform does not impose a global opt-in default; each tenant configures their own consent posture per purpose (marketing / transactional / recording) at onboarding, and is responsible for its lawful basis in their market. The registry *enforces* whatever the tenant sets — every KAR outbound checks it (KAR §T5) — and the onboarding wizard surfaces the posture as an explicit, logged tenant choice (so "tenant-configured" is an auditable decision, not an absence of policy). Jurisdiction packs later can *tighten* a tenant's posture but never loosen it below what they configured.
 * Closes D6's "compliance promises without infrastructure" — the registry is real and the gateways honor it.
 
 ## 3. C3 — Per-checkpoint HITL SLAs
@@ -67,8 +67,8 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 | T4 | Platform-initiated budget class + attribution + cap (B13) | platform work parks at cap; tenant sees attributed platform spend |
 | T5 | Idle-cost model (E1) + abuse controls (E2) + fee alerts (E4) | derived per-tier idle cost documented; abuse throttles live; clamped-negative alerts |
 
-## 10. Open Questions
+## 10. Brainstorm Decisions (Rahul, 2026-07-20)
 
-1. **Grace window length + read-only exact semantics** — 7 days default? Does read-only allow *inbound* signal capture (park for later) or drop it? Proposal: 7d configurable; inbound is captured + parked (never dropped) so nothing is lost when the tenant pays.
-2. **Default consent posture** — opt-in-required for marketing globally (proposed) vs tenant-configured from day one. Confirm.
-3. **Recording consent** — voice is deferred, so consent-to-record is a stub until the voice follow-on. Agree?
+1. **Grace window 7 days (configurable); inbound is parked, never dropped** during read-only — signals are captured and held so nothing is lost when the tenant pays. (Reuses the SIG PARKED lifecycle.)
+2. **Consent is tenant-configured from day one** (§2) — no imposed global opt-in default; the tenant sets and owns their per-purpose posture, the registry enforces it, and the choice is logged at onboarding.
+3. **Consent-to-record is a stub** until the voice follow-on (voice is deferred).

@@ -44,7 +44,7 @@ The **KAR-01 stub** is a registered, deploy-valid entity that parks any voice tr
 | T4 | KAR-01 voice stub entity | registers + deploy-validates; parks voice triggers with a clear message |
 | T5 | Consent hook on outbound + gates | outbound blocked when the registry says no-contact; mypy/eval green |
 
-## 4. Open Questions
+## 4. Brainstorm Decisions (Rahul, 2026-07-20)
 
-1. **WhatsApp template/session constraints** — WhatsApp Business restricts outbound outside a 24h session window to approved templates. Does the MVP outbound path only reply within-session (simplest) or manage templates? Proposal: within-session replies only for Inc 2; templated outbound in a later pack.
-2. **Voice follow-on placement** — Inc 2.5 vs folded into Inc 3 (see overview Q1).
+1. **Within-session WhatsApp replies only** for Inc 2 — no template management; templated outbound (outside the 24h session window) is a later pack.
+2. **Voice follow-on folds into Increment 3** (alongside Pragya, who needs the same realtime/collapsed-loop path) — not a separate Increment 2.5. The KAR-01 voice stub keeps the registry structurally complete until then.

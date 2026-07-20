@@ -46,7 +46,7 @@ Increment 1 shipped signals/triggers/envelopes as **API-only**. ONBOARD builds t
 | T4 | Approvals console (HITL cards) | the SLICE exit-demo approve step works in the UI |
 | T5 | Frontend gates (Storybook/Playwright per the shipped P-O3 track) + e2e | onboarding e2e green |
 
-## 5. Open Questions
+## 5. Brainstorm Decisions (Rahul, 2026-07-20)
 
-1. **Wizard ↔ Pragya API contract** — should the wizard's step APIs be authored *as* Pragya's stage APIs now (so Inc 3 is a UI swap, not a rebuild)? Proposal: yes — design the activation/connection/governance endpoints as the stage APIs Pragya will drive.
-2. **How much KB is required to go live** — zero (agents work from the HBS + templates) vs a minimum. Proposal: zero required; KB optional and improves quality.
+1. **The wizard's step APIs are authored as Pragya's stage APIs** — activation/connection/governance endpoints are designed as the stage APIs Pragya will drive in Inc 3, so Inc 3 is a UI swap over the same contract, not a rebuild.
+2. **Zero KB required to go live** — agents work from the HBS + curated templates; KB is optional and improves quality.

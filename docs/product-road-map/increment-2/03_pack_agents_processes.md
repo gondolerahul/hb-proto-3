@@ -44,7 +44,9 @@ Every entity ships with a **complete** governance block (Inc-1 GOV left unset ba
 
 ## 4. The 7 bundles (Functional §2.1) — activation sets, not pricing
 
-The 7 starter bundles (Growth, Customer Success, Fulfillment, Finance, Compliance, Talent, Intelligence) are **named agent-activation groupings** — a bundle activates/deactivates a set of the Solo Pack (and, later, expansion) agents + their processes + trigger registrations. The **Solo Pack** is the cross-cutting default (the 12 agents / 6 processes). Bundles map to process groups; pricing maps to the shipped subscription tiers **separately** (overview Q2).
+The 7 starter bundles (Growth, Customer Success, Fulfillment, Finance, Compliance, Talent, Intelligence) are **named agent-activation groupings** — a bundle activates/deactivates a set of the Solo Pack (and, later, expansion) agents + their processes + trigger registrations. The **Solo Pack** is the cross-cutting default (the 12 agents / 6 processes). Bundles map to process groups; pricing is a **separate** concern from activation.
+
+> **Decision (Rahul, 2026-07-20): all bundles are included at all subscription tiers.** No per-tier bundle gating in Inc 2 — every tenant can activate any bundle regardless of subscription tier. (Tiers still differ on the shipped dimensions — wallet/credit limits, rerank-flag Growth+ features, hibernation windows — just not on *which bundles are available*.)
 
 ## 5. Code Mapping
 
@@ -66,8 +68,8 @@ The 7 starter bundles (Growth, Customer Success, Fulfillment, Finance, Complianc
 | T4 | Governance seeding: bands + sod_class + memory_domains + owner-id resolution | SoD demo (AR ≠ reconciliation) holds; no channel-facing entity has unset bands |
 | T5 | Per-agent behavioral goldens + gates | each agent has an eval golden; mypy/parity/eval green |
 
-## 7. Open Questions
+## 7. Brainstorm Decisions (Rahul, 2026-07-20)
 
-1. **Process granularity** — author all 6 sheets up front (T1) vs per-slice as each process is first exercised. Proposal: author all 6 up front (they're the product spec), build agents incrementally.
-2. **AGT-092 vs AGT-035 overlap** — Scheduling vs Appointment Concierge both touch the calendar; keep distinct (Blueprint) or merge for the MVP? Proposal: keep distinct but AGT-092 is a thin helper under AGT-035 until calendar connectors (Inc 4).
-3. **Bundle ↔ subscription tier mapping** — which bundles are included at which shipped tier? A billing/business decision to confirm before GA.
+1. **Author all 6 process sheets up front** (they're the product spec), then build agents incrementally.
+2. **AGT-092 stays distinct but thin** — a helper under AGT-035 Appointment Concierge until calendar connectors land (Inc 4).
+3. **All bundles included at all subscription tiers** (§4) — no per-tier bundle gating.
