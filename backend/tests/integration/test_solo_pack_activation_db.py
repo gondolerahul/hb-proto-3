@@ -15,7 +15,11 @@ from sqlalchemy import select, text
 
 from src.ai.orm.entity import HierarchicalEntity
 from src.ai.signals.models import TriggerRegistration
-from src.ai.solo_pack.activation import activate_slice
+from src.ai.solo_pack.activation import (
+    activate_bundle,
+    activate_slice,
+    activate_solo_pack,
+)
 from src.ai.tenant_schema.data_plane import schema_name_for, tenant_data_plane
 from src.ai.tenant_schema.models import TenantEntityDef
 
@@ -122,3 +126,107 @@ class TestActivation:
         assert first == second                      # same ids
         assert len([e for e in n_ent if e.name != "Sheel"]) == 4   # no duplicate entities
         assert len(n_trig) == 3                      # no duplicate triggers
+
+
+class TestPackActivation:
+    """The generalized paths: the full Solo Pack + per-bundle activation."""
+
+    async def test_solo_pack_seeds_full_roster(self, tenant):
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            result = await activate_solo_pack(db, tenant)
+        # 1 gateway + 6 processes + 9 workforce agents.
+        assert len(result) == 16
+
+        async with AsyncSessionLocal() as db:
+            ents = {e.name: e for e in (await db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.company_id == tenant)
+            )).scalars().all()}
+            sheel = ents["Sheel"]
+            # Gateways + processes hang under Sheel.
+            for pname in ("p06-resolve-to-retain", "p08-order-to-cash",
+                          "p10-record-to-report", "p14-continuous-guardrails",
+                          "p19-sense-decide-optimize", "kar-02-email-gateway"):
+                assert ents[pname].parent_id == sheel.id, pname
+            # Workforce agents hang under their process.
+            assert ents["agt-038-accounts-receivable"].parent_id == ents["p08-order-to-cash"].id
+            assert ents["agt-046-bookkeeping-reconciliation"].parent_id == ents["p10-record-to-report"].id
+            assert ents["agt-092-scheduling-agent"].parent_id == ents["p06-resolve-to-retain"].id
+
+    async def test_owner_ids_resolved_across_processes(self, tenant):
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            result = await activate_solo_pack(db, tenant)
+        want = {
+            "Account": "p06-resolve-to-retain", "Contact": "p06-resolve-to-retain",
+            "Ticket": "p06-resolve-to-retain",
+            "Invoice": "p08-order-to-cash", "Payment": "p08-order-to-cash",
+            "Ledger Entry": "p10-record-to-report",
+            "Risk": "p14-continuous-guardrails", "Policy/Obligation": "p14-continuous-guardrails",
+            "Evidence": "p14-continuous-guardrails",
+            "Lead": "p03-cold-to-closed-acquisition",
+        }
+        async with tenant_data_plane.session(tenant) as ts:
+            for obj, proc_name in want.items():
+                d = (await ts.execute(
+                    select(TenantEntityDef).where(
+                        TenantEntityDef.company_id == tenant, TenantEntityDef.name == obj)
+                )).scalar_one()
+                assert d.owner_process_id == uuid.UUID(result[proc_name]), obj
+            # Budget's owner (Plan-Budget-Forecast) is not a Wave-0 process — stays unresolved.
+            budget = (await ts.execute(
+                select(TenantEntityDef).where(
+                    TenantEntityDef.company_id == tenant, TenantEntityDef.name == "Budget")
+            )).scalar_one()
+            assert budget.owner_process_id is None
+
+    async def test_solo_pack_registers_all_triggers(self, tenant):
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await activate_solo_pack(db, tenant)
+            regs = (await db.execute(
+                select(TriggerRegistration).where(TriggerRegistration.company_id == tenant)
+            )).scalars().all()
+        patterns = {r.type_pattern for r in regs}
+        assert {"email.inbound", "lead.inbound", "ticket.opened", "invoice.overdue",
+                "ledger.unreconciled", "reg.change", "schedule.optimize"} <= patterns
+        assert len(regs) == 13  # every trigger_pattern across the roster, once
+
+    async def test_bundle_seeds_only_its_processes(self, tenant):
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            result = await activate_bundle(db, tenant, "fiscal")
+        # Fiscal's authored Wave-0 processes are P08 + P10 (+ the shared gateway).
+        assert set(result.keys()) == {
+            "kar-02-email-gateway",
+            "p08-order-to-cash", "agt-038-accounts-receivable",
+            "p10-record-to-report", "agt-046-bookkeeping-reconciliation",
+        }
+
+    async def test_solo_pack_sentinel_equals_full_pack(self, tenant):
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            via_sentinel = await activate_bundle(db, tenant, "solo_pack")
+        assert len(via_sentinel) == 16
+
+    async def test_unknown_bundle_raises(self, tenant):
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            with pytest.raises(ValueError):
+                await activate_bundle(db, tenant, "no-such-bundle")
+
+    async def test_pack_idempotent(self, tenant):
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            first = await activate_solo_pack(db, tenant)
+        async with AsyncSessionLocal() as db:
+            second = await activate_solo_pack(db, tenant)
+            ents = (await db.execute(
+                select(HierarchicalEntity).where(HierarchicalEntity.company_id == tenant)
+            )).scalars().all()
+            trigs = (await db.execute(
+                select(TriggerRegistration).where(TriggerRegistration.company_id == tenant)
+            )).scalars().all()
+        assert first == second
+        assert len([e for e in ents if e.name != "Sheel"]) == 16
+        assert len(trigs) == 13
