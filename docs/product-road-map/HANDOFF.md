@@ -19,17 +19,16 @@
 
 ---
 
-## 1. Standing action — merge PACK, then push
+## 1. ⚠️ Standing action — PUSH (this VM can't; do it from a credentialed host)
 
-Prior-session work is **already pushed**: `origin/master` == `master` (Increment 1 + Inc-2 design docs + the SLICE build all merged and on the remote). Verify with `git rev-list --left-right --count origin/master...master` → `0 0`.
+The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). **PACK is merged into local `master`** (fast-forward) but **not on the remote**: this VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`.
 
-**PACK** is built on **`inc2/pack`** (branched off `master`), **not yet merged** — 5 commits ahead of `master`. To resume:
+`master` is **5 commits ahead of `origin/master`** (the PACK build, T1–T5). Nothing is lost — it's all committed. To publish, from an environment with GitHub write access:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git checkout master && git merge inc2/pack --no-edit    # fast-forward; PACK → master
-git push origin master                                   # push the merge
+git push origin master        # master already includes the PACK merge
 ```
-Nothing is lost — it's all committed on `inc2/pack`. Verify with `git log --oneline -12`.
+Verify with `git log --oneline -12` and `git rev-list --left-right --count origin/master...master` (→ `0 5` until pushed).
 
 ---
 
