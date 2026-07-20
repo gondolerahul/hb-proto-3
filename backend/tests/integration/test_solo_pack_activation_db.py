@@ -135,8 +135,8 @@ class TestPackActivation:
         from src.common.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             result = await activate_solo_pack(db, tenant)
-        # 1 gateway + 6 processes + 9 workforce agents.
-        assert len(result) == 16
+        # 3 gateways + 6 processes + 9 workforce agents.
+        assert len(result) == 18
 
         async with AsyncSessionLocal() as db:
             ents = {e.name: e for e in (await db.execute(
@@ -146,7 +146,8 @@ class TestPackActivation:
             # Gateways + processes hang under Sheel.
             for pname in ("p06-resolve-to-retain", "p08-order-to-cash",
                           "p10-record-to-report", "p14-continuous-guardrails",
-                          "p19-sense-decide-optimize", "kar-02-email-gateway"):
+                          "p19-sense-decide-optimize", "kar-02-email-gateway",
+                          "kar-03-whatsapp-gateway", "kar-01-voice-gateway"):
                 assert ents[pname].parent_id == sheel.id, pname
             # Workforce agents hang under their process.
             assert ents["agt-038-accounts-receivable"].parent_id == ents["p08-order-to-cash"].id
@@ -188,17 +189,18 @@ class TestPackActivation:
                 select(TriggerRegistration).where(TriggerRegistration.company_id == tenant)
             )).scalars().all()
         patterns = {r.type_pattern for r in regs}
-        assert {"email.inbound", "lead.inbound", "ticket.opened", "invoice.overdue",
-                "ledger.unreconciled", "reg.change", "schedule.optimize"} <= patterns
-        assert len(regs) == 13  # every trigger_pattern across the roster, once
+        assert {"email.inbound", "message.inbound", "voice.inbound", "lead.inbound",
+                "ticket.opened", "invoice.overdue", "ledger.unreconciled", "reg.change",
+                "schedule.optimize"} <= patterns
+        assert len(regs) == 16  # every trigger_pattern across the roster, once
 
     async def test_bundle_seeds_only_its_processes(self, tenant):
         from src.common.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             result = await activate_bundle(db, tenant, "fiscal")
-        # Fiscal's authored Wave-0 processes are P08 + P10 (+ the shared gateway).
+        # Fiscal's authored Wave-0 processes are P08 + P10 (+ the shared gateways).
         assert set(result.keys()) == {
-            "kar-02-email-gateway",
+            "kar-02-email-gateway", "kar-03-whatsapp-gateway", "kar-01-voice-gateway",
             "p08-order-to-cash", "agt-038-accounts-receivable",
             "p10-record-to-report", "agt-046-bookkeeping-reconciliation",
         }
@@ -207,7 +209,7 @@ class TestPackActivation:
         from src.common.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             via_sentinel = await activate_bundle(db, tenant, "solo_pack")
-        assert len(via_sentinel) == 16
+        assert len(via_sentinel) == 18
 
     async def test_unknown_bundle_raises(self, tenant):
         from src.common.database import AsyncSessionLocal
@@ -228,5 +230,5 @@ class TestPackActivation:
                 select(TriggerRegistration).where(TriggerRegistration.company_id == tenant)
             )).scalars().all()
         assert first == second
-        assert len([e for e in ents if e.name != "Sheel"]) == 16
-        assert len(trigs) == 13
+        assert len([e for e in ents if e.name != "Sheel"]) == 18
+        assert len(trigs) == 16

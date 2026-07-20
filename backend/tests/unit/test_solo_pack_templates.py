@@ -18,7 +18,10 @@ from src.ai.solo_pack.templates import (
     AGT_051,
     AGT_068,
     AGT_092,
+    GATEWAYS,
+    KAR_01_VOICE_STUB,
     KAR_02_EMAIL,
+    KAR_03_WHATSAPP,
     P03_ACQUISITION,
     PROCESS_GROUPS,
     SLICE_TEMPLATES,
@@ -99,9 +102,16 @@ class TestPackRoster:
     def test_each_is_clean(self, tpl):
         assert validate_template(tpl) == []
 
-    def test_roster_is_sixteen(self):
-        # 1 gateway + 6 processes + 9 workforce agents.
-        assert len(SOLO_PACK_TEMPLATES) == 16
+    def test_roster_is_eighteen(self):
+        # 3 gateways (email + WhatsApp + voice stub) + 6 processes + 9 agents.
+        assert len(SOLO_PACK_TEMPLATES) == 18
+
+    def test_three_gateways(self):
+        codes = {
+            tag.split(":", 1)[1]
+            for g in GATEWAYS for tag in g["tags"] if tag.startswith("agent_code:")
+        }
+        assert codes == {"KAR-01", "KAR-02", "KAR-03"}
 
     def test_names_unique(self):
         names = [t["name"] for t in SOLO_PACK_TEMPLATES]
@@ -236,3 +246,42 @@ class TestPackBehavioralContract:
         keys = set(AGT_038["governance"]["checkpoint_keys"])
         assert {"before_high_value_email_dispatch", "before_refund_above_band"} <= keys
         assert AGT_038["governance"]["authority"].get("refund_usd") == 200
+
+
+class TestGatewayPosture:
+    """Every gateway carries the Karuna posture: profiled, no monetary reach."""
+
+    def test_all_gateways_karuna_and_no_authority(self):
+        for gw in GATEWAYS:
+            gov = gw["governance"]
+            assert gov["karuna_profile"] is True, gw["name"]
+            assert "authority" not in gov, gw["name"]  # no monetary reach
+            assert set(gov["memory_domains"]) <= {"general", "crm"}, gw["name"]
+
+    def test_externally_bound_gateways_pass_karuna_gate(self):
+        # KAR-03/01 declare provider metadata → the deploy gate treats them as
+        # externally bound and *requires* karuna_profile (proven live here).
+        from src.ai.governance.deploy_validators import (
+            _has_external_binding,
+            check_karuna_gate,
+        )
+        for gw in (KAR_03_WHATSAPP, KAR_01_VOICE_STUB):
+            assert _has_external_binding(gw), gw["name"]
+            assert check_karuna_gate(gw)[1] is True, gw["name"]
+
+    def test_karuna_gate_rejects_bound_gateway_without_profile(self):
+        from src.ai.governance.deploy_validators import check_karuna_gate
+        bad = {**KAR_03_WHATSAPP,
+               "governance": {k: v for k, v in KAR_03_WHATSAPP["governance"].items()
+                              if k != "karuna_profile"}}
+        assert check_karuna_gate(bad)[1] is False
+
+    def test_whatsapp_consumes_message_inbound(self):
+        assert KAR_03_WHATSAPP["metadata_extensions"]["trigger_patterns"] == ["message.inbound"]
+        tools = {tc["tool_id"] for tc in KAR_03_WHATSAPP["capabilities"]["tools"]}
+        assert tools == {"tenant_record_write", "emit_business_signal"}
+
+    def test_voice_stub_is_registered_but_inert(self):
+        assert KAR_01_VOICE_STUB["metadata_extensions"].get("stub") is True
+        assert KAR_01_VOICE_STUB["capabilities"]["tools"] == []  # does no work
+        assert "voice.inbound" in KAR_01_VOICE_STUB["metadata_extensions"]["trigger_patterns"]

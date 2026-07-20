@@ -34,6 +34,7 @@ from src.ai.solo_pack.bundles import SOLO_PACK, bundle_by_key
 from src.ai.solo_pack.loader import validate_all
 from src.ai.solo_pack.templates import (
     GATEWAYS,
+    KAR_02_EMAIL,
     PROCESS_GROUPS,
     ProcessGroup,
     process_group,
@@ -81,19 +82,24 @@ async def activate_bundle(
 async def activate_slice(
     db: AsyncSession, company_id: uuid.UUID, user_id: Optional[uuid.UUID] = None,
 ) -> ActivationResult:
-    """Activate the SLICE Solo Pack (email → P03 acquisition) for a tenant."""
+    """Activate the SLICE Solo Pack (email → P03 acquisition) for a tenant.
+
+    The slice is the email path only, so it seeds just the email gateway — the
+    full pack / any bundle seeds every gateway (the shared outward face).
+    """
     p03 = process_group("P03")
     groups = [p03] if p03 is not None else []
-    return await _activate(db, company_id, user_id, groups=groups)
+    return await _activate(db, company_id, user_id, groups=groups, gateways=[KAR_02_EMAIL])
 
 
 async def _activate(
     db: AsyncSession, company_id: uuid.UUID, user_id: Optional[uuid.UUID],
-    *, groups: Iterable[ProcessGroup],
+    *, groups: Iterable[ProcessGroup], gateways: Optional[list[dict[str, Any]]] = None,
 ) -> ActivationResult:
     """Seed the gateways + the given process groups under Sheel (idempotent)."""
     groups = list(groups)
-    seeded_templates = [*GATEWAYS, *(t for g in groups for t in g.templates)]
+    gateways = list(GATEWAYS if gateways is None else gateways)
+    seeded_templates = [*gateways, *(t for g in groups for t in g.templates)]
     validate_all(seeded_templates)  # never seed an invalid template
 
     sheel = await ensure_sheel(db, company_id)
@@ -101,7 +107,7 @@ async def _activate(
 
     # Gateways + processes are axle/process under Sheel; workforce agents are
     # children of their process.
-    for gateway in GATEWAYS:
+    for gateway in gateways:
         ent = await _upsert_entity(db, gateway, company_id, user_id, parent_id=sheel.id)
         result[gateway["name"]] = str(ent.id)
     for group in groups:
@@ -117,7 +123,7 @@ async def _activate(
     for group in groups:
         proc_id = uuid.UUID(result[group.process["name"]])
         await _resolve_owner_process(company_id, group.process_code, proc_id)
-    for gateway in GATEWAYS:
+    for gateway in gateways:
         await _register_triggers(db, company_id, gateway, uuid.UUID(result[gateway["name"]]))
     for group in groups:
         await _register_triggers(
