@@ -43,13 +43,18 @@ async def signal_sweeper(ctx: dict[str, Any]) -> dict[str, Any]:
     """Arq cron: one sweep pass. Never raises."""
     from src.common.database import AsyncSessionLocal
 
+    from src.ai.governance.checkpoint_sla import apply_checkpoint_timeouts
+
     redis = ctx.get("redis")
     now = datetime.utcnow()
     try:
         async with AsyncSessionLocal() as db:
             pending_stats = await sweep_pending(db, redis, now=now)
             parked_stats = await review_parked(db, redis, now=now)
-        result = {**pending_stats, **parked_stats}
+            sla_stats = await apply_checkpoint_timeouts(db, now=now)
+            await db.commit()  # persist SLA timeouts + their signals
+        result = {**pending_stats, **parked_stats,
+                  **{f"sla_{k}": v for k, v in sla_stats.items()}}
         if any(result.values()):
             logger.info("signal sweep: %s", result)
         return result

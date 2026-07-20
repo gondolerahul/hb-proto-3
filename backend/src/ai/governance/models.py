@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, Index, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,6 +35,10 @@ class HITLCheckpointDef(Base):
     threshold_unit: Mapped[str | None] = mapped_column(String(8), nullable=True)
     # Mandatory checkpoints cannot be removed from an entity's opt-in set.
     platform_mandatory: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # C3 — per-checkpoint HITL SLA: seconds a PENDING approval may wait before
+    # its ``on_timeout`` fires (auto_park | auto_deny | escalate). NULL = no SLA.
+    sla_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    on_timeout: Mapped[str] = mapped_column(String(12), nullable=False, default="escalate")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (
@@ -49,4 +53,6 @@ class HITLCheckpointDef(Base):
             "default_threshold": self.default_threshold,
             "threshold_unit": self.threshold_unit,
             "platform_mandatory": self.platform_mandatory,
+            "sla_seconds": self.sla_seconds,
+            "on_timeout": self.on_timeout,
         }

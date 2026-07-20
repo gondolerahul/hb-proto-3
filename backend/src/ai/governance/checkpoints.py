@@ -16,7 +16,44 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["CHECKPOINT_SEED", "CHECKPOINT_KEYS", "MANDATORY_KEYS"]
+__all__ = [
+    "CHECKPOINT_SEED", "CHECKPOINT_KEYS", "MANDATORY_KEYS",
+    "OnTimeout", "sla_for_category",
+]
+
+
+class OnTimeout:
+    """What happens when a checkpoint's SLA elapses with no human decision."""
+
+    AUTO_PARK = "auto_park"    # non-destructive: re-raise on the next sweep
+    AUTO_DENY = "auto_deny"    # fail safe: deny the act (money/irreversible)
+    ESCALATE = "escalate"      # keep pending, notify louder (needs a human)
+
+
+# Per-category SLA policy (C3, §9.7): a payment can't wait the way a marketing
+# email can, and silence on money must fail safe — not proceed. Money/binding
+# categories auto-deny; outbound comms auto-park (re-raise); high-stakes
+# governance/HR escalate. Seconds.
+_CATEGORY_SLA: dict[str, tuple[int, str]] = {
+    "payout": (14400, OnTimeout.AUTO_DENY),          # 4h
+    "refund": (14400, OnTimeout.AUTO_DENY),          # 4h
+    "contract": (28800, OnTimeout.AUTO_DENY),        # 8h
+    "vendor_creation": (28800, OnTimeout.AUTO_DENY),  # 8h
+    "price_change": (28800, OnTimeout.AUTO_DENY),    # 8h
+    "data_deletion": (86400, OnTimeout.AUTO_DENY),   # 24h — irreversible
+    "email": (86400, OnTimeout.AUTO_PARK),           # 24h — a draft can wait
+    "public_statement": (86400, OnTimeout.AUTO_PARK),  # 24h
+    "discount": (86400, OnTimeout.AUTO_PARK),        # 24h
+    "governance": (172800, OnTimeout.ESCALATE),      # 48h
+    "employment_offer": (172800, OnTimeout.ESCALATE),  # 48h
+    "regulatory_filing": (172800, OnTimeout.ESCALATE),  # 48h
+}
+_DEFAULT_SLA: tuple[int, str] = (86400, OnTimeout.ESCALATE)
+
+
+def sla_for_category(category: str) -> tuple[int, str]:
+    """(sla_seconds, on_timeout) for a checkpoint category — the C3 policy."""
+    return _CATEGORY_SLA.get(category, _DEFAULT_SLA)
 
 # key, category, description, default_threshold, threshold_unit, platform_mandatory
 CHECKPOINT_SEED: list[dict[str, Any]] = [
@@ -77,6 +114,13 @@ CHECKPOINT_SEED: list[dict[str, Any]] = [
      "description": "Binding a new external channel to an entity.",
      "default_threshold": None, "threshold_unit": None, "platform_mandatory": False},
 ]
+
+# Stamp each row with its per-category SLA (C3) so the seed carries sla_seconds
+# + on_timeout and the migration backfills them.
+for _row in CHECKPOINT_SEED:
+    _sla_seconds, _on_timeout = sla_for_category(str(_row["category"]))
+    _row["sla_seconds"] = _sla_seconds
+    _row["on_timeout"] = _on_timeout
 
 CHECKPOINT_KEYS: frozenset[str] = frozenset(row["key"] for row in CHECKPOINT_SEED)
 MANDATORY_KEYS: frozenset[str] = frozenset(

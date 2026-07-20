@@ -1,6 +1,6 @@
 # Increment 2 / TRUST — Billing Safety, Consent & the Economics Floor
 
-> **Status:** 🚧 **In progress** — **D6 (consent registry) ✅ built (2026-07-20)**: the jurisdiction-agnostic consent/DNC/unsubscribe store + tenant-managed provider, wired into KAR's outbound seam; migration `trust001`; gates green. **Remaining: C5, C3, B13, E1, E2, E4** (dunning/middleware + economics — see §11). · **Branch:** `inc2/trust` · **Closes:** C5, **D6 ✅**, C3, B13, E1, E2, E4.
+> **Status:** 🚧 **In progress** — **D6 (consent registry) ✅** + **C3 (per-checkpoint HITL SLAs) ✅** built (2026-07-20); migrations `trust001`/`trust002`; gates green. **Remaining: C5, B13, E1, E2, E4** (dunning/middleware + economics — see §11). · **Branch:** `inc2/trust` · **Closes:** C5, **D6 ✅**, **C3 ✅**, B13, E1, E2, E4.
 > **Design authority:** Blueprint §9.6 (compliance), §10 (economics); Technical §15.2 (suspension), §20 (governance/budget). Global-neutral (decision 5), graduated dunning (decision 6).
 > **Depends on:** GOV (checkpoints/PolicyGate), LOOP+ENV (envelopes/holds/wallet_debt). Its billing-safety pieces gate GA.
 
@@ -83,4 +83,12 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 
 3. **Installed at both entry points via the seam**, no gateway call site changed: `install_consent_registry()` runs beside `register_solo_pack_tools()` in `main.py` + `worker.py`, calling KAR's `set_consent_checker`. The end-to-end test proves a DNC number is blocked through `check_outbound_consent`.
 
-**Remaining TRUST (not built this session):** **C5** dunning + state-aware `CompanySuspensionMiddleware` (touches `billing/` + `common/middleware.py`), **C3** per-checkpoint SLAs (`hitl_checkpoint_defs` columns + timeout worker), **B13** platform-initiated budget class (LOOP + CostLedger), **E1** idle-cost model, **E2** free-credit abuse controls (`auth/`), **E4** fee-formula alerts. These reach into the billing/auth/middleware subsystems outside `ai/` and are best done with that subsystem in view.
+## 12. Build Notes — C3 per-checkpoint HITL SLAs (2026-07-20)
+
+**C3 built** — the 18 checkpoints move from one global 24h rule to per-checkpoint SLAs + fallbacks:
+
+1. **The SLA policy is data, by category.** `HITLCheckpointDef` gained `sla_seconds` + `on_timeout`; `checkpoints.py` maps each §9.3 category to a policy and stamps every seed row (migration `trust002` backfills). Money/binding (payout 4h, refund 4h, contract/vendor/price 8h, data-deletion 24h) → **`auto_deny`** (silence on money must fail safe, not proceed); outbound comms (email/public-statement/discount, 24h) → **`auto_park`** (a draft can wait, re-raise); high-stakes governance/HR (48h) → **`escalate`**.
+
+2. **A sweep, not a per-run timer.** `governance/checkpoint_sla.py::apply_checkpoint_timeouts` joins PENDING `human_approvals` → their checkpoint def, and on an overdue row applies `on_timeout`: auto-deny sets status `TIMEOUT` + records the reason (terminal, deduped once); auto-park/escalate leave it PENDING and raise `approval.parked`/`approval.escalated` (deduped per calendar day so they resurface without spamming). Wired into the existing 60s `signal_sweeper` cron — one global pass, no new cron.
+
+**Remaining TRUST (not built this session):** **C5** dunning + state-aware `CompanySuspensionMiddleware` (touches `billing/` + `common/middleware.py`), **B13** platform-initiated budget class (LOOP + CostLedger), **E1** idle-cost model, **E2** free-credit abuse controls (`auth/`), **E4** fee-formula alerts. These reach into the billing/auth/middleware subsystems outside `ai/` and are best done with that subsystem in view.
