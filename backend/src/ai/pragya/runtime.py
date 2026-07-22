@@ -47,6 +47,11 @@ from src.ai.pragya.artifacts import (
     extraction_prompt,
     parse_extraction,
 )
+from src.ai.pragya.delegation import (
+    mark_reported,
+    report_copy,
+    unreported_for,
+)
 from src.ai.pragya.conversation import (
     UNBOUND_REFUSAL,
     refusal_copy,
@@ -124,6 +129,8 @@ class TurnOutcome:
     advanced_to: Stage | None = None
     #: Set when the stage is complete but waiting on the owner to say so.
     awaiting_confirmation: bool = False
+    #: Promises closed on this turn.
+    reported_delegations: list[str] = field(default_factory=list)
 
 
 #: Pragya's own governance. She is a conversational surface, not a worker
@@ -330,6 +337,17 @@ async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
         )
 
     reply = (response.output or "").strip()
+
+    # Close any loop Pragya opened. Done first and prefixed to the reply: work
+    # that finished and was never mentioned again is the specific failure the
+    # delegation table exists to make visible, so the report leads.
+    finished = await unreported_for(db, request.company_id)
+    reported: list[str] = []
+    if finished:
+        reply = "\n\n".join([*(report_copy(d) for d in finished), reply]).strip()
+        reported = [str(d.kind) for d in finished]
+        await mark_reported(db, finished)
+
     raised = [r for r in tool_results if r.outcome == ActOutcome.RAISED]
     if raised and not reply:
         reply = ("I've raised that for approval — it's waiting at the Judgment "
@@ -373,4 +391,4 @@ async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
         tool_results=tool_results, command_ref=command_ref,
         raised_approval=bool(raised), cost_usd=cost,
         artifacts_written=written, advanced_to=advanced_to,
-        awaiting_confirmation=awaiting)
+        awaiting_confirmation=awaiting, reported_delegations=reported)

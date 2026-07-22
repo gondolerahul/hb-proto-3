@@ -69,7 +69,7 @@ async def pragya_tenant():
             await conn.execute(
                 text(f'DROP SCHEMA IF EXISTS "{schema_name_for(cid)}" CASCADE'))
         async with AsyncSessionLocal() as s:
-            for tbl in ("pragya_turns", "pragya_engagements",
+            for tbl in ("pragya_delegations", "pragya_turns", "pragya_engagements",
                         "account_manager_sessions", "channel_bindings",
                         "trigger_registry", "budget_envelopes", "loop_runtime",
                         "wallet_holds", "signals", "execution_runs"):
@@ -410,3 +410,141 @@ async def test_artifacts_from_an_earlier_stage_survive_re_extraction(pragya_tena
         engagement = await get_or_create_engagement(db, cid)
         assert engagement.artifacts["baseline.research_summary"] == "corrected pass"
         assert engagement.artifacts["baseline.gaps"] == ["headcount"]
+
+
+# --- delegation: dispatch, promise, report (Inc-4 PRAGYA-RT T4) --------------
+
+async def test_delegating_records_a_promise_the_platform_can_be_held_to(pragya_tenant):
+    from src.ai.pragya.delegation import DelegationKind, delegate, pending_for
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.RESEARCH,
+            subject="your pricing", stage=Stage.BASELINE)
+        await db.commit()
+
+    assert "your pricing" in promise.promise
+    async with AsyncSessionLocal() as db:
+        outstanding = await pending_for(db, cid)
+    assert len(outstanding) == 1
+    assert outstanding[0].kind == DelegationKind.RESEARCH
+    assert outstanding[0].reported_at is None
+
+
+async def test_a_capability_build_without_a_meta_agent_refuses_rather_than_promises(
+    pragya_tenant,
+):
+    """An unkept promise costs more trust than an honest 'I can't'."""
+    from src.ai.pragya.delegation import DelegationKind, delegate
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(ValueError, match="Meta-Agent"):
+            await delegate(db, company_id=cid,
+                           kind=DelegationKind.CAPABILITY_BUILD,
+                           subject="a payroll reconciler")
+        await db.rollback()
+
+
+async def test_a_capability_build_dispatches_a_run_against_the_board(pragya_tenant):
+    """Pragya starting the board must be indistinguishable from a signal
+    starting it — same run shape, no second entry point."""
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.orm.execution import ExecutionRun
+    from src.ai.pragya.delegation import DelegationKind, delegate
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        board = HierarchicalEntity(
+            company_id=cid, name="meta-agent-board", display_name="Meta Agent",
+            type="AGENT", status="ACTIVE")
+        db.add(board)
+        await db.commit()
+        board_id = board.id
+
+    try:
+        async with AsyncSessionLocal() as db:
+            promise = await delegate(
+                db, company_id=cid, kind=DelegationKind.CAPABILITY_BUILD,
+                subject="a payroll reconciler")
+            await db.commit()
+
+        assert promise.run_id is not None
+        async with AsyncSessionLocal() as db:
+            run = (await db.execute(
+                select(ExecutionRun).where(
+                    ExecutionRun.id == promise.run_id))).scalars().one()
+        assert run.entity_id == board_id
+        assert run.status == "PENDING"
+        assert run.input_data["channel"] == "pragya"
+        assert "payroll reconciler" in run.input_data["input"]
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM pragya_delegations WHERE company_id = :c"),
+                             {"c": str(cid)})
+            await db.execute(text("DELETE FROM execution_runs WHERE company_id = :c"),
+                             {"c": str(cid)})
+            await db.execute(text("DELETE FROM hierarchical_entities WHERE id = :e"),
+                             {"e": str(board_id)})
+            await db.commit()
+
+
+async def test_finished_work_is_reported_once_and_only_once(pragya_tenant):
+    from src.ai.pragya.delegation import (
+        DelegationKind,
+        complete,
+        delegate,
+        mark_reported,
+        unreported_for,
+    )
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.RESEARCH,
+            subject="your website")
+        await db.commit()
+        delegation_id = promise.id
+
+    # Nothing to report while it is still running.
+    async with AsyncSessionLocal() as db:
+        assert await unreported_for(db, cid) == []
+
+    async with AsyncSessionLocal() as db:
+        await complete(db, delegation_id, {"summary": "a services business"})
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        outstanding = await unreported_for(db, cid)
+        assert len(outstanding) == 1
+        await mark_reported(db, outstanding)
+        await db.commit()
+
+    # Reported once: a second turn must not repeat it.
+    async with AsyncSessionLocal() as db:
+        assert await unreported_for(db, cid) == []
+
+
+async def test_failed_work_is_surfaced_not_swallowed(pragya_tenant):
+    from src.ai.pragya.delegation import DelegationKind, delegate, fail, unreported_for
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.RESEARCH, subject="your filings")
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        await fail(db, promise.id, "no search provider configured")
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        outstanding = await unreported_for(db, cid)
+    assert len(outstanding) == 1
+    assert outstanding[0].error == "no search provider configured"
