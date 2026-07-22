@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
+from src.ai.trust.abuse_controls import client_ip
 from src.common.database import get_db
 from src.auth.schemas import UserCreate, UserResponse, Token, UserLogin, RefreshTokenRequest, OAuthRequest
 from src.auth import service
@@ -12,8 +13,10 @@ from src.common.security import create_access_token
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=Token)
-async def register(user: UserCreate, response: Response, db: AsyncSession = Depends(get_db)):
-    new_user = await service.create_user(db, user)
+async def register(user: UserCreate, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    # E2 — the signup origin feeds the per-IP tenant-creation throttle.
+    signup_ip = client_ip(request.headers, request.client.host if request.client else None)
+    new_user = await service.create_user(db, user, signup_ip=signup_ip)
     # Generate tokens so the frontend can immediately authenticate
     access_token = create_access_token(data={"sub": new_user.email, "company_id": str(new_user.company_id)})
     refresh_token = await service.create_refresh_token(db, new_user.id)

@@ -8,6 +8,7 @@ Priority order:
 
 Raises InsufficientCreditsError if all buckets are zero.
 """
+import logging
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -19,6 +20,8 @@ from sqlalchemy import select
 
 from src.billing.billing_models import CreditWallet, Subscription
 from src.billing.billing_service import BillingService
+
+logger = logging.getLogger(__name__)
 
 
 # Minimum credit thresholds by entity type.
@@ -59,7 +62,20 @@ class CreditService:
             billing_svc = BillingService(self.db)
             config = await billing_svc.get_billing_config(company_id)
             daily_amount = Decimal(str(config.default_daily_credits)) if config and config.default_daily_credits else Decimal("0")
-            
+
+            # E2 — the verification gate applies at wallet creation too, or the
+            # first-touch path would hand out a day of free credits before the
+            # daily cron ever asks.
+            if daily_amount > 0:
+                from src.ai.trust.abuse_controls import daily_credit_eligibility
+                eligibility = await daily_credit_eligibility(self.db, company_id)
+                if not eligibility:
+                    logger.info(
+                        "Daily credits withheld at wallet creation for company %s: %s",
+                        company_id, eligibility.reason,
+                    )
+                    daily_amount = Decimal("0")
+
             wallet = CreditWallet(
                 company_id=company_id,
                 daily_credits=daily_amount,
@@ -252,7 +268,20 @@ class CreditService:
         billing_svc = BillingService(self.db)
         config = await billing_svc.get_billing_config(company_id)
         daily_amount = Decimal(str(config.default_daily_credits)) if config and config.default_daily_credits else Decimal("0")
-        
+
+        # E2 — free daily credits are platform COGS. An unverified, inactive, or
+        # past-paying tenant gets its expired credits flushed but nothing new
+        # injected; verifying an email switches injection back on next cycle.
+        if daily_amount > 0:
+            from src.ai.trust.abuse_controls import daily_credit_eligibility
+            eligibility = await daily_credit_eligibility(self.db, company_id)
+            if not eligibility:
+                logger.info(
+                    "Daily credits withheld for company %s: %s",
+                    company_id, eligibility.reason,
+                )
+                daily_amount = Decimal("0")
+
         wallet.daily_credits = daily_amount
         tomorrow = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = tomorrow + timedelta(days=1)

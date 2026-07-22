@@ -29,6 +29,8 @@ async def _provision_new_tenant(db: AsyncSession, company: Company):
         from src.billing.billing_models import CreditWallet
         from decimal import Decimal
 
+        from src.common.config import settings
+
         # Read default from company (set by caller from BillingConfig)
         default_daily = Decimal("0")  # no fallback — must come from BillingConfig
         if company.default_daily_credits:
@@ -36,6 +38,17 @@ async def _provision_new_tenant(db: AsyncSession, company: Company):
                 default_daily = Decimal(str(company.default_daily_credits))
             except Exception:
                 pass
+
+        # E2 — a self-registered workspace is unverified by definition, so it
+        # starts with no free credits. The daily cron injects them on the first
+        # cycle after someone verifies their email (see trust/abuse_controls.py).
+        # Checked from the flag, not the DB: this runs pre-commit and must not
+        # query other tables (see the docstring above).
+        if settings.TRUST_REQUIRE_VERIFIED_FOR_CREDITS and default_daily > 0:
+            logger.info(
+                f"Company {company.id} provisioned with 0 daily credits pending email verification"
+            )
+            default_daily = Decimal("0")
 
         wallet = CreditWallet(
             company_id=company.id,
@@ -94,12 +107,21 @@ async def create_user_as_admin(db: AsyncSession, user_in: UserCreateAdmin, creat
     await db.refresh(new_user)
     return new_user
 
-async def create_user(db: AsyncSession, user: UserCreate, creator: User = None):
+async def create_user(db: AsyncSession, user: UserCreate, creator: User = None, signup_ip: str = None):
     # Check if user exists
     result = await db.execute(select(User).filter(User.email == user.email))
     existing_user = result.scalars().first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    # E2 — per-origin signup throttle. Free daily credits are platform COGS;
+    # this caps how many workspaces one origin can mint per rolling window.
+    from src.ai.trust.abuse_controls import signup_allowed, stamp_signup_ip
+    if not await signup_allowed(db, signup_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many workspaces created from this network. Please try again later.",
+        )
 
     # For self-registration or direct creation without company context, create a TENANT company
     new_company = Company(
@@ -107,7 +129,9 @@ async def create_user(db: AsyncSession, user: UserCreate, creator: User = None):
         type="TENANT",
         status="active",
         onboarding_status="pending",
-        onboarding_metadata={"completed_steps": [], "created_via": "self_registration"}
+        onboarding_metadata=stamp_signup_ip(
+            {"completed_steps": [], "created_via": "self_registration"}, signup_ip
+        ),
     )
 
     # Read default_daily_credits from global BillingConfig BEFORE flush

@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     # before a hard suspend (decision 1: grace 7d, configurable).
     BILLING_GRACE_DAYS: int = 7
     BILLING_READ_ONLY_DAYS: int = 7
+    # E2 — free-credit abuse controls. Daily credits are platform COGS, so they
+    # wait for an email verification; tenant creation is capped per origin IP
+    # over a rolling 24h. Set the cap to 0 to disable the throttle.
+    TRUST_REQUIRE_VERIFIED_FOR_CREDITS: bool = True
+    TRUST_SIGNUP_MAX_PER_IP_PER_DAY: int = 3
 
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.
