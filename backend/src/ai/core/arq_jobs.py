@@ -628,8 +628,19 @@ async def dreaming_worker(ctx: dict[str, Any], entity_id_str: str, company_id_st
 
     async with AsyncSessionLocal() as db:
         try:
+            # B13 — dreaming is platform-initiated: the tenant never asked for
+            # it. It draws from the capped platform envelope, so when that is
+            # exhausted the run parks. Tenant work is never affected.
+            from src.ai.loop.platform_budget import platform_work_admitted
+            company_id = UUID(company_id_str)
+            if not await platform_work_admitted(db, company_id):
+                logger.info(
+                    f"Dreaming parked for entity {entity_id_str}: platform budget exhausted"
+                )
+                return {"parked": "platform_budget_exhausted", "entity_id": entity_id_str}
+
             from src.ai.memory.dreaming_engine import DreamingEngine
-            engine = DreamingEngine(db, UUID(company_id_str))
+            engine = DreamingEngine(db, company_id)
             result = await engine.dream(
                 entity_id=UUID(entity_id_str),
                 force=force,

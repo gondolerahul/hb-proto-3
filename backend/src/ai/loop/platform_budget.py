@@ -29,6 +29,7 @@ __all__ = [
     "ensure_platform_envelope",
     "rollup_platform_spent",
     "platform_spend_admitted",
+    "platform_work_admitted",
 ]
 
 
@@ -96,3 +97,31 @@ async def platform_spend_admitted(
         logger.info("platform spend parked: company %s spent %s + %s > cap %s",
                     company_id, spent, prospective_usd, cap)
     return admitted
+
+
+async def platform_work_admitted(
+    db: AsyncSession, company_id: uuid.UUID,
+    prospective_usd: Decimal = Decimal("0"),
+) -> bool:
+    """The call-site-friendly admission check — resolves the Loop itself.
+
+    Platform-initiated runners (dreaming, optimizer, meta iterations, sensing)
+    know their company but have no reason to know about Loop entities. This
+    resolves the tenant's root Loop and asks ``platform_spend_admitted``.
+
+    ``prospective_usd`` defaults to 0, which asks the honest question a runner
+    can actually answer before it starts: *is the platform envelope already
+    exhausted?* A run's own cost lands in the ledger and counts against the
+    next check. Pass an estimate when the caller has one.
+
+    **Fails open when there is no Loop** — a tenant without a seeded Sheel has
+    no envelope to check, and missing infrastructure must not silently disable
+    platform work. The cap is a spend control, not a safety interlock.
+    """
+    from src.ai.loop.service import get_root_loop
+
+    loop = await get_root_loop(db, company_id)
+    if loop is None:
+        logger.debug("no root Loop for company %s — platform work admitted", company_id)
+        return True
+    return await platform_spend_admitted(db, company_id, loop.id, prospective_usd)

@@ -19,6 +19,7 @@ from src.ai.loop.platform_budget import (
     default_platform_envelope_usd,
     ensure_platform_envelope,
     platform_spend_admitted,
+    platform_work_admitted,
 )
 from src.ai.loop.service import ensure_sheel
 from src.ai.tenant_schema.data_plane import schema_name_for, tenant_data_plane
@@ -91,6 +92,28 @@ async def test_admission_parks_at_cap(tenant):
         await db.commit()
     assert under is True
     assert over is False
+
+
+async def test_work_admitted_resolves_the_loop_itself(tenant):
+    """The call-site helper platform-initiated runners use — no Loop id needed."""
+    from src.common.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        await ensure_sheel(db, tenant)
+        await db.commit()
+    async with AsyncSessionLocal() as db:
+        assert await platform_work_admitted(db, tenant) is True
+        # Over the cap → the runner must park its platform work.
+        over = await platform_work_admitted(
+            db, tenant, default_platform_envelope_usd() + Decimal("1"))
+        await db.commit()
+    assert over is False
+
+
+async def test_work_admitted_fails_open_without_a_loop(tenant):
+    """No seeded Sheel = no envelope. Missing infra must not disable platform work."""
+    from src.common.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        assert await platform_work_admitted(db, tenant) is True
 
 
 async def test_admission_is_idempotent_on_envelope(tenant):

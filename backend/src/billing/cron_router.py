@@ -29,6 +29,18 @@ async def run_daily_credits(
     return result
 
 
+@router.post("/dunning", summary="Trigger the dunning ladder sweep (admin)")
+async def run_dunning(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """TRUST C5 — advance every subscription's dunning ladder position."""
+    _require_admin(current_user)
+    svc = CronService(db)
+    result = await svc.run_dunning_job()
+    return result
+
+
 @router.post("/monthly-billing", summary="Trigger monthly subscription billing (admin)")
 async def run_monthly_billing(
     current_user: User = Depends(get_current_user),

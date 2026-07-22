@@ -57,6 +57,7 @@ from src.ai.tenant_schema.maintenance import (
 )
 from src.ai.loop.heartbeat import loop_heartbeat
 from src.ai.loop.watchdog import loop_watchdog
+from src.ai.trust.crons import dunning_sweep
 
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
 from src.ai.solo_pack.tools import register_solo_pack_tools
@@ -149,6 +150,10 @@ try:
         cron(loop_heartbeat, minute=set(range(60))),
         # Loop watchdog: flag stalled heartbeats (every 2 minutes).
         cron(loop_watchdog, minute={m for m in range(0, 60, 2)}),
+        # Dunning ladder sweep (TRUST C5) — daily at 01:10 UTC, after the
+        # midnight daily-credit job so a tenant's ladder position reflects the
+        # day it just entered.
+        cron(dunning_sweep, hour=1, minute=10),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

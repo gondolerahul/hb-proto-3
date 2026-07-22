@@ -28,6 +28,29 @@ logger = logging.getLogger(__name__)
 # Now stored directly on the Subscription object
 
 
+def days_past_due(
+    sub_status: str,
+    next_billing_date: Optional[datetime],
+    now: Optional[datetime] = None,
+) -> int:
+    """How many days a subscription is overdue — the input to C5's ladder.
+
+    No new column is needed: a *successful* monthly charge advances
+    ``next_billing_date`` into the future, so a paying tenant always computes 0
+    (and the ladder recovers them to `current`). A *failed* charge leaves the
+    date in the past and flips the status, so the days accumulate on their own.
+
+    A cancelled subscription is not dunned — the tenant left, they are not
+    behind on anything.
+    """
+    if sub_status == "cancelled" or next_billing_date is None:
+        return 0
+    now = now or datetime.utcnow()
+    if now <= next_billing_date:
+        return 0
+    return (now - next_billing_date).days
+
+
 class CronService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -60,6 +83,48 @@ class CronService:
 
         logger.info(f"Daily credit job complete. Processed: {processed}, Errors: {errors}")
         return {"processed": processed, "errors": errors, "timestamp": datetime.utcnow().isoformat()}
+
+    async def run_dunning_job(self) -> dict:
+        """Daily cron — advance every subscription's dunning ladder (TRUST C5).
+
+        This is the integration C5 left open: the ladder, the column, the
+        middleware enforcement, and the transition signals all shipped, but
+        nothing computed ``days_past_due`` to drive them. This does.
+
+        Scope is deliberately subscriptions only. A pay-as-you-go tenant with no
+        subscription has nothing to be *past due* on — their wallet simply runs
+        empty and Inc-1's wallet-hold admission already blocks new spend. The
+        ladder is about a lapsed *commitment*, not an empty wallet.
+        """
+        from src.ai.trust.dunning import advance_dunning
+
+        logger.info("Starting dunning sweep")
+        stmt = select(Subscription).where(Subscription.status != "cancelled")
+        result = await self.db.execute(stmt)
+        subscriptions = result.scalars().all()
+
+        evaluated = 0
+        errors = 0
+        for sub in subscriptions:
+            try:
+                overdue = days_past_due(str(sub.status), sub.next_billing_date)
+                # advance_dunning is idempotent — it only moves (and only emits a
+                # billing.* signal) on a real transition, so a daily re-sweep of
+                # a stable tenant is a no-op.
+                await advance_dunning(self.db, sub.company_id, overdue)
+                await self.db.commit()
+                evaluated += 1
+            except Exception as e:
+                logger.error(f"Dunning sweep failed for company {sub.company_id}: {e}")
+                await self.db.rollback()
+                errors += 1
+
+        logger.info(f"Dunning sweep complete. Evaluated: {evaluated}, Errors: {errors}")
+        return {
+            "evaluated": evaluated,
+            "errors": errors,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
 
     async def run_monthly_subscription_job(self) -> dict:
         """
