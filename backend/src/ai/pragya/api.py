@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.inward_auth.models import ChannelKind
+from src.ai.pragya.reflection import reflect_on_stage
 from src.ai.pragya.runtime import TurnOutcome, TurnRequest, run_turn
 from src.ai.pragya.deployment import (
     integration_readiness,
@@ -120,6 +121,14 @@ async def post_advance(
         # Confirming an unfinished stage would carry a half-formed hypothesis
         # into the configuration that stage 6 builds from.
         raise HTTPException(status_code=409, detail=eligibility.reason)
+
+    # Reflect before moving on — the same rule the auto-advance path follows.
+    await reflect_on_stage(
+        db, engagement, stage,
+        [{"role": t.role, "content": t.content}
+         for t in await recent_turns(db, cast(uuid.UUID, current_user.company_id),
+                                     limit=30)],
+        company_id=cast(uuid.UUID, current_user.company_id))
 
     await advance(db, engagement, reason="owner confirmed the stage")
     await db.commit()

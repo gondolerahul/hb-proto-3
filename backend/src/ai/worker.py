@@ -60,6 +60,7 @@ from src.ai.loop.watchdog import loop_watchdog
 from src.ai.memory.rechunk_cron import chunk_upgrade_sweep
 from src.ai.trust.crons import dunning_sweep
 from src.ai.governance.crons import demotion_sweep
+from src.ai.voice_loop.crons import voice_deferred_reap, voice_deferred_sweep
 
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
 from src.ai.solo_pack.tools import register_solo_pack_tools
@@ -165,6 +166,14 @@ try:
         # the 60s sweeper would repeat per-agent aggregates 1,440× for the
         # same answer. Sits after the dunning sweep.
         cron(demotion_sweep, hour=1, minute=40),
+        # Inc-4 T6 — drain the post-call queue Inc-3 left filling. Small batch,
+        # no deadline: a call reflected on an hour late is worth what one
+        # reflected on immediately is worth, and the provider rate limit
+        # belongs to live conversation.
+        cron(voice_deferred_sweep, minute={m for m in range(0, 60, 10)}),
+        # ...and reap finished rows, or draining just converts an unbounded
+        # queue into an unbounded archive.
+        cron(voice_deferred_reap, hour=2, minute=50),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

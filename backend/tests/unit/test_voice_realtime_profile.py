@@ -14,6 +14,8 @@ from src.ai.schemas.governance import AuthorityBands, AutonomyLevel, Governance
 from src.ai.voice_loop.live_gate import LiveOutcome, gate_voice_act, profile_note
 from src.ai.voice_loop.profile import (
     DEFERRED_STAGES,
+    REQUIRED_DEFERRED_STAGES,
+    SKIPPED_STAGES,
     LIVE_COMPLETION_RULE,
     LIVE_STAGES,
     REALTIME_PROFILE,
@@ -33,9 +35,11 @@ def test_every_stage_has_a_disposition_and_a_rationale() -> None:
         assert p.rationale.strip(), f"{p.stage} does not justify its disposition"
 
 
-def test_live_and_deferred_partition_the_stages() -> None:
-    assert set(LIVE_STAGES) | set(DEFERRED_STAGES) == set(Stage)
+def test_the_three_dispositions_partition_the_stages() -> None:
+    assert set(LIVE_STAGES) | set(DEFERRED_STAGES) | set(SKIPPED_STAGES) == set(Stage)
     assert not set(LIVE_STAGES) & set(DEFERRED_STAGES)
+    assert not set(LIVE_STAGES) & set(SKIPPED_STAGES)
+    assert not set(DEFERRED_STAGES) & set(SKIPPED_STAGES)
 
 
 # --- the invariant the latency budget imposes ---------------------------------
@@ -47,11 +51,10 @@ def test_no_model_call_stage_runs_live() -> None:
             assert not p.model_call, f"{p.stage} is a model call but marked live"
 
 
-def test_the_three_llm_judgment_stages_defer() -> None:
+def test_no_llm_judgment_stage_runs_live() -> None:
     for stage in (Stage.STRATEGIZE, Stage.PRE_CRITIC, Stage.POST_CRITIC,
                   Stage.REFLECT):
         assert not runs_live(stage), stage
-        assert is_model_call(stage) or stage is Stage.REFLECT
 
 
 # --- the load-bearing line: governance stays inline ---------------------------
@@ -75,11 +78,27 @@ def test_act_and_observe_run_live_so_a_turn_can_speak() -> None:
     assert runs_live(Stage.PERCEIVE)
 
 
-def test_decide_defers_because_its_inputs_do() -> None:
-    """Cheap in itself, but it reads what the deferred stages produce."""
-    decide = profile_for(Stage.DECIDE)
-    assert decide.disposition is Disposition.DEFERRED
-    assert not decide.model_call
+def test_strategize_and_decide_are_skipped_not_deferred() -> None:
+    """Corrected in Inc-4. You cannot plan a conversation that already ended,
+    and a call that has finished has already decided. Inc-3 deferred both and
+    produced a queue nobody could drain."""
+    assert set(SKIPPED_STAGES) == {Stage.STRATEGIZE, Stage.DECIDE}
+    for stage in SKIPPED_STAGES:
+        assert profile_for(stage).disposition is Disposition.SKIPPED
+
+
+def test_a_post_call_run_owes_reflection_and_supervision_only() -> None:
+    """What must actually happen after a call, excluding calibration."""
+    assert set(REQUIRED_DEFERRED_STAGES) == {Stage.POST_CRITIC, Stage.REFLECT}
+
+
+def test_pre_critic_replay_is_calibration_not_governance() -> None:
+    """Its deterministic half already ran inline; replaying the LLM judgment
+    informs critic calibration and gates nothing."""
+    pre = profile_for(Stage.PRE_CRITIC)
+    assert pre.disposition is Disposition.DEFERRED
+    assert pre.calibration_only
+    assert Stage.PRE_CRITIC not in REQUIRED_DEFERRED_STAGES
 
 
 # --- the live gate: promise, never complete -----------------------------------

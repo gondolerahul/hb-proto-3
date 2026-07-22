@@ -66,6 +66,7 @@ from src.ai.pragya.engagement import (
     record_turn,
 )
 from src.ai.pragya.intents import INTENT_SCHEMA, ExtractedCommand, classify_turn
+from src.ai.pragya.reflection import reflect_on_stage
 from src.ai.pragya.scripts import script_for_stage
 from src.ai.pragya.stages import Stage
 from src.ai.schemas.governance import AutonomyLevel, Governance
@@ -374,6 +375,15 @@ async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
     eligibility = evaluate_eligibility(stage, engagement.artifacts)
     if eligibility.eligible:
         if stage in AUTO_ADVANCE_STAGES:
+            # Reflect *before* moving: a closing stage is the only moment its
+            # conversation is complete and still current. Off the reply path,
+            # and a failure costs future context rather than correctness.
+            await reflect_on_stage(
+                db, engagement, stage,
+                [{"role": t.role, "content": t.content}
+                 for t in await recent_turns(db, request.company_id, limit=30)],
+                company_id=request.company_id)
+
             # Gathering stages advance on their own: nothing was agreed, so
             # there is nothing to ask the owner to agree to.
             await advance(db, engagement,

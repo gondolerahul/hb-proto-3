@@ -289,9 +289,11 @@ async def test_a_finished_call_queues_the_deferred_stages(voice_tenant):
         await db.commit()
 
     assert row is not None
-    # Exactly the stages the live turn could not run.
-    assert set(row.stages) == {"strategize", "pre_critic", "post_critic",
-                               "reflect", "decide"}
+    # The stages the live turn could not run — corrected in Inc-4. Strategize
+    # and Decide are gone: you cannot plan or decide about a call that ended.
+    assert set(row.stages) == {"pre_critic", "post_critic", "reflect"}
+    assert "strategize" not in row.stages
+    assert "decide" not in row.stages
     assert "policy_gate" not in row.stages, "governance ran inline; nothing to defer"
     assert "act" not in row.stages
 
@@ -370,3 +372,125 @@ async def test_a_failing_run_retries_then_gives_up_without_blocking(voice_tenant
             .where(VoiceDeferredRun.call_sid == "CA-fail"))).scalars().one()
     assert row.status == DeferredRunStatus.FAILED
     assert row.error == "model unavailable"
+
+
+# --- draining and reaping (Inc-4 PRAGYA-RT T6) -------------------------------
+
+async def test_the_reaper_bounds_the_table(voice_tenant):
+    """Inc-3 left this queue filling with nothing to empty it. Draining alone
+    would only convert an unbounded queue into an unbounded archive."""
+    from datetime import datetime, timedelta
+
+    from src.ai.voice_loop.deferred_runner import queue_depth, reap_finished
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        row = await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-reap", transcript=_transcript())
+        assert row is not None
+        row.status = DeferredRunStatus.DONE
+        row.completed_at = datetime.utcnow() - timedelta(days=60)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        before = await queue_depth(db)
+        reaped = await reap_finished(db)
+        await db.commit()
+        after = await queue_depth(db)
+
+    assert reaped >= 1
+    assert after < before
+
+
+async def test_the_reaper_leaves_unfinished_work_alone(voice_tenant):
+    """However old a pending row looks, it has not been reflected on yet."""
+    from datetime import datetime, timedelta
+
+    from src.ai.voice_loop.deferred_runner import reap_finished
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        row = await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-old-pending",
+            transcript=_transcript())
+        assert row is not None
+        row.created_at = datetime.utcnow() - timedelta(days=90)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        await reap_finished(db)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        survivor = (await db.execute(
+            select(VoiceDeferredRun).where(
+                VoiceDeferredRun.call_sid == "CA-old-pending"))).scalars().first()
+    assert survivor is not None
+    assert survivor.status == DeferredRunStatus.PENDING
+
+
+async def test_a_drained_run_records_the_corrected_stage_set(voice_tenant, monkeypatch):
+    """Post-Critic and Reflect only — Strategize and Decide were an Inc-3
+    error and running them post-hoc would be theatre."""
+    import src.ai.voice_loop.deferred_runner as runner
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+
+    async def _fake_run(db, row):
+        return {"stages": ["post_critic", "reflect"],
+                "summary": "caller asked about an invoice", "outcome": "resolved"}
+
+    monkeypatch.setattr(runner, "run_deferred", _fake_run)
+
+    async with AsyncSessionLocal() as db:
+        await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-drain", transcript=_transcript())
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        stats = await runner.drain_batch(db, limit=5)
+
+    assert stats["done"] >= 1
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(
+            select(VoiceDeferredRun).where(
+                VoiceDeferredRun.call_sid == "CA-drain"))).scalars().one()
+    assert row.status == DeferredRunStatus.DONE
+    assert set(row.stages) == {"post_critic", "reflect"}
+    assert "strategize" not in row.stages
+    assert "decide" not in row.stages
+
+
+async def test_a_failing_drain_does_not_invalidate_the_call(voice_tenant, monkeypatch):
+    """The conversation happened and was governed inline. Reflection failing
+    afterwards costs learning, not correctness."""
+    import src.ai.voice_loop.deferred_runner as runner
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+
+    async def _boom(db, row):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(runner, "run_deferred", _boom)
+
+    async with AsyncSessionLocal() as db:
+        await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-drain-fail",
+            transcript=_transcript())
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        stats = await runner.drain_batch(db, limit=3)
+    assert stats["failed"] >= 1
+
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(
+            select(VoiceDeferredRun).where(
+                VoiceDeferredRun.call_sid == "CA-drain-fail"))).scalars().one()
+    # Retried, not abandoned on the first failure.
+    assert row.status in (DeferredRunStatus.PENDING, DeferredRunStatus.FAILED)
+    assert "model unavailable" in (row.error or "")
