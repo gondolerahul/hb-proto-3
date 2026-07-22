@@ -50,6 +50,7 @@ CLEAN_PACKAGES: list[str] = [
     "inward_auth",
     "pragya",
     "kpi",
+    "voice_loop",
 ]
 
 

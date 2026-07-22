@@ -90,6 +90,11 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 * **T4** `memory/reranker.py` — Growth+ **LLM reranker** (decision resolved 2026-07-22). Tier gate fails closed, top-20 window, attributed `rerank` and deliberately *tenant*-initiated, fails open on every path.
 * **T5** `tests/eval/retrieval_{metrics,corpus}.py` + `test_retrieval_goldens_db.py` — the regression gate. **MRR 0.812 → 1.000** vs cosine; all the gain on exact-token queries, paraphrase queries unregressed.
 
+### Increment 3 / VOICE — realtime voice in the governed loop (merged to `master`)
+* `backend/src/ai/voice_loop/`: `profile.py` (**B7's answer as data** — the PolicyGate is pure so governance stays inline; Strategize/Pre-Critic/Post-Critic/Reflect/Decide defer), `live_gate.py` (a governed act is *promised*, never completed on a turn), `identity.py` (caller ID resolves a binding but **voice can never self-elevate**; T3 unavailable on the channel), `handoff.py` (same media session, ceiling clamps downward only), `deferred.py` (post-call queue, deduped on `call_sid`), `models.py`.
+* `signals/voice_inbound.py` — the `voice.inbound` producer (counterparty trust, subscription-gated, SID dedupe), wired into `src/voice/webhook_router.py` as a fail-safe cutover; end-of-call queues the deferred run.
+* **KAR-01 is real** — `templates/gateways.py` replaced the Inc-2 stub; roster stays 18. The template carries the realtime profile in `metadata_extensions` so it shows up in the governance preview. Migration **`voice001`**.
+
 ### Increment 3 / PRAGYA — the account-manager engagement (merged to `master`)
 * `backend/src/ai/pragya/`: `stages.py` (the pure 9-stage machine — linear except stage 9 re-enters 4–6), `models.py` + `engagement.py` (`pragya_engagements`, `pragya_turns`; artifacts merge, never replace), `intents.py` (extraction → tier; the keyword screen runs *alongside* the model and can only raise), `conversation.py` (classify → authorise → execute → generate, in that order), `commands.py` (pause/resume/demote behind `require_tier`), `deployment.py` (stages 6–9 over the unchanged Inc-2 wizard functions), `api.py` (`/ai/pragya/*`), `scripts/stage_{1..5}.py` (**reviewed assets**).
 * `backend/src/ai/kpi/` (**C6**): `definitions.py` (10 KPIs — formula, prerequisites, baseline, `captured_today`), `compute.py` (the honest-absence rule), `api.py` (`/ai/kpi/{definitions,business}` — one read path for Pragya *and* the dashboards).
@@ -101,7 +106,7 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 * Migration **`iauth001`** — six tables: `channel_bindings`, `account_manager_sessions`, `webauthn_credentials`, `webauthn_challenges`, `totp_secrets`, `oob_confirmations`. New signal types `authn.channel_otp` / `authn.oob_confirm` / `authn.security_alert`; new `INWARD_AUTH_*` + `WEBAUTHN_*` settings.
 * Frontend: `services/authn.service.ts`, `components/SecuritySettings.tsx` (mounted in `UserSettings`), `components/StepUpModal.tsx`.
 
-**Migration head:** `prag001` (Inc 3 PRAGYA, off `iauth001`). Previously: `iauth001` (Inc 3 AUTH, off `retr003`); Inc-2 PACK/KAR/ONBOARD and the TRUST economics slice added none; TRUST's safety slice added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`; RETR added `retr001` FTS index, `retr002` chunk structure, `retr003` document domain. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+**Migration head:** `voice001` (Inc 3 VOICE, off `prag001`). Previously: `prag001` (Inc 3 PRAGYA, off `iauth001`); `iauth001` (Inc 3 AUTH, off `retr003`); Inc-2 PACK/KAR/ONBOARD and the TRUST economics slice added none; TRUST's safety slice added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`; RETR added `retr001` FTS index, `retr002` chunk structure, `retr003` document domain. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
@@ -119,7 +124,17 @@ Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4
 
 **D1 is now closed end-to-end** — `pragya/conversation.handle_turn` classifies every turn and executes nothing except behind `require_tier`.
 
-**Next up: VOICE (`inc3/voice`)** — KAR-01 real + B7's collapsed-loop path, as Pragya's second channel. `handle_turn` already takes `channel_kind`/`channel_address` and resolves bindings, so the seam exists. Also open from PRAGYA (§7.3): automatic stage advancement, stage-1 research automation, and eval goldens over stage transcripts. The **push** in §1 remains the one standing external action.
+**Increment 3 / VOICE — ✅ BUILT & merged to local `master` (2026-07-22).** V1–V7: `ai/voice_loop/` (realtime profile, live gate, caller identity, handoff, deferred queue), `signals/voice_inbound.py`, **KAR-01 real** (the Inc-2 stub replaced), migration **`voice001`**, and the webhook cutover. **Register B7 is closed** — see [04](./increment-3/04_voice_realtime.md), build notes §8.
+
+**Increment 3 is COMPLETE** — AUTH, PRAGYA and VOICE all built and merged; D1, C4, C6, B7 and C8's script half all closed.
+
+**Next up**, in rough priority order — the honest gaps the three workstreams left, all recorded in their §N.3 blocks:
+1. **The deferred-run executor** (VOICE §8.3) — the queue exists and the webhook fills it, but no worker drains it into a real eight-stage run, so calls still write no reflections. Largest single gap.
+2. **Pragya's stage advancement + stage-1 research** (PRAGYA §7.3) — exit criteria are prose the model reads, not a checked predicate; nothing calls the Web Intelligence Suite to actually do stage-1 research.
+3. **Handoff triggering** (VOICE §8.3) — recorded and readable, but the realtime handler never decides to hand off.
+4. **Eval goldens over stage transcripts** (PRAGYA T4's second half) — script structure is pinned; script quality is not.
+
+The **push** in §1 remains the one standing external action.
 
 **Done 2026-07-22** — TRUST completed ([05](./increment-2/05_trust_billing_safety.md) §15–§18): **E4** fee-formula guard, **E2** free-credit abuse controls, **E1** idle-cost model ([05a](./increment-2/05a_idle_cost_model.md)), and both open integration hookups (C5's `days_past_due` driver, B13's admission at the dreaming runner). RETR completed ([06](./increment-2/06_retrieval_upgrade.md) §5–§9): all five tasks, MRR 0.812 → 1.000 over pure cosine on the golden set.
 
@@ -168,6 +183,8 @@ From `increment-2/00_overview.md` §2 and each doc's decisions block:
 * **A new `usage_logs` attribution must be classified for B13.** Adding a `CostAttribution` member is not enough — decide whether it belongs in `PLATFORM_INITIATED_ATTRIBUTIONS`. Tenant-asked-for work (like RETR's `rerank`) must stay out, or ordinary tenant activity can exhaust the cap that exists to protect tenants *from* platform work.
 * **`setuptools` is pinned `<81` on purpose** (AUTH): 81 removed `pkg_resources`, which `opentelemetry-instrumentation` imports at module scope, so an unpinned resolve breaks `import src.main` outright. If a `poetry add` ever unpins it, `import src.main` is the fastest check. More generally: **this VM's venv had drifted from `poetry.lock`** (manually pip-installed `google-genai` 2.x / `httpx` 0.28 over a lock saying 0.4/0.26), so any `poetry add` re-syncs the venv *down* to the lock. Re-run the unit suite after touching deps.
 * **Strict typing does not cover SQLAlchemy's `func` namespace** (PRAGYA): `func.case(...)` type-checks fine under mypy `--strict` because `func.*` is `Any`, and then fails at runtime — the correct import is `sqlalchemy.case`. Anything built through `func` needs a test that actually executes the query.
+* **An `ai/` package init must not import back toward its own consumers** (VOICE): `voice_loop/__init__` re-exporting `identity` closed the cycle `inward_auth.bindings → solo_pack.consent → templates → voice_loop.profile → identity → bindings`. The init re-exports only `profile`; import submodules directly. Same rule the Solo Pack tools follow.
+* **Check a channel ceiling before session state, not after** (VOICE): `voice_tier_ceiling` applies the T1 voice cap first, so an elevation earned in the console cannot ride onto the next phone call.
 * **Resolve an ambiguous command narrowly, never broadly** (PRAGYA): an unscoped "pause" asks which process rather than pausing all of them. `commands.ALL_TRIGGERS` is reached only by the kill switch or an owner who literally said "everything". A missing target is a question, not a wildcard.
 * **AUTH's two gates are different gates.** The PolicyGate asks "may this *agent* do this?" and raises HITL cards; `inward_auth.require_tier` asks "did this *human* prove enough to ask?". They share only `CATEGORY_RULES` — do not merge them, and do not let a Pragya command satisfy its own approval (HITL cards are console-only artifacts by construction).
 * **Never elevate inside a verify function** (AUTH): `verify_totp` / `finish_authentication` return a result and the *router* elevates, because a failure must be counted against the lockout counter. A new factor must funnel through `api._fail_step_up` or it silently disables brute-force protection.
@@ -204,7 +221,7 @@ Integration tests **skip cleanly** without `DATABASE_URL`. Docker is available f
 * **Closed by Inc 1:** A6, B1, B2, B3, B5, B6, B8, E3 (+ the earlier v3 doc-pass batch).
 * **Closed by Inc 2:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent registry), **C3** (per-checkpoint HITL SLAs), **B13** (platform-initiated budget class), **C5** (graduated dunning + state-aware suspension), **E1** (idle-cost model), **E2** (free-credit abuse controls), **E4** (fee-formula guard) — all TRUST; **B8**'s retrieval half (RETR). **Increment 2's finding list is fully closed.**
 * **Closed by Inc 3:** **D1** (AUTH built the mechanism; PRAGYA wired `require_tier` into `handle_turn` — closed end-to-end), **C4** (autonomy demotion triggers + daily sweep + anti-rubber-stamp promotion evidence), **C6** (KPI registry with the honest-absence rule), **C8**'s per-stage-script half (stages 1–5 reviewed and shipped).
-* **Deferred:** B7 (realtime voice) → Increment 3 with Pragya.
+* **Closed by Inc 3 / VOICE:** **B7** (realtime voice vs the loop) — the collapsed-loop profile plus context-preserving live transfer.
 * **Still open (later increments):** B10, B11, B12, B14, C2, C4, C6, D2, D3, D4, D5. See [roadmap_gap_register.md](./roadmap_gap_register.md) and each increment charter.
 
 ---

@@ -19,6 +19,7 @@ from src.ai.solo_pack.templates import (
     AGT_068,
     AGT_092,
     GATEWAYS,
+    KAR_01_VOICE,
     KAR_01_VOICE_STUB,
     KAR_02_EMAIL,
     KAR_03_WHATSAPP,
@@ -30,6 +31,7 @@ from src.ai.solo_pack.templates import (
     process_group,
 )
 from src.ai.tenant_schema.hbs_seed import HBS_SPINE
+from src.ai.voice_loop.profile import LIVE_COMPLETION_RULE
 
 
 class TestValidity:
@@ -103,7 +105,7 @@ class TestPackRoster:
         assert validate_template(tpl) == []
 
     def test_roster_is_eighteen(self):
-        # 3 gateways (email + WhatsApp + voice stub) + 6 processes + 9 agents.
+        # 3 gateways (email + WhatsApp + voice) + 6 processes + 9 agents.
         assert len(SOLO_PACK_TEMPLATES) == 18
 
     def test_three_gateways(self):
@@ -265,7 +267,7 @@ class TestGatewayPosture:
             _has_external_binding,
             check_karuna_gate,
         )
-        for gw in (KAR_03_WHATSAPP, KAR_01_VOICE_STUB):
+        for gw in (KAR_03_WHATSAPP, KAR_01_VOICE):
             assert _has_external_binding(gw), gw["name"]
             assert check_karuna_gate(gw)[1] is True, gw["name"]
 
@@ -281,7 +283,30 @@ class TestGatewayPosture:
         tools = {tc["tool_id"] for tc in KAR_03_WHATSAPP["capabilities"]["tools"]}
         assert tools == {"tenant_record_write", "emit_business_signal"}
 
-    def test_voice_stub_is_registered_but_inert(self):
-        assert KAR_01_VOICE_STUB["metadata_extensions"].get("stub") is True
-        assert KAR_01_VOICE_STUB["capabilities"]["tools"] == []  # does no work
-        assert "voice.inbound" in KAR_01_VOICE_STUB["metadata_extensions"]["trigger_patterns"]
+    def test_voice_gateway_is_real_and_carries_the_realtime_profile(self):
+        """Inc-3 VOICE replaced the Inc-2 stub. The template now carries B7's
+        answer so the profile is visible at activation and in the governance
+        preview, not buried in a module."""
+        meta = KAR_01_VOICE["metadata_extensions"]
+        assert meta.get("stub") is not True
+        assert meta["realtime"] is True
+        assert "voice.inbound" in meta["trigger_patterns"]
+
+        # A real gateway does real work.
+        tools = {tc["tool_id"] for tc in KAR_01_VOICE["capabilities"]["tools"]}
+        assert tools == {"tenant_record_write", "emit_business_signal"}
+
+        # The profile travels with the template.
+        assert "policy_gate" in meta["live_stages"]
+        assert "pre_critic" in meta["deferred_stages"]
+        assert meta["tier_ceiling"] == "T1"
+
+    def test_voice_gateway_prompt_states_the_live_completion_limit(self):
+        """The agent's instructions must agree with what live_gate enforces."""
+        prompt = KAR_01_VOICE["identity"]["system_prompt"]
+        assert LIVE_COMPLETION_RULE in prompt
+        # ...and with the identity rule: a number is never proof.
+        assert "never proof" in prompt
+
+    def test_the_old_stub_name_still_resolves(self):
+        assert KAR_01_VOICE_STUB is KAR_01_VOICE

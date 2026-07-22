@@ -103,6 +103,21 @@ async def twilio_incoming_call(
         }
     )
     
+    # SIG cutover (Inc-3 VOICE): a tenant with the Solo Pack / a bundle
+    # activated also announces the call on the governed signal bus, so the
+    # KAR-01 gateway sees it. Subscription-gated (tenants not on SIG are
+    # untouched) and fail-safe — the call proceeds regardless, because a
+    # signal-bus problem must never drop a ringing phone.
+    try:
+        from src.ai.signals.voice_inbound import emit_voice_inbound
+        await emit_voice_inbound(
+            session_manager.db, customer_assignment.company_id,
+            from_number=from_number, to_number=to_number,
+            call_sid=call_sid, provider="twilio", direction="inbound",
+        )
+    except Exception as sig_exc:
+        logger.warning(f"voice.inbound emit failed (call continues): {sig_exc}")
+
     # 3. Fetch agent to determine greeting strategy (Issue 6: Option A for incoming)
     from src.ai.models import HierarchicalEntity
     agent = await session_manager.db.get(HierarchicalEntity, customer_assignment.agent_id)
@@ -261,6 +276,21 @@ async def twilio_status_callback(
                 )
             except Exception as e:
                 logger.warning(f"Failed to update VoiceSession status: {e}")
+
+        # Inc-3 VOICE: queue the stages the realtime profile deferred
+        # (Strategize / Pre-Critic / Post-Critic / Reflect / Decide) to run
+        # over the transcript now the caller has hung up. Fail-safe: the call
+        # already happened and was governed inline, so a queueing failure
+        # costs learning, not correctness.
+        try:
+            from src.ai.voice_loop.deferred import queue_deferred_run
+            await queue_deferred_run(
+                db, company_id=session.company_id, call_sid=call_sid,
+                transcript=list(session.conversation_log or []),
+                entity_id=session.agent_id,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to queue voice deferred run: {e}")
 
     # ── Step 4: Determine call outcome ──────────────────────────────────
     status_lower = (call_status or "").lower()
