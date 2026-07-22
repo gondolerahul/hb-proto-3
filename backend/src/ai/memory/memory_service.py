@@ -215,15 +215,28 @@ class MemoryRouter:
             from src.ai.memory.domain_viewport import resolve_allowed_domains
             from src.ai.memory.hybrid_retrieval import hybrid_search
 
+            from src.ai.memory.reranker import (
+                RERANK_WINDOW, llm_rerank, rerank_allowed, resolve_tier_name,
+            )
+
+            # RETR T4 — Growth+ tenants get an LLM rerank, so fetch a deeper
+            # window for it to work on; everyone else takes the fused top-k
+            # directly and pays for neither the tokens nor the latency.
+            tier = await resolve_tier_name(self.db, company_id)
+            reranking = rerank_allowed(tier)
+
             hits = await hybrid_search(
                 self.db, query,
                 query_vector=query_vector or None,
                 entity_id=entity_id,
-                top_k=top_k,
+                top_k=RERANK_WINDOW if reranking else top_k,
                 # RETR T3 — need-to-know applies to the KB too, not only to the
                 # memory trees. None (no governance passed) is unrestricted.
                 allowed_domains=resolve_allowed_domains(governance),
             )
+            if reranking:
+                hits = await llm_rerank(
+                    self.db, company_id, query, hits, top_k=top_k)
             return [h.as_dict() for h in hits]
 
         except Exception as e:

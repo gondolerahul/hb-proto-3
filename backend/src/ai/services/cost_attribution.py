@@ -43,6 +43,10 @@ class CostAttribution(str, Enum):
     TEST_DRIVER      = "test_driver"
     SANDBOX          = "sandbox"
     MCP              = "mcp"
+    # RETR T4 — the Growth+ retrieval rerank. TENANT-initiated (the tenant
+    # asked the question), so it is deliberately NOT in
+    # PLATFORM_INITIATED_ATTRIBUTIONS below and draws from tenant budget.
+    RERANK           = "rerank"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}
