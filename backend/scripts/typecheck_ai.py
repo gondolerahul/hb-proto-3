@@ -48,6 +48,8 @@ CLEAN_PACKAGES: list[str] = [
     "solo_pack",
     "trust",
     "inward_auth",
+    "pragya",
+    "kpi",
 ]
 
 

@@ -46,6 +46,7 @@ const CostAttributionDashboard = lazy(() => import('@/pages/admin/CostAttributio
 const FeatureFlagsPage = lazy(() => import('@/pages/admin/FeatureFlagsPage'));
 const RiskAndExitPage = lazy(() => import('@/pages/admin/RiskAndExitPage'));
 const LoopOpsPage = lazy(() => import('@/pages/admin/LoopOpsPage'));
+const PragyaConsole = lazy(() => import('@/pages/ai/PragyaConsole'));
 
 // CORTEX Memory Architecture
 const CortexExplorer = lazy(() => import('@/pages/ai/CortexExplorer').then(m => ({ default: m.CortexExplorer })));
@@ -577,6 +578,18 @@ export const AppRouter: React.FC = () => {
                         element={
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
                                 <MainLayout><RiskAndExitPage /></MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Inc-3 PRAGYA: the account-manager console. Every tenant
+                        user reaches it — commands are tiered per-user by AUTH,
+                        not gated by role here. */}
+                    <Route
+                        path="/pragya"
+                        element={
+                            <ProtectedRoute>
+                                <MainLayout><PragyaConsole /></MainLayout>
                             </ProtectedRoute>
                         }
                     />
