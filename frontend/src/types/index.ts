@@ -182,6 +182,12 @@ export interface LogicGate {
         top_p?: number;
         max_tokens?: number;
         reasoning_mode: 'REACT' | 'CHAIN_OF_THOUGHT' | 'REFLECTION' | 'TREE_OF_THOUGHTS';
+        // Phase 5: autonomous mode
+        execution_mode?: string;
+        goal_validation_interval?: number;
+        confidence_threshold?: number;
+        max_replanning_attempts?: number;
+        self_reflection_enabled?: boolean;
     };
     retry_policy: {
         max_retries: number;

@@ -41,7 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     const login = async (email: string, password: string) => {
-        const response = await authService.login({ email, password });
+        await authService.login({ email, password });
         setToken(localStorage.getItem('access_token'));
 
         // Fetch the full user profile (login only returns tokens)
@@ -71,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const register = async (email: string, password: string, fullName: string) => {
         // Register now returns Token response (same as login)
-        const response = await authService.register({
+        await authService.register({
             email,
             password,
             full_name: fullName,

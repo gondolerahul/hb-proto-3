@@ -64,10 +64,9 @@ interface StepResult {
 const StepTimeline: React.FC<{
     steps: StepResult[];
     llmLogs: LLMInteractionLog[];
-    toolLogs: ToolInteractionLog[];
     selectedStep: string | null;
     onSelectStep: (stepName: string | null) => void;
-}> = ({ steps, llmLogs, toolLogs, selectedStep, onSelectStep }) => {
+}> = ({ steps, llmLogs, selectedStep, onSelectStep }) => {
     const getStepIcon = (step: StepResult) => {
         if (step.error) return <XCircle size={16} className="text-error" />;
         if ((step as any).reused) return <SkipForward size={16} className="text-amber-400" />;
@@ -79,12 +78,6 @@ const StepTimeline: React.FC<{
 
     const getStepLLMLogs = (stepName: string) =>
         llmLogs.filter(l => l.step_name === stepName);
-
-    const getStepToolLogs = (stepName: string) =>
-        toolLogs.filter(l => {
-            // Match tool logs by name similarity (tool logs don't have step_name)
-            return false; // We rely on LLM logs' step_name for filtering
-        });
 
     return (
         <div className="step-timeline">
@@ -753,7 +746,6 @@ export const ExecutionDetail: React.FC = () => {
         ? collectChildLLMLogs(run.child_runs)
         : [];
     const llmLogs: LLMInteractionLog[] = [...parentLLMLogs, ...childLLMLogs];
-    const toolLogs: ToolInteractionLog[] = run?.tool_logs || [];
 
     // Get the selected step details
     const selectedStepData = selectedStep
@@ -944,7 +936,6 @@ export const ExecutionDetail: React.FC = () => {
                                     <StepTimeline
                                         steps={steps}
                                         llmLogs={llmLogs}
-                                        toolLogs={toolLogs}
                                         selectedStep={selectedStep}
                                         onSelectStep={setSelectedStep}
                                     />
