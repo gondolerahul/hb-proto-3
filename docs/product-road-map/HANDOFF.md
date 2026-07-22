@@ -27,16 +27,16 @@
 
 The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). This VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`. Nothing is lost — all committed:
 
-* **`master`** — has **PACK + KAR + ONBOARD-backend + all of TRUST** (D6, C3, B13, C5, E1, E2, E4 + hookups) merged, **22 commits ahead of `origin/master`**, not yet pushed. (`inc2/trust` and `inc2/trust-econ` are both merged in; the older note that B13 was pending was stale.)
-* **`inc2/retr`** — the whole **RETR** workstream, **not yet merged**.
+* **`master`** — has **everything** merged: PACK + KAR + ONBOARD-backend + all of TRUST + **RETR** (verified 2026-07-22: `inc2/retr` IS merged; `git branch --no-merged master` is empty). **28+ commits ahead of `origin/master`**, not yet pushed.
 
 To publish, from an environment with GitHub write access:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git checkout master && git merge inc2/retr --no-edit   # RETR → master
 git push origin master
 ```
 Verify with `git log --oneline -25` and `git rev-list --left-right --count origin/master...master`.
+
+> **Toolchain correction (2026-07-22):** earlier sessions recorded "Node/browser toolchain out of scope on this VM" — that is **stale**. Node v20.20.0 + npm 10.8.2 are installed and `frontend/node_modules` is populated, so the **ONBOARD frontend track builds here**. Note `cd frontend && npm run build` failed with ~22 pre-existing TS errors (bitrot in `pages/ai/*` + `useAuth` + `IntegrationsPage`, unrelated to ONBOARD) — fixed as task 0 of the FE track.
 
 ---
 
@@ -98,9 +98,9 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 
 Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD ✅ (backend) → TRUST ✅ → RETR ✅.** **Increment 2's backend is done.**
 
-**Next up: Increment 3 — Pragya v1** ([increment-3/00_charter.md](./increment-3/00_charter.md)). It is a **stub by design** — "deepened just-in-time, a clarifying-questions round with Rahul precedes the full docs". So the next session's first job is **that questions round**, not code. Its three named open questions are all Rahul's to answer: which channel Pragya ships on first (console / phone / WhatsApp), the passkey/FIDO2 choice for step-up (platform-built vs provider), and who reviews the consulting quality of the stage 1–5 scripts. Scope: **AUTH** (inward-channel authentication, T0–T3 command tiers, Pragya-can't-approve-herself) + **PRAGYA v1** (the nine-stage engagement flow over the same APIs the Inc-2 wizard already exposes). Closes C4 and C6. **Voice (KAR-01 real) and B7 fold in here** — deferred from Inc 2 because Pragya needs the same realtime path.
+**Next up (decided with Rahul, 2026-07-22): the ONBOARD frontend + the Increment-3 design docs, in parallel.** The Inc-3 charter's questions round is **done** — all three answers locked (see [increment-3/00_charter.md](./increment-3/00_charter.md) §Decisions): **(1) console-first** — Pragya v1 ships as web-console chat in the shipped React app, voice/WhatsApp adapters follow (voice/B7 still fold into Inc 3); **(2) platform-built WebAuthn** — full passkey/FIDO2 in-house (+ TOTP fallback) for T2 step-up, no auth vendor; **(3) Rahul reviews the stage 1–5 scripts** — review checkpoints built into the Pragya task plan.
 
-Two Inc-2 items remain outside that: the **ONBOARD frontend** (separate FE track, backend contract done) and the **push** in §1.
+Work order: the **ONBOARD FE track** (branch `inc2/onboard-fe`: fix the 22 pre-existing TS errors to restore the build gate → Solo Pack wizard over `/ai/onboarding/*` → admin surfaces over `/ai/signals*` + `/ai/loop/envelope` → approvals-console checkpoint cards) **and** the Inc-3 design docs (`increment-3/{00_overview,01_auth_inward_channel,02_pragya_v1}.md`, Inc-2 doc pattern). Then build Inc 3: **AUTH → PRAGYA v1**. Closes C4 and C6. The **push** in §1 remains the one standing external action.
 
 **Done 2026-07-22** — TRUST completed ([05](./increment-2/05_trust_billing_safety.md) §15–§18): **E4** fee-formula guard, **E2** free-credit abuse controls, **E1** idle-cost model ([05a](./increment-2/05a_idle_cost_model.md)), and both open integration hookups (C5's `days_past_due` driver, B13's admission at the dreaming runner). RETR completed ([06](./increment-2/06_retrieval_upgrade.md) §5–§9): all five tasks, MRR 0.812 → 1.000 over pure cosine on the golden set.
 
