@@ -1,6 +1,6 @@
 """pragya/commands.py — executing an authorised command.
 
-Reached only after ``conversation.handle_turn`` classified the intent and
+Reached only after ``runtime.run_turn`` classified the intent and
 ``require_tier`` allowed it. Every function here therefore re-checks the
 decision it was given rather than trusting the caller: an executor that
 assumes it was called correctly is one refactor away from being callable
@@ -201,7 +201,7 @@ async def execute_command(
     """Run an authorised command.
 
     Re-checks authorisation before acting. The check is not redundant with
-    ``handle_turn``'s: a step-up can lapse between classification and
+    ``run_turn``'s: a step-up can lapse between classification and
     execution, and this is the moment that actually matters.
     """
     decision = require_tier(session, command.tier)

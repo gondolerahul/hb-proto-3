@@ -3,10 +3,10 @@
 Company-scoped over the shipped JWT session, which is the console channel's
 bound identity. The route layer stays deliberately thin: it moves turns in and
 out and reports what the conversation layer decided. Every authorisation
-question is answered in `conversation.handle_turn`, so there is one place a
+question is answered in `runtime.run_turn`, so there is one place a
 reviewer has to read to know what Pragya may do.
 
-The SSE endpoint streams the *same* `handle_turn` result rather than a second
+The SSE endpoint streams the *same* `run_turn` result rather than a second
 code path. Streaming a turn that skipped authorisation because it went through
 a different function is exactly the sort of divergence that makes a security
 review meaningless.
@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.inward_auth.models import ChannelKind
-from src.ai.pragya.conversation import TurnResult, handle_turn
+from src.ai.pragya.runtime import TurnOutcome, TurnRequest, run_turn
 from src.ai.pragya.deployment import (
     integration_readiness,
     operating_report,
@@ -46,7 +46,7 @@ class ChatRequest(BaseModel):
     message: str
 
 
-def _turn_payload(result: TurnResult) -> dict[str, Any]:
+def _turn_payload(result: TurnOutcome) -> dict[str, Any]:
     """The wire shape of a completed turn.
 
     ``needs_step_up`` / ``needs_oob`` are surfaced so the console can open the
@@ -58,12 +58,12 @@ def _turn_payload(result: TurnResult) -> dict[str, Any]:
         "stage_name": STAGE_INFO[result.stage].name,
         "auth_level": result.auth_level,
         "tier": result.tier,
-        "executed": result.executed,
+        "raised_approval": result.raised_approval,
         "needs_step_up": result.needs_step_up,
         "needs_oob": result.needs_oob,
         "command_ref": result.command_ref,
         "command_summary": result.command.summary if result.command else None,
-        "citations": result.citations,
+        "cost_usd": result.cost_usd,
     }
 
 
@@ -149,13 +149,12 @@ async def post_chat(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """One turn of conversation."""
-    result = await handle_turn(
-        db,
+    result = await run_turn(db, TurnRequest(
         company_id=cast(uuid.UUID, current_user.company_id),
         user_id=cast(uuid.UUID, current_user.id),
         text=body.message,
         channel_kind=ChannelKind.CONSOLE,
-    )
+    ))
     await db.commit()
     return _turn_payload(result)
 
@@ -173,13 +172,12 @@ async def post_chat_stream(
     path — a refusal must never be able to arrive mid-sentence because tokens
     were already on the wire before the tier was checked.
     """
-    result = await handle_turn(
-        db,
+    result = await run_turn(db, TurnRequest(
         company_id=cast(uuid.UUID, current_user.company_id),
         user_id=cast(uuid.UUID, current_user.id),
         text=body.message,
         channel_kind=ChannelKind.CONSOLE,
-    )
+    ))
     await db.commit()
 
     async def events() -> AsyncIterator[str]:

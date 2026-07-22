@@ -121,7 +121,9 @@ LLM proposes tool call
 
 Four steps, all cheap except the tool itself. Same gate, same executor, same audit trail as a worker agent.
 
-**Structural containment (T2):** the tool executor should take a `GateDecision` as a **required argument**, so reaching it without a gate verdict is a type error rather than a code-review miss. With two orchestrators, "did we remember to gate?" is a question the type system should answer.
+**Structural containment (T2) — revised during build, 2026-07-22.** The design proposed making `GateDecision` a **required argument** of the shared executor. Investigation found six existing call sites (`step_executor` ×4, `voice`, `resilience`), *all* already gated upstream by `gate_and_maybe_stop` inside the critic pipeline. Threading a parameter through the Solo Pack's revenue path would therefore be a large, risky change defending against a risk that does not exist.
+
+The risk that *does* exist is a second call site appearing inside `ai/pragya/` that skips `acting.run_tool_calls`. T2 is therefore an **import-boundary test** over Pragya's package: exactly one module may reach the executor, none may reimplement `CATEGORY_RULES`, and `acting` must use the platform's gate rather than a local one. Same guarantee where it matters, zero blast radius outside Pragya. Verified to fail on an injected violation, not merely to pass.
 
 ### 5.2 The Meta-Agent — async delegation
 
@@ -198,7 +200,7 @@ The two faces can never be confused at the entry point, which is worth more than
 | # | Task | Acceptance |
 |---|---|---|
 | T1 | The turn loop + the §3 seam, console channel only | a console turn runs end-to-end through the new loop; `usage_logs` written |
-| T2 | **Gate containment** — tool executor requires a `GateDecision` | reaching a categorised tool without a verdict is a type error; test asserts no ungated path |
+| T2 | **Gate containment** — import boundary over `ai/pragya/` (revised; see §5.1) | exactly one module reaches the executor; guard proven to fail on an injected violation |
 | T3 | Artifact extraction + advancement (§4.2) | stages 1/3/4 auto-advance on artifacts; 2/5 require confirmation (goldens) |
 | T4 | Delegation pattern + Meta-Agent dispatch (§5.2) | board runs async; Pragya promises and reports back |
 | T5 | Voice adapter: ASR-LLM-TTS + Pragya's own number | a real call reaches the same turn loop as the console; barge-in works |
@@ -223,7 +225,7 @@ Deterministic, cheap, CI-safe, and derived from assets already reviewed. An LLM-
 
 | Risk | Containment |
 |---|---|
-| **Governance drift** — two loops, two places the gate must be called | T2's structural containment; a test asserting no ungated path to a categorised tool |
+| **Governance drift** — two loops, two places the gate must be called | T2's import boundary: one sanctioned actor module, no local authority matrix, gate imported from `governance.policy_gate` |
 | **Metering gap** — her turns write no `usage_logs` | launch blocker, not a follow-up; parity suite is the canary |
 | **Ongoing duplication** — two loops forever | bounded *only* if the §3 shared list holds; erosion happens one convenience fork at a time |
 | **Latency regression** on voice | measure on real carrier audio early, not localhost |
