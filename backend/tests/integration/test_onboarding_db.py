@@ -68,7 +68,7 @@ async def test_status_before_and_after_activation(onboard_tenant):
     assert after["activated"] is True
     assert after["entity_count"] == 18       # solo_pack-tagged entities (not Sheel)
     assert after["trigger_count"] == 16
-    assert after["console_path"] == "/app/approvals"
+    assert after["console_path"] == "/ai/approvals"
     assert "kar-03-whatsapp-gateway" in after["entities"]
 
 

@@ -29,7 +29,7 @@ __all__ = [
     "list_bundles", "governance_preview", "activate_for_company", "onboarding_status",
 ]
 
-CONSOLE_PATH = "/app/approvals"  # where PolicyGate HITL cards land
+CONSOLE_PATH = "/ai/approvals"  # where PolicyGate HITL cards land (the shipped console route)
 
 
 def _authored_groups(bundle_key: str) -> list[ProcessGroup]:

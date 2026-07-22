@@ -26,12 +26,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
+# Inc-2 ONBOARD: the Solo Pack wizard steps (docs/product-road-map/increment-2/
+# 04_onboard_wizard.md §1). Old keys (integrations/first_agent/phone_setup/billing)
+# may linger in existing companies' completed_steps — they are simply ignored by
+# the remaining-steps computation below.
 ONBOARDING_STEPS = [
     "company_profile",
-    "integrations",
-    "first_agent",
-    "phone_setup",
-    "billing",
+    "channels",
+    "knowledge",
+    "pack",
+    "governance",
+    "go_live",
 ]
 
 

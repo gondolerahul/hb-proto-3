@@ -2,61 +2,60 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { onboardingService, OnboardingStatus } from '@/services/platform.service';
+import {
+    soloPackService,
+    SoloPackBundle,
+    GovernancePreview,
+    SoloPackStatus,
+} from '@/services/soloPack.service';
+import { emailService, EmailConnection } from '@/services/email.service';
 import './OnboardingWizard.css';
 
+/**
+ * The Solo Pack setup wizard (Inc-2 ONBOARD, 04_onboard_wizard.md §1).
+ *
+ * Each step maps onto a stage of Pragya's nine-stage engagement flow — the
+ * same backend contract (`/ai/onboarding/*`) Pragya drives conversationally
+ * in Inc 3. Step keys mirror `auth/onboarding_router.ONBOARDING_STEPS`.
+ */
 const STEPS = [
     {
         key: 'company_profile',
         icon: '🏢',
         title: 'Set Up Your Workspace',
         description: 'Give your workspace a name and brand identity to get started.',
-        fields: ['name', 'industry'],
     },
     {
-        key: 'integrations',
+        key: 'channels',
         icon: '🔗',
-        title: 'Connect Your AI Provider',
-        description: 'Link your preferred AI provider — we\'ll handle the rest.',
-        features: [
-            { icon: '🤖', name: 'Google Gemini / Vertex AI', desc: 'Multi-modal AI capabilities' },
-            { icon: '🧠', name: 'OpenAI GPT', desc: 'Industry-leading language models' },
-            { icon: '📧', name: 'Email Integration', desc: 'Gmail / SMTP for outreach' },
-            { icon: '📱', name: 'WhatsApp Business', desc: 'Messaging automation' },
-        ],
-    },
-    {
-        key: 'first_agent',
-        icon: '⚡',
-        title: 'Create Your First Agent',
-        description: 'Pick from our templates or build a custom AI agent from scratch.',
-        features: [
-            { icon: '📋', name: 'Research Agent', desc: 'Automated deep research & reporting' },
-            { icon: '📞', name: 'Voice Agent', desc: 'AI-powered phone calls & outreach' },
-            { icon: '💬', name: 'Chat Agent', desc: 'Customer support & engagement' },
-            { icon: '✍️', name: 'Custom Agent', desc: 'Build your own from scratch' },
-        ],
-    },
-    {
-        key: 'phone_setup',
-        icon: '📞',
-        title: 'Phone Number Setup',
-        description: 'Claim a phone number for voice calls and SMS — you can skip this for now.',
+        title: 'Connect Your Channels',
+        description: 'Where your AI workforce meets your customers. Connect email now — WhatsApp is optional.',
         skippable: true,
-        features: [
-            { icon: '🇮🇳', name: 'Indian Numbers', desc: 'Tata Teleservices DID numbers' },
-            { icon: '🌍', name: 'International', desc: 'Twilio-powered global numbers' },
-        ],
     },
     {
-        key: 'billing',
-        icon: '💳',
-        title: 'Review Your Credits',
-        description: 'Your workspace has been provisioned with daily credits. Here\'s what you get.',
-        features: [
-            { icon: '🎁', name: 'Free Daily Credits', desc: 'Automatic daily credit top-up included' },
-            { icon: '📊', name: 'Usage Tracking', desc: 'Real-time cost monitoring per agent' },
-            { icon: '🔒', name: 'Budget Controls', desc: 'Set spending limits per execution' },
-        ],
+        key: 'knowledge',
+        icon: '📚',
+        title: 'Upload Knowledge (Optional)',
+        description: 'Your agents work out of the box. Adding documents about your business improves their answers.',
+        skippable: true,
+    },
+    {
+        key: 'pack',
+        icon: '🧰',
+        title: 'Choose Your AI Workforce',
+        description: 'The Solo Pack covers acquisition, care, invoicing, books, compliance and reporting. Or start with a focused bundle.',
+    },
+    {
+        key: 'governance',
+        icon: '🛡️',
+        title: 'Confirm Governance',
+        description: 'Every agent starts at A1 — nothing external happens without your approval.',
+    },
+    {
+        key: 'go_live',
+        icon: '🚀',
+        title: 'You Are Live',
+        description: 'Your AI workforce is active. Approvals land in your console.',
     },
 ];
 
@@ -67,16 +66,28 @@ const OnboardingWizard: React.FC = () => {
     const [status, setStatus] = useState<OnboardingStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    // Form state for company_profile step
+    // Step 1: company profile
     const [companyName, setCompanyName] = useState('');
     const [industry, setIndustry] = useState('');
+
+    // Step 2: channels
+    const [emailConnections, setEmailConnections] = useState<EmailConnection[] | null>(null);
+
+    // Steps 4–5: pack choice + governance preview
+    const [bundles, setBundles] = useState<SoloPackBundle[] | null>(null);
+    const [selectedBundle, setSelectedBundle] = useState<string>('solo_pack');
+    const [preview, setPreview] = useState<GovernancePreview | null>(null);
+    const [activated, setActivated] = useState(false);
+
+    // Step 6: live status
+    const [liveStatus, setLiveStatus] = useState<SoloPackStatus | null>(null);
 
     const loadStatus = useCallback(async () => {
         try {
             const s = await onboardingService.getStatus();
             setStatus(s);
-            // Find the first incomplete step
             const idx = STEPS.findIndex(step => !s.completed_steps.includes(step.key));
             if (idx >= 0) setCurrentStep(idx);
             if (s.status === 'completed') {
@@ -93,29 +104,92 @@ const OnboardingWizard: React.FC = () => {
         loadStatus();
     }, [loadStatus]);
 
-    const handleCompleteStep = async () => {
+    // Lazy-load each step's data when it becomes current.
+    const stepKey = STEPS[currentStep]?.key;
+    useEffect(() => {
+        setError(null);
+        if (stepKey === 'channels' && user?.company_id) {
+            emailService.getConnections(user.company_id)
+                .then(setEmailConnections)
+                .catch(() => setEmailConnections([]));
+        }
+        if (stepKey === 'pack' && bundles === null) {
+            soloPackService.listBundles()
+                .then(bs => {
+                    setBundles(bs);
+                    const def = bs.find(b => b.is_default);
+                    if (def) setSelectedBundle(def.key);
+                })
+                .catch(() => setError('Could not load the bundle catalog. Is the backend reachable?'));
+        }
+        if (stepKey === 'governance') {
+            setPreview(null);
+            soloPackService.governancePreview(selectedBundle)
+                .then(setPreview)
+                .catch(() => setError('Could not load the governance preview.'));
+        }
+        if (stepKey === 'go_live') {
+            soloPackService.getStatus()
+                .then(s => {
+                    setLiveStatus(s);
+                    setActivated(s.activated);
+                })
+                .catch(() => setError('Could not load activation status.'));
+        }
+    }, [stepKey, user?.company_id, selectedBundle, bundles]);
+
+    const completeAndAdvance = async (stepData?: Record<string, any>) => {
         const step = STEPS[currentStep];
         setSaving(true);
+        setError(null);
         try {
-            let stepData: Record<string, any> | undefined;
-            if (step.key === 'company_profile') {
-                stepData = { name: companyName || user?.full_name + "'s Workspace", industry };
-            }
             const updated = await onboardingService.completeStep(step.key, stepData);
             setStatus(updated);
-
             if (currentStep < STEPS.length - 1) {
                 setCurrentStep(currentStep + 1);
             } else {
-                // Finalize
                 await onboardingService.finalizeOnboarding();
-                navigate('/dashboard', { replace: true });
+                navigate(liveStatus?.console_path || '/ai/approvals', { replace: true });
             }
         } catch (err) {
             console.error('Step completion failed:', err);
+            setError('Saving this step failed — please retry.');
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleNext = async () => {
+        const step = STEPS[currentStep];
+        if (step.key === 'company_profile') {
+            await completeAndAdvance({
+                name: companyName || user?.full_name + "'s Workspace",
+                industry,
+            });
+            return;
+        }
+        if (step.key === 'governance') {
+            // Confirm & activate: seed the chosen bundle, then advance.
+            setSaving(true);
+            setError(null);
+            try {
+                await soloPackService.activate(selectedBundle);
+                setActivated(true);
+            } catch (err) {
+                console.error('Activation failed:', err);
+                setError('Activation failed — please retry.');
+                setSaving(false);
+                return;
+            }
+            setSaving(false);
+            await completeAndAdvance({ bundle: selectedBundle });
+            return;
+        }
+        if (step.key === 'pack') {
+            await completeAndAdvance({ bundle: selectedBundle });
+            return;
+        }
+        await completeAndAdvance();
     };
 
     const handleSkipOnboarding = async () => {
@@ -138,7 +212,6 @@ const OnboardingWizard: React.FC = () => {
     }
 
     const step = STEPS[currentStep];
-    const isCompleted = status?.completed_steps.includes(step.key);
 
     return (
         <div className="onboarding-wizard">
@@ -165,7 +238,8 @@ const OnboardingWizard: React.FC = () => {
                     </div>
 
                     <div className="step-content">
-                        {/* Company Profile — form inputs */}
+                        {error && <div className="step-error">{error}</div>}
+
                         {step.key === 'company_profile' && (
                             <>
                                 <div className="form-group">
@@ -200,19 +274,152 @@ const OnboardingWizard: React.FC = () => {
                             </>
                         )}
 
-                        {/* Feature lists for other steps */}
-                        {step.features && (
+                        {step.key === 'channels' && (
                             <div className="feature-list">
-                                {step.features.map((f, i) => (
-                                    <div key={i} className={`feature-item ${isCompleted ? 'completed' : ''}`}>
-                                        <div className="feature-icon">{f.icon}</div>
-                                        <div className="feature-text">
-                                            <strong>{f.name}</strong>
-                                            <span>{f.desc}</span>
-                                        </div>
-                                        {isCompleted && <span className="feature-check">✓</span>}
+                                <div className={`feature-item ${emailConnections?.length ? 'completed' : ''}`}>
+                                    <div className="feature-icon">📧</div>
+                                    <div className="feature-text">
+                                        <strong>Email (IMAP/SMTP)</strong>
+                                        <span>
+                                            {emailConnections === null ? 'Checking…'
+                                                : emailConnections.length > 0
+                                                    ? `Connected: ${emailConnections.map(c => c.email_address).join(', ')}`
+                                                    : 'Not connected yet — your acquisition agent answers inbound email.'}
+                                        </span>
                                     </div>
+                                    {emailConnections?.length
+                                        ? <span className="feature-check">✓</span>
+                                        : <button className="btn-step secondary" onClick={() => navigate('/integrations')}>Connect</button>}
+                                </div>
+                                <div className="feature-item">
+                                    <div className="feature-icon">📱</div>
+                                    <div className="feature-text">
+                                        <strong>WhatsApp Business</strong>
+                                        <span>Optional — the WhatsApp gateway routes inbound messages to your workforce.</span>
+                                    </div>
+                                    <button className="btn-step secondary" onClick={() => navigate('/integrations')}>Set up</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {step.key === 'knowledge' && (
+                            <div className="feature-list">
+                                <div className="feature-item">
+                                    <div className="feature-icon">📄</div>
+                                    <div className="feature-text">
+                                        <strong>Business documents</strong>
+                                        <span>Price lists, service descriptions, FAQs — anything your agents should know.</span>
+                                    </div>
+                                    <button className="btn-step secondary" onClick={() => navigate('/knowledge')}>Upload</button>
+                                </div>
+                                <div className="feature-item">
+                                    <div className="feature-icon">✨</div>
+                                    <div className="feature-text">
+                                        <strong>Zero documents required</strong>
+                                        <span>Your workforce runs on curated templates from day one; knowledge only sharpens it.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {step.key === 'pack' && (
+                            <div className="bundle-grid">
+                                {bundles === null && <div className="step-hint">Loading bundles…</div>}
+                                {bundles?.map(b => (
+                                    <button
+                                        key={b.key}
+                                        className={`bundle-card ${selectedBundle === b.key ? 'selected' : ''} ${!b.available_now ? 'unavailable' : ''}`}
+                                        disabled={!b.available_now}
+                                        onClick={() => setSelectedBundle(b.key)}
+                                    >
+                                        <div className="bundle-name">
+                                            {b.display_name}
+                                            {b.is_default && <span className="bundle-badge">Default</span>}
+                                        </div>
+                                        <div className="bundle-meta">
+                                            {b.available_now
+                                                ? `${b.agent_count} agents · ${b.process_codes.join(', ')}`
+                                                : `Coming soon · ${(b.all_processes || []).join(', ')}`}
+                                        </div>
+                                    </button>
                                 ))}
+                            </div>
+                        )}
+
+                        {step.key === 'governance' && (
+                            <div className="gov-preview">
+                                {preview === null && !error && <div className="step-hint">Loading governance preview…</div>}
+                                {preview && (
+                                    <>
+                                        <div className="gov-note">{preview.autonomy_note}</div>
+                                        <div className="gov-section-title">Gateways</div>
+                                        <ul className="gov-list">
+                                            {preview.gateways.map(g => (
+                                                <li key={g.name}>
+                                                    <span className="gov-entity">{g.display_name || g.name}</span>
+                                                    <span className="gov-tags">
+                                                        {g.autonomy_level && <em>{g.autonomy_level}</em>}
+                                                        {g.code && <code>{g.code}</code>}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                        {preview.processes.map(p => (
+                                            <React.Fragment key={p.process.name}>
+                                                <div className="gov-section-title">
+                                                    {p.process.display_name || p.process.name}
+                                                    {p.process.code && <code>{p.process.code}</code>}
+                                                </div>
+                                                <ul className="gov-list">
+                                                    {p.agents.map(a => (
+                                                        <li key={a.name}>
+                                                            <span className="gov-entity">{a.display_name || a.name}</span>
+                                                            <span className="gov-tags">
+                                                                {a.autonomy_level && <em>{a.autonomy_level}</em>}
+                                                                {a.sod_class !== 'none' && <span className="gov-sod">{a.sod_class}</span>}
+                                                                {a.checkpoint_keys.length > 0 &&
+                                                                    <span className="gov-cp">{a.checkpoint_keys.length} checkpoint{a.checkpoint_keys.length > 1 ? 's' : ''}</span>}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </React.Fragment>
+                                        ))}
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {step.key === 'go_live' && (
+                            <div className="feature-list">
+                                <div className={`feature-item ${activated ? 'completed' : ''}`}>
+                                    <div className="feature-icon">🤖</div>
+                                    <div className="feature-text">
+                                        <strong>{liveStatus ? `${liveStatus.entity_count} entities active` : 'Checking…'}</strong>
+                                        <span>{liveStatus?.entities.slice(0, 6).join(', ')}{liveStatus && liveStatus.entities.length > 6 ? '…' : ''}</span>
+                                    </div>
+                                    {activated && <span className="feature-check">✓</span>}
+                                </div>
+                                <div className="feature-item">
+                                    <div className="feature-icon">⚡</div>
+                                    <div className="feature-text">
+                                        <strong>{liveStatus ? `${liveStatus.trigger_count} triggers armed` : '…'}</strong>
+                                        <span>Inbound email and messages now route to your workforce.</span>
+                                    </div>
+                                </div>
+                                <div className="feature-item">
+                                    <div className="feature-icon">🛎️</div>
+                                    <div className="feature-text">
+                                        <strong>Your approvals console</strong>
+                                        <span>Every external action raises a card there until you promote an agent.</span>
+                                    </div>
+                                    <button
+                                        className="btn-step secondary"
+                                        onClick={() => navigate(liveStatus?.console_path || '/ai/approvals')}
+                                    >
+                                        Open console
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -234,7 +441,7 @@ const OnboardingWizard: React.FC = () => {
                             {(step as any).skippable && (
                                 <button
                                     className="btn-step secondary"
-                                    onClick={handleCompleteStep}
+                                    onClick={() => completeAndAdvance()}
                                 >
                                     Skip
                                 </button>
@@ -242,10 +449,11 @@ const OnboardingWizard: React.FC = () => {
                             <button
                                 id="onboarding-next-btn"
                                 className="btn-step primary"
-                                onClick={handleCompleteStep}
-                                disabled={saving}
+                                onClick={handleNext}
+                                disabled={saving || (step.key === 'governance' && !preview && !error)}
                             >
                                 {saving ? 'Saving…' :
+                                    step.key === 'governance' ? (activated ? 'Re-confirm →' : 'Confirm & Activate →') :
                                     currentStep === STEPS.length - 1 ? 'Get Started →' : 'Continue →'}
                             </button>
                         </div>
