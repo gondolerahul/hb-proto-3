@@ -10,6 +10,7 @@ Where:
   spf = sales partner fee %
   d   = discount %
 """
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date, datetime
 from typing import Optional
@@ -18,7 +19,14 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
+from src.ai.trust.fee_guard import (
+    clamp_total_billing,
+    inspect_fee_result,
+    report_fee_misconfiguration,
+)
 from src.billing.billing_models import BillingConfig, BillingEvent
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_tb(
@@ -32,7 +40,13 @@ def calculate_tb(
     Calculate Total Billing using the formula:
     TB = (c*mf) + (c*mf*pf) + (c*mf*spf) - (c*mf*d)
 
-    Returns a dict with all intermediate values and the final TB.
+    Term ordering is deliberate (E4): the discount is taken on the multiplied
+    cost and subtracted LAST — it does not reduce the platform fee or the sales
+    partner fee. See src/ai/trust/fee_guard.py for the rationale.
+
+    Returns a dict with all intermediate values and the final TB. TB is NOT
+    clamped here — the caller inspects it via fee_guard.inspect_fee_result so a
+    misconfiguration alerts instead of silently pricing at zero.
     """
     multiplied = c * mf
     platform_fee = multiplied * pf
@@ -55,6 +69,11 @@ def compute_billed_amount(base_cost: Decimal, config: Optional["BillingConfig"])
 
     Falls back to the identity formula (no fees/discounts) when the company
     has no active config, matching the per-call credit deduction behavior.
+
+    A negative result is a fee misconfiguration (E4): it is clamped to zero —
+    a config bug must never credit a customer — and logged. The durable alert
+    (the ``billing.fee_misconfigured`` signal) is raised on the recording path,
+    ``BillingService.record_billing_event``, which has a session to emit on.
     """
     if config is None:
         mf, pf, spf, d = Decimal("1"), Decimal("0"), Decimal("0"), Decimal("0")
@@ -63,7 +82,14 @@ def compute_billed_amount(base_cost: Decimal, config: Optional["BillingConfig"])
         pf = Decimal(str(config.platform_fee_pct))
         spf = Decimal(str(config.sales_partner_fee_pct))
         d = Decimal(str(config.discount_pct))
-    return calculate_tb(Decimal(str(base_cost)), mf, pf, spf, d)["total_billing"]
+    tb = calculate_tb(Decimal(str(base_cost)), mf, pf, spf, d)
+    finding = inspect_fee_result(tb, mf=mf, pf=pf, spf=spf, d=d)
+    if finding is not None:
+        logger.error(
+            "E4 fee misconfiguration in compute_billed_amount: %s (clamped to 0)",
+            finding.reason,
+        )
+    return clamp_total_billing(tb["total_billing"])
 
 
 class BillingService:
@@ -133,6 +159,16 @@ class BillingService:
 
         today = date.today()
         period = date(today.year, today.month, 1)
+
+        # E4 — a negative TB is a fee misconfiguration, never a price. Clamp it
+        # (never credit a customer for a config bug) but alert loudly, deduped
+        # per company per billing period.
+        finding = inspect_fee_result(tb, mf=mf, pf=pf, spf=spf, d=d)
+        if finding is not None:
+            tb = {**tb, "total_billing": clamp_total_billing(tb["total_billing"])}
+            await report_fee_misconfiguration(
+                self.db, company_id, finding, period=period.isoformat()
+            )
 
         # Upsert: look for existing event this month with same grouping
         stmt = select(BillingEvent).where(
