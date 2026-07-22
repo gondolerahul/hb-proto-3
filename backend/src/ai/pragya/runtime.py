@@ -36,18 +36,32 @@ from src.ai.inward_auth.tiers import Tier
 from src.ai.llm.router import LLMRouter
 from src.ai.loop.wallet_holds import available_for_spend
 from src.ai.pragya.acting import ActOutcome, ProposedCall, ToolTurnResult, run_tool_calls
+from src.ai.pragya.advancement import (
+    AUTO_ADVANCE_STAGES,
+    advancement_prompt,
+    evaluate_eligibility,
+)
+from src.ai.pragya.artifacts import (
+    ARTIFACT_TOOL_NAME,
+    artifact_schema_for,
+    extraction_prompt,
+    parse_extraction,
+)
 from src.ai.pragya.conversation import (
     UNBOUND_REFUSAL,
     refusal_copy,
     stage_system_prompt,
 )
 from src.ai.pragya.engagement import (
+    advance,
     current_stage,
     get_or_create_engagement,
     recent_turns,
+    record_artifacts,
     record_turn,
 )
 from src.ai.pragya.intents import INTENT_SCHEMA, ExtractedCommand, classify_turn
+from src.ai.pragya.scripts import script_for_stage
 from src.ai.pragya.stages import Stage
 from src.ai.schemas.governance import AutonomyLevel, Governance
 from src.ai.services.cost_attribution import CostAttribution
@@ -104,6 +118,12 @@ class TurnOutcome:
     #: True when a tool raised a HITL card this turn.
     raised_approval: bool = False
     cost_usd: float = 0.0
+    #: Artifact keys this turn established.
+    artifacts_written: list[str] = field(default_factory=list)
+    #: Set when the turn moved the engagement on.
+    advanced_to: Stage | None = None
+    #: Set when the stage is complete but waiting on the owner to say so.
+    awaiting_confirmation: bool = False
 
 
 #: Pragya's own governance. She is a conversational surface, not a worker
@@ -176,6 +196,45 @@ async def _extract_command(
     except Exception as exc:  # noqa: BLE001
         logger.warning("pragya intent extraction failed: %s", exc)
     return None
+
+
+async def _extract_artifacts(
+    db: AsyncSession, router: LLMRouter, engagement: Any, stage: Stage,
+    turns: list[Any],
+) -> list[str]:
+    """Read the conversation for what this stage has established.
+
+    A second, cheap model call *off* the reply path — the owner has already
+    been answered by the time this runs, so its latency is invisible and its
+    failure costs state, not a response.
+    """
+    script = script_for_stage(int(stage))
+    schema = artifact_schema_for(stage)
+    if script is None or schema is None:
+        return []
+
+    transcript = "\n".join(f"{t.role}: {t.content}" for t in turns[-12:])
+    try:
+        response = await router.call_llm(
+            task_type="text_generation",
+            system_prompt=extraction_prompt(script),
+            user_prompt=f"=== CONVERSATION ===\n{transcript}\n=== END ===",
+            tools=[schema],
+            temperature=0.0,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("pragya artifact extraction failed at stage %s: %s",
+                       int(stage), exc)
+        return []
+
+    for call in response.function_calls:
+        if call.get("name") != ARTIFACT_TOOL_NAME:
+            continue
+        extracted = parse_extraction(stage, dict(call.get("args") or {}))
+        if extracted:
+            await record_artifacts(db, engagement, extracted)
+            return sorted(extracted)
+    return []
 
 
 async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
@@ -285,8 +344,33 @@ async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
         content=reply, intent_kind=command.kind, tier=command.tier.name,
         outcome="raised" if raised else "answered")
 
+    # 6. Read the conversation for what this stage established, then
+    # 7. move on if it is done. Both run after the reply is fixed, so neither
+    # can delay the owner's answer or change what she was told.
+    written = await _extract_artifacts(
+        db, router, engagement, stage,
+        await recent_turns(db, request.company_id, limit=20))
+
+    advanced_to: Stage | None = None
+    awaiting = False
+    eligibility = evaluate_eligibility(stage, engagement.artifacts)
+    if eligibility.eligible:
+        if stage in AUTO_ADVANCE_STAGES:
+            # Gathering stages advance on their own: nothing was agreed, so
+            # there is nothing to ask the owner to agree to.
+            await advance(db, engagement,
+                          reason=f"stage {int(stage)} artifacts complete")
+            advanced_to = current_stage(engagement)
+        elif eligibility.needs_confirmation:
+            # The owner's decision *is* this stage's deliverable, so Pragya
+            # asks rather than announces — see advancement.CONFIRM_STAGES.
+            awaiting = True
+            reply = f"{reply}\n\n{advancement_prompt(stage)}".strip()
+
     return TurnOutcome(
         reply=reply, stage=stage, auth_level=decision.current_level,
         tier=command.tier.name, command=command, decision=decision,
         tool_results=tool_results, command_ref=command_ref,
-        raised_approval=bool(raised), cost_usd=cost)
+        raised_approval=bool(raised), cost_usd=cost,
+        artifacts_written=written, advanced_to=advanced_to,
+        awaiting_confirmation=awaiting)

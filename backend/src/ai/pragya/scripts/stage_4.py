@@ -126,6 +126,7 @@ STAGE_4 = StageScript(
             ),
         ),
     ),
+    primary_artifact="analysis.verdicts",
     artifacts=(
         "analysis.verdicts",        # per assumption: verdict + citation
         "analysis.corrections",     # what changed, and what changed it

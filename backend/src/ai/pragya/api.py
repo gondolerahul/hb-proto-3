@@ -17,7 +17,7 @@ import json
 import uuid
 from typing import Any, AsyncIterator, cast
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,10 @@ from src.ai.pragya.deployment import (
     operating_report,
     propose_blueprint,
 )
+from src.ai.pragya.advancement import evaluate_eligibility, needs_owner_confirmation
 from src.ai.pragya.engagement import (
+    advance,
+    current_stage,
     engagement_summary,
     get_or_create_engagement,
     recent_turns,
@@ -87,6 +90,46 @@ async def get_engagement(
         for stage, info in STAGE_INFO.items()
     ]
     return summary
+
+
+@router.post("/advance")
+async def post_advance(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """The owner confirming a stage is done — stages 2 and 5 only.
+
+    An explicit action, deliberately not inferred from the conversation.
+    These two stages exist because the owner's *agreement* is the deliverable
+    (which assumptions were struck; which priority was chosen), and reading
+    agreement out of "yeah, that sounds about right" is precisely the failure
+    they guard against.
+    """
+    engagement = await get_or_create_engagement(
+        db, cast(uuid.UUID, current_user.company_id))
+    stage = current_stage(engagement)
+
+    if not needs_owner_confirmation(stage):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{STAGE_INFO[stage].name} does not wait on confirmation — "
+                   f"it advances once its artifacts are complete")
+
+    eligibility = evaluate_eligibility(stage, engagement.artifacts)
+    if not eligibility.eligible:
+        # Confirming an unfinished stage would carry a half-formed hypothesis
+        # into the configuration that stage 6 builds from.
+        raise HTTPException(status_code=409, detail=eligibility.reason)
+
+    await advance(db, engagement, reason="owner confirmed the stage")
+    await db.commit()
+
+    moved = current_stage(engagement)
+    return {
+        "ok": True,
+        "stage": int(moved),
+        "stage_name": STAGE_INFO[moved].name,
+    }
 
 
 @router.get("/history")

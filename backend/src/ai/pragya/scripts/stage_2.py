@@ -121,6 +121,7 @@ STAGE_2 = StageScript(
             ),
         ),
     ),
+    primary_artifact="assumptions.list",
     artifacts=(
         "assumptions.list",           # numbered; each with evidence + confidence
         "assumptions.load_bearing",   # the subset that changes the build

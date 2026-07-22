@@ -161,6 +161,7 @@ STAGE_5 = StageScript(
             skip_if="Already covered by the stage-3 sensitivity boundary.",
         ),
     ),
+    primary_artifact="solution.decision",
     artifacts=(
         "solution.priority",         # the owner's stated priority, verbatim
         "solution.options",          # what was offered, with trade-offs

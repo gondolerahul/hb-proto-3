@@ -86,6 +86,16 @@ class StageScript:
     questions: tuple[Question, ...] = ()
     #: Keys written into ``pragya_engagements.artifacts`` by this stage.
     artifacts: tuple[str, ...] = ()
+    #: The stage's headline output — the one artifact that must carry content
+    #: before the stage can be considered done.
+    #:
+    #: Needed because several artifacts are legitimately *empty*:
+    #: ``assumptions.struck`` is empty when the owner struck nothing,
+    #: ``ingestion.declined`` when they shared everything. Requiring every
+    #: artifact to be non-empty would stall an engagement that was going
+    #: perfectly well, so presence is the general bar and this one key is the
+    #: substantive one.
+    primary_artifact: str | None = None
     #: Conditions that must all hold before advancing.
     exit_criteria: tuple[str, ...] = ()
     #: Stage-specific prohibitions, on top of GLOBAL_GUARDRAILS.

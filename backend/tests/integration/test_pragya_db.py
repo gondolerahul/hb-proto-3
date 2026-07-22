@@ -334,3 +334,79 @@ async def test_demotion_sweep_is_quiet_on_a_healthy_tenant(pragya_tenant):
 
     assert verdicts, "sweep evaluated no agents at all"
     assert not any(v.demote for v in verdicts)
+
+
+# --- advancement on a live engagement (Inc-4 PRAGYA-RT T3) -------------------
+
+async def test_a_gathering_stage_advances_once_its_artifacts_are_complete(pragya_tenant):
+    """Stage 1 gathers; nothing was agreed, so nothing needs confirming."""
+    from src.ai.pragya.advancement import evaluate_eligibility
+    from src.ai.pragya.scripts import script_for_stage
+    from src.common.database import AsyncSessionLocal
+
+    script = script_for_stage(1)
+    cid, _ = pragya_tenant
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        assert not evaluate_eligibility(Stage.BASELINE, engagement.artifacts).eligible
+
+        await record_artifacts(db, engagement, {
+            k: (["x"] if k != script.primary_artifact else "a services business")
+            for k in script.artifacts})
+        await db.commit()
+
+        result = evaluate_eligibility(Stage.BASELINE, engagement.artifacts)
+        assert result.eligible and not result.needs_confirmation
+
+        await advance(db, engagement, reason="artifacts complete")
+        await db.commit()
+        assert current_stage(engagement) is Stage.ASSUMPTIONS
+
+
+async def test_an_agreement_stage_waits_for_the_owner(pragya_tenant):
+    """Stage 2's deliverable is the owner's review, so complete artifacts make
+    it eligible but must not move it."""
+    from src.ai.pragya.advancement import evaluate_eligibility, needs_owner_confirmation
+    from src.ai.pragya.scripts import script_for_stage
+    from src.common.database import AsyncSessionLocal
+
+    script = script_for_stage(2)
+    cid, _ = pragya_tenant
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        await set_stage(db, engagement, Stage.ASSUMPTIONS, reason="test")
+        await record_artifacts(db, engagement, {
+            k: (["a1", "a2"] if k == script.primary_artifact else [])
+            for k in script.artifacts})
+        await db.commit()
+
+        result = evaluate_eligibility(Stage.ASSUMPTIONS, engagement.artifacts)
+        assert result.eligible
+        assert result.needs_confirmation
+        assert needs_owner_confirmation(Stage.ASSUMPTIONS)
+        # Eligible is not advanced — the engagement has not moved.
+        assert current_stage(engagement) is Stage.ASSUMPTIONS
+
+
+async def test_artifacts_from_an_earlier_stage_survive_re_extraction(pragya_tenant):
+    """Extraction is additive: a re-entered stage refines, never erases."""
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        await record_artifacts(db, engagement, {
+            "baseline.research_summary": "first pass",
+            "baseline.gaps": ["headcount"],
+        })
+        await record_artifacts(db, engagement, {
+            "baseline.research_summary": "corrected pass",
+        })
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        assert engagement.artifacts["baseline.research_summary"] == "corrected pass"
+        assert engagement.artifacts["baseline.gaps"] == ["headcount"]
