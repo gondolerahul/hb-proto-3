@@ -1,6 +1,6 @@
 # Increment 4 / PRAGYA-RT — Pragya as a First-Class Runtime
 
-> **Status:** ⬜ Design (2026-07-22) — seam locked, ready to build · **Branch:** `inc4/pragya-rt`
+> **Status:** 🟡 PARTIAL (2026-07-22) — T1–T4, T6, T7 built; **T5 (voice adapter) not started** · **Branch:** `inc4/pragya-rt` · build notes in §12
 > **Design authority:** Technical §12.1 (the eight-stage loop this forks *from*), §20.3 (the PolicyGate it must not fork), §11.3 (tiers); Functional §4.2–§4.4 (Pragya), §8.1 (voice stack).
 > **Depends on:** Inc-3 AUTH (`require_tier`), Inc-3 PRAGYA (stage machine, scripts, engagement state), Inc-2 ONBOARD (the wizard step APIs she drives).
 
@@ -199,14 +199,14 @@ The two faces can never be confused at the entry point, which is worth more than
 
 | # | Task | Acceptance |
 |---|---|---|
-| T1 | The turn loop + the §3 seam, console channel only | a console turn runs end-to-end through the new loop; `usage_logs` written |
-| T2 | **Gate containment** — import boundary over `ai/pragya/` (revised; see §5.1) | exactly one module reaches the executor; guard proven to fail on an injected violation |
-| T3 | Artifact extraction + advancement (§4.2) | stages 1/3/4 auto-advance on artifacts; 2/5 require confirmation (goldens) |
-| T4 | Delegation pattern + Meta-Agent dispatch (§5.2) | board runs async; Pragya promises and reports back |
-| T5 | Voice adapter: ASR-LLM-TTS + Pragya's own number | a real call reaches the same turn loop as the console; barge-in works |
-| T6 | Stage-completion reflection (§4.3) + drain-or-reap `voice_deferred_runs` | reflections written; no unbounded table |
-| T7 | Behavioural script goldens over recorded turns | script guardrails asserted deterministically; no prose pinning |
-| T8 | Integration + all gates green; build notes; maturity flips | parity/eval unchanged |
+| T1 | ✅ The turn loop + the §3 seam, console channel only | a console turn runs end-to-end through the new loop; `usage_logs` written |
+| T2 | ✅ **Gate containment** — import boundary over `ai/pragya/` (revised; see §5.1) | exactly one module reaches the executor; guard proven to fail on an injected violation |
+| T3 | ✅ Artifact extraction + advancement (§4.2) | stages 1/3/4 auto-advance on artifacts; 2/5 require confirmation (goldens) |
+| T4 | ✅ Delegation pattern + Meta-Agent dispatch (§5.2) | board runs async; Pragya promises and reports back |
+| T5 | ⬜ Voice adapter: ASR-LLM-TTS + Pragya's own number | a real call reaches the same turn loop as the console; barge-in works |
+| T6 | ✅ Stage-completion reflection (§4.3) + drain-or-reap `voice_deferred_runs` | reflections written; no unbounded table |
+| T7 | ✅ Behavioural script goldens over recorded turns | script guardrails asserted deterministically; no prose pinning |
+| T8 | 🟡 Integration + all gates green; build notes; maturity flips | parity/eval unchanged |
 
 ## 9. Testing the goldens without pinning prose (T7)
 
@@ -238,3 +238,44 @@ Deterministic, cheap, CI-safe, and derived from assets already reviewed. An LLM-
 3. **Pragya's voice is ASR-LLM-TTS.** Session caps and gateable turn boundaries.
 4. **KAR-01 stays realtime.** Latency edge is worth it on the outward face; two engines coexist by design.
 5. **Pragya gets her own phone number** — the number is the routing discriminator between the two faces.
+
+---
+
+## 12. Build Notes (2026-07-22) — delta log
+
+Six of eight tasks landed on `inc4/pragya-rt`. **T5 (the ASR-LLM-TTS voice adapter) is not started** — see §12.4. Gates: **1445 unit** (+81 over Inc-3), 16 parity/eval, **176 integration**, mypy `--strict` over **227** files, layout lint exit 0, `prag002` up/down/up clean.
+
+### 12.1 What shipped
+
+| Task | Module | Note |
+|---|---|---|
+| T1 | `pragya/runtime.py`, `acting.py` | the loop; one model call on the latency path |
+| T2 | `tests/unit/test_pragya_gate_containment.py` | import boundary (revised — §5.1) |
+| T3 | `pragya/artifacts.py`, `advancement.py` | extraction from the scripts; eligibility ≠ advancement |
+| T4 | `pragya/delegation.py`, migration `prag002` | dispatch → promise → report |
+| T6 | `pragya/reflection.py`, `voice_loop/deferred_runner.py`, `voice_loop/crons.py` | stage reflection; the Inc-3 queue drained and reaped |
+| T7 | `tests/eval/pragya_{behaviour,corpus}.py` | behavioural goldens with negative fixtures |
+
+### 12.2 Design deltas (decided during build)
+
+1. **T2 became an import boundary, not a type signature.** Recorded in §5.1. The short version: all six existing executor call sites are already gated upstream by `gate_and_maybe_stop`, so threading a required argument through the Solo Pack's revenue path defended against a risk that was not there. The real risk — a second call site inside `ai/pragya/` — is now a build failure, and the guard was **verified to fail on an injected violation** rather than merely to pass.
+2. **`conversation.handle_turn` was deleted, not kept.** Two turn loops is the duplication the seam exists to prevent. `conversation.py` retains only the refusal copy and stage-prompt assembly; `api.py` drives `run_turn`.
+3. **A second content bar was needed for artifacts.** `_has_content` (secondary) accepts an empty list — "which assumptions did the owner strike? none" is a complete answer. `_has_substance` (primary) does not — "my assumptions about this business: none" is a stage that produced nothing. Found by fixing a test of mine that had gone vacuous; the asymmetry is now explicit in both directions.
+4. **The Inc-3 deferred set was wrong, and that is why its queue was undrainable.** Strategize and Decide have no post-hoc meaning at all, so they are now a third disposition, `SKIPPED`. Pre-Critic replay stays deferred but is `calibration_only` — it feeds `critic_calibration_job` and gates nothing. A post-call run owes **Post-Critic + Reflect**. The queue could not be drained because it was specified to run stages that cannot run.
+5. **Reflection moved from per-call to per-stage.** The task loop's `Reflector` takes an `AgentState` and an `Observation` — task-step shapes. A call is also the wrong granularity: it is an arbitrary slice of a relationship, and two calls may complete one stage.
+6. **`available_for_spend` was extracted into the shared wallet module**, not copied into Pragya's. `place_hold` needs a `run_id` and a conversational turn has none, so the arithmetic was exposed rather than duplicated — which is exactly what §3 means by "the change lands in the shared component".
+7. **Negative fixtures are mandatory for the goldens.** Every check has a transcript written to violate it, the mapping is asserted total, and each fixture must break *only* its own check. A checker never observed to fail is a function that returns `True`.
+
+### 12.3 Seam compliance
+
+Every 🔒 row held. Pragya calls the shared PolicyGate, `inward_auth`, tool executor, billing, CORTEX, signal bus and Meta-Agent; she wraps or shadows none of them. The Meta-Agent dispatch creates the *same run shape the signal dispatcher creates*, so starting the board from a conversation is indistinguishable from starting it from a signal.
+
+Metering shipped with T1 rather than as a follow-up: every turn writes `usage_logs` under `PRAGYA_TURN`, tenant-initiated, and admission is checked before the model call.
+
+### 12.4 What is NOT built
+
+* **T5 — the ASR-LLM-TTS voice adapter and Pragya's own number. Not started.** The design (§6) stands; no code exists. It needs provider selection (streaming ASR with endpointing, streaming TTS, barge-in) and credentials before it is more than a mocked seam.
+* **Stage-1 research has a mechanism but no executor.** `DelegationKind.RESEARCH` dispatches, promises and reports, but nothing calls `web_search`/`scraper_tool`, so a research delegation would sit `PROMISED` indefinitely. Same shape as the gap T6 just closed for voice: queue built, executor pending.
+* **Pragya proposes no tools yet.** `runtime._tool_schemas()` returns `[]`. The act path is built, gated and tested; nothing feeds it.
+* **Her governance is hardcoded** (`A1`, no authority bands) rather than seeded as a tunable entity. Deliberate for a platform-provided surface, but tenants cannot tune her bands the way they can an agent's.
+* **The goldens run on hand-written fixtures.** They currently grade the *checkers*. The regression value arrives when live transcripts are piped through them.
