@@ -53,6 +53,7 @@ from src.ai.solo_pack.templates.finance import (
 )
 from src.ai.solo_pack.templates.gateways import (
     GATEWAY_TEMPLATES,
+    KAR_01_VOICE,
     KAR_01_VOICE_STUB,
     KAR_03_WHATSAPP,
 )
@@ -66,7 +67,7 @@ __all__ = [
     # SLICE (back-compat) ------------------------------------------------------
     "KAR_02_EMAIL", "P03_ACQUISITION", "AGT_013", "AGT_015", "SLICE_TEMPLATES",
     # Gateways (KAR) -----------------------------------------------------------
-    "KAR_03_WHATSAPP", "KAR_01_VOICE_STUB",
+    "KAR_03_WHATSAPP", "KAR_01_VOICE", "KAR_01_VOICE_STUB",
     # PACK entities ------------------------------------------------------------
     "P06_RESOLVE", "AGT_030", "AGT_035", "AGT_092",
     "P08_ORDER_TO_CASH", "AGT_038", "P10_RECORD_TO_REPORT", "AGT_046",
@@ -94,9 +95,9 @@ class ProcessGroup:
         return (self.process, *self.agents)
 
 
-# The shared outward gateways (feed every process): email + WhatsApp are live,
-# voice is a registered stub (real voice → Inc 3).
-GATEWAYS: list[dict[str, Any]] = [KAR_02_EMAIL, KAR_03_WHATSAPP, KAR_01_VOICE_STUB]
+# The shared outward gateways (feed every process). All three are live as of
+# Inc-3 VOICE — KAR-01 replaced its Inc-2 stub.
+GATEWAYS: list[dict[str, Any]] = [KAR_02_EMAIL, KAR_03_WHATSAPP, KAR_01_VOICE]
 
 # The six Wave-0 processes with their workforce agents (the seeding tree).
 PROCESS_GROUPS: list[ProcessGroup] = [
