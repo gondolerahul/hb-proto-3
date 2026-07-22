@@ -1,6 +1,7 @@
 # Increment 4 — The Connected Business — Charter Stub
 
-> **Status:** Stub — deepened just-in-time. A clarifying-questions round with Rahul precedes the full docs.
+> **Status:** Stub for CONN/SOR — deepened just-in-time; a clarifying-questions round with Rahul precedes those docs.
+> **Superseded in part (2026-07-22):** the increment gained a third, parallel workstream — **PRAGYA-RT** ([01_pragya_runtime.md](./01_pragya_runtime.md), seam locked). It does not displace the CONN/SOR scope below. See [00_overview.md](./00_overview.md) §1 for why it landed here, and §4 for why it builds first.
 > **Parent:** [build_roadmap.md](../build_roadmap.md) §4, Increment 4 (L–XL, parallelizable per connector). **Prerequisite:** Increments 1–2 (SIG + records/links; MCP adapter is already shipped).
 
 ## Goal
@@ -17,7 +18,7 @@ The tenant's existing systems join the loop without a migration — or HireBuddh
 
 D2 (per-agent credential scoping — SoD becomes real here or never; KMS/HSM + rotation for the master key), C2 (HUMAN_TASK step type + worker task queue/surface — physical fulfillment appears with real operations).
 
-## Known open questions
+## Known open questions (CONN/SOR only — PRAGYA-RT's are decided)
 
 1. Connector priority order after accounting (calendar vs e-sign vs enrichment) — driven by early Solo Pack tenant demand.
 2. Which accounting systems first (Tally/Zoho Books for the Indian ICP vs QuickBooks/Xero)?
