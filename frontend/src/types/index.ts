@@ -403,9 +403,23 @@ export interface HumanApproval {
     id: string;
     run_id: string;
     checkpoint_trigger: string;
+    /** GOV §20.2: the hitl_checkpoint_defs key (null for legacy/non-policy cards) */
+    checkpoint_key?: string | null;
+    /** PolicyGate act summary: category / reason / band / hard_block / message */
+    context_snapshot?: {
+        category?: string;
+        reason?: string;
+        band?: string | null;
+        hard_block?: boolean;
+        message?: string;
+        [key: string]: unknown;
+    } | null;
     status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'TIMEOUT';
     requested_at: string;
     responded_at?: string;
+    /** C3: the per-category SLA (null when the card has no category) */
+    sla_seconds?: number | null;
+    on_timeout?: 'auto_park' | 'auto_deny' | 'escalate' | string | null;
 }
 
 export interface ExecutionRun {

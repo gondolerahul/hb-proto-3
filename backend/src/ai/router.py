@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
@@ -423,27 +424,43 @@ async def list_pending_approvals(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    from src.ai.governance.checkpoints import sla_for_category
+
     service = AIService(db)
     approvals = await service.get_pending_approvals(current_user.company_id)
-    return [
-        {
+    out = []
+    for a in approvals:
+        # C3: the per-category SLA so the console can show the deadline.
+        snapshot = a.context_snapshot or {}
+        category = snapshot.get("category") if isinstance(snapshot, dict) else None
+        sla_seconds, on_timeout = sla_for_category(category) if category else (None, None)
+        out.append({
             "id": str(a.id),
             "run_id": str(a.run_id),
             "checkpoint_trigger": a.checkpoint_trigger,
+            "checkpoint_key": a.checkpoint_key,
+            "context_snapshot": snapshot,
             "status": a.status,
-            "requested_at": a.requested_at
-        }
-        for a in approvals
-    ]
+            "requested_at": a.requested_at,
+            "sla_seconds": sla_seconds,
+            "on_timeout": on_timeout,
+        })
+    return out
+
+
+class ApprovalRespondRequest(BaseModel):
+    status: str  # APPROVED | REJECTED
+    notes: Optional[str] = None
+
 
 @router.post("/approvals/{approval_id}/respond")
 async def respond_to_approval(
     approval_id: UUID,
-    status: str, # APPROVED | REJECTED
-    notes: Optional[str] = None,
+    body: ApprovalRespondRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    status, notes = body.status, body.notes
     service = AIService(db)
     await service.respond_to_approval(approval_id, status, current_user.id, notes)
 

@@ -10,3 +10,29 @@
     transform: translateY(-4px);
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
 }
+/* Inc-2 ONBOARD: PolicyGate card details */
+.hitl-reason {
+    font-size: 0.82rem;
+    color: var(--color-text-secondary, #bbb);
+    background: rgba(255, 255, 255, 0.04);
+    border-left: 3px solid rgba(229, 72, 77, 0.6);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: baseline;
+}
+
+.hitl-band {
+    font-size: 0.68rem;
+    font-family: monospace;
+    color: var(--color-text-tertiary, #888);
+    white-space: nowrap;
+}
+
+.hitl-sla-overdue {
+    color: var(--color-error, #e5484d);
+    font-weight: 700;
+}

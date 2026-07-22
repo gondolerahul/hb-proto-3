@@ -39,6 +39,19 @@ export const HITLPanel: React.FC = () => {
         }
     };
 
+    /** C3: time left against the per-category SLA — "3h 12m left" / "overdue". */
+    const slaState = (approval: HumanApproval): { label: string; overdue: boolean } | null => {
+        if (!approval.sla_seconds) return null;
+        const deadline = parseServerDate(approval.requested_at).getTime() + approval.sla_seconds * 1000;
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+            return { label: `overdue → ${approval.on_timeout || 'escalate'}`, overdue: true };
+        }
+        const h = Math.floor(remainingMs / 3600000);
+        const m = Math.floor((remainingMs % 3600000) / 60000);
+        return { label: h > 0 ? `${h}h ${m}m left` : `${m}m left`, overdue: false };
+    };
+
     if (loading) return <div className="loading">Authorized Personnel Required...</div>;
 
     return (
@@ -68,10 +81,25 @@ export const HITLPanel: React.FC = () => {
                                         <Shield size={24} />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <h3 className="mb-1 truncate text-lg">Checkpoint Required</h3>
-                                        <div className="text-xs text-tertiary font-mono truncate">{approval.checkpoint_trigger}</div>
+                                        <h3 className="mb-1 truncate text-lg">
+                                            {approval.context_snapshot?.category
+                                                ? `${approval.context_snapshot.category} approval`
+                                                : 'Checkpoint Required'}
+                                        </h3>
+                                        <div className="text-xs text-tertiary font-mono truncate">
+                                            {approval.checkpoint_key || approval.checkpoint_trigger}
+                                        </div>
                                     </div>
                                 </div>
+
+                                {approval.context_snapshot?.reason && (
+                                    <div className="hitl-reason">
+                                        {approval.context_snapshot.reason}
+                                        {approval.context_snapshot.band && (
+                                            <span className="hitl-band">band: {approval.context_snapshot.band}</span>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="space-y-4 mb-8">
                                     <div className="flex items-center justify-between text-xs text-tertiary">
@@ -85,6 +113,17 @@ export const HITLPanel: React.FC = () => {
                                             {parseServerDate(approval.requested_at).toLocaleTimeString()}
                                         </div>
                                     </div>
+                                    {(() => {
+                                        const sla = slaState(approval);
+                                        return sla ? (
+                                            <div className="flex items-center justify-between text-xs text-tertiary">
+                                                <span>SLA</span>
+                                                <span className={sla.overdue ? 'hitl-sla-overdue' : 'text-secondary'}>
+                                                    {sla.label}
+                                                </span>
+                                            </div>
+                                        ) : null;
+                                    })()}
                                 </div>
                             </div>
 
