@@ -23,6 +23,9 @@ PRAGYA-RT touches an entirely different code area from the connectors, so it run
 3. **Pragya's voice uses an ASR-LLM-TTS pipeline**, not a realtime speech-to-speech model. Realtime session caps do not fit a months-long relationship, and a text-boundaried turn is what lets the tier classifier and the PolicyGate see a voice turn at all.
 4. **KAR-01 keeps the realtime pipeline.** The outward face talks to customers in short, latency-sensitive calls where realtime's ~300 ms edge is worth having. Two engines coexist by design — see [01](./01_pragya_runtime.md) §6.
 5. **Pragya gets her own phone number**, distinct from the tenant's business number. The number is what routes a call to the inward pipeline, so the two voice faces can never be confused at the entry point.
+6. **Pragya's capability surface is her child entities, not a tool allowlist.** She calls children (Meta-Agent first; deep research, record access, scheduling later) that wrap tools — so her reach is governed where autonomy and SoD already live, and a new capability is a new entity rather than an edit to her loop. Full reasoning in [01](./01_pragya_runtime.md) §11.2.
+7. **ASR/TTS resolve through the IntegrationRegistry** — Whisper on Vertex AI, Gemini TTS. Provider swaps are a registry row, not a code change.
+8. **`inc4/pragya-rt` does not merge until the workstream is complete.**
 
 ## 3. Workstreams
 

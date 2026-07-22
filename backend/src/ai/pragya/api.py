@@ -54,7 +54,10 @@ def _turn_payload(result: TurnOutcome) -> dict[str, Any]:
     """The wire shape of a completed turn.
 
     ``needs_step_up`` / ``needs_oob`` are surfaced so the console can open the
-    right ceremony — the frontend never re-derives the tier itself.
+    right ceremony — the frontend never re-derives the tier itself. For the
+    same reason ``awaiting_confirmation`` is surfaced: stages 2 and 5 advance
+    only on an explicit owner action, and the console has to be *told* that a
+    confirmation is due rather than inferring it from the stage number.
     """
     return {
         "reply": result.reply,
@@ -68,6 +71,12 @@ def _turn_payload(result: TurnOutcome) -> dict[str, Any]:
         "command_ref": result.command_ref,
         "command_summary": result.command.summary if result.command else None,
         "cost_usd": result.cost_usd,
+        # Engagement progress — without these the nine-stage flow is invisible
+        # to the console and stages 2/5 cannot be confirmed at all.
+        "awaiting_confirmation": result.awaiting_confirmation,
+        "advanced_to": int(result.advanced_to) if result.advanced_to else None,
+        "artifacts_written": list(result.artifacts_written),
+        "reported_delegations": list(result.reported_delegations),
     }
 
 

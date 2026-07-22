@@ -17,12 +17,23 @@ export interface TurnResponse {
     stage_name: string;
     auth_level: string;
     tier: Tier | null;
-    executed: boolean;
+    /** A tool raised a HITL card this turn; it settles at the Judgment Desk. */
+    raised_approval: boolean;
     needs_step_up: boolean;
     needs_oob: boolean;
     command_ref: string | null;
     command_summary: string | null;
-    citations: Array<Record<string, unknown>>;
+    cost_usd: number;
+    /**
+     * Stages 2 and 5 advance only on an explicit owner action, because their
+     * deliverable IS the owner's agreement. The server tells us when one is
+     * due — the console must not infer it from the stage number.
+     */
+    awaiting_confirmation: boolean;
+    /** Set when the turn moved the engagement on by itself. */
+    advanced_to: number | null;
+    artifacts_written: string[];
+    reported_delegations: string[];
 }
 
 export interface StageInfo {
@@ -76,6 +87,19 @@ export const pragyaService = {
     send: async (message: string): Promise<TurnResponse> => {
         const { data } = await apiClient.post<TurnResponse>(
             '/ai/pragya/chat', { message });
+        return data;
+    },
+
+    /**
+     * Confirm the current stage — stages 2 and 5 only.
+     *
+     * Deliberately a distinct action rather than something inferred from the
+     * conversation: these two stages exist because the owner's agreement is
+     * the deliverable, and reading agreement out of "sounds about right" is
+     * exactly what they guard against.
+     */
+    advance: async (): Promise<{ stage: number; stage_name: string }> => {
+        const { data } = await apiClient.post('/ai/pragya/advance');
         return data;
     },
 

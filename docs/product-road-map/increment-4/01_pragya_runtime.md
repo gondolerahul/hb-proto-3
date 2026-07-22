@@ -109,6 +109,12 @@ For Pragya this becomes a **stage-completion reflection** (what did we learn in 
 
 ### 5.1 Tool calls — a thin act path
 
+> **Superseded in part by decision 6 (§11.2).** Pragya proposes no *raw* tools;
+> she calls **child entities** that wrap them. The gate/execute path below is
+> unchanged and still the only route to a tool — what changed is who proposes:
+> a child entity's run reaches tools through this same path, under its own
+> entity-level governance.
+
 Inside step 5, per tool call:
 
 ```
@@ -206,6 +212,7 @@ The two faces can never be confused at the entry point, which is worth more than
 | T5 | ⬜ Voice adapter: ASR-LLM-TTS + Pragya's own number | a real call reaches the same turn loop as the console; barge-in works |
 | T6 | ✅ Stage-completion reflection (§4.3) + drain-or-reap `voice_deferred_runs` | reflections written; no unbounded table |
 | T7 | ✅ Behavioural script goldens over recorded turns | script guardrails asserted deterministically; no prose pinning |
+| T9 | ⬜ **Child-entity delegation** (decision 6) — `_tool_schemas` over available children; invoking one dispatches a run | Meta-Agent callable; no raw tool is exposed |
 | T8 | 🟡 Integration + all gates green; build notes; maturity flips | parity/eval unchanged |
 
 ## 9. Testing the goldens without pinning prose (T7)
@@ -233,11 +240,31 @@ Deterministic, cheap, CI-safe, and derived from assets already reviewed. An LLM-
 
 ## 11. Decisions (Rahul, 2026-07-22)
 
+### 11.1 Architecture (taken before build)
+
 1. **Take the split** — own turn loop, shared substrate.
 2. **The §3 seam is locked before code.** 🔒 rows are charter, not preference.
 3. **Pragya's voice is ASR-LLM-TTS.** Session caps and gateable turn boundaries.
 4. **KAR-01 stays realtime.** Latency edge is worth it on the outward face; two engines coexist by design.
 5. **Pragya gets her own phone number** — the number is the routing discriminator between the two faces.
+
+### 11.2 Build decisions (taken 2026-07-22, mid-build)
+
+6. **Pragya proposes no raw tools. Her surface is her child entities.**
+
+   She does not get a curated allowlist of platform tools. She gets the ability to **call child entities** — the Meta-Agent first, and later a family of purpose-built children that *wrap* tools: deep research, tenant record and document access, scheduling and task assignment to other agents. Those children are designed in a later pass.
+
+   This is a better answer than a tool allowlist for three reasons. It keeps her reach **governed at the entity level**, where autonomy, authority bands and SoD already live, instead of at a tool list that carries none of that. It collapses "tools" and "delegation" into **one mechanism** — calling a child *is* dispatching a run, which is exactly what `delegation.py` already does. And it makes her surface **extensible without touching her**: a new capability is a new child entity, not an edit to her loop.
+
+   Consequence for the build: `_tool_schemas()` generates one schema per *available child entity*, not per tool, and invoking one dispatches a delegation. See T9.
+
+7. **ASR and TTS resolve through the IntegrationRegistry, not hardcoded clients.** **Whisper on Vertex AI** for ASR, **Google Gemini TTS** for TTS, both as registry entries — so provider, credentials and cost attribution work the way every other metered service does, and swapping a provider is a registry row rather than a code change.
+
+8. **Do not merge `inc4/pragya-rt` until the workstream is complete.** Partial merges to `master` are not this project's pattern; the branch stays until T5 and T9 land.
+
+9. **Stage 3's primary artifact stays `ingestion.received`.** Confirmed: *asking* for documents is not ingestion, *getting* them is. A stage 3 in which the owner shares nothing does not auto-advance, which is the intended behaviour.
+
+10. **Pragya's governance stays `A1` with no authority bands, and is not tenant-tunable for now.** She is a platform-provided surface, identical for every tenant. Any categorised act she proposes raises a card rather than resolving against a band.
 
 ---
 

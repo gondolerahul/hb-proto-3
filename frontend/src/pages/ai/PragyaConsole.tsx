@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Send, ShieldCheck, ExternalLink, Check } from 'lucide-react';
 import { GlassCard, GlassInput, JellyButton } from '@/components/ui';
 import { StepUpModal } from '@/components/StepUpModal';
 import {
@@ -26,6 +26,11 @@ export const PragyaConsole: React.FC = () => {
     const [draft, setDraft] = useState('');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Stages 2 and 5 wait on the owner. Without this the engagement
+    // dead-ends: the server will not advance them and nothing else can.
+    const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+    const [confirming, setConfirming] = useState(false);
 
     const [stepUpOpen, setStepUpOpen] = useState(false);
     const [pendingTurn, setPendingTurn] = useState<TurnResponse | null>(null);
@@ -58,6 +63,10 @@ export const PragyaConsole: React.FC = () => {
             const result = await pragyaService.send(message);
             await refresh();
 
+            // The server decides when a confirmation is due — the console
+            // never infers it from the stage number.
+            setAwaitingConfirmation(result.awaiting_confirmation);
+
             // The server decides a ceremony is needed; we just open it and
             // hold the message so it can be re-sent once elevated.
             if (result.needs_step_up || result.needs_oob) {
@@ -80,6 +89,23 @@ export const PragyaConsole: React.FC = () => {
         if (!message || busy) return;
         setDraft('');
         await deliver(message);
+    };
+
+    const handleConfirmStage = async () => {
+        setConfirming(true);
+        setError(null);
+        try {
+            await pragyaService.advance();
+            setAwaitingConfirmation(false);
+            await refresh();
+        } catch (err: any) {
+            // A 409 means the stage is not actually finished yet — the server
+            // refuses to carry a half-formed hypothesis into the build.
+            setError(err?.response?.data?.detail
+                ?? 'That stage is not ready to close yet.');
+        } finally {
+            setConfirming(false);
+        }
     };
 
     const currentStage = engagement?.stage ?? 1;
@@ -137,6 +163,17 @@ export const PragyaConsole: React.FC = () => {
                 </div>
 
                 {error && <div className="alert alert-error">{error}</div>}
+
+                {awaitingConfirmation && (
+                    <div className="stage-confirm">
+                        <span>
+                            Happy with this? I'll only move on when you say so.
+                        </span>
+                        <JellyButton onClick={handleConfirmStage} disabled={confirming}>
+                            <Check size={16} /> Yes, continue
+                        </JellyButton>
+                    </div>
+                )}
 
                 <form className="chat-input" onSubmit={handleSend}>
                     <GlassInput

@@ -548,3 +548,42 @@ async def test_failed_work_is_surfaced_not_swallowed(pragya_tenant):
         outstanding = await unreported_for(db, cid)
     assert len(outstanding) == 1
     assert outstanding[0].error == "no search provider configured"
+
+
+async def test_the_confirm_endpoint_is_the_only_way_past_stage_two(pragya_tenant):
+    """The console had no way to call this, so the engagement dead-ended at
+    stage 2. Pins the contract the fixed console depends on."""
+    from src.ai.pragya.advancement import evaluate_eligibility
+    from src.ai.pragya.scripts import script_for_stage
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    script = script_for_stage(2)
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        await set_stage(db, engagement, Stage.ASSUMPTIONS, reason="test")
+        await db.commit()
+
+    # Incomplete: confirming must be refused, or a half-formed hypothesis is
+    # carried into the configuration stage 6 builds from.
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        assert not evaluate_eligibility(Stage.ASSUMPTIONS, engagement.artifacts).eligible
+
+        await record_artifacts(db, engagement, {
+            k: (["a1"] if k == script.primary_artifact else [])
+            for k in script.artifacts})
+        await db.commit()
+
+    # Complete: eligible, needs confirmation, and does not move on its own.
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        result = evaluate_eligibility(Stage.ASSUMPTIONS, engagement.artifacts)
+        assert result.eligible and result.needs_confirmation
+        assert current_stage(engagement) is Stage.ASSUMPTIONS
+
+        # The owner's action is what moves it.
+        await advance(db, engagement, reason="owner confirmed the stage")
+        await db.commit()
+        assert current_stage(engagement) is Stage.INGESTION
