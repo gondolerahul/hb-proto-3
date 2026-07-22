@@ -30,6 +30,7 @@ from typing import Any, Mapping, Optional, Sequence
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.memory.domain_viewport import filter_by_domain
 from src.ai.memory.retrieval_filters import ChunkFilters
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ async def _lexical_candidates(
     """Postgres full-text ranking over document_chunks (GIN-indexed, retr001)."""
     scope = _scope_clause(entity_id, company_id)
     stmt = text(f"""
-        SELECT dc.id::text, dc.content,
+        SELECT dc.id::text, dc.content, d.memory_domain,
                ts_rank_cd(to_tsvector('english', dc.content),
                           plainto_tsquery('english', :q)) AS rank
         FROM   document_chunks dc
@@ -158,7 +159,7 @@ async def _lexical_candidates(
     })).fetchall()
     return [
         RetrievedChunk(chunk_id=r[0], content=r[1],
-                       metadata={"lexical_rank": float(r[2])})
+                       metadata={"memory_domain": r[2], "lexical_rank": float(r[3])})
         for r in rows
     ]
 
@@ -171,7 +172,7 @@ async def _semantic_candidates(
     """The existing pgvector cosine ranking, unchanged in behaviour."""
     scope = _scope_clause(entity_id, company_id)
     stmt = text(f"""
-        SELECT dc.id::text, dc.content,
+        SELECT dc.id::text, dc.content, d.memory_domain,
                1 - (dc.embedding <=> CAST(:vec AS vector)) AS score
         FROM   document_chunks dc
         JOIN   documents d ON d.id = dc.document_id
@@ -189,7 +190,7 @@ async def _semantic_candidates(
     })).fetchall()
     return [
         RetrievedChunk(chunk_id=r[0], content=r[1],
-                       metadata={"cosine": float(r[2])})
+                       metadata={"memory_domain": r[2], "cosine": float(r[3])})
         for r in rows
     ]
 
@@ -218,6 +219,7 @@ async def hybrid_search(
     depth: int = DEFAULT_CANDIDATE_DEPTH,
     weights: Optional[Mapping[str, float]] = None,
     filters: Optional[ChunkFilters] = None,
+    allowed_domains: Optional[frozenset[str]] = None,
 ) -> list[RetrievedChunk]:
     """Retrieve by lexical + semantic ranking fused with RRF.
 
@@ -225,6 +227,13 @@ async def hybrid_search(
     call) — retrieval then degrades to lexical-only rather than returning
     nothing, which is the behaviour the v1 path lacked: a failed embedding meant
     an empty result and an agent answering from no context at all.
+
+    ``allowed_domains`` is the caller's **domain viewport** (§24.3), from
+    ``domain_viewport.resolve_allowed_domains``. It is need-to-know, not
+    relevance: it applies *after* fusion and *before* ``top_k``, so a document
+    the caller may not see never even consumes one of its result slots. ``None``
+    means unrestricted; an untagged document reads as ``general`` and stays
+    visible, so tagging only ever narrows.
 
     Raises ``ValueError`` without a tenancy scope; a KB query that could span
     tenants is a bug, not a broad search.
@@ -252,4 +261,13 @@ async def hybrid_search(
 
     if not rankings:
         return []
-    return reciprocal_rank_fusion(rankings, top_k=top_k, weights=weights)
+
+    # Fuse fully, apply need-to-know, and only then truncate — truncating first
+    # would let an invisible document eat a result slot and silently shrink what
+    # the caller is entitled to see.
+    fused = reciprocal_rank_fusion(rankings, weights=weights)
+    visible = filter_by_domain(
+        fused, allowed_domains,
+        domain_getter=lambda c: c.metadata.get("memory_domain"),
+    )
+    return visible[:top_k]

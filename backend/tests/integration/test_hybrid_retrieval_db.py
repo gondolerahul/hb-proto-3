@@ -169,6 +169,97 @@ class TestScoping:
         assert hits == []
 
 
+class TestDomainViewport:
+    """RETR T3 — need-to-know applies to the KB, not only the memory trees."""
+
+    async def _tag(self, domain: str, did) -> None:
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                text("UPDATE documents SET memory_domain = :m WHERE id = :d"),
+                {"m": domain, "d": str(did)})
+            await db.commit()
+
+    async def test_an_out_of_viewport_document_is_invisible(self, corpus):
+        """However well it ranks — this is permission, not relevance."""
+        from src.common.database import AsyncSessionLocal
+        _cid, eid, did = corpus
+        await self._tag("payroll", did)
+        async with AsyncSessionLocal() as db:
+            hits = await hybrid_search(
+                db, "invoice INV-4417", query_vector=QUERY_VEC, entity_id=eid,
+                top_k=3, allowed_domains=frozenset({"crm", "general"}))
+        assert hits == []
+
+    async def test_an_in_viewport_document_is_returned(self, corpus):
+        from src.common.database import AsyncSessionLocal
+        _cid, eid, did = corpus
+        await self._tag("crm", did)
+        async with AsyncSessionLocal() as db:
+            hits = await hybrid_search(
+                db, "invoice INV-4417", query_vector=QUERY_VEC, entity_id=eid,
+                top_k=3, allowed_domains=frozenset({"crm", "general"}))
+        assert hits and hits[0].content == ANSWER_TEXT
+
+    async def test_untagged_documents_stay_visible(self, corpus):
+        """Legacy KB content reads as `general` — tagging only ever narrows."""
+        from src.common.database import AsyncSessionLocal
+        _cid, eid, _did = corpus
+        async with AsyncSessionLocal() as db:
+            hits = await hybrid_search(
+                db, "invoice INV-4417", query_vector=QUERY_VEC, entity_id=eid,
+                top_k=3, allowed_domains=frozenset({"crm", "general"}))
+        assert hits and hits[0].content == ANSWER_TEXT
+
+    async def test_no_viewport_means_unrestricted(self, corpus):
+        from src.common.database import AsyncSessionLocal
+        _cid, eid, did = corpus
+        await self._tag("payroll", did)
+        async with AsyncSessionLocal() as db:
+            hits = await hybrid_search(
+                db, "invoice INV-4417", query_vector=QUERY_VEC, entity_id=eid,
+                top_k=3, allowed_domains=None)
+        assert hits
+
+    async def test_hidden_results_do_not_consume_top_k_slots(self, corpus):
+        """Filtering after fusion but before truncation — otherwise an
+        invisible document silently shrinks what the caller is entitled to."""
+        from src.common.database import AsyncSessionLocal
+        cid, eid, did = corpus
+        # A second, visible document that ranks BELOW the hidden one.
+        other = uuid.uuid4()
+        async with AsyncSessionLocal() as db:
+            await db.execute(text(
+                "INSERT INTO documents (id, company_id, entity_id, filename, file_type, "
+                " upload_status, memory_domain, created_at, updated_at) "
+                "VALUES (:id, :c, :e, 'crm.pdf', 'pdf', 'completed', 'crm', now(), now())"),
+                {"id": str(other), "c": str(cid), "e": str(eid)})
+            await db.execute(text(
+                "INSERT INTO document_chunks (id, document_id, chunk_index, content, "
+                " embedding, created_at) "
+                "VALUES (:id, :d, '0', :c, CAST(:v AS vector), now())"),
+                {"id": str(uuid.uuid4()), "d": str(other),
+                 "c": "A second remittance note about invoice INV-4417.",
+                 "v": str(NOISE_VEC)})
+            await db.execute(text("UPDATE documents SET memory_domain = 'payroll' WHERE id = :d"),
+                             {"d": str(did)})
+            await db.commit()
+        try:
+            async with AsyncSessionLocal() as db:
+                hits = await hybrid_search(
+                    db, "invoice INV-4417", query_vector=QUERY_VEC, entity_id=eid,
+                    top_k=1, allowed_domains=frozenset({"crm", "general"}))
+            # The payroll doc outranks it, but the caller still gets their one slot.
+            assert len(hits) == 1
+            assert "second remittance" in hits[0].content
+        finally:
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("DELETE FROM document_chunks WHERE document_id = :d"),
+                                 {"d": str(other)})
+                await db.execute(text("DELETE FROM documents WHERE id = :d"), {"d": str(other)})
+                await db.commit()
+
+
 class TestFiltersApplyBeforeRanking:
     async def test_matching_file_type_keeps_results(self, corpus):
         from src.common.database import AsyncSessionLocal
@@ -187,6 +278,25 @@ class TestFiltersApplyBeforeRanking:
                 db, "invoice INV-4417", query_vector=QUERY_VEC, entity_id=eid,
                 top_k=3, filters=ChunkFilters(file_types=["txt"]))
         assert hits == []
+
+    async def test_heading_predicate_narrows_to_a_section(self, corpus):
+        from src.common.database import AsyncSessionLocal
+        _cid, eid, did = corpus
+        async with AsyncSessionLocal() as db:
+            await db.execute(text(
+                "UPDATE document_chunks SET heading_path = 'Ledger > Remittances' "
+                "WHERE document_id = :d AND content = :c"),
+                {"d": str(did), "c": ANSWER_TEXT})
+            await db.commit()
+        async with AsyncSessionLocal() as db:
+            hit = await hybrid_search(
+                db, "remittance", query_vector=QUERY_VEC, entity_id=eid, top_k=3,
+                filters=ChunkFilters(heading_contains="Remittances"))
+            miss = await hybrid_search(
+                db, "remittance", query_vector=QUERY_VEC, entity_id=eid, top_k=3,
+                filters=ChunkFilters(heading_contains="Nonexistent"))
+        assert [h.content for h in hit] == [ANSWER_TEXT]
+        assert miss == []
 
     async def test_document_id_predicate(self, corpus):
         from src.common.database import AsyncSessionLocal

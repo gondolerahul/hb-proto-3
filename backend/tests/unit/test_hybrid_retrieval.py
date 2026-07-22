@@ -143,3 +143,11 @@ class TestFilters:
 
     def test_is_empty_is_false_once_any_predicate_is_set(self):
         assert not ChunkFilters(file_types=["pdf"]).is_empty()
+
+    def test_heading_predicate_targets_the_chunk_not_the_document(self):
+        sql, params = ChunkFilters(heading_contains="Payment Terms").to_sql()
+        assert "dc.heading_path ILIKE :f_heading" in sql
+        assert params["f_heading"] == "%Payment Terms%"
+
+    def test_heading_predicate_counts_toward_emptiness(self):
+        assert not ChunkFilters(heading_contains="x").is_empty()

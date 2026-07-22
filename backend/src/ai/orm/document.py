@@ -29,6 +29,9 @@ class Document(Base):
     file_type: Mapped[str] = mapped_column(String, nullable=False)  # pdf, docx, txt
     file_size: Mapped[str | None] = mapped_column(String, nullable=True)
     upload_status: Mapped[str | None] = mapped_column(String, default="processing")  # processing, completed, failed
+    # RETR T3 — the HBS module this document belongs to, enforced by the Inc-1
+    # domain viewport at retrieval. NULL reads as "general" (common knowledge).
+    memory_domain: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

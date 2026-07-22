@@ -161,6 +161,7 @@ class MemoryRouter:
         query: str,
         top_k: int = 5,
         api_key: Optional[str] = None,
+        governance: Optional[Any] = None,
     ) -> List[Dict[str, Any]]:
         """
         Hybrid semantic + graph search across all memory domains (v2).
@@ -211,6 +212,7 @@ class MemoryRouter:
                 # the agent answered from no context at all.
                 logger.debug("Embedding unavailable — retrieving lexical-only")
 
+            from src.ai.memory.domain_viewport import resolve_allowed_domains
             from src.ai.memory.hybrid_retrieval import hybrid_search
 
             hits = await hybrid_search(
@@ -218,6 +220,9 @@ class MemoryRouter:
                 query_vector=query_vector or None,
                 entity_id=entity_id,
                 top_k=top_k,
+                # RETR T3 — need-to-know applies to the KB too, not only to the
+                # memory trees. None (no governance passed) is unrestricted.
+                allowed_domains=resolve_allowed_domains(governance),
             )
             return [h.as_dict() for h in hits]
 

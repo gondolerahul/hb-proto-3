@@ -37,11 +37,12 @@ class ChunkFilters:
     created_after: Optional[datetime] = None
     created_before: Optional[datetime] = None
     filename_contains: Optional[str] = None
+    heading_contains: Optional[str] = None
 
     def is_empty(self) -> bool:
         return not any((
             self.file_types, self.document_ids, self.created_after,
-            self.created_before, self.filename_contains,
+            self.created_before, self.filename_contains, self.heading_contains,
         ))
 
     def to_sql(self) -> tuple[str, dict[str, Any]]:
@@ -73,6 +74,12 @@ class ChunkFilters:
         if self.filename_contains:
             clauses.append("d.filename ILIKE :f_filename")
             params["f_filename"] = f"%{self.filename_contains}%"
+
+        if self.heading_contains:
+            # RETR T2 gave chunks a heading trail; this narrows to a section
+            # ("Payment Terms") without needing to know which document it is in.
+            clauses.append("dc.heading_path ILIKE :f_heading")
+            params["f_heading"] = f"%{self.heading_contains}%"
 
         if not clauses:
             return "", {}
