@@ -1,6 +1,6 @@
 # Increment 2 / TRUST — Billing Safety, Consent & the Economics Floor
 
-> **Status:** 🚧 **In progress** — **C5 ✅** (graduated dunning + state-aware suspension), **D6 ✅** (consent registry), **C3 ✅** (per-checkpoint HITL SLAs), **B13 ✅** (platform-initiated budget class) built (2026-07-20); migrations `trust001`–`trust004`; gates green. **Remaining: E1, E2, E4** (economics — see §11). · **Branch:** `inc2/trust` · **Closes:** **C5 ✅**, **D6 ✅**, **C3 ✅**, **B13 ✅**, E1, E2, E4.
+> **Status:** ✅ **Built** — **C5** (graduated dunning + state-aware suspension), **D6** (consent registry), **C3** (per-checkpoint HITL SLAs), **B13** (platform-initiated budget class) built 2026-07-20; **E1** (idle-cost model), **E2** (free-credit abuse controls), **E4** (fee-formula guard) + both integration hookups built 2026-07-22. Migrations `trust001`–`trust004`; gates green. · **Branches:** `inc2/trust`, `inc2/trust-econ` · **Closes:** **C5 ✅**, **D6 ✅**, **C3 ✅**, **B13 ✅**, **E1 ✅**, **E2 ✅**, **E4 ✅**.
 > **Design authority:** Blueprint §9.6 (compliance), §10 (economics); Technical §15.2 (suspension), §20 (governance/budget). Global-neutral (decision 5), graduated dunning (decision 6).
 > **Depends on:** GOV (checkpoints/PolicyGate), LOOP+ENV (envelopes/holds/wallet_debt). Its billing-safety pieces gate GA.
 
@@ -54,8 +54,10 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 | Consent registry + adapters | `ai/solo_pack/consent.py` + `consent_records`/`dnc_entries`/`unsubscribe_log` tables |
 | Checkpoint SLAs | `hitl_checkpoint_defs` columns + the approvals timeout worker |
 | Platform-spend class | LOOP `budget_envelopes` (new class) + CostLedger attribution |
-| Idle-cost model | a report/doc + `E1` measurement harness reading Inc-1 tenant-DB metrics |
-| Abuse controls | `auth/` sign-up + daily-credit eligibility |
+| Idle-cost model | `ai/trust/idle_cost.py` + [05a_idle_cost_model.md](./05a_idle_cost_model.md) |
+| Abuse controls | `ai/trust/abuse_controls.py`, enforced in `auth/` sign-up + daily-credit injection |
+| Fee-formula guard | `ai/trust/fee_guard.py`, wired into `billing/billing_service.py` |
+| Dunning driver | `billing/cron_service.py` (`days_past_due`, `run_dunning_job`) + `ai/trust/crons.py` |
 
 ## 9. Task Plan (outline)
 
@@ -107,6 +109,40 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 
 2. **The middleware degrades access, it doesn't kill it.** `CompanySuspensionMiddleware` is now state-aware: `suspended` (or the legacy `status='suspended'`) → 403 for everything; `read_only` → **blocks agent-facing mutations but allows GETs, billing/pay, and export** so the tenant can read, export, and recover without loss. `current/past_due/grace` are full function. Inbound signals keep parking (SIG PARKED), so nothing is dropped while read-only.
 
-**What computes `days_past_due`** — the billing/payment subsystem watching wallet/subscription lapse — is the integration that calls `advance_dunning` on a schedule; it lives in `billing/` (outside `ai/`) and is the remaining hookup. The ladder, the column, the middleware enforcement, and the signals are ready.
+**What computes `days_past_due`** — the billing/payment subsystem watching wallet/subscription lapse — is the integration that calls `advance_dunning` on a schedule; it lives in `billing/` (outside `ai/`). **Closed in §18.** The ladder, the column, the middleware enforcement, and the signals were ready.
 
-**Remaining TRUST (not built this session):** **E1** idle-cost model (a costing doc from Inc-1 metrics), **E2** free-credit abuse controls (`auth/` signup verification + throttles), **E4** fee-formula clamped-negative alerts (billing). These are the economics findings; the GA-gating billing-safety pieces (C5/C3/B13) are done. B13's `platform_spend_admitted` still needs wiring into the optimizer/meta/sensing runners when those are next touched.
+## 15. Build Notes — E4 fee-formula guard (2026-07-22)
+
+**E4 built.** The register described `max(total_billing, 0)` masking fee misconfiguration; the shipped code turned out to have **no clamp at all**, which is worse — a discount above break-even silently *credited* the customer and recorded a negative `BillingEvent`.
+
+1. **The clamp is right; the silence was the bug.** `ai/trust/fee_guard.py` keeps the clamp (a config bug must never credit a customer) but makes it loud: `inspect_fee_result` returns a finding that *names* the likely culprit — a discount above the `1 + pf + spf` break-even, or a negative multiplier — rather than leaving an operator to re-derive it. `report_fee_misconfiguration` logs ERROR and raises a `billing.fee_misconfigured` signal, deduped per company per billing period so a bad config fires one card, not thousands. Wired at both paths TB reaches persistence: `compute_billed_amount` (per-call deduction) and `record_billing_event`.
+
+2. **The ordering intent is now asserted, not implicit.** The discount is taken on the *multiplied cost* and subtracted **last** — it does not reduce the platform fee or the sales-partner fee, because a discount is the platform's concession, not the partner's. That is a business decision living inside an arithmetic expression that looks "simplifiable", so it is stated in `fee_guard.py` and pinned by `TestOrderingIntent`.
+
+## 16. Build Notes — E2 free-credit abuse controls (2026-07-22)
+
+**E2 built** — and per §17 it is the economics finding that actually gates GA.
+
+1. **Three controls, one policy module.** `ai/trust/abuse_controls.py` holds the verification gate, the per-IP signup throttle, and the eligibility predicate; enforcement is wired at existing call sites — the same shape as C5 (ladder in `dunning.py`, enforcement in the middleware). The throttle needs **no new table and no Redis**: the signup IP is stamped into the company's existing `onboarding_metadata` JSONB, so the check is one time-bounded count against `companies`.
+
+2. **The gate is at all three injection points**, because any one of them alone is bypassable: `auth.service._provision_new_tenant` (a fresh self-registered workspace starts at 0 daily credits — read from the flag, not the DB, since it runs pre-commit and must not query other tables), `credit_service.get_or_create_wallet` (the first-touch path would otherwise hand out a day of credits before the cron ever asked), and `flush_and_inject_daily_credits` (the daily cron). Verifying an email is the whole activation — no separate step.
+
+3. **It composes with the C5 ladder.** `read_only`/`suspended` tenants draw no free credits; `grace` still does, because grace is full-function by decision 1. Settings: `TRUST_REQUIRE_VERIFIED_FOR_CREDITS`, `TRUST_SIGNUP_MAX_PER_IP_PER_DAY` (0 disables).
+
+## 17. Build Notes — E1 idle-cost model (2026-07-22)
+
+**E1 built** — `ai/trust/idle_cost.py` + the derived numbers in [05a_idle_cost_model.md](./05a_idle_cost_model.md).
+
+1. **Structure derived, rates declared.** Every component's cadence is read off the shipped code (the crons in `worker.py`, the `heartbeat_interval_s` seeded by `loop/service.py`, the hibernation window), so the model moves when the platform moves — pinned by `TestCadenceIsDerived`. Only the three `UnitRates` are inputs, named and overridable so a real invoice replaces an estimate in one line.
+
+2. **The answer is a shape, not a number.** The floor splits into infrastructure (**$0.30/tenant/month** Solo, **$4.44** Growth on the container backend) and platform-initiated inference — and **B13 already caps the second half** at `LOOP_PLATFORM_ENVELOPE_USD`. The Blueprint's `$2,000/month` is mis-scoped: it reads as platform *fixed* cost, not per-tenant; ~6,500 idle Solo tenants would be needed to reach it. Hibernation is validated (24× on residency, 59% of Solo's floor), and `LOOP_DEFAULT_ENVELOPE_USD = $100` is confirmed sane at ~330× the idle floor.
+
+3. **It reorders the economics work.** Free credits are **$150/month/tenant** against a $0.30 idle floor — **500×**. The free tier's entire risk is the credit grant, so **E2 is the GA-gating economics item** and E1's real contribution is ruling out the other candidate explanation. That was not obvious before the numbers existed.
+
+## 18. Build Notes — the two integration hookups (2026-07-22)
+
+1. **C5's driver.** `billing/cron_service.days_past_due()` is pure and needs **no new column**: a successful charge advances `next_billing_date` (→ 0, and the ladder recovers the tenant), a failed one leaves it in the past so the days accumulate by themselves. `run_dunning_job()` sweeps every non-cancelled subscription — `advance_dunning` is idempotent, so a daily re-sweep of a stable tenant base is a no-op. The arq entry point is `ai/trust/crons.py::dunning_sweep`, registered daily at 01:10 UTC (after the midnight credit job, so a ladder position reflects the day just entered); `POST /api/v1/cron/dunning` triggers it manually. **Scope is subscriptions only** — a pay-as-you-go tenant has nothing to be *past due* on: their wallet runs empty and Inc-1's wallet-hold admission already blocks spend. The ladder is about a lapsed commitment, not an empty wallet.
+
+2. **B13's admission at the runners.** `loop/platform_budget.platform_work_admitted()` resolves the root Loop itself so a runner that knows only its company can ask; it **fails open when no Sheel is seeded** — the cap is a spend control, not a safety interlock, and missing infrastructure must not silently disable platform work. Wired into `dreaming_worker` (the 4×/day per-entity LLM burner B13 targets), which now returns `platform_budget_exhausted` and parks instead of running. `meta_agent_prompt_evolution` is deliberately left alone: its LLM "critic of critic" pass is still a stub, so there is no spend to gate — wire it when that lands.
+
+**TRUST is complete.** All seven findings (C5, D6, C3, B13, E1, E2, E4) are closed.
