@@ -15,10 +15,11 @@
   * **PACK** (full Wave-0 roster) — ✅ BUILT & **merged to local `master`** (push pending, §1). 16 entities + 7 bundles + generalized activation + runtime SoD. Closes C1 (all 6) + Inc-1 owner-id/governance carryovers.
   * **KAR** (outward gateways) — ✅ BUILT & **merged to local `master`**. KAR-03 WhatsApp (via SIG) + KAR-01 voice stub; roster **18**. Karuna threat posture + consent seam. Real voice/B7 → Inc 3.
   * **ONBOARD** (setup wizard) — ✅ **Backend built & merged to local `master`**. The wizard **step APIs** (`/ai/onboarding/*`, Pragya's Inc-3 stages) + the budget-envelope admin GET. **Frontend is a separate track, out of scope on this VM.**
-  * **TRUST** (billing safety + consent) — ✅ **COMPLETE.** C5 + D6 + C3 + B13 merged to `master` (migrations `trust001`–`trust004`); **E1 + E2 + E4 + both integration hookups** built on branch **`inc2/trust-econ`** (2026-07-22, not yet merged). All 7 findings closed.
-  * Remaining Inc-2: **RETR** (not started); ONBOARD **frontend**.
+  * **TRUST** (billing safety + consent) — ✅ **COMPLETE.** C5 + D6 + C3 + B13 (migrations `trust001`–`trust004`); **E1 + E2 + E4 + both integration hookups** built 2026-07-22. All 7 findings closed.
+  * **RETR** (retrieval upgrade) — ✅ **COMPLETE.** All 5 tasks on branch **`inc2/retr`** (2026-07-22, not yet merged): hybrid+RRF, structure-aware chunking + lazy re-chunk, schema-aware filters + KB domain viewport, Growth+ LLM rerank, retrieval goldens. Migrations `retr001`–`retr003`. Closes B8's retrieval half.
+  * **Increment 2 is functionally complete** — every charter finding closed. The only Inc-2 item outstanding is the **ONBOARD frontend** (a separate FE track; its backend contract is done).
 
-**Everything committed is green:** mypy `--strict` (173 files), 1093 unit + parity + eval, layout lint, all migrations apply/rollback clean.
+**Everything committed is green:** mypy `--strict` (179 files), **1194 unit + 183 parity/eval/integration**, layout lint, all migrations apply/rollback clean.
 
 ---
 
@@ -26,13 +27,13 @@
 
 The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). This VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`. Nothing is lost — all committed:
 
-* **`master`** — has **PACK + KAR + ONBOARD-backend + all four of TRUST's billing-safety pieces** (D6, C3, B13, C5) merged, **16 commits ahead of `origin/master`**, not yet pushed. (`inc2/trust` is now identical to `master` — it merged cleanly; the older note that B13 was pending was stale.)
-* **`inc2/trust-econ`** — **TRUST / E1 + E2 + E4 + both integration hookups**, **not yet merged**.
+* **`master`** — has **PACK + KAR + ONBOARD-backend + all of TRUST** (D6, C3, B13, C5, E1, E2, E4 + hookups) merged, **22 commits ahead of `origin/master`**, not yet pushed. (`inc2/trust` and `inc2/trust-econ` are both merged in; the older note that B13 was pending was stale.)
+* **`inc2/retr`** — the whole **RETR** workstream, **not yet merged**.
 
 To publish, from an environment with GitHub write access:
 ```bash
 cd /home/rahul/workspace/hb-proto-3
-git checkout master && git merge inc2/trust-econ --no-edit   # TRUST economics → master
+git checkout master && git merge inc2/retr --no-edit   # RETR → master
 git push origin master
 ```
 Verify with `git log --oneline -25` and `git rev-list --left-right --count origin/master...master`.
@@ -82,17 +83,26 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 * **E1** `ai/trust/idle_cost.py` + [`increment-2/05a_idle_cost_model.md`](./increment-2/05a_idle_cost_model.md) — structure derived from shipped cron cadences, rates declared. **$0.30/tenant/mo** Solo, $4.44 Growth; the Blueprint's $2,000 is platform *fixed* cost, mis-scoped. **Key result: free credits are $150/mo/tenant vs a $0.30 idle floor (500×) — the free tier's risk is entirely the credit grant, which makes E2 the GA-gating economics item.**
 * **Hookups** — `billing/cron_service.days_past_due()` + `run_dunning_job()` + `ai/trust/crons.py::dunning_sweep` (arq daily 01:10 UTC, plus `POST /api/v1/cron/dunning`) drive C5's ladder; `loop/platform_budget.platform_work_admitted()` wired into `dreaming_worker` closes B13's runner gap.
 
-**Migration head:** `trust004` — **the TRUST economics slice added no migrations** (Inc-2 PACK/KAR/ONBOARD added none either; TRUST added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`). Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+### Increment 2 / RETR — the retrieval upgrade (on `inc2/retr`)
+* **T1** `memory/hybrid_retrieval.py` — lexical (Postgres FTS, GIN index `retr001`) + semantic (pgvector) fused by **reciprocal-rank fusion**. Fusing on *rank* is the design: a cosine and a `ts_rank_cd` are incomparable quantities. `search_semantic` now degrades to lexical-only on an embedding failure instead of returning nothing.
+* **T2** `memory/chunking.py` — structure-aware chunks (ATX/numbered/setext/bare-title headings, per-source-type sizing) replacing `text[i:i+500]`. **Heading context is prepended into `content`** because both retrievers read that column. `memory/rechunk.py` + hourly cron is the lazy upgrade (`chunk_version`, migration `retr002`), gated by B13's platform budget since re-embedding is platform-initiated.
+* **T3** `memory/retrieval_filters.py` + `documents.memory_domain` (`retr003`) — relevance predicates (bound, never interpolated) and the Inc-1 **domain viewport now applied to the KB**, after fusion and before `top_k` so an invisible document can't eat a result slot.
+* **T4** `memory/reranker.py` — Growth+ **LLM reranker** (decision resolved 2026-07-22). Tier gate fails closed, top-20 window, attributed `rerank` and deliberately *tenant*-initiated, fails open on every path.
+* **T5** `tests/eval/retrieval_{metrics,corpus}.py` + `test_retrieval_goldens_db.py` — the regression gate. **MRR 0.812 → 1.000** vs cosine; all the gain on exact-token queries, paraphrase queries unregressed.
+
+**Migration head:** `retr003`. Inc-2 PACK/KAR/ONBOARD and the TRUST economics slice added none; TRUST's safety slice added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`; RETR added `retr001` FTS index, `retr002` chunk structure, `retr003` document domain. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
 ## 3. How to resume — the next work
 
-Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD ✅ (backend) → TRUST ✅ → RETR.**
+Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4): **SLICE ✅ → PACK ✅ + KAR ✅ → ONBOARD ✅ (backend) → TRUST ✅ → RETR ✅.** **Increment 2's backend is done.**
 
-**Next up: RETR** ([increment-2/06_retrieval_upgrade.md](./increment-2/06_retrieval_upgrade.md)) — the last Inc-2 workstream and the §24.4 retrieval upgrade carried from Increment 1. Five tasks: **T1** Postgres full-text index + hybrid retrieval fused by reciprocal-rank fusion; **T2** structure-aware chunking replacing the flat 500-char split in `arq_jobs.process_document` (lazy background re-chunking — decision 1, no big-bang migration); **T3** schema-aware metadata filters composing with the Inc-1 domain viewport; **T4** optional cross-encoder rerank behind a Growth+ flag; **T5** retrieval goldens in the eval harness. It runs on the **control plane** (KB + CORTEX are control-plane permanent, v3.0.6). Gated by its own goldens — hybrid must beat pure-cosine on the golden set.
+**Next up: Increment 3 — Pragya v1** ([increment-3/00_charter.md](./increment-3/00_charter.md)). It is a **stub by design** — "deepened just-in-time, a clarifying-questions round with Rahul precedes the full docs". So the next session's first job is **that questions round**, not code. Its three named open questions are all Rahul's to answer: which channel Pragya ships on first (console / phone / WhatsApp), the passkey/FIDO2 choice for step-up (platform-built vs provider), and who reviews the consulting quality of the stage 1–5 scripts. Scope: **AUTH** (inward-channel authentication, T0–T3 command tiers, Pragya-can't-approve-herself) + **PRAGYA v1** (the nine-stage engagement flow over the same APIs the Inc-2 wizard already exposes). Closes C4 and C6. **Voice (KAR-01 real) and B7 fold in here** — deferred from Inc 2 because Pragya needs the same realtime path.
 
-**Done 2026-07-22** — TRUST completed ([05](./increment-2/05_trust_billing_safety.md) §15–§18): **E4** fee-formula guard, **E2** free-credit abuse controls, **E1** idle-cost model ([05a](./increment-2/05a_idle_cost_model.md)), and both open integration hookups (C5's `days_past_due` driver, B13's admission at the dreaming runner). All 7 TRUST findings closed.
+Two Inc-2 items remain outside that: the **ONBOARD frontend** (separate FE track, backend contract done) and the **push** in §1.
+
+**Done 2026-07-22** — TRUST completed ([05](./increment-2/05_trust_billing_safety.md) §15–§18): **E4** fee-formula guard, **E2** free-credit abuse controls, **E1** idle-cost model ([05a](./increment-2/05a_idle_cost_model.md)), and both open integration hookups (C5's `days_past_due` driver, B13's admission at the dreaming runner). RETR completed ([06](./increment-2/06_retrieval_upgrade.md) §5–§9): all five tasks, MRR 0.812 → 1.000 over pure cosine on the golden set.
 
 **Done 2026-07-20** — PACK ([03](./increment-2/03_pack_agents_processes.md) §8): full Wave-0 roster + runtime SoD. KAR ([02](./increment-2/02_kar_gateways.md) §5): WhatsApp via SIG + gateways + injection golden + consent seam. ONBOARD backend ([04](./increment-2/04_onboard_wizard.md) §6): the `/ai/onboarding/*` wizard step APIs over `activate_bundle` + the `/ai/loop/envelope` admin GET. **The remaining ONBOARD frontend (React wizard, approvals console, FE gates) is a separate FE track** — the backend contract it calls is done.
 
@@ -135,6 +145,8 @@ From `increment-2/00_overview.md` §2 and each doc's decisions block:
 * **TRUST's shape: policy in `ai/trust/`, enforcement at the existing call site.** Every TRUST piece follows it — the ladder in `dunning.py` enforced by `common/middleware.py`, the registry in `consent_registry.py` filling KAR's seam, the eligibility predicate in `abuse_controls.py` enforced in `billing/credit_service.py`. It keeps the policy strict-typed and unit-testable without a DB, and touches the legacy call sites minimally. `ai/` → `billing/` imports are long-established (`step_executor`, `loop/wallet_holds`, …); the reverse is fine too.
 * **Free daily credits have THREE injection points, not one** — `auth.service._provision_new_tenant` (registration), `credit_service.get_or_create_wallet` (first touch), and `flush_and_inject_daily_credits` (the daily cron). A gate on only the cron is bypassable by signing up and immediately using the product. `_provision_new_tenant` runs **pre-commit and must not query other tables** (asyncpg can't do concurrent ops on one connection), so gate it from a settings flag + the company's own metadata, not a DB lookup.
 * **Anything that withholds credits must be scoped to self-service signup** (`onboarding_metadata.created_via`), never to "has no verified user". Fixture/seeded companies have **no users at all**, so the broad form fails every agent run in `tests/parity` with `insufficient_funds` at wallet-hold admission. **The parity suite is the canary for credit-path changes** — `tests/unit` stays green because it doesn't drive real runs, so run `pytest tests/parity tests/eval` before believing a billing change is safe.
+* **Retrieval has three stages and they are deliberately separate** (RETR): `hybrid_retrieval.hybrid_search` fuses, the domain viewport filters *inside* it (after fusion, before `top_k`), and `reranker.llm_rerank` runs at the caller. Do not fold the reranker into `hybrid_search` — it would cycle on `RetrievedChunk`, and it would put per-query LLM spend inside a function that other call sites reasonably assume is cheap.
+* **A new `usage_logs` attribution must be classified for B13.** Adding a `CostAttribution` member is not enough — decide whether it belongs in `PLATFORM_INITIATED_ATTRIBUTIONS`. Tenant-asked-for work (like RETR's `rerank`) must stay out, or ordinary tenant activity can exhaust the cap that exists to protect tenants *from* platform work.
 * **Cross-process record writes need `actor_process_code`** (PACK SoD): the `tenant_record_write` tool resolves it from `agent_id` (own `process_code`, else parent process's); a write on another owner's object then *proposes* (`object.change_proposed`). A gateway/origination write (no PROCESS ancestor) resolves to `None` → front-door. A new money/record tool should thread `actor_process_code` the same way.
 
 ---
@@ -166,8 +178,7 @@ Integration tests **skip cleanly** without `DATABASE_URL`. Docker is available f
 ## 8. Register findings status (from the gap register)
 
 * **Closed by Inc 1:** A6, B1, B2, B3, B5, B6, B8, E3 (+ the earlier v3 doc-pass batch).
-* **Closed by Inc 2 so far:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent registry), **C3** (per-checkpoint HITL SLAs), **B13** (platform-initiated budget class), **C5** (graduated dunning + state-aware suspension), **E1** (idle-cost model), **E2** (free-credit abuse controls), **E4** (fee-formula guard) — all TRUST, now complete.
-* **Closing in Inc 2 (remaining):** the retrieval half of **B8** — RETR, not started.
+* **Closed by Inc 2:** **C1** (all 6 Wave-0 process sheets — P03 in SLICE, the other 5 in PACK) + the Inc-1 owner-id-resolution & governance-band-seeding carryovers (PACK); **D6** (consent registry), **C3** (per-checkpoint HITL SLAs), **B13** (platform-initiated budget class), **C5** (graduated dunning + state-aware suspension), **E1** (idle-cost model), **E2** (free-credit abuse controls), **E4** (fee-formula guard) — all TRUST; **B8**'s retrieval half (RETR). **Increment 2's finding list is fully closed.**
 * **Deferred:** B7 (realtime voice) → Increment 3 with Pragya.
 * **Still open (later increments):** B10, B11, B12, B14, C2, C4, C6, D2, D3, D4, D5. See [roadmap_gap_register.md](./roadmap_gap_register.md) and each increment charter.
 
@@ -175,4 +186,4 @@ Integration tests **skip cleanly** without `DATABASE_URL`. Docker is available f
 
 ## 9. One-paragraph orientation for a fresh agent
 
-> The repo is a multi-tenant agentic platform. Increment 1 built the "one-loop" substrate (signal bus, governance/PolicyGate, per-tenant business schema + record graph, Loop runtime + budget/wallet safety) — all on `master`. Increment 2 is building the sellable MVP, the "Solo Pack": curated A1 agents that answer email/WhatsApp, qualify, quote, chase invoices, and report, governed with HITL. Five of its six workstreams are built — SLICE, PACK, KAR, ONBOARD (backend), and TRUST (all 7 findings closed, the economics slice on `inc2/trust-econ`). **Resume by building the last one, RETR** (§3): the §24.4 hybrid-retrieval upgrade on the control plane, per `docs/product-road-map/increment-2/06_retrieval_upgrade.md`. Two things are outstanding but not blocking: the push in §1 (this VM has no git write credentials) and the ONBOARD frontend (a separate FE track). Keep every gate green; follow the conventions in §5 above.
+> The repo is a multi-tenant agentic platform. Increment 1 built the "one-loop" substrate (signal bus, governance/PolicyGate, per-tenant business schema + record graph, Loop runtime + budget/wallet safety). Increment 2 built the sellable MVP, the "Solo Pack": curated A1 agents that answer email/WhatsApp, qualify, quote, chase invoices, and report, governed with HITL — **all six workstreams are done** (SLICE, PACK, KAR, ONBOARD-backend, TRUST, RETR) and every Inc-2 register finding is closed. **Resume with Increment 3, Pragya v1** (§3) — but note its charter is a deliberate stub, so the next session starts with a clarifying-questions round with Rahul, not with code. Two Inc-2 items stay open and neither blocks Inc 3: the push in §1 (this VM has no git write credentials) and the ONBOARD frontend (a separate FE track). Keep every gate green; follow the conventions in §5 above.
