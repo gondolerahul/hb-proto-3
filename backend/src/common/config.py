@@ -82,6 +82,26 @@ class Settings(BaseSettings):
     TRUST_REQUIRE_VERIFIED_FOR_CREDITS: bool = True
     TRUST_SIGNUP_MAX_PER_IP_PER_DAY: int = 3
 
+    # ── D1 — inward-channel authentication (Inc-3 AUTH, technical §11.3) ──
+    # A step-up buys a short window, not a session: every T2/T3 command
+    # re-checks at execution time, so this is how long an owner can keep
+    # acting on one ceremony, not how long they stay logged in.
+    INWARD_AUTH_ELEVATION_MINUTES: int = 10
+    # Repeated failed step-ups lock T2+ for the user and alert every
+    # registered channel — a spoofer grinding codes is the thing this catches.
+    INWARD_AUTH_MAX_FAILED_STEPUPS: int = 5
+    INWARD_AUTH_LOCKOUT_MINUTES: int = 15
+    # Channel-enrollment OTP and the T3 second-channel nonce.
+    INWARD_AUTH_OTP_TTL_MINUTES: int = 10
+    INWARD_AUTH_OTP_MAX_ATTEMPTS: int = 5
+    INWARD_AUTH_OOB_TTL_MINUTES: int = 10
+    # WebAuthn relying party. RP_ID must be the console's registered domain
+    # (or a parent of it) and ORIGIN the exact scheme+host the browser sends;
+    # a mismatch fails the ceremony closed, which is the intended behaviour.
+    WEBAUTHN_RP_ID: str = "localhost"
+    WEBAUTHN_RP_NAME: str = "HireBuddha"
+    WEBAUTHN_ORIGIN: str = "http://localhost:5173"
+
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.
     VOICEMAIL_DETECTION_ENABLED: bool = True

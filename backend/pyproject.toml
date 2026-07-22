@@ -51,6 +51,11 @@ numpy = "^1.24.0"       # Numerical operations
 websockets = "^13.0"    # WebSocket support (>=13 required by google-genai)
 twilio = "^9.0.0"       # Voice calls, SMS, WhatsApp
 hb-cortex-memory = "0.1.0"
+pyotp = "^2.10.0"       # TOTP step-up fallback (Inc-3 AUTH, §11.3)
+webauthn = "^3.0.0"     # passkey/FIDO2 ceremonies (Inc-3 AUTH, platform-built)
+# setuptools 81 removed pkg_resources, which opentelemetry-instrumentation still
+# imports at module scope — unpinned, a fresh install breaks `import src.main`.
+setuptools = "<81"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

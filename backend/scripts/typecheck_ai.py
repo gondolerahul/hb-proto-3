@@ -47,6 +47,7 @@ CLEAN_PACKAGES: list[str] = [
     "loop",
     "solo_pack",
     "trust",
+    "inward_auth",
 ]
 
 

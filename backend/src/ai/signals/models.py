@@ -88,6 +88,12 @@ class SignalTypes:
     # the KAR-03 / KAR-01 gateways, same shape as email.inbound.
     MESSAGE_INBOUND = "message.inbound"
     VOICE_INBOUND = "voice.inbound"
+    # AUTH (Inc 3): the inward-channel security signals. The out-of-band leg
+    # for a T3 command, and the "someone is grinding step-ups" alert that fans
+    # out to every channel the user has registered.
+    AUTHN_CHANNEL_OTP = "authn.channel_otp"
+    AUTHN_OOB_CONFIRM = "authn.oob_confirm"
+    AUTHN_SECURITY_ALERT = "authn.security_alert"
     OBJECT_CHANGE_PROPOSED = "object.change_proposed"
     OBJECT_WRITE_CONFLICT = "object.write_conflict"
     INCIDENT_GOVERNANCE = "incident.governance"
