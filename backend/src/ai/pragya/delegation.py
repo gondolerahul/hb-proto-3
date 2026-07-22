@@ -65,6 +65,10 @@ class DelegationKind:
     CAPABILITY_BUILD = "capability_build"  # the Meta-Agent board
     BULK_INGEST = "bulk_ingest"           # stage 3 — connected-source pull
     ACTIVATION = "activation"             # stage 8 — bundle activation
+    #: Decision 6 — work handed to one of Pragya's child entities. The generic
+    #: kind: the child decides what the work *is*, so this does not enumerate
+    #: capabilities that have not been designed yet.
+    COLLEAGUE = "colleague"
 
 
 #: What she says when starting each. Concrete about *what* and *how long*:
@@ -85,7 +89,12 @@ PROMISE_COPY: dict[str, str] = {
     ),
     DelegationKind.ACTIVATION: (
         "Setting up {subject} now — everything starts needing your approval, "
-        "so nothing will act on its own. A moment."
+        "so nothing will act on its own. Give me a moment and I'll tell you "
+        "what came up."
+    ),
+    DelegationKind.COLLEAGUE: (
+        "I've put {subject} to a colleague who handles that. It runs in the "
+        "background — I'll come back to you with what they find."
     ),
 }
 
@@ -148,6 +157,8 @@ async def delegate(
     subject: str,
     params: dict[str, Any] | None = None,
     stage: Stage | None = None,
+    entity: HierarchicalEntity | None = None,
+    task: str | None = None,
 ) -> Delegation:
     """Start long work and record the promise.
 
@@ -161,7 +172,16 @@ async def delegate(
 
     run_id: uuid.UUID | None = None
 
-    if kind == DelegationKind.CAPABILITY_BUILD:
+    if entity is not None:
+        # Decision 6: work handed to a named child entity. The child's own
+        # governance applies from here — Pragya is the caller, not the actor.
+        run_id = await _dispatch_run(
+            db, company_id=company_id, entity=entity,
+            task=task or f"Handle: {subject}",
+            context={"delegation_kind": kind, "subject": subject,
+                     **(params or {})})
+
+    elif kind == DelegationKind.CAPABILITY_BUILD:
         entity = await _meta_agent_entity(db, company_id)
         if entity is None:
             # No board seeded for this tenant. Say so rather than promising

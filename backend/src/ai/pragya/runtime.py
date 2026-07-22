@@ -34,6 +34,7 @@ from src.ai.inward_auth.models import AccountManagerSession, ChannelKind
 from src.ai.inward_auth.sessions import AuthDecision, get_or_create_session, require_tier
 from src.ai.inward_auth.tiers import Tier
 from src.ai.llm.router import LLMRouter
+from src.ai.orm.entity import HierarchicalEntity
 from src.ai.loop.wallet_holds import available_for_spend
 from src.ai.pragya.acting import ActOutcome, ProposedCall, ToolTurnResult, run_tool_calls
 from src.ai.pragya.advancement import (
@@ -47,7 +48,16 @@ from src.ai.pragya.artifacts import (
     extraction_prompt,
     parse_extraction,
 )
+from src.ai.pragya.children import (
+    CALL_CHILD_TOOL,
+    ChildCapability,
+    available_children,
+    child_schemas,
+    resolve_child,
+)
 from src.ai.pragya.delegation import (
+    DelegationKind,
+    delegate,
     mark_reported,
     report_copy,
     unreported_for,
@@ -132,6 +142,8 @@ class TurnOutcome:
     awaiting_confirmation: bool = False
     #: Promises closed on this turn.
     reported_delegations: list[str] = field(default_factory=list)
+    #: Work handed to colleagues on this turn.
+    delegated: list[str] = field(default_factory=list)
 
 
 #: Pragya's own governance. She is a conversational surface, not a worker
@@ -145,14 +157,46 @@ PRAGYA_GOVERNANCE = Governance(
 )
 
 
-def _tool_schemas() -> list[dict[str, Any]]:
-    """Tools Pragya may propose. Empty until T4 wires the delegation set.
+async def _handle_colleague_calls(
+    db: AsyncSession,
+    response: Any,
+    children: list[ChildCapability],
+    *,
+    company_id: uuid.UUID,
+    stage: Stage,
+) -> list[str]:
+    """Hand proposed work to child entities (decision 6).
 
-    Deliberately not "every registered tool": her reach is curated, because a
-    conversational surface with the full catalogue is a very large attack
-    surface for anything that talks its way past the tier classifier.
+    Pragya proposes **no raw tools**; her surface is her colleagues. Each
+    accepted proposal becomes a delegation — dispatched as a run under the
+    *child's* governance, promised to the owner, reported when it finishes.
+
+    A proposal naming a colleague that does not exist is dropped rather than
+    substituted. Handing work to a plausible-looking wrong entity is worse
+    than handing it to none.
     """
-    return []
+    promises: list[str] = []
+    for call in getattr(response, "function_calls", None) or []:
+        if call.get("name") != CALL_CHILD_TOOL:
+            continue
+        args = dict(call.get("args") or {})
+        child = resolve_child(children, str(args.get("colleague") or ""))
+        if child is None:
+            continue
+
+        entity = await db.get(HierarchicalEntity, child.entity_id)
+        if entity is None:
+            continue
+
+        promise = await delegate(
+            db, company_id=company_id, kind=DelegationKind.COLLEAGUE,
+            subject=str(args.get("subject") or child.display_name),
+            task=str(args.get("task") or ""),
+            entity=entity, stage=stage,
+            params={"colleague": child.handle},
+        )
+        promises.append(promise.promise)
+    return promises
 
 
 async def _meter_turn(
@@ -316,22 +360,31 @@ async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
         for t in await recent_turns(db, request.company_id, limit=20)
     ]
 
+    children = await available_children(db, request.company_id)
     response = await router.call_llm(
         task_type="text_generation",
         system_prompt=stage_system_prompt(stage, engagement),
         user_prompt=request.text,
         history=history,
-        tools=_tool_schemas() or None,
+        tools=child_schemas(children) or None,
         temperature=0.6,
     )
 
-    # Gated acts. Every proposal passes the shared PolicyGate before the
-    # shared executor; a governed one raises a card and does not complete.
+    # Work handed to colleagues (decision 6) — dispatched under the child's
+    # own governance, promised now, reported when it lands.
+    delegated = await _handle_colleague_calls(
+        db, response, children, company_id=request.company_id, stage=stage)
+
+    # Any *direct* tool proposal still passes the shared PolicyGate before the
+    # shared executor. Pragya proposes none today, but the path stays gated so
+    # a future capability cannot arrive ungoverned.
     tool_results: list[ToolTurnResult] = []
-    if response.function_calls:
+    direct_calls = [c for c in (response.function_calls or [])
+                    if c.get("name") != CALL_CHILD_TOOL]
+    if direct_calls:
         tool_results = await run_tool_calls(
             [ProposedCall(name=str(c.get("name")), args=dict(c.get("args") or {}))
-             for c in response.function_calls],
+             for c in direct_calls],
             PRAGYA_GOVERNANCE,
             company_id=request.company_id,
             user_id=request.user_id,
@@ -348,6 +401,9 @@ async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
         reply = "\n\n".join([*(report_copy(d) for d in finished), reply]).strip()
         reported = [str(d.kind) for d in finished]
         await mark_reported(db, finished)
+
+    if delegated:
+        reply = "\n\n".join([reply, *delegated]).strip()
 
     raised = [r for r in tool_results if r.outcome == ActOutcome.RAISED]
     if raised and not reply:
@@ -401,4 +457,5 @@ async def run_turn(db: AsyncSession, request: TurnRequest) -> TurnOutcome:
         tool_results=tool_results, command_ref=command_ref,
         raised_approval=bool(raised), cost_usd=cost,
         artifacts_written=written, advanced_to=advanced_to,
-        awaiting_confirmation=awaiting, reported_delegations=reported)
+        awaiting_confirmation=awaiting, reported_delegations=reported,
+        delegated=delegated)

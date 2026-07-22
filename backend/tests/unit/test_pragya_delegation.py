@@ -35,13 +35,31 @@ def test_every_kind_has_promise_copy() -> None:
     assert set(PROMISE_COPY) == kinds
 
 
-def test_promise_copy_names_what_and_roughly_how_long() -> None:
-    """'I'll look into it' is how an owner believes something happened."""
+def test_every_promise_says_what_and_that_a_report_is_coming() -> None:
+    """The invariant: an owner must know the work is underway, not done, and
+    that they will hear back. 'I'll look into it' is how they end up believing
+    something happened."""
     for kind, copy in PROMISE_COPY.items():
         assert "{subject}" in copy, kind
-        rendered = copy.format(subject="X")
+        rendered = copy.format(subject="X").lower()
         assert any(w in rendered for w in
-                   ("minute", "moment", "few minutes")), kind
+                   ("i'll tell you", "i'll let you know", "i'll come back",
+                    "come back to you")), kind
+
+
+def test_promises_give_a_duration_where_one_is_actually_knowable() -> None:
+    """Research, a board build, an ingest and an activation have rough shapes
+    we can state. A generic colleague call does NOT — the child decides what
+    the work is, so quoting a duration would be inventing one, and an invented
+    estimate is a broken promise with extra steps."""
+    knowable = {DelegationKind.RESEARCH, DelegationKind.CAPABILITY_BUILD,
+                DelegationKind.BULK_INGEST, DelegationKind.ACTIVATION}
+    for kind in knowable:
+        rendered = PROMISE_COPY[kind].format(subject="X")
+        assert any(w in rendered for w in ("minute", "moment")), kind
+
+    generic = PROMISE_COPY[DelegationKind.COLLEAGUE].format(subject="X")
+    assert "minute" not in generic
 
 
 def test_promise_copy_never_claims_completion() -> None:

@@ -587,3 +587,82 @@ async def test_the_confirm_endpoint_is_the_only_way_past_stage_two(pragya_tenant
         await advance(db, engagement, reason="owner confirmed the stage")
         await db.commit()
         assert current_stage(engagement) is Stage.INGESTION
+
+
+# --- child-entity delegation (Inc-4 T9, decision 6) --------------------------
+
+async def test_a_tenant_with_no_children_gets_no_capability_tool(pragya_tenant):
+    from src.ai.pragya.children import available_children, child_schemas
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        children = await available_children(db, cid)
+    assert child_schemas(children) == []
+
+
+async def test_children_are_the_entities_parented_to_pragya(pragya_tenant):
+    """Her surface is her colleagues — and only hers, not the whole roster."""
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.pragya.children import available_children
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        pragya = HierarchicalEntity(
+            company_id=cid, name="pragya", display_name="Pragya",
+            type="AGENT", status="ACTIVE")
+        db.add(pragya)
+        await db.flush()
+        db.add(HierarchicalEntity(
+            company_id=cid, name="meta-agent-board", display_name="Meta Agent",
+            type="AGENT", status="ACTIVE", parent_id=pragya.id))
+        # Not hers: a Solo Pack worker somewhere else in the tree.
+        db.add(HierarchicalEntity(
+            company_id=cid, name="agt-038-ar", display_name="AR Agent",
+            type="AGENT", status="ACTIVE"))
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        children = await available_children(db, cid)
+
+    handles = {c.handle for c in children}
+    assert "meta_agent_board" in handles
+    assert "agt_038_ar" not in handles, "reached an entity that is not her child"
+
+
+async def test_asking_a_colleague_dispatches_a_run_under_that_child(pragya_tenant):
+    """Calling a child IS dispatching a run — tools and delegation are one
+    mechanism, and the child's own governance applies from there."""
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.orm.execution import ExecutionRun
+    from src.ai.pragya.delegation import DelegationKind, delegate
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        child = HierarchicalEntity(
+            company_id=cid, name="deep-research", display_name="Deep Research",
+            type="AGENT", status="ACTIVE")
+        db.add(child)
+        await db.commit()
+        child_id = child.id
+
+    async with AsyncSessionLocal() as db:
+        entity = await db.get(HierarchicalEntity, child_id)
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.COLLEAGUE,
+            subject="your pricing", task="Find their published price list",
+            entity=entity, stage=Stage.BASELINE)
+        await db.commit()
+
+    assert promise.run_id is not None
+    assert "your pricing" in promise.promise
+
+    async with AsyncSessionLocal() as db:
+        run = (await db.execute(
+            select(ExecutionRun).where(
+                ExecutionRun.id == promise.run_id))).scalars().one()
+    assert run.entity_id == child_id
+    assert run.input_data["channel"] == "pragya"
+    assert "price list" in run.input_data["input"]
