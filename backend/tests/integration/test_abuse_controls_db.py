@@ -41,9 +41,12 @@ async def tracker():
     created: list[uuid.UUID] = []
 
     async def make_company(*, ip: str | None = None, status: str = "active",
-                           subscription_status: str = SubscriptionStatus.CURRENT) -> uuid.UUID:
+                           subscription_status: str = SubscriptionStatus.CURRENT,
+                           created_via: str = "self_registration") -> uuid.UUID:
         cid = uuid.uuid4()
-        metadata = {SIGNUP_IP_KEY: ip} if ip else {}
+        metadata: dict[str, str] = {"created_via": created_via}
+        if ip:
+            metadata[SIGNUP_IP_KEY] = ip
         async with AsyncSessionLocal() as s:
             await s.execute(
                 text("INSERT INTO companies "
@@ -119,7 +122,7 @@ class TestDailyCreditEligibility:
         async with AsyncSessionLocal() as db:
             assert bool(await daily_credit_eligibility(db, cid))
 
-    async def test_unverified_company_is_withheld(self, tracker):
+    async def test_unverified_signup_is_withheld(self, tracker):
         from src.common.database import AsyncSessionLocal
         make_company, make_user = tracker
         cid = await make_company()
@@ -128,6 +131,25 @@ class TestDailyCreditEligibility:
             result = await daily_credit_eligibility(db, cid)
         assert not result
         assert "verified" in result.reason
+
+    async def test_unverified_admin_created_company_is_still_eligible(self, tracker):
+        """The gate is scoped to self-service signup — the only path an attacker
+        drives. An admin-provisioned tenant was vouched for by a human."""
+        from src.common.database import AsyncSessionLocal
+        make_company, make_user = tracker
+        cid = await make_company(created_via="admin")
+        await make_user(cid, verified=False)
+        async with AsyncSessionLocal() as db:
+            assert bool(await daily_credit_eligibility(db, cid))
+
+    async def test_seeded_company_with_no_users_is_eligible(self, tracker):
+        """Fixture/seeded tenants have no signup and no users; blanket-gating
+        them starved the parity harness of credits."""
+        from src.common.database import AsyncSessionLocal
+        make_company, _ = tracker
+        cid = await make_company(created_via="")
+        async with AsyncSessionLocal() as db:
+            assert bool(await daily_credit_eligibility(db, cid))
 
     async def test_read_only_company_is_withheld(self, tracker):
         """Past the paying states, free credits stop — that IS the dunning point."""

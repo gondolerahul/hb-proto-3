@@ -26,7 +26,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +40,9 @@ __all__ = [
     "SIGNUP_IP_KEY",
     "SIGNUP_THROTTLE_WINDOW_HOURS",
     "CreditEligibility",
+    "SELF_SERVICE_ORIGINS",
     "client_ip",
+    "is_self_service_signup",
     "signup_allowed",
     "daily_credit_eligibility",
     "stamp_signup_ip",
@@ -48,6 +50,14 @@ __all__ = [
 
 # Where the signup origin is stashed on Company.onboarding_metadata.
 SIGNUP_IP_KEY = "signup_ip"
+
+# The `created_via` values that represent SELF-SERVICE password signup — the
+# only path the verification gate applies to, because it is the only one an
+# attacker can drive. An admin-provisioned tenant was vouched for by a human;
+# an OAuth tenant was verified by its provider (`is_verified=True` at creation);
+# a seeded/test tenant has no signup at all. Blanket-gating on "has no verified
+# user" would starve all three of credits for no security gain.
+SELF_SERVICE_ORIGINS = frozenset({"self_registration"})
 
 # The rolling window the per-IP signup cap is measured over.
 SIGNUP_THROTTLE_WINDOW_HOURS = 24
@@ -83,6 +93,18 @@ def client_ip(headers: Mapping[str, str], fallback: Optional[str]) -> Optional[s
         if first:
             return first
     return fallback
+
+
+def is_self_service_signup(metadata: Optional[Mapping[str, Any]]) -> bool:
+    """True when the company came in through the self-service password signup.
+
+    That is the only origin the verification gate applies to — see
+    ``SELF_SERVICE_ORIGINS``. Absent metadata means a seeded, migrated, or
+    fixture company, which is not a signup and is not gated.
+    """
+    if not metadata:
+        return False
+    return str(metadata.get("created_via") or "") in SELF_SERVICE_ORIGINS
 
 
 async def signup_allowed(db: AsyncSession, ip: Optional[str]) -> bool:
@@ -121,8 +143,9 @@ async def daily_credit_eligibility(
     """Whether a company may be injected with its daily free credits.
 
     Ineligible when the company is inactive, past the dunning ladder's paying
-    states, or has no verified user yet (the E2 verification gate). Verifying
-    an email is all it takes to switch on — no separate activation step.
+    states, or — for a **self-service signup** — has no verified user yet (the
+    E2 verification gate). Verifying an email is all it takes to switch on; no
+    separate activation step.
     """
     from src.auth.models import Company, User
 
@@ -138,7 +161,10 @@ async def daily_credit_eligibility(
     if sub_status in _CREDIT_BLOCKED_STATUSES:
         return CreditEligibility(False, f"subscription status is {sub_status}")
 
-    if settings.TRUST_REQUIRE_VERIFIED_FOR_CREDITS:
+    # Company uses legacy Column typing — the value is the JSONB dict.
+    metadata = cast(Optional[Mapping[str, Any]], company.onboarding_metadata)
+    if (settings.TRUST_REQUIRE_VERIFIED_FOR_CREDITS
+            and is_self_service_signup(metadata)):
         verified = (await db.execute(
             select(func.count()).select_from(User).where(
                 User.company_id == company_id,

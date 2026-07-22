@@ -12,6 +12,7 @@ from src.ai.trust.abuse_controls import (
     SIGNUP_IP_KEY,
     CreditEligibility,
     client_ip,
+    is_self_service_signup,
     stamp_signup_ip,
 )
 
@@ -55,6 +56,30 @@ class TestStampSignupIP:
 
     def test_handles_null_metadata(self):
         assert stamp_signup_ip(None, "203.0.113.7") == {SIGNUP_IP_KEY: "203.0.113.7"}
+
+
+class TestSelfServiceScoping:
+    """The verification gate applies to signup only — the one path an attacker
+    drives. Gating on the broader "has no verified user" starves admin-created,
+    OAuth, and seeded tenants of credits for no security gain (it broke the
+    parity harness, whose fixture companies have no users at all)."""
+
+    def test_password_signup_is_gated(self):
+        assert is_self_service_signup({"created_via": "self_registration"})
+
+    def test_admin_created_is_not_gated(self):
+        """A human vouched for them."""
+        assert not is_self_service_signup({"created_via": "admin"})
+
+    def test_oauth_is_not_gated(self):
+        """The provider verified the email — is_verified=True at creation."""
+        assert not is_self_service_signup({"created_via": "oauth"})
+
+    def test_seeded_or_fixture_company_is_not_gated(self):
+        """No metadata means no signup happened at all."""
+        assert not is_self_service_signup(None)
+        assert not is_self_service_signup({})
+        assert not is_self_service_signup({"completed_steps": []})
 
 
 class TestCreditEligibility:

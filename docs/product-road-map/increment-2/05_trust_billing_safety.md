@@ -129,6 +129,8 @@ Takes the **measured Inc-1 tenant-DB idle cost** (per-tier, from the SCH hiberna
 
 3. **It composes with the C5 ladder.** `read_only`/`suspended` tenants draw no free credits; `grace` still does, because grace is full-function by decision 1. Settings: `TRUST_REQUIRE_VERIFIED_FOR_CREDITS`, `TRUST_SIGNUP_MAX_PER_IP_PER_DAY` (0 disables).
 
+4. **The gate is scoped to self-service signup, and that scoping is load-bearing.** The first cut gated on "the company has no verified user", which read as equivalent but is not: it also starved **admin-provisioned** tenants (a human vouched for them), **OAuth** tenants (provider-verified, `is_verified=True` at creation), and **seeded/fixture** tenants of credits. The parity harness caught it — its fixture companies have no users at all, so every agent run failed wallet-hold admission with `insufficient_funds` and the whole suite went red. The gate now keys off `onboarding_metadata.created_via ∈ SELF_SERVICE_ORIGINS`, which is both the correct security scope (password signup is the only path an attacker drives) and the fix. Pinned by `TestSelfServiceScoping` and two DB cases so it cannot re-broaden.
+
 ## 17. Build Notes — E1 idle-cost model (2026-07-22)
 
 **E1 built** — `ai/trust/idle_cost.py` + the derived numbers in [05a_idle_cost_model.md](./05a_idle_cost_model.md).

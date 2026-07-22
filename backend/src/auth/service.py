@@ -39,12 +39,17 @@ async def _provision_new_tenant(db: AsyncSession, company: Company):
             except Exception:
                 pass
 
-        # E2 — a self-registered workspace is unverified by definition, so it
+        # E2 — a SELF-REGISTERED workspace is unverified by definition, so it
         # starts with no free credits. The daily cron injects them on the first
         # cycle after someone verifies their email (see trust/abuse_controls.py).
-        # Checked from the flag, not the DB: this runs pre-commit and must not
-        # query other tables (see the docstring above).
-        if settings.TRUST_REQUIRE_VERIFIED_FOR_CREDITS and default_daily > 0:
+        # OAuth tenants are provider-verified and admin-created ones were
+        # vouched for, so neither is gated. Read from the company's own metadata
+        # and the flag — never a query: this runs pre-commit and must not touch
+        # other tables (see the docstring above).
+        from src.ai.trust.abuse_controls import is_self_service_signup
+
+        if (settings.TRUST_REQUIRE_VERIFIED_FOR_CREDITS and default_daily > 0
+                and is_self_service_signup(company.onboarding_metadata)):
             logger.info(
                 f"Company {company.id} provisioned with 0 daily credits pending email verification"
             )
