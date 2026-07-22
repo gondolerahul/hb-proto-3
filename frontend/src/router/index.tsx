@@ -45,6 +45,7 @@ const MetaIntelligencePage = lazy(() => import('@/pages/admin/MetaIntelligencePa
 const CostAttributionDashboard = lazy(() => import('@/pages/admin/CostAttributionDashboard'));
 const FeatureFlagsPage = lazy(() => import('@/pages/admin/FeatureFlagsPage'));
 const RiskAndExitPage = lazy(() => import('@/pages/admin/RiskAndExitPage'));
+const LoopOpsPage = lazy(() => import('@/pages/admin/LoopOpsPage'));
 
 // CORTEX Memory Architecture
 const CortexExplorer = lazy(() => import('@/pages/ai/CortexExplorer').then(m => ({ default: m.CortexExplorer })));
@@ -576,6 +577,16 @@ export const AppRouter: React.FC = () => {
                         element={
                             <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
                                 <MainLayout><RiskAndExitPage /></MainLayout>
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Inc-2 ONBOARD admin surfaces: signals / triggers / envelope. */}
+                    <Route
+                        path="/admin/loop-ops"
+                        element={
+                            <ProtectedRoute allowedRoles={[UserRole.APP_ADMIN, UserRole.PARTNER_ADMIN, UserRole.TENANT_ADMIN]}>
+                                <MainLayout><LoopOpsPage /></MainLayout>
                             </ProtectedRoute>
                         }
                     />

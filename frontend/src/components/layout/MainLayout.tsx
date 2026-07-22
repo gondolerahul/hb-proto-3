@@ -134,6 +134,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             title: 'Agent Kernel',
             icon: BrainCircuit,
             items: [
+                { path: '/admin/loop-ops', label: 'Loop Operations', icon: Activity },
                 { path: '/admin/agent-kernel/kpi', label: 'KPI Dashboard', icon: Gauge },
                 { path: '/admin/agent-kernel/meta-intelligence', label: 'Meta-Agent Intelligence', icon: Sparkles },
                 { path: '/admin/agent-kernel/cost', label: 'Cost Attribution', icon: Receipt },
