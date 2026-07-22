@@ -59,6 +59,7 @@ from src.ai.loop.heartbeat import loop_heartbeat
 from src.ai.loop.watchdog import loop_watchdog
 from src.ai.memory.rechunk_cron import chunk_upgrade_sweep
 from src.ai.trust.crons import dunning_sweep
+from src.ai.governance.crons import demotion_sweep
 
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
 from src.ai.solo_pack.tools import register_solo_pack_tools
@@ -159,6 +160,11 @@ try:
         # deadline; it shares the embedding rate limit with live ingestion,
         # which must win, and parks at B13's platform cap.
         cron(chunk_upgrade_sweep, minute={35}),
+        # C4 autonomy demotion (Inc 3) — daily. The observation window is 7
+        # days, so a trend cannot change between two minutes; running it on
+        # the 60s sweeper would repeat per-agent aggregates 1,440× for the
+        # same answer. Sits after the dunning sweep.
+        cron(demotion_sweep, hour=1, minute=40),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

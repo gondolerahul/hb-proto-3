@@ -102,6 +102,14 @@ app.include_router(loop_budget_router, prefix="/api/v1")
 # every Pragya command is gated on.
 from src.ai.inward_auth.api import router as inward_auth_router
 app.include_router(inward_auth_router, prefix="/api/v1")
+# Pragya, the account-manager engagement (Inc 3 PRAGYA): console chat over the
+# nine-stage flow, every command tiered through inward_auth.
+from src.ai.pragya.api import router as pragya_router
+app.include_router(pragya_router, prefix="/api/v1")
+# C6 KPI registry — one set of numbers for Pragya's reporting and the
+# dashboards, so the two can never disagree.
+from src.ai.kpi.api import router as kpi_router
+app.include_router(kpi_router, prefix="/api/v1")
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

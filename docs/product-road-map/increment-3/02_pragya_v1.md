@@ -1,6 +1,6 @@
 # Increment 3 / PRAGYA — Pragya v1: The Nine-Stage Engagement over the Wizard's APIs
 
-> **Status:** ⬜ Design (2026-07-22) — decisions locked, ready to build after AUTH · **Branch:** `inc3/pragya`
+> **Status:** ✅ BUILT (2026-07-22) — T1–T7 complete, all gates green · **Branch:** `inc3/pragya` · build notes in §7
 > **Design authority:** Functional §4.2–§4.4 (Pragya + the nine-stage flow, closed C8 at protocol level); Blueprint §14 (Wave-0 HUB role); Technical §11 (account-manager sessions). Closes **C4** (autonomy demotion) + **C6** (KPI definitions) + C8's per-stage-script half.
 > **Depends on:** AUTH (`require_tier` — no Pragya command executes without it), Inc-2 ONBOARD (the stage APIs + console FE), SIG (reporting/notifications), RETR (stage-3 ingestion quality).
 
@@ -59,16 +59,53 @@ Blueprint gives KPIs sources but no formulas ("gross_margin, source: P10 — com
 
 | # | Task | Acceptance |
 |---|---|---|
-| T1 | Package + `prag001` + stage machine (pure) + engagement persistence | stage transitions unit-pinned; revisit 4–6 legal |
-| T2 | Chat transport + FE console (SSE) + intent extraction behind `require_tier` (T0/T1 only until T3 lands) | bound owner converses; unbound refused (golden) |
-| T3 | Stages 6–9 conversationally over the wizard APIs | exit-demo path: converse → activate → status, equal to wizard output |
-| T4 | Stage 1–5 scripts drafted → **Rahul review checkpoint** → shipped + eval goldens over stage transcripts | no script ships unreviewed (decision 3) |
-| T5 | **C6** KPI registry + compute + doc 03; stage-9 reporting uses it | unmet prerequisites report honestly; formulas unit-tested |
-| T6 | **C4** demotion policy + sweep + signal; Pragya reports demotions | trigger goldens; demotion visible in stage-9 |
-| T7 | T2/T3 command execution wired to AUTH step-up (pause/resume, approve-via-desk links) | exit demo end-to-end; parity/eval green |
+| T1 | ✅ Package + `prag001` + stage machine (pure) + engagement persistence | stage transitions unit-pinned; revisit 4–6 legal |
+| T2 | ✅ Chat transport + FE console (SSE) + intent extraction behind `require_tier` (T0/T1 only until T3 lands) | bound owner converses; unbound refused (golden) |
+| T3 | ✅ Stages 6–9 conversationally over the wizard APIs | exit-demo path: converse → activate → status, equal to wizard output |
+| T4 | ✅ Stage 1–5 scripts drafted → **Rahul review checkpoint passed 2026-07-22** → shipped ([02a](./02a_stage_scripts.md), source `pragya/scripts/`) | no script ships unreviewed (decision 3) |
+| T5 | ✅ **C6** KPI registry + compute + doc 03; stage-9 reporting uses it | unmet prerequisites report honestly; formulas unit-tested |
+| T6 | ✅ **C4** demotion policy + sweep + signal; Pragya reports demotions | trigger goldens; demotion visible in stage-9 |
+| T7 | ✅ T2/T3 command execution wired to AUTH step-up (pause/resume, approve-via-desk links) | exit demo end-to-end; parity/eval green |
 
 ## 6. Brainstorm Decisions (Rahul, 2026-07-22)
 
 1. **Console chat first**; voice/WhatsApp adapters arrive with VOICE over the same session + `require_tier` seams.
 2. **Rahul is the stage-script quality reviewer** — T4 has a hard review checkpoint; drafts come from the Blueprint's discovery protocol.
 3. Carried: the wizard's step APIs are Pragya's stage APIs (Inc-2 decision 4 — no contract fork); every agent she activates starts at A1.
+
+---
+
+## 7. Build Notes (2026-07-22) — delta log
+
+All seven tasks landed on `inc3/pragya`. Gates at merge: **1325 unit** (+95), 16 parity/eval, **152 integration** (+11), mypy `--strict` over **211** files (allowlist gained `pragya` + `kpi`), layout lint exit 0, `prag001` up/down/up clean, frontend build green.
+
+### 7.1 What shipped
+
+| Task | Module | Note |
+|---|---|---|
+| T1 | `pragya/{stages,models,engagement}.py`, `prag001` | 9-stage machine, pure; `pragya_engagements` + `pragya_turns` |
+| T2 | `pragya/{intents,conversation,api}.py` | `/ai/pragya/chat` + SSE; extraction → tier → `require_tier` |
+| T3 | `pragya/deployment.py` | stages 6–9 over the *unchanged* Inc-2 wizard functions |
+| T4 | `pragya/scripts/stage_{1..5}.py` | **reviewed and approved by Rahul 2026-07-22**; [02a](./02a_stage_scripts.md) |
+| T5 | `ai/kpi/{definitions,compute,api}.py`, [03](./03_kpi_definitions.md) | 10 KPIs; honest-absence rule |
+| T6 | `governance/{demotion,demotion_sweep,crons}.py` | C4 triggers + daily sweep + anti-rubber-stamp |
+| T7 | `pragya/commands.py`, `PragyaConsole.tsx` | pause/resume/demote behind step-up; console + stage rail |
+
+### 7.2 Design deltas (decided during build)
+
+1. **Classification happens before generation, not after.** A turn resolves its tier and authorisation *first*, and only then writes prose. Generating first invites a model that has already promised to pause a process to then discover it may not — the refusal has to be the thing that gets said, not a correction to something already said.
+2. **The keyword screen runs alongside the model and can only raise.** `intents.screen_text` is independent of extraction. If the raw text says "pause" and the model called it a read, the pause wins. Extraction failure is not a pass-through either: no reading → `UNKNOWN` → T3. Both directions defend the same property — *a command must never be tiered lower than its words suggest*.
+3. **An unscoped pause asks instead of assuming "everything".** Found by the integration test, and it was a genuine safety bug: with no LLM extraction, "pause invoice chasing" produced `target=None`, and the executor read that as *all triggers*. Now only the kill switch and an owner who literally said "everything" reach `ALL_TRIGGERS`; an unresolved target gets a clarifying question. Resolving ambiguity toward the broadest destructive action is the worst available guess.
+4. **Pausing disarms triggers; it does not delete them.** Inbound work still arrives and parks, so resuming picks up rather than starting from a gap — the same parked-not-dropped posture as C5's read-only dunning state.
+5. **Promotion is not executable by chat command.** `execute_command` runs demotion but refuses "promote X", because raising autonomy needs §9.7 evidence *and* the random deep-audit sample. A conversational promote is precisely the shortcut C4's anti-rubber-stamp rule exists to prevent.
+6. **The demotion sweep is daily, not on the 60-second signal sweeper.** Its window is 7 days, so the answer cannot change between two minutes, and the queries are per-agent aggregates over `execution_runs`. Running it on the fast sweeper would repeat the most expensive query in the system 1,440× for an identical result.
+7. **`func.case` does not exist — it is `sqlalchemy.case`.** mypy passed it happily because `func.*` is `Any`; the integration test caught it. Worth remembering: **strict typing does not cover SQLAlchemy's `func` namespace**, so anything built there needs a test that actually executes the query.
+8. **SSE streams a resolved turn, not live generation.** The turn completes (including authorisation) and is then chunked to the client. Streaming generation directly would let tokens reach the wire before the tier was checked, so a refusal could arrive mid-sentence.
+9. **`gross_margin` ships deliberately uncomputable.** Registered with `captured_today=False` and reporting what it needs. Dropping it would hide the gap; approximating it would fabricate. It is the worked example of C6's whole point — see [03](./03_kpi_definitions.md) §5.
+
+### 7.3 What is NOT wired yet
+
+* **Stage advancement is manual.** `engagement.advance` is exposed and unit-pinned, but no conversational trigger decides "stage 2 is complete, move on" — the exit criteria in each script are prose the model reads, not a checked predicate. A turn does not currently move the stage on its own.
+* **Stage 1's research is not automated.** The script says "you researched the company"; nothing calls the Web Intelligence Suite to actually do it yet. `baseline.research_summary` is an artifact key waiting for a producer.
+* **Eval goldens over stage transcripts** (T4's second half) are not written. Script *structure* is pinned by `test_pragya_stage_scripts.py`; script *quality* is not regression-tested.
+* **Voice/WhatsApp adapters** are the VOICE workstream. `handle_turn` already takes `channel_kind`/`channel_address` and resolves bindings, so the seam exists.

@@ -97,6 +97,10 @@ class SignalTypes:
     OBJECT_CHANGE_PROPOSED = "object.change_proposed"
     OBJECT_WRITE_CONFLICT = "object.write_conflict"
     INCIDENT_GOVERNANCE = "incident.governance"
+    # C4 (Inc 3): an agent lost an autonomy level. Emitted by the demotion
+    # sweep so Pragya can report it in stage 9 rather than the owner finding
+    # out by noticing their workforce got quieter.
+    GOVERNANCE_AUTONOMY_DEMOTED = "governance.autonomy_demoted"
     INCIDENT_PLATFORM = "incident.platform"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
