@@ -195,7 +195,7 @@ class MemoryRouter:
         except Exception as e:
             logger.debug(f"V2 semantic graph search failed, falling back to v1: {e}")
 
-        # --- V1 Fallback: document_chunks ---
+        # --- V1 Fallback: document_chunks, now hybrid (RETR T1) ---
         try:
             company_id = await self._get_company_id(entity_id)
             if not company_id:
@@ -206,28 +206,20 @@ class MemoryRouter:
             query_vector = await embedding_service.embed_query(query)
 
             if not query_vector:
-                logger.debug("Semantic search skipped: embedding generation failed")
-                return []
+                # No longer fatal (RETR T1): retrieval degrades to lexical-only
+                # instead of returning nothing. A failed embedding used to mean
+                # the agent answered from no context at all.
+                logger.debug("Embedding unavailable — retrieving lexical-only")
 
-            from src.ai.models import DocumentChunk, Document
-            from sqlalchemy import text
+            from src.ai.memory.hybrid_retrieval import hybrid_search
 
-            stmt = text("""
-                SELECT dc.content,
-                       1 - (dc.embedding <=> CAST(:vec AS vector)) AS score
-                FROM   document_chunks dc
-                JOIN   documents d ON d.id = dc.document_id
-                WHERE  d.entity_id = :entity_id
-                ORDER  BY dc.embedding <=> CAST(:vec AS vector)
-                LIMIT  :top_k
-            """)
-            result = await self.db.execute(stmt, {
-                "vec": json.dumps(list(query_vector)),
-                "entity_id": str(entity_id),
-                "top_k": top_k,
-            })
-            rows = result.fetchall()
-            return [{"content": r[0], "score": float(r[1])} for r in rows]
+            hits = await hybrid_search(
+                self.db, query,
+                query_vector=query_vector or None,
+                entity_id=entity_id,
+                top_k=top_k,
+            )
+            return [h.as_dict() for h in hits]
 
         except Exception as e:
             logger.debug(f"Semantic search skipped: {e}")
