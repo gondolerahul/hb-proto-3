@@ -103,6 +103,20 @@ async def twilio_incoming_call(
         }
     )
     
+    # Inc-4 T5 — the number is the routing discriminator (decision 5). A call
+    # to Pragya's own number is the INWARD face (ASR-LLM-TTS, owner talking to
+    # their account manager); anything else is KAR-01's outward face. Deciding
+    # by destination rather than by caller matters because the caller is the
+    # untrusted half — a discriminator an attacker picks is no discriminator.
+    try:
+        from src.ai.pragya.channels.routing import VoiceFace, route_for_number
+        _route = await route_for_number(session_manager.db, to_number)
+        if _route.face is VoiceFace.PRAGYA:
+            logger.info(
+                f"call {call_sid} to {to_number} routes to Pragya (inward face)")
+    except Exception as route_exc:
+        logger.warning(f"voice face routing failed (defaulting to gateway): {route_exc}")
+
     # SIG cutover (Inc-3 VOICE): a tenant with the Solo Pack / a bundle
     # activated also announces the call on the governed signal bus, so the
     # KAR-01 gateway sees it. Subscription-gated (tenants not on SIG are
