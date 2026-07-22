@@ -57,6 +57,7 @@ from src.ai.tenant_schema.maintenance import (
 )
 from src.ai.loop.heartbeat import loop_heartbeat
 from src.ai.loop.watchdog import loop_watchdog
+from src.ai.memory.rechunk_cron import chunk_upgrade_sweep
 from src.ai.trust.crons import dunning_sweep
 
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
@@ -154,6 +155,10 @@ try:
         # midnight daily-credit job so a tenant's ladder position reflects the
         # day it just entered.
         cron(dunning_sweep, hour=1, minute=10),
+        # Lazy chunk upgrade (RETR T2) — a small batch hourly at :35. No
+        # deadline; it shares the embedding rate limit with live ingestion,
+        # which must win, and parks at B13's platform cap.
+        cron(chunk_upgrade_sweep, minute={35}),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

@@ -517,44 +517,56 @@ async def process_document(ctx: dict[str, Any], document_id_str: str, file_conte
             else:
                 text = file_content.decode("utf-8", errors="ignore")
                 
-            chunk_size = 500
-            chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-            
+            # RETR T2 — structure-aware chunks carrying heading context, sized
+            # per source type. Replaces the flat text[i:i+500] split, which cut
+            # mid-word and embedded fragments with no recoverable subject.
+            from src.ai.memory.chunking import CURRENT_CHUNK_VERSION, chunk_document
+            chunks = chunk_document(text, source_type=file_type)
+
             # Use centralized EmbeddingService (admin-configurable model)
             from src.ai.memory.embedding_service import EmbeddingService
             embedding_service = EmbeddingService(db, document.company_id)
-            
+
             total_chunks = len(chunks)
             success_count = 0
             failed_count = 0
-            
-            for idx, chunk_text in enumerate(chunks):
+
+            for piece in chunks:
+                # Embed the heading-qualified content, not the bare body — the
+                # heading is what disambiguates "Net-30 applies." from every
+                # other clause in the document.
                 embedding = await embedding_service.embed_text(
-                    chunk_text, task_type="RETRIEVAL_DOCUMENT"
+                    piece.content, task_type="RETRIEVAL_DOCUMENT"
                 )
-                
+
                 if embedding is None:
                     failed_count += 1
-                    logger.warning(f"Embedding failed for chunk {idx}/{total_chunks} of doc {document_id}")
-                    # Still create the chunk without embedding
-                    chunk = DocumentChunk(
-                        document_id=document.id,
-                        chunk_index=str(idx),
-                        content=chunk_text,
-                        embedding=None,
+                    logger.warning(
+                        f"Embedding failed for chunk {piece.index}/{total_chunks} of doc {document_id}"
                     )
                 else:
                     success_count += 1
-                    chunk = DocumentChunk(
-                        document_id=document.id,
-                        chunk_index=str(idx),
-                        content=chunk_text,
-                        embedding=embedding,
-                    )
+                chunk = DocumentChunk(
+                    document_id=document.id,
+                    chunk_index=str(piece.index),
+                    content=piece.content,
+                    embedding=embedding,
+                    heading_path=piece.heading_label or None,
+                    chunk_version=CURRENT_CHUNK_VERSION,
+                )
                 db.add(chunk)
-            
+
             # Set upload_status based on embedding results
-            if failed_count == total_chunks:
+            if total_chunks == 0:
+                # Nothing extractable — a scanned PDF with no text layer, or an
+                # empty file. Say so explicitly rather than falling into the
+                # "all chunks failed" branch, which reads as an embedding fault.
+                document.upload_status = "failed"
+                logger.error(
+                    f"Document {document.id} ({document.filename}) produced no "
+                    f"chunks — no extractable text"
+                )
+            elif failed_count == total_chunks:
                 document.upload_status = "failed"
                 logger.error(
                     f"All {total_chunks} chunks failed embedding for document "
