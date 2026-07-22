@@ -5,6 +5,7 @@ import { GlassCard, GlassInput, JellyButton } from '@/components/ui';
 import { Save, Moon, Sun, Camera, Image as ImageIcon } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { profileService } from '@/services/profile.service';
+import { SecuritySettings } from '@/components/SecuritySettings';
 import { UserRole } from '@/types';
 import './UserSettings.css';
 
@@ -266,6 +267,10 @@ export const UserSettings: React.FC = () => {
                     </JellyButton>
                 </form>
             </GlassCard>
+
+            {/* Inc-3 AUTH: passkeys, TOTP fallback, and the channel bindings
+                the inward tier gate consumes. */}
+            <SecuritySettings />
         </div>
     );
 };

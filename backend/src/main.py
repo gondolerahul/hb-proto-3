@@ -97,6 +97,11 @@ app.include_router(solo_pack_onboarding_router, prefix="/api/v1")
 # Budget-envelope view (Inc 2 ONBOARD admin surface over Inc-1 LOOP data).
 from src.ai.loop.api import router as loop_budget_router
 app.include_router(loop_budget_router, prefix="/api/v1")
+# Inward-channel authentication (Inc 3 AUTH, register finding D1): channel
+# bindings, the T0-T3 tier classifier, and the passkey/TOTP step-up ceremonies
+# every Pragya command is gated on.
+from src.ai.inward_auth.api import router as inward_auth_router
+app.include_router(inward_auth_router, prefix="/api/v1")
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

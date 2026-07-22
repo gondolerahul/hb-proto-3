@@ -1,6 +1,6 @@
 # Increment 3 / AUTH — Inward-Channel Authentication & Command Tiers
 
-> **Status:** ⬜ Design (2026-07-22) — decisions locked, ready to build · **Branch:** `inc3/auth`
+> **Status:** ✅ BUILT (2026-07-22) — T1–T7 complete, all gates green · **Branch:** `inc3/auth` · build notes in §5
 > **Design authority:** Technical §11.3 (the decided design — this doc maps it to code), §20 (authority taxonomy). Closes register **D1** (build).
 > **Depends on:** Inc-1 GOV (`governance/authority.py` categories, `hitl_checkpoint_defs`), shipped `src/auth/` (users, JWT sessions), shipped voice/WhatsApp/email inbound paths (KAR).
 
@@ -76,3 +76,41 @@ Enrollment is a **verified handshake**: the user proves control of the channel (
 1. **Platform-built WebAuthn now** (not TOTP-first, not a vendor): full passkey ceremonies in-house from day one; TOTP remains the §11.3 fallback. No external identity dataflow.
 2. **Console-first** shapes the ceremonies: the browser is the primary authenticator surface; other channels step up via a console link. Voice/WhatsApp adapters (Inc-3 VOICE) reuse `require_tier` unchanged.
 3. Carried §11.3 rules (2026-07-18, not re-opened): impact-tiered step-up; 10-min default elevation; Pragya-can't-approve-herself; identity-is-a-hint.
+
+---
+
+## 5. Build Notes (2026-07-22) — delta log
+
+All seven tasks landed on `inc3/auth`. Gates at merge: **1230 unit** (+36), 16 parity/eval, **141 integration**, mypy `--strict` over **188** files (allowlist gained `inward_auth`), layout lint exit 0, `iauth001` up/down/up clean.
+
+### 5.1 What shipped
+
+| Task | Module | Note |
+|---|---|---|
+| T1 | `inward_auth/models.py`, migration `iauth001` | **six** tables, not the four in §2 — see 5.2 |
+| T2 | `inward_auth/tiers.py` | pure classifier; 23 goldens in `tests/unit/test_inward_auth_tiers.py` |
+| T3 | `inward_auth/step_up.py`, `sessions.py` | TOTP + elevation + `require_tier` + lockout |
+| T4 | `inward_auth/webauthn_ceremony.py`, FE | passkey ceremonies; `SecuritySettings.tsx`, `StepUpModal.tsx`, `authn.service.ts` |
+| T5 | `inward_auth/bindings.py` | enrollment handshake + inbound resolution + alert fan-out |
+| T6 | `inward_auth/oob.py` | both-legs-or-nothing T3 confirmation |
+| T7 | `tests/integration/test_inward_auth_db.py` | 17 DB tests; router at `/api/v1/ai/authn/*` |
+
+### 5.2 Design deltas (decided during build)
+
+1. **Two tables more than §2 planned.** `webauthn_challenges` and `oob_confirmations` were added to `iauth001`. Both exist for the same reason: the security property depends on **single use**, which needs server-side state. A challenge signed into a client-carried token can only be time-boxed, so a captured ceremony stays replayable for its whole lifetime — which defeats the point of a WebAuthn challenge.
+2. **The tier floor is a `max()`, never a cap.** `Tier` is an `IntEnum` and every rule can only raise. "Ambiguous → the highest tier it could be" then falls out of the structure instead of being a special case that a later edit can forget. Three fail-up paths are pinned by goldens: unknown intent kind, a category outside the §20 matrix, and a high-impact category with an unknown amount.
+3. **TOTP replay protection compares against the code's *own* slot.** The obvious implementation (store the current slot, refuse if `last_used >= current`) is wrong with a drift window of one step: a code captured in slot N is still accepted during slot N+1, and the stored high-water mark does not catch it. `_match_slot` resolves which slot the code actually belongs to and compares against that. `test_totp_code_cannot_be_replayed_in_a_later_slot` is the regression.
+4. **Phone normalisation is strict, and deliberately not clever.** Digits-only strips formatting, but `09876543210` and `919876543210` stay *different* addresses. Equating a national format with its E.164 form means guessing a country code, and a wrong guess binds one subscriber's channel to another subscriber's account. Inbound WhatsApp and voice both deliver E.164, so strictness costs nothing where it matters.
+5. **One failure path, and the router owns it.** `verify_totp` / `finish_authentication` verify but never elevate, because the caller must count a failure against the lockout. Every ceremony in `api.py` funnels through `_fail_step_up`, so there is exactly one place that increments the counter, locks T2+, and fans alerts out to every registered channel.
+6. **A lockout drops any elevation still held.** Otherwise a spoofer who elevated once keeps their ten-minute window straight through the lockout that was supposed to stop them. Reads (T0/T1) stay open throughout — a locked-out owner must still be able to find out what happened.
+7. **Enrollment OTP delivery rides SIG.** The platform has no shipped OTP sender, so `authn.channel_otp` / `authn.oob_confirm` / `authn.security_alert` go through `emit_signal` onto the existing outbound seams, consent-checked via KAR's `check_outbound_consent`. Inventing a sender here would have added a second unaudited way to message a counterparty.
+8. **Toolchain:** `pyotp` + `webauthn` added. Poetry's re-resolve surfaced a **latent break** — the lock already carried `setuptools` 82.0.1 while the venv ran 80.10.2, and setuptools ≥81 removes `pkg_resources`, which `opentelemetry-instrumentation` imports at module scope. A fresh `poetry install` would have broken `import src.main`. Pinned `setuptools = "<81"`.
+
+### 5.3 What AUTH hands PRAGYA
+
+* `classify(CommandIntent) -> Classification` — the tier plus an auditable reason string, which doubles as refusal copy.
+* `require_tier(session, tier) -> AuthDecision` — `allowed` plus `needs_step_up` / `needs_oob` / `locked`, so the console opens the right ceremony without re-deriving policy.
+* `get_or_create_session` — console sessions born `BOUND`; every other channel starts at `NONE` and reaches `BOUND` only through `resolve_inbound`.
+* `POST /ai/authn/classify` — the same classifier over HTTP, so the frontend never grows a second copy of the tier table.
+
+**Not yet wired:** no Pragya command executor calls `require_tier` yet — there is no Pragya. That hookup is PRAGYA's first task, and it is the one that actually closes D1 end-to-end. The `email_dispatch`-style PolicyGate categories remain the *agent*-side gate; AUTH is the *human*-side gate, and the two meet only in that both read `CATEGORY_RULES`.
