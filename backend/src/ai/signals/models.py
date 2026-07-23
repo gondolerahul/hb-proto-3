@@ -96,10 +96,12 @@ class SignalTypes:
     AUTHN_SECURITY_ALERT = "authn.security_alert"
     OBJECT_CHANGE_PROPOSED = "object.change_proposed"
     OBJECT_WRITE_CONFLICT = "object.write_conflict"
-    # SoR (Inc-4 CONN+SOR, §21): an external change landed in the mirror; and a
-    # write-back that lost to a concurrent external edit (master wins).
+    # SoR (Inc-4 CONN+SOR, §21): an external change landed in the mirror; a
+    # write-back that lost to a concurrent external edit (master wins); and the
+    # audit trail of an owner-confirmed ownership migration (§21.4).
     OBJECT_SYNCED = "object.synced"
     SYNC_CONFLICT = "sync.conflict"
+    GOVERNANCE_SOR_MIGRATED = "governance.sor_migrated"
     INCIDENT_GOVERNANCE = "incident.governance"
     # C4 (Inc 3): an agent lost an autonomy level. Emitted by the demotion
     # sweep so Pragya can report it in stage 9 rather than the owner finding
