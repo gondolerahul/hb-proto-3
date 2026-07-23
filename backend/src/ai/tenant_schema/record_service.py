@@ -307,6 +307,64 @@ class RecordService:
         await self._materialise_links(record.id, validated.refs)
         return RecordResult(WRITTEN, record=record)
 
+    async def sync_mirror(
+        self, def_name: str, external_id: str, data: dict[str, Any], *,
+        connector_id: str | None = None, etag: str | None = None,
+        run_id: uuid.UUID | None = None,
+    ) -> RecordResult:
+        """Reflect an external change into the mirror (master → mirror, §21.2).
+
+        The inbound counterpart to write-back: no write-back is triggered — the
+        change *came from* the master. Upserts by ``external_id`` (the unique
+        ``(entity_def_id, external_id)`` index keeps one mirror per object), and
+        validates leniently (``partial``): the master defines completeness, not
+        the local schema.
+        """
+        d = await self._require_def(def_name)
+        validated = validate_record_data(d.fields or [], data, partial=True)
+        now = datetime.utcnow().isoformat()
+        existing = await self._mirror_by_external(d, external_id)
+        if existing is None:
+            record = TenantRecord(
+                company_id=self.company_id, entity_def_id=d.id,
+                data=validated.clean_data, version=1, def_version=d.version,
+                updated_by_run_id=run_id,
+                sor={"master": "external", "connector_id": connector_id},
+                external_ref={"connector": connector_id, "external_id": external_id,
+                              "etag": etag, "synced_at": now},
+            )
+            self.db.add(record)
+            await self.db.flush()
+            await self._materialise_links(record.id, validated.refs)
+            return RecordResult(WRITTEN, record=record)
+        merged = dict(existing.data or {})
+        merged.update(validated.clean_data)
+        existing.data = merged
+        ref = dict(existing.external_ref or {})
+        ref["external_id"] = external_id
+        if etag:
+            ref["etag"] = etag
+        ref["synced_at"] = now
+        existing.external_ref = ref
+        existing.version += 1
+        existing.def_version = d.version
+        existing.updated_by_run_id = run_id
+        await self.db.flush()
+        await self._materialise_links(existing.id, validated.refs)
+        return RecordResult(WRITTEN, record=existing)
+
+    async def _mirror_by_external(
+        self, d: TenantEntityDef, external_id: str,
+    ) -> Optional[TenantRecord]:
+        return (await self.db.execute(
+            select(TenantRecord).where(
+                TenantRecord.company_id == self.company_id,
+                TenantRecord.entity_def_id == d.id,
+                TenantRecord.external_ref.op("->>")("external_id") == external_id,
+                TenantRecord.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+
     # ------------------------------------------------------------------
     # Ownership (§23.1 — owner writes, others propose)
     # ------------------------------------------------------------------
