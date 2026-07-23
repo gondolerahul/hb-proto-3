@@ -1,6 +1,6 @@
 # Increment 5 / REG — The Model Registry (closes B12)
 
-> **Status:** ⬜ Design (self-contained) — locked before code.
+> **Status:** ✅ **BUILT** (2026-07-23, branch `inc5/reg`) — all of T1–T5, gates green. Build notes §12.
 > **Closes:** register **B12** (model registry too coarse). **Depends on:** the shipped `IntegrationRegistry` / `ModelTaskDefault` / `UsageLog` billing seam. **Feeds:** RTR ([02](./02_router.md)), FLEET ([03](./03_fleet_expansion.md)), EVX ([04](./04_eval_extensions.md)).
 
 ---
@@ -125,3 +125,20 @@ Following the connector catalog precedent ([increment-4/02](../increment-4/02_co
 2. **Effective-dated pricing is a history table** (`model_prices`), not a column — reproducibility requires history.
 3. **Credentials stay per-company** on `IntegrationRegistry`; the catalog is credential-free.
 4. **The FK is nullable + backfilled** — no big-bang binding; un-bound rows fall through to the shipped single-model path.
+
+## 12. Build Notes (2026-07-23) — delta log
+
+### 12.1 What shipped
+* `ai/intelligence/` (new strict-typed package): `models.py` (`ModelRegistry` + `ModelPrice` + `ModelStatus`), `catalog.py` (the 8-model shipped fleet as declared data — Anthropic/Google/Azure-OpenAI across reasoning/fast/multimodal tiers), `registry.py` (`RegistryService`: `install_model_catalog`, `backfill_integration_bindings`, `eligible`, `resolve_price`, `capability_profile`).
+* Migration **`reg001`** (off `conn002`): `model_registry` + `model_prices` + the nullable `integration_registry.model_registry_id` FK. Apply/rollback/re-apply verified clean.
+* `scripts/seed_model_catalog.py` — the reconciling ops seeder (install + backfill).
+* Tests: `test_model_catalog.py` (unit, catalog well-formed) · `test_model_registry_db.py` (idempotence, the price-window invariant + reproducible history, `eligible` filtering) · `test_reg_billing_db.py` (backfill binds known / leaves unknown NULL; bound usage stamped, un-bound untouched).
+
+### 12.2 Design deltas (decided during build)
+1. **Billing reproducibility is a parity-safe *snapshot*, not a price-source switch.** §4 read "bound rows price against `model_prices`." A bound company's `internal_cost` can differ from the catalog reference price, so switching the charge source would move their bill — a parity-canary violation. Instead: `internal_cost` stays the charge authority (unchanged), and `usage_service.log_usage` snapshots the bound model + the applied unit price into `log_metadata`. Reproducibility comes from the snapshot (immune to later config changes) + the version link; `model_prices` remains the effective-dated *reference* for router cost-estimation and reporting. The un-bound path is byte-identical — parity/eval stayed green.
+2. **`intelligence/models.py` imports no consumer model.** §9's "FK target must be registered" was copied from the connector pattern, but the binding FK runs the *reverse* way (`integration_registry → model_registry`), resolved by table name at DDL. So the module imports nothing back toward `config`/`auth`, and a minimal test context (registry-only) needn't register the whole mapper graph. (This was the fix for a mapper-config error the first test hit.)
+3. **The seeder is an ops script, not an import-time boot call.** §5 said "called at `main.py` + `worker.py` boot." The shipped boot installers are all in-memory (no async DB startup hook exists), and an import-time DB write breaks on an unmigrated DB. So the idempotent reconciler is `scripts/seed_model_catalog.py` (re-run on deploy) + directly callable by tests — the pattern this codebase already uses for control-plane reference data (the HITL-checkpoint seed).
+4. **A legacy-`Column` write needs `setattr`.** `config.IntegrationRegistry` is old-style (`Column`, not `Mapped`), so the backfill's cross-boundary write uses `setattr` to stay `mypy --strict` clean without a `type: ignore`.
+
+### 12.3 Gate results
+`typecheck_ai` (250 files, strict, incl. `intelligence`) · layout+de-canary lint · **1499 unit + 2 skipped** · **16 parity/eval** (billing canary intact) · **9 REG tests** (4 unit + 5 `*_db`) · `reg001` apply/rollback/re-apply · seeder idempotent (8 models / 16 price windows; dev-DB backfill bound 6 existing integrations, 12 old models left NULL for ops). **B12 closed** — the fleet now carries version + region + effective-dated price, and a usage row re-derives point-in-time.
