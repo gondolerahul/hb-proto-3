@@ -1,8 +1,10 @@
 """governance/models.py — the HITL checkpoint registry (technical doc §20.2).
 
 `hitl_checkpoint_defs` is a small platform table seeded with the Blueprint
-§9.7 catalog (18 checkpoints). Tenants tune thresholds per entity in the
-governance block; `platform_mandatory` rows cannot be removed.
+§9.7 catalog (18 checkpoints) plus the 19th added by Increment 4 / CONN+SOR
+(`before_external_system_write`, external system-of-record write-back). Tenants
+tune thresholds per entity in the governance block; `platform_mandatory` rows
+cannot be removed.
 """
 from __future__ import annotations
 

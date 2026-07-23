@@ -17,11 +17,12 @@ pytestmark = [pytest.mark.needs_db, pytest.mark.asyncio]
 
 
 class TestCheckpointRegistry:
-    async def test_eighteen_checkpoints_seeded(self, db):
+    async def test_all_checkpoints_seeded(self, db):
+        # 18 Blueprint §9.7 + the 19th (before_external_system_write) from Inc-4 CONN/SOR.
         total = (await db.execute(
             select(func.count()).select_from(HITLCheckpointDef)
         )).scalar_one()
-        assert total == 18
+        assert total == 19
 
     async def test_seed_keys_match_fixture(self, db):
         keys = set((await db.execute(select(HITLCheckpointDef.key))).scalars().all())

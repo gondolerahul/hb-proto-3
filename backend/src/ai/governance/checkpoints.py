@@ -42,6 +42,7 @@ _CATEGORY_SLA: dict[str, tuple[int, str]] = {
     "price_change": (28800, OnTimeout.AUTO_DENY),    # 8h
     "data_deletion": (86400, OnTimeout.AUTO_DENY),   # 24h — irreversible
     "email": (86400, OnTimeout.AUTO_PARK),           # 24h — a draft can wait
+    "external_write": (86400, OnTimeout.AUTO_PARK),  # 24h — a write-back can park + re-raise
     "public_statement": (86400, OnTimeout.AUTO_PARK),  # 24h
     "discount": (86400, OnTimeout.AUTO_PARK),        # 24h
     "governance": (172800, OnTimeout.ESCALATE),      # 48h
@@ -113,6 +114,13 @@ CHECKPOINT_SEED: list[dict[str, Any]] = [
     {"key": "before_new_channel_binding", "category": "governance",
      "description": "Binding a new external channel to an entity.",
      "default_threshold": None, "threshold_unit": None, "platform_mandatory": False},
+    # ── The 19th, added by Increment 4 / CONN+SOR ─────────────────────
+    # Writing back to an external system of record (§21) is an act class the
+    # original 18 (all internal decisions) did not contemplate. Not mandatory:
+    # a tenant at A2+ syncs autonomously; at A1 every external effect is a card.
+    {"key": "before_external_system_write", "category": "external_write",
+     "description": "Writing back to an external system of record via a connector (SOR, §21).",
+     "default_threshold": None, "threshold_unit": None, "platform_mandatory": False},
 ]
 
 # Stamp each row with its per-category SLA (C3) so the seed carries sla_seconds
@@ -127,4 +135,7 @@ MANDATORY_KEYS: frozenset[str] = frozenset(
     row["key"] for row in CHECKPOINT_SEED if row["platform_mandatory"]
 )
 
-assert len(CHECKPOINT_SEED) == 18, "Blueprint §9.7 defines exactly 18 checkpoints"
+assert len(CHECKPOINT_SEED) == 19, (
+    "Blueprint §9.7 defines 18 checkpoints; Increment 4 / CONN+SOR adds the "
+    "19th (before_external_system_write) for external system-of-record write-back"
+)

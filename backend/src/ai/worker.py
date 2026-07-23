@@ -61,6 +61,7 @@ from src.ai.memory.rechunk_cron import chunk_upgrade_sweep
 from src.ai.trust.crons import dunning_sweep
 from src.ai.governance.crons import demotion_sweep
 from src.ai.voice_loop.crons import voice_deferred_reap, voice_deferred_sweep
+from src.ai.lead_queue_worker import poll_lead_queue_task
 
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
 from src.ai.solo_pack.tools import register_solo_pack_tools
@@ -68,6 +69,9 @@ register_solo_pack_tools()
 # Install the TRUST consent registry into the KAR outbound seam (Inc 2 / D6).
 from src.ai.trust.consent_registry import install_consent_registry
 install_consent_registry()
+# Install the CONN+SOR connector-backed write-back provider into the SOR seam (Inc 4).
+from src.ai.connectors.writeback import install_connector_writeback
+install_connector_writeback()
 
 # Model imports needed by arq at module scope
 from src.common.database import AsyncSessionLocal  # noqa: F401
@@ -174,6 +178,9 @@ try:
         # ...and reap finished rows, or draining just converts an unbounded
         # queue into an unbounded archive.
         cron(voice_deferred_reap, hour=2, minute=50),
+        # Lead queue poller: every minute — pick pending leads and place
+        # outbound calls via Tata Tele (CRM lead.created pipeline).
+        cron(poll_lead_queue_task, minute=set(range(60))),
     ]
 except ImportError:
     pass  # arq.cron may not be available in all versions

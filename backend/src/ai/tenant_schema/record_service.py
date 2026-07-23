@@ -26,6 +26,7 @@ from src.ai.tenant_schema.models import (
     TenantRecord,
     TenantRecordLink,
 )
+from src.ai.tenant_schema.sor import SorDecl, get_writeback_provider, sor_of
 from src.ai.tenant_schema.validation import (
     RefAssignment,
     ValidationError,
@@ -40,6 +41,11 @@ WRITTEN = "written"
 PROPOSED = "proposed"
 CONFLICT = "conflict"
 HITL_REQUIRED = "hitl_required"
+# SoR write-back (§21.2): the external master changed under a local write
+# (master wins — a sync.conflict is raised, the mirror is not overwritten); or
+# the connector write-back failed and nothing was written locally.
+SYNC_CONFLICT = "sync_conflict"
+WRITEBACK_FAILED = "writeback_failed"
 
 
 class OwnershipError(PermissionError):
@@ -136,6 +142,12 @@ class RecordService:
         validated = validate_record_data(d.fields or [], data, partial=False)
         await self._verify_ref_targets(validated.refs)
 
+        # SoR (§21.2): an externally-mastered object writes back *first*; the
+        # mirror is created only on the connector's confirmation.
+        decl = sor_of(d.sor)
+        if decl.external and decl.write_back:
+            return await self._writeback_create(d, validated, decl, run_id)
+
         record = TenantRecord(
             company_id=self.company_id, entity_def_id=d.id,
             data=validated.clean_data, version=1, def_version=d.version,
@@ -163,6 +175,16 @@ class RecordService:
                                           record_id=record_id)
         if gate is not None:
             return gate
+
+        # SoR (§21.2): a mirror record uses **master-wins**, not local CAS — the
+        # external etag is the authority, so route to the write-back path before
+        # the local version check (§23.2: external state never loses to a local
+        # write).
+        decl = sor_of(d.sor)
+        if decl.external and decl.write_back:
+            validated = validate_record_data(d.fields or [], data, partial=True)
+            await self._verify_ref_targets(validated.refs)
+            return await self._writeback_update(d, record, validated, decl, run_id)
 
         # Compare-and-set (§23.2): a stale version gets one bounded re-read-and-
         # retry, then an object.write_conflict signal instead of a blind overwrite.
@@ -208,6 +230,140 @@ class RecordService:
         record.updated_by_run_id = run_id
         await self.db.flush()
         return RecordResult(WRITTEN, record=record)
+
+    # ------------------------------------------------------------------
+    # SoR write-back (§21.2 — external master; write back first, mirror on ok)
+    # ------------------------------------------------------------------
+
+    async def _writeback_create(
+        self, d: TenantEntityDef, validated: Any, decl: SorDecl, run_id: uuid.UUID | None,
+    ) -> RecordResult:
+        provider = get_writeback_provider()
+        if provider is None:
+            return RecordResult(WRITEBACK_FAILED,
+                                reason=f"no write-back provider for externally-mastered {d.name}")
+        wb = await provider.write_back(
+            company_id=self.company_id, connector_id=decl.connector_id,
+            op="create", object_name=d.name, record_id=None,
+            data=validated.clean_data, external_ref=None,
+        )
+        if not wb.ok:
+            return RecordResult(WRITEBACK_FAILED,
+                                reason=wb.error or "write-back to external master failed")
+        record = TenantRecord(
+            company_id=self.company_id, entity_def_id=d.id,
+            data=validated.clean_data, version=1, def_version=d.version,
+            updated_by_run_id=run_id,
+            sor={"master": "external", "connector_id": decl.connector_id},
+            external_ref={"connector": decl.connector_id, "external_id": wb.external_id,
+                          "etag": wb.etag, "synced_at": datetime.utcnow().isoformat()},
+        )
+        self.db.add(record)
+        await self.db.flush()
+        await self._materialise_links(record.id, validated.refs)
+        return RecordResult(WRITTEN, record=record)
+
+    async def _writeback_update(
+        self, d: TenantEntityDef, record: TenantRecord, validated: Any,
+        decl: SorDecl, run_id: uuid.UUID | None,
+    ) -> RecordResult:
+        provider = get_writeback_provider()
+        if provider is None:
+            return RecordResult(WRITEBACK_FAILED, record=record,
+                                reason=f"no write-back provider for externally-mastered {d.name}")
+        wb = await provider.write_back(
+            company_id=self.company_id, connector_id=decl.connector_id,
+            op="update", object_name=d.name, record_id=record.id,
+            data=validated.clean_data, external_ref=record.external_ref,
+        )
+        # Master wins (§21.2): a concurrent external edit beat us — do NOT apply
+        # the local delta; raise sync.conflict carrying the losing delta.
+        if wb.conflict:
+            sig = await self._emit_signal(
+                "sync.conflict", d, record.id,
+                {"losing_delta": validated.clean_data, "connector": decl.connector_id,
+                 "external_ref": record.external_ref},
+                run_id,
+            )
+            return RecordResult(SYNC_CONFLICT, record=record, signal_id=sig,
+                                reason="external master changed; local write rejected (master wins)")
+        if not wb.ok:
+            return RecordResult(WRITEBACK_FAILED, record=record,
+                                reason=wb.error or "write-back to external master failed")
+        merged = dict(record.data or {})
+        merged.update(validated.clean_data)
+        record.data = merged
+        ref = dict(record.external_ref or {})
+        if wb.external_id:
+            ref["external_id"] = wb.external_id
+        if wb.etag:
+            ref["etag"] = wb.etag
+        ref["synced_at"] = datetime.utcnow().isoformat()
+        record.external_ref = ref
+        record.version += 1
+        record.def_version = d.version
+        record.updated_by_run_id = run_id
+        await self.db.flush()
+        await self._materialise_links(record.id, validated.refs)
+        return RecordResult(WRITTEN, record=record)
+
+    async def sync_mirror(
+        self, def_name: str, external_id: str, data: dict[str, Any], *,
+        connector_id: str | None = None, etag: str | None = None,
+        run_id: uuid.UUID | None = None,
+    ) -> RecordResult:
+        """Reflect an external change into the mirror (master → mirror, §21.2).
+
+        The inbound counterpart to write-back: no write-back is triggered — the
+        change *came from* the master. Upserts by ``external_id`` (the unique
+        ``(entity_def_id, external_id)`` index keeps one mirror per object), and
+        validates leniently (``partial``): the master defines completeness, not
+        the local schema.
+        """
+        d = await self._require_def(def_name)
+        validated = validate_record_data(d.fields or [], data, partial=True)
+        now = datetime.utcnow().isoformat()
+        existing = await self._mirror_by_external(d, external_id)
+        if existing is None:
+            record = TenantRecord(
+                company_id=self.company_id, entity_def_id=d.id,
+                data=validated.clean_data, version=1, def_version=d.version,
+                updated_by_run_id=run_id,
+                sor={"master": "external", "connector_id": connector_id},
+                external_ref={"connector": connector_id, "external_id": external_id,
+                              "etag": etag, "synced_at": now},
+            )
+            self.db.add(record)
+            await self.db.flush()
+            await self._materialise_links(record.id, validated.refs)
+            return RecordResult(WRITTEN, record=record)
+        merged = dict(existing.data or {})
+        merged.update(validated.clean_data)
+        existing.data = merged
+        ref = dict(existing.external_ref or {})
+        ref["external_id"] = external_id
+        if etag:
+            ref["etag"] = etag
+        ref["synced_at"] = now
+        existing.external_ref = ref
+        existing.version += 1
+        existing.def_version = d.version
+        existing.updated_by_run_id = run_id
+        await self.db.flush()
+        await self._materialise_links(existing.id, validated.refs)
+        return RecordResult(WRITTEN, record=existing)
+
+    async def _mirror_by_external(
+        self, d: TenantEntityDef, external_id: str,
+    ) -> Optional[TenantRecord]:
+        return (await self.db.execute(
+            select(TenantRecord).where(
+                TenantRecord.company_id == self.company_id,
+                TenantRecord.entity_def_id == d.id,
+                TenantRecord.external_ref.op("->>")("external_id") == external_id,
+                TenantRecord.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
 
     # ------------------------------------------------------------------
     # Ownership (§23.1 — owner writes, others propose)

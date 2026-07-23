@@ -70,6 +70,14 @@ CATEGORY_RULES: dict[str, CategoryRule] = {
     "email_dispatch": CategoryRule(
         "email_dispatch", "before_high_value_email_dispatch",
         None, None, None, "none"),
+    # SOR write-back (§21, Inc-4 CONN/SOR): mutating the tenant's *external*
+    # system of record through a connector. A genuinely new act class the
+    # original 18 checkpoints (all internal HireBuddha decisions) did not cover
+    # — CONN adds the 19th. No amount band: at A1 every external effect is a
+    # card, at A2+ it is autonomous comms (same shape as email_dispatch).
+    "external_write": CategoryRule(
+        "external_write", "before_external_system_write",
+        None, None, None, "none"),
 }
 
 # Categories that a counterparty-trust triggering signal may not drive at all
@@ -94,6 +102,15 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     # send at A1 raises a HITL card; at A2+ it's autonomous comms.
     "send_email": "email_dispatch",
     "email_send": "email_dispatch",
+    # Connector write-backs (Inc-4 CONN/SOR). Connector tools are qualified
+    # ``mcp__<server>__<verb>``; these write verbs resolve by substring, while
+    # read tools (get_/list_/search_) deliberately do NOT match — a mirror read
+    # is not an external effect and stays uncategorised (PASS).
+    "create_invoice": "external_write",
+    "update_invoice": "external_write",
+    "create_bill": "external_write",
+    "record_payment": "external_write",
+    "write_back": "external_write",
 }
 
 

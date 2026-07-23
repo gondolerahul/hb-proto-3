@@ -53,6 +53,11 @@ class CostAttribution(str, Enum):
     # Classifying it as platform work would let ordinary conversation exhaust
     # the cap that exists to protect tenants *from* platform work (B13).
     PRAGYA_TURN      = "pragya_turn"
+    # CONN+SOR (Inc 4) — the SoR sweep polling a connector for external changes
+    # on a schedule. PLATFORM-initiated: the tenant did not ask for this poll,
+    # so it draws from the platform envelope (below), never the tenant wallet —
+    # a perpetual mirror refresh must not silently burn tenant credits (B13).
+    CONNECTOR_SYNC   = "connector_sync"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}
@@ -67,6 +72,7 @@ PLATFORM_INITIATED_ATTRIBUTIONS: frozenset[str] = frozenset({
     CostAttribution.DREAMING.value,
     CostAttribution.SANDBOX.value,
     CostAttribution.TEST_DRIVER.value,
+    CostAttribution.CONNECTOR_SYNC.value,
 })
 
 
