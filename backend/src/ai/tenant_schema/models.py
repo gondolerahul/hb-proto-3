@@ -97,6 +97,12 @@ class TenantRecord(TenantBase):
     def_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # def version at write
     updated_by_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # soft delete (§19.5)
+    # SoR (§21, Inc-4 CONN+SOR): a mirror row for an externally-mastered object
+    # carries its master + external handle; both NULL for a HireBuddha-mastered
+    # record (the standalone norm — §21.3). `sor` mirrors the def's decl at write
+    # time; `external_ref` = {connector, external_id, etag, synced_at}.
+    sor: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    external_ref: Mapped[Any] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

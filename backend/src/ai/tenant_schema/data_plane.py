@@ -102,6 +102,7 @@ class TenantDataPlane:
         async with control_engine.begin() as conn:
             tconn = await conn.execution_options(schema_translate_map={"tenant": schema})
             await self._create_tables(tconn)
+            await self._sync_columns(conn, schema)
         await self._seed_if_empty(company_id)
 
     @asynccontextmanager
@@ -126,6 +127,7 @@ class TenantDataPlane:
         async with engine.begin() as conn:
             tconn = await conn.execution_options(schema_translate_map={"tenant": None})
             await self._create_tables(tconn)
+            await self._sync_columns(conn, None)
         await self._seed_if_empty(company_id)
 
     @asynccontextmanager
@@ -166,6 +168,30 @@ class TenantDataPlane:
         from src.ai.tenant_schema.models import TenantBase
 
         await conn.run_sync(TenantBase.metadata.create_all)
+
+    @staticmethod
+    async def _sync_columns(conn: Any, schema: str | None) -> None:
+        """Additively evolve an *existing* tenant schema (§10.2 additive rule).
+
+        ``create_all`` creates missing tables but never alters an existing one,
+        so a column added to a tenant model after Inc-1's provisioning would be
+        absent on already-provisioned tenants. These idempotent
+        ``ADD COLUMN IF NOT EXISTS`` statements converge new and existing
+        schemas; new columns append to the list, never a destructive change.
+        """
+        prefix = f'"{schema}".' if schema else ""
+        # Inc-4 CONN+SOR: the mirror columns on tenant_records (§21.2).
+        for col in ("sor", "external_ref"):
+            await conn.execute(text(
+                f'ALTER TABLE {prefix}"tenant_records" ADD COLUMN IF NOT EXISTS "{col}" JSONB'
+            ))
+        # One mirror per external object (§21.2 dedupe). company_id is constant
+        # within a tenant schema, so (entity_def_id, external_id) is sufficient.
+        await conn.execute(text(
+            f'CREATE UNIQUE INDEX IF NOT EXISTS "uq_tenant_records_external" '
+            f"ON {prefix}\"tenant_records\" (entity_def_id, (external_ref->>'external_id')) "
+            f"WHERE external_ref IS NOT NULL"
+        ))
 
     async def _seed_if_empty(self, company_id: uuid.UUID) -> None:
         from src.ai.tenant_schema.bootstrap import seed_hbs_spine
