@@ -69,6 +69,15 @@ def _sanitize_model_name(model_name: str) -> str:
     return model_name
 
 
+# Inc 5 / FLEET — provider names that resolve to the OpenAI-compatible adapter,
+# mapped to the canonical registry key that selects the endpoint (base_url).
+_COMPAT_PROVIDERS: Dict[str, str] = {
+    "zhipu": "zhipu", "glm": "zhipu",
+    "alibaba": "alibaba", "qwen": "alibaba", "dashscope": "alibaba",
+    "moonshot": "moonshot", "kimi": "moonshot",
+}
+
+
 def _get_adapter(provider_name: str, api_key: str, model_name: str, service_metadata: Dict) -> BaseLLMAdapter:
     """
     Instantiate the correct adapter given a provider name.
@@ -86,6 +95,15 @@ def _get_adapter(provider_name: str, api_key: str, model_name: str, service_meta
         return AnthropicAdapter(api_key=api_key, model_name=model_name, service_metadata=service_metadata)
     elif pn in ("azure_openai", "azure", "openai"):
         return AzureOpenAIAdapter(api_key=api_key, model_name=model_name, service_metadata=service_metadata)
+    elif pn in _COMPAT_PROVIDERS:
+        # Inc 5 / FLEET — the OpenAI-compatible fleet (GLM / Qwen / Kimi). One
+        # adapter, base_url per provider. Tested seam: no live call in Inc 5.
+        from src.ai.llm.openai_compat_adapter import OpenAICompatAdapter
+
+        return OpenAICompatAdapter(
+            api_key=api_key, model_name=model_name, service_metadata=service_metadata,
+            provider=_COMPAT_PROVIDERS[pn],
+        )
     else:
         # Default: try Gemini-compatible
         logger.warning(f"Unknown provider '{provider_name}', defaulting to GeminiAdapter")

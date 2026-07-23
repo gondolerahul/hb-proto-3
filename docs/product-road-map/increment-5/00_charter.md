@@ -12,7 +12,7 @@ The §3.3 cost story becomes real and auditable: complexity-scored, wallet-aware
 1. **B12 first** — model registry versioning/regions/price effective-dating (the router is blind without it).
 2. **RTR v1** — registry + static rules + `routing_decisions` attribution (replaces `model_task_defaults` per-task defaults).
 3. **RTR v2** — complexity scoring, wallet-aware downshift.
-4. **Fleet expansion** — GLM/Qwen/Mistral behind **D5** data-flow disclosure + a conservative default allow-list.
+4. **Fleet expansion** — GLM/Qwen/Kimi behind **D5** data-flow disclosure + a conservative default allow-list.
 5. **EVX** — eval extensions (technical §22.2–.4, design done): independent-suite rule, canary rollout on the shipped per-company flag pattern, model-change non-inferiority gate — wired as the admission gate for every fleet change.
 
 ## Register findings to close here

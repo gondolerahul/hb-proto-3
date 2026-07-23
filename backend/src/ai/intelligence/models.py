@@ -44,7 +44,8 @@ from src.common.database import Base
 # imports no consumer model. Keeping it import-light means a minimal context
 # (a test that only touches the registry) needn't register auth/config mappers.
 
-__all__ = ["ModelRegistry", "ModelPrice", "ModelStatus", "RoutingDecision"]
+__all__ = ["ModelRegistry", "ModelPrice", "ModelStatus", "RoutingDecision",
+           "CompanyProviderOptin"]
 
 
 class ModelStatus:
@@ -155,3 +156,31 @@ class RoutingDecision(Base):
     signals: Mapped[Any] = mapped_column(JSONB, nullable=False, default=dict)  # the RoutingSignals snapshot
     fallback_used: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class CompanyProviderOptin(Base):
+    """A tenant's explicit opt-in to a non-default-allowed provider (FLEET / D5).
+
+    D5 wants an **auditable disclosure record** — who accepted which data-flow
+    disclosure version, when — so this is a table rather than a JSON flag. An
+    opt-in is revocable: ``revoked_at`` set drops the provider from
+    ``effective_allow`` immediately (the router reads live, never a cache).
+    Column FKs only, no relationships (import-light, as above)."""
+
+    __tablename__ = "company_provider_optin"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)   # zhipu · alibaba · moonshot
+    # The 03a disclosure version the admin acknowledged. An opt-in against a
+    # stale version is refused — you cannot accept terms you have not seen.
+    disclosure_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    opted_in_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    opted_in_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "provider", name="uq_company_provider_optin"),
+    )

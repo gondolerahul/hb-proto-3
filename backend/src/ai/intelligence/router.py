@@ -83,14 +83,21 @@ class IntelligenceRouter:
             model_registry_id=best.model_registry_id, decision_id=decision_id)
 
     async def _enrich(self, signals: RoutingSignals) -> RoutingSignals:
-        """Fill in what the router sees itself: the step's heuristic complexity
-        and the wallet's headroom. The enriched signals are scored *and* recorded
-        (a legible audit trail)."""
+        """Fill in what the router sees itself: the step's heuristic complexity,
+        the wallet's headroom, and the company's **effective allow-list** (D5).
+        The enriched signals are scored *and* recorded (a legible audit trail)."""
+        from src.ai.intelligence.allow_list import effective_allow
+
         headroom = await self._wallet_headroom()
+        allow = signals.allow_list
+        if allow is None:
+            # Read live so a revoked opt-in bites on the very next call.
+            allow = tuple(sorted(await effective_allow(self.db, self.company_id)))
         return replace(
             signals,
             wallet_headroom_usd=headroom if headroom is not None else signals.wallet_headroom_usd,
             complexity=complexity_score(signals),
+            allow_list=allow,
         )
 
     async def _select(

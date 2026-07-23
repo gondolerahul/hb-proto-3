@@ -17,7 +17,7 @@ Per the §22 build notes: "22.2 is process plus one promotion-pipeline check; 22
 
 ## 2. Why EVX lands before FLEET activation
 
-FLEET makes GLM/Qwen/Mistral *reachable*; EVX decides whether any of them (or a version bump, or a routing-rule change) is *allowed to serve*. The gate must exist before the thing it gates. So EVX and FLEET are a co-dependent pair ([00](./00_overview.md) §4): FLEET's adapters + `preview` rows land, then EVX's admission check is what flips a row to `active` and rolls it out. There is no window in which a new provider serves un-gated traffic.
+FLEET makes GLM/Qwen/Kimi *reachable*; EVX decides whether any of them (or a version bump, or a routing-rule change) is *allowed to serve*. The gate must exist before the thing it gates. So EVX and FLEET are a co-dependent pair ([00](./00_overview.md) §4): FLEET's adapters + `preview` rows land, then EVX's admission check is what flips a row to `active` and rolls it out. There is no window in which a new provider serves un-gated traffic.
 
 ## 3. §22.4 — the model-change admission gate
 

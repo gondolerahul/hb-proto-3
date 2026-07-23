@@ -37,13 +37,37 @@ def test_every_row_is_well_formed() -> None:
         assert all(isinstance(p.unit_price, Decimal) and p.unit_price > 0 for p in m.prices)
 
 
+_SHIPPED_PROVIDERS = {"anthropic", "google", "azure_openai"}
+_EXPANSION_PROVIDERS = {"zhipu", "alibaba", "moonshot"}   # GLM / Qwen / Kimi
+
+
 def test_shipped_fleet_is_active_and_default_allowed() -> None:
     """The shipped providers are the conservative-default set (D5): all live,
-    all default-allowed. FLEET expansion adds preview/opt-in rows separately."""
-    for m in FLEET:
+    all default-allowed, none training on customer data."""
+    shipped = [m for m in FLEET if m.provider in _SHIPPED_PROVIDERS]
+    assert shipped, "no shipped providers in the catalog"
+    for m in shipped:
         assert m.status == ModelStatus.ACTIVE, f"{m.model_key} not active"
         assert m.data_flow["default_allowed"] is True, f"{m.model_key} not default-allowed"
         assert m.data_flow["trains_on_customer_data"] is False, f"{m.model_key} trains on data"
+
+
+def test_fleet_expansion_is_preview_and_opt_in_only() -> None:
+    """D5: GLM/Qwen/Kimi are registered but never default-allowed and never
+    `active` out of the box — a tenant must opt in *and* EVX must admit them."""
+    expansion = [m for m in FLEET if m.provider in _EXPANSION_PROVIDERS]
+    assert len(expansion) == 3, "expected GLM + Qwen + Kimi"
+    for m in expansion:
+        assert m.status == ModelStatus.PREVIEW, f"{m.model_key} must ship as preview"
+        assert m.data_flow["default_allowed"] is False, f"{m.model_key} must be opt-in"
+
+
+def test_no_provider_is_both_default_allowed_and_preview() -> None:
+    """A default-allowed row that is not active (or vice versa) would be a
+    confusing half-state; the two cohorts are disjoint and consistent."""
+    for m in FLEET:
+        if m.data_flow["default_allowed"]:
+            assert m.status == ModelStatus.ACTIVE, f"{m.model_key} default-allowed but not active"
 
 
 def test_fleet_covers_a_reasoning_and_a_cheap_tier() -> None:

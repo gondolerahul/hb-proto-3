@@ -22,11 +22,11 @@ Today `ai/llm/router.py` does *configuration lookup* — it resolves the one mod
 1. **Model registry = global catalog + per-company binding (B12).** A new **control-plane** `model_registry` (versioned, region-tagged, effective-dated pricing, `capability_profile`) is the fleet catalog. The existing per-company `IntegrationRegistry` keeps credentials and *references* a catalog row. Reproducible billing and a single fleet source for the router's eligibility query; the cost is a bigger migration and a join. Full design: [01](./01_model_registry.md).
 2. **Router lives in a new `ai/intelligence/` package; `LLMRouter` delegates to it.** Routing logic + registry live in `ai/intelligence/router.py` matching the §3.3 target path. The shipped `LLMRouter.call_llm` seam delegates when routing is active, so **no agent call site changes**. This isolates complexity scoring from SDK dispatch. Full design: [02](./02_router.md).
 3. **RTR v2 complexity scoring is heuristic-first.** Score from step attributes already available at the call seam (task-type class, entity tier, reasoning mode, tool use, context tokens). Deterministic, no per-step cost or latency, testable with a routing golden set. A small-model classifier is admitted *later, only if the heuristics underperform on the goldens* — never as the v2 default. Full design: [02](./02_router.md) §5.
-4. **Fleet default is conservative; GLM/Qwen are opt-in with disclosure (D5).** The default allow-list is the providers already in use (Anthropic / Google / OpenAI / Azure + Mistral). GLM (Zhipu) and Qwen (Alibaba) are **registered but OFF by default**, opt-in per tenant with a recorded data-flow disclosure. Directly closes D5. Full design: [03](./03_fleet_expansion.md).
+4. **Fleet default is conservative; GLM/Qwen/Kimi are opt-in with disclosure (D5).** The default allow-list is the providers already in use (Anthropic / Google / OpenAI / Azure). GLM (Zhipu), Qwen (Alibaba) and Kimi (Moonshot AI) are **registered but OFF by default**, opt-in per tenant with a recorded data-flow disclosure. *(Updated 2026-07-23: Kimi replaces the originally-scoped Mistral, so all three fleet-expansion providers are China-hosted and opt-in — no default-allowed EU provider, a strictly more conservative posture.)* Directly closes D5. Full design: [03](./03_fleet_expansion.md).
 
 **Two working assumptions carried from the Inc-4 precedent (state them, don't re-litigate):**
 
-* **Fleet expansion ships as a *tested seam*, not live wire-level calls.** Catalog rows + an OpenAI-compatible adapter over an *injectable transport* (the Zoho pattern) + the allow-list + the eval gate — proven against fakes. No live GLM/Qwen/Mistral call is made; live binding is activation-time ops, the same discipline voice go-live and the Zoho connector carry. See [03](./03_fleet_expansion.md) §7.
+* **Fleet expansion ships as a *tested seam*, not live wire-level calls.** Catalog rows + an OpenAI-compatible adapter over an *injectable transport* (the Zoho pattern) + the allow-list + the eval gate — proven against fakes. No live GLM/Qwen/Kimi call is made; live binding is activation-time ops, the same discipline voice go-live and the Zoho connector carry. See [03](./03_fleet_expansion.md) §7.
 * **BabyBuddha / OmniBuddha stays out (Inc 7).** Inc 5 leaves a **registry-row-shaped hole** it drops into — `internal` provider, `capability_profile`, admission through the same EVX gate as any vendor model. Nothing here builds toward a training run.
 
 ## 3. Workstreams
@@ -37,7 +37,7 @@ Today `ai/llm/router.py` does *configuration lookup* — it resolves the one mod
 | 2 | [02_router.md](./02_router.md) | **RTR v1** — registry + static rules + `routing_decisions` attribution, reproducing current defaults | (B12 audit half) | REG |
 | 3 | [02_router.md](./02_router.md) | **RTR v2** — heuristic complexity scoring + wallet-aware downshift + fallback | — | RTR v1, Inc-1 ENV/wallet-holds |
 | 4 | [04_eval_extensions.md](./04_eval_extensions.md) | **EVX** — independent-suite rule, canary rollout, model-change regression gate (§22.2–.4) | **B9** docs+build side | shipped `tests/eval`, `tests/parity` |
-| 5 | [03_fleet_expansion.md](./03_fleet_expansion.md) | **FLEET** — GLM/Qwen/Mistral adapter seam + conservative default allow-list + data-flow disclosure | **D5** | REG, RTR, **EVX (the gate)** |
+| 5 | [03_fleet_expansion.md](./03_fleet_expansion.md) | **FLEET** — GLM/Qwen/Kimi adapter seam + conservative default allow-list + data-flow disclosure | **D5** | REG, RTR, **EVX (the gate)** |
 
 ## 4. Build Order
 

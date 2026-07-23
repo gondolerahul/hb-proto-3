@@ -9,13 +9,15 @@ Design: increment-5/02_router.md §8.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.ai.intelligence.models import RoutingDecision
+from src.ai.intelligence.models import CompanyProviderOptin, ModelRegistry, RoutingDecision
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.common.database import get_db
@@ -88,3 +90,84 @@ async def list_admissions(
          "created_at": s.created_at.isoformat() if s.created_at else None}
         for s in rows
     ]
+
+
+# --- FLEET / D5: provider allow-list + the auditable opt-in -----------------
+
+class OptInRequest(BaseModel):
+    """Acknowledging the current data-flow disclosure is what makes an opt-in
+    informed consent — a stale version is refused."""
+    disclosure_version: str
+
+
+@router.get("/providers")
+async def list_providers(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Every catalog provider with its D5 posture and this tenant's opt-in state."""
+    from src.ai.intelligence.allow_list import CURRENT_DISCLOSURE_VERSION, effective_allow
+
+    rows = (await db.execute(select(ModelRegistry))).scalars().all()
+    posture: dict[str, bool] = {}
+    for r in rows:
+        flow: dict[str, Any] = r.data_flow or {}
+        posture[r.provider] = posture.get(r.provider, False) or bool(flow.get("default_allowed"))
+
+    optins = {
+        o.provider: o for o in (await db.execute(
+            select(CompanyProviderOptin).where(
+                CompanyProviderOptin.company_id == current_user.company_id)
+        )).scalars().all()
+    }
+    allowed = await effective_allow(db, cast(UUID, current_user.company_id))
+
+    out: list[dict[str, Any]] = []
+    for provider in sorted(posture):
+        o = optins.get(provider)
+        out.append({
+            "provider": provider,
+            "default_allowed": posture[provider],
+            "effective_allowed": provider in allowed,
+            "opted_in": bool(o and o.revoked_at is None),
+            "disclosure_version": o.disclosure_version if o else None,
+            "current_disclosure_version": CURRENT_DISCLOSURE_VERSION,
+            "opted_in_at": o.opted_in_at.isoformat() if o and o.opted_in_at else None,
+            "revoked_at": o.revoked_at.isoformat() if o and o.revoked_at else None,
+        })
+    return out
+
+
+@router.post("/providers/{provider}/opt-in")
+async def opt_in_provider(
+    provider: str,
+    body: OptInRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Opt this tenant into a non-default-allowed provider (D5). Records who
+    accepted which disclosure version, when."""
+    from src.ai.intelligence.allow_list import DisclosureError, opt_in
+
+    try:
+        row = await opt_in(
+            db, cast(UUID, current_user.company_id), provider,
+            disclosure_version=body.disclosure_version, user_id=cast(UUID, current_user.id))
+    except DisclosureError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"provider": row.provider, "opted_in": True,
+            "disclosure_version": row.disclosure_version,
+            "opted_in_at": row.opted_in_at.isoformat() if row.opted_in_at else None}
+
+
+@router.post("/providers/{provider}/revoke")
+async def revoke_provider(
+    provider: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Withdraw an opt-in — the provider drops out of routing on the next call."""
+    from src.ai.intelligence.allow_list import revoke
+
+    revoked = await revoke(db, cast(UUID, current_user.company_id), provider)
+    return {"provider": provider, "revoked": revoked}

@@ -28,8 +28,8 @@ Both are **global** (control-plane Alembic, not tenant-bootstrapped) — the fle
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK | |
-| `model_key` | String, unique-per-(provider, version, region) | The router-facing stable key, e.g. `claude-opus`, `gemini-2.5-flash`, `mistral-large`, `glm-4.6`, `qwen-2.5-72b`. Family+profile, **not** the raw SDK id. |
-| `provider` | String | `anthropic` · `google` · `openai` · `azure_openai` · `mistral` · `zhipu` · `alibaba` · `internal` (the BabyBuddha hole). |
+| `model_key` | String, unique-per-(provider, version, region) | The router-facing stable key, e.g. `claude-opus`, `gemini-2.5-flash`, `glm-4.6`, `qwen-2.5-72b`, `kimi-k2`. Family+profile, **not** the raw SDK id. |
+| `provider` | String | `anthropic` · `google` · `openai` · `azure_openai` · `zhipu` · `alibaba` · `moonshot` · `internal` (the BabyBuddha hole). |
 | `model_name` | String | the concrete SDK id, e.g. `claude-opus-4-8`, `gemini-2.5-flash-002`. This is what the adapter is handed. |
 | `version` | String | the snapshot/version tag, e.g. `4-8`, `002`, `2025-01`. B12's missing axis. |
 | `region` | String | deployment region, e.g. `us-east5`, `us-central1`, `eu-west1`, `global`. B12's missing axis. |
@@ -72,7 +72,7 @@ This is the same "policy in the new package, enforcement at the existing call si
 
 Following the connector catalog precedent ([increment-4/02](../increment-4/02_conn_sor.md) §4.1), the fleet is **declared data**, not rows hand-inserted per environment:
 
-* `ai/intelligence/catalog.py` — `FLEET: list[ModelSpec]` declaring the shipped providers (Anthropic / Google / Azure-OpenAI) with `capability_profile`, `data_flow`, `status='active'`, and an initial `model_prices` window. FLEET ([03](./03_fleet_expansion.md)) appends GLM/Qwen/Mistral rows (`status='preview'`, `default_allowed=False`).
+* `ai/intelligence/catalog.py` — `FLEET: list[ModelSpec]` declaring the shipped providers (Anthropic / Google / Azure-OpenAI) with `capability_profile`, `data_flow`, `status='active'`, and an initial `model_prices` window. FLEET ([03](./03_fleet_expansion.md)) appends GLM/Qwen/Kimi rows (`status='preview'`, `default_allowed=False`).
 * `ai/intelligence/registry.py::install_model_catalog()` — idempotent seeder (upsert by the uniqueness key), called at `main.py` + `worker.py` boot beside the other installers. Re-running never duplicates a row and never rewrites a price window (it opens a new one only when the declared price differs from the current open row).
 
 ## 6. The registry service — what the router calls

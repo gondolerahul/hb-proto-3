@@ -127,4 +127,23 @@ FLEET: tuple[ModelSpec, ...] = (
               _cap(0.55, 0.75, 128_000, "standard", _TEXT),
               _flow("us/eu (Azure region-pinned)", "Microsoft Azure OpenAI", False, True),
               ModelStatus.ACTIVE, _px("0.00015", "0.0006")),
+
+    # --- FLEET expansion (Inc 5 / D5): the open-weight, OpenAI-compatible fleet.
+    # All three are China-hosted, so all are `default_allowed=False` — registered
+    # but never a router candidate until a tenant opts in *and* the EVX gate flips
+    # them from `preview` to `active`. `trains_on_customer_data=True` is the
+    # platform's **conservative posture pending a signed DPA**, not a claim about
+    # the vendor — it is precisely why these are opt-in (see 03a disclosure).
+    ModelSpec("glm-4.6", "zhipu", "glm-4.6", "4.6", "cn",
+              _cap(0.82, 0.80, 200_000, "standard", _TEXT),
+              _flow("cn", "Zhipu AI (BigModel)", True, False),
+              ModelStatus.PREVIEW, _px("0.0006", "0.0022")),
+    ModelSpec("qwen-2.5-72b", "alibaba", "qwen2.5-72b-instruct", "2.5", "cn",
+              _cap(0.80, 0.78, 128_000, "standard", _TEXT),
+              _flow("cn", "Alibaba Cloud (DashScope)", True, False),
+              ModelStatus.PREVIEW, _px("0.0004", "0.0012")),
+    ModelSpec("kimi-k2", "moonshot", "kimi-k2-0711-preview", "k2", "cn",
+              _cap(0.85, 0.82, 256_000, "standard", _TEXT),
+              _flow("cn", "Moonshot AI", True, False),
+              ModelStatus.PREVIEW, _px("0.0006", "0.0025")),
 )
