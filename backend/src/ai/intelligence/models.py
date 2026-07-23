@@ -44,7 +44,7 @@ from src.common.database import Base
 # imports no consumer model. Keeping it import-light means a minimal context
 # (a test that only touches the registry) needn't register auth/config mappers.
 
-__all__ = ["ModelRegistry", "ModelPrice", "ModelStatus"]
+__all__ = ["ModelRegistry", "ModelPrice", "ModelStatus", "RoutingDecision"]
 
 
 class ModelStatus:
@@ -128,3 +128,30 @@ class ModelPrice(Base):
     __table_args__ = (
         Index("ix_model_prices_lookup", "model_registry_id", "component_type", "effective_from"),
     )
+
+
+class RoutingDecision(Base):
+    """One router decision — which model, why, over which signals (RTR v1, §3.1).
+
+    Column FKs only (run_id -> execution_runs, company_id -> companies,
+    model_registry_id -> model_registry), **no relationships**, so this module
+    stays import-light — the mapper configures without registering the run/auth
+    graph. run_id is nullable (a standalone/Pragya call has no loop run);
+    model_registry_id is nullable (an un-bound legacy integration still routes)."""
+
+    __tablename__ = "routing_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True, index=True)
+    step_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    task_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_registry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("model_registry.id"), nullable=True)
+    # "pinned" | "rule" | "auto" | "fallback" | "downshift"
+    reason: Mapped[str] = mapped_column(String(16), nullable=False)
+    signals: Mapped[Any] = mapped_column(JSONB, nullable=False, default=dict)  # the RoutingSignals snapshot
+    fallback_used: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

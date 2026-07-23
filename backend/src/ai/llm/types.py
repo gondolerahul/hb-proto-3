@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,10 @@ class LLMResponse:
     model_name: str = ""
     provider: str = ""
     finish_reason: str = "stop"
+    # RTR (Inc 5): the routing_decisions row that chose this model, when the
+    # call was routed. The router stamps it in call_llm so _log_usage can link
+    # the usage line to the decision. None on the un-routed path.
+    routing_decision_id: Optional[UUID] = None
 
     @property
     def cost_usd(self) -> float:

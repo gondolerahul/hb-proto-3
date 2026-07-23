@@ -607,7 +607,8 @@ class StepExecutorService:
                 step_name=(step_description[:100] if step_description else "__reformat__"),
             )
             self.db.add(reformat_log)
-            await self._log_usage(run, resp.model_name, resp.prompt_tokens, resp.completion_tokens, reformat_log)
+            await self._log_usage(run, resp.model_name, resp.prompt_tokens, resp.completion_tokens, reformat_log,
+                                  routing_decision_id=getattr(resp, "routing_decision_id", None))
 
             reformatted = resp.output.strip()
 
@@ -1054,7 +1055,8 @@ class StepExecutorService:
         )
         self.db.add(log)
 
-        await self._log_usage(run, response.model_name, response.prompt_tokens, response.completion_tokens, log)
+        await self._log_usage(run, response.model_name, response.prompt_tokens, response.completion_tokens, log,
+                              routing_decision_id=getattr(response, "routing_decision_id", None))
         await self.db.commit()
         return {"step": step.name, "output": output}
 
@@ -1100,8 +1102,13 @@ Step 2: [your analysis]
 
         return output, response
 
-    async def _log_usage(self, run, model_name: str, prompt_tokens: int, completion_tokens: int, log):
-        """Helper to log LLM usage stats using model_name from LLMResponse."""
+    async def _log_usage(self, run, model_name: str, prompt_tokens: int, completion_tokens: int, log,
+                         routing_decision_id=None):
+        """Helper to log LLM usage stats using model_name from LLMResponse.
+
+        ``routing_decision_id`` (Inc 5 / RTR) links the usage line to the router
+        decision that chose this model — set only when the call was routed.
+        """
         input_sku = f"{model_name}-in" if model_name else "unknown-in"
         output_sku = f"{model_name}-out" if model_name else "unknown-out"
 
@@ -1111,14 +1118,16 @@ Step 2: [your analysis]
             company_id=run.company_id,
             service_sku=input_sku,
             raw_quantity=float(prompt_tokens),
-            execution_id=run.id
+            execution_id=run.id,
+            routing_decision_id=routing_decision_id,
         )
 
         output_usage = await self.usage_service.log_usage(
             company_id=run.company_id,
             service_sku=output_sku,
             raw_quantity=float(completion_tokens),
-            execution_id=run.id
+            execution_id=run.id,
+            routing_decision_id=routing_decision_id,
         )
 
         # Ensure null-safe accumulation

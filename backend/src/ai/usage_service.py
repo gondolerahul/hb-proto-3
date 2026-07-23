@@ -35,6 +35,7 @@ class UsageService:
         execution_id: Optional[UUID] = None,
         metadata: Optional[dict] = None,
         attribution: Optional[str] = None,
+        routing_decision_id: Optional[UUID] = None,
     ) -> UsageLog:
         """
         Logs usage for a specific SKU and company.
@@ -139,6 +140,7 @@ class UsageService:
             calculated_cost=calculated_cost,
             log_metadata=log_meta,
             attribution=clean_attribution,
+            routing_decision_id=routing_decision_id,
         )
         
         self.db.add(usage_log)

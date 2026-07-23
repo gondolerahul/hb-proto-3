@@ -110,6 +110,11 @@ class LLMRouter:
         self.db = db
         self.company_id = company_id
         self._adapter_cache: dict = {}  # Per-run cache to avoid repeated DB lookups
+        # RTR (Inc 5): the routing_decisions id from the most recent
+        # ``_resolve_adapter`` call, stamped onto the LLMResponse in ``call_llm``
+        # so ``_log_usage`` can link the usage line to the decision. None on the
+        # un-routed path. Sequential per run; not for concurrent reuse.
+        self._pending_decision_id: Optional[UUID] = None
 
     async def _resolve_adapter(self, task_type: str, model_override: Optional[str] = None) -> BaseLLMAdapter:
         """Resolve the correct adapter based on task defaults.
@@ -126,14 +131,42 @@ class LLMRouter:
         """
         cache_key = f"{self.company_id}:{task_type}:{model_override or ''}"
         if cache_key in self._adapter_cache:
+            self._pending_decision_id = None  # a cache hit is the un-routed path
             return self._adapter_cache[cache_key]
 
         from src.config.service import ConfigService
         config_svc = ConfigService(self.db)
-        integration, api_key = await config_svc.resolve_model_for_task(
-            company_id=self.company_id,
-            task_type=task_type,
-        )
+
+        # RTR (Inc 5): a company opts into the router per task via
+        # ModelTaskDefault.routing_mode == "router". An explicit model_override
+        # always bypasses the router (the caller pinned the model). A routed
+        # call records a routing_decision *every* call, so routed keys are never
+        # cached; the un-routed path below is byte-identical to before.
+        self._pending_decision_id = None
+        integration = None
+        api_key = None
+        effective_model = ""
+        routed = False
+        if not model_override:
+            task_default = await config_svc.get_task_default(self.company_id, task_type)
+            if task_default is not None and task_default.routing_mode == "router":
+                from src.ai.intelligence.router import IntelligenceRouter
+                from src.ai.intelligence.types import RoutingSignals
+                binding = await IntelligenceRouter(self.db, self.company_id).route(
+                    RoutingSignals(task_type=task_type))
+                integration, api_key = await config_svc.load_integration(binding.integration_id)
+                effective_model = binding.model_name
+                self._pending_decision_id = binding.decision_id
+                routed = True
+
+        if not routed:
+            # Un-routed path — unchanged behaviour (the single configured model).
+            integration, api_key = await config_svc.resolve_model_for_task(
+                company_id=self.company_id,
+                task_type=task_type,
+            )
+            effective_model = model_override or (integration.model_name if integration else "") or ""
+
         if not integration:
             raise RuntimeError(
                 f"No model configured for task type '{task_type}' "
@@ -145,8 +178,6 @@ class LLMRouter:
                 f"No API key found for integration '{integration.provider_name}/{integration.model_name}'. "
                 f"Please check the Service Integration configuration."
             )
-        # Entity-level model override takes priority over company defaults
-        effective_model = model_override or integration.model_name or ""
         if model_override:
             logger.info(
                 f"LLMRouter: Model override '{model_override}' "
@@ -158,7 +189,9 @@ class LLMRouter:
             model_name=effective_model,
             service_metadata=integration.service_metadata or {},
         )
-        self._adapter_cache[cache_key] = adapter
+        # Cache only the un-routed adapter — a routed decision is per call.
+        if not routed:
+            self._adapter_cache[cache_key] = adapter
         return adapter
 
     async def call_llm(
@@ -198,6 +231,7 @@ class LLMRouter:
                 top_p=top_p,
                 **kwargs,
             )
+            resp.routing_decision_id = self._pending_decision_id  # RTR: link the usage line
             _record_llm_span(_sp, resp)
             return resp
 
@@ -243,6 +277,7 @@ class LLMRouter:
                 max_react_turns=max_react_turns,
                 **kwargs,
             )
+            resp.routing_decision_id = self._pending_decision_id  # RTR: link the usage line
             _record_llm_span(_sp, resp)
             return resp
 
