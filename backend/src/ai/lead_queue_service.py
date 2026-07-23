@@ -56,8 +56,20 @@ class LeadQueueService:
             correlation_id=correlation_id,
             status="pending",
             attempt_count=0,
-        ).on_conflict_do_nothing(
-            constraint="uq_lead_queue_company_lead"
+        ).on_conflict_do_update(
+            constraint="uq_lead_queue_company_lead",
+            set_={
+                "status": "pending",
+                "attempt_count": 0,
+                "phone": phone,
+                "lead_data": lead_data,
+                "agent_id": agent_id,
+                "ad_source": ad_source,
+                "project_id": project_id,
+                "correlation_id": correlation_id,
+                "last_error": None,
+                "updated_at": datetime.utcnow(),
+            }
         ).returning(LeadQueueEntry.__table__.c.id)
 
         result = await self.db.execute(stmt)
@@ -68,12 +80,11 @@ class LeadQueueService:
             # Fetch the full object
             entry = await self.db.get(LeadQueueEntry, row.id)
             logger.info(
-                f"[LeadQueue] Enqueued lead {lead_id} for company {company_id} "
+                f"[LeadQueue] Enqueued/updated lead {lead_id} for company {company_id} "
                 f"(priority={priority}, phone={phone})"
             )
             return entry
         else:
-            logger.info(f"[LeadQueue] Duplicate lead {lead_id} for company {company_id} — skipped")
             return None
 
     async def pick_next_lead(self, company_id: Optional[UUID] = None) -> Optional[LeadQueueEntry]:

@@ -332,9 +332,13 @@ class BaseStreamHandler:
             else "[Call connected. Greet the caller to begin the conversation.]"
         )
         try:
-            # For gemini-3.1-flash-live-preview, send_client_content is only for
-            # seeding history. Must use send_realtime_input for live messages.
-            await self.gemini_session.send_realtime_input(text=greeting)
+            if hasattr(self.gemini_session, "_ws") and self.gemini_session._ws:
+                payload = {"realtime_input": {"text": greeting}}
+                await self.gemini_session._ws.send(json.dumps(payload))
+            elif hasattr(self.gemini_session, "send_realtime_input"):
+                await self.gemini_session.send_realtime_input(text=greeting)
+            elif hasattr(self.gemini_session, "send"):
+                await self.gemini_session.send(input=greeting)
             self._greeting_sent_at = time.time()
             logger.info(f"Sent greeting trigger for session {self.session_id}")
         except Exception as _ge:
@@ -558,14 +562,21 @@ class BaseStreamHandler:
                         pcm16_chunk = b"\x00" * (len(mulaw_chunk) * 4)
                     if pcm16_chunk and self.gemini_session:
                         try:
-                            # google-genai SDK v1.71.0+ — use send_realtime_input
-                            from google.genai import types as genai_types
-                            await self.gemini_session.send_realtime_input(
-                                audio=genai_types.Blob(
-                                    data=pcm16_chunk,
-                                    mime_type="audio/pcm;rate=16000",
-                                )
-                            )
+                            b64_audio = base64.b64encode(pcm16_chunk).decode("utf-8")
+                            if hasattr(self.gemini_session, "_ws") and self.gemini_session._ws:
+                                payload = {
+                                    "realtime_input": {
+                                        "audio": {
+                                            "data": b64_audio,
+                                            "mime_type": "audio/pcm;rate=16000",
+                                        }
+                                    }
+                                }
+                                await self.gemini_session._ws.send(json.dumps(payload))
+                            elif hasattr(self.gemini_session, "send_audio"):
+                                await self.gemini_session.send_audio(pcm16_chunk)
+                            elif hasattr(self.gemini_session, "send"):
+                                await self.gemini_session.send(input=pcm16_chunk)
                         except Exception as e:
                             logger.error(f"Error sending audio to upstream provider: {e}")
                             break
@@ -866,7 +877,13 @@ class BaseStreamHandler:
         """Best-effort system prompt injection into the live session."""
         try:
             if self.gemini_session:
-                await self.gemini_session.send_realtime_input(text=text)
+                if hasattr(self.gemini_session, "_ws") and self.gemini_session._ws:
+                    payload = {"realtime_input": {"text": text}}
+                    await self.gemini_session._ws.send(json.dumps(payload))
+                elif hasattr(self.gemini_session, "send_realtime_input"):
+                    await self.gemini_session.send_realtime_input(text=text)
+                elif hasattr(self.gemini_session, "send"):
+                    await self.gemini_session.send(input=text)
         except Exception as e:
             logger.warning(f"[GUARD] Failed to send system text: {e}")
 
@@ -922,40 +939,43 @@ class BaseStreamHandler:
                         f"for session {self.session_id} — lead has spoken"
                     )
                     try:
-                        from google.genai import types as genai_types
-                        await self.gemini_session.send_tool_response(
-                            function_responses=[
-                                genai_types.FunctionResponse(
-                                    id=getattr(end_call_fc, 'id', None),
-                                    name="end_call",
-                                    response={
-                                        "output": (
-                                            "A live person appears to be on the "
-                                            "line — they have spoken during this "
-                                            "call. Do not end the call. Continue "
-                                            "the conversation; ask 'Can you hear "
-                                            "me?' if unsure."
-                                        ),
-                                        "success": False,
-                                    },
-                                )
-                            ],
-                        )
+                        fr = [
+                            genai_types.FunctionResponse(
+                                id=getattr(end_call_fc, 'id', None),
+                                name="end_call",
+                                response={
+                                    "output": (
+                                        "A live person appears to be on the "
+                                        "line — they have spoken during this "
+                                        "call. Do not end the call. Continue "
+                                        "the conversation; ask 'Can you hear "
+                                        "me?' if unsure."
+                                    ),
+                                    "success": False,
+                                },
+                            )
+                        ]
+                        if hasattr(self.gemini_session, "send_tool_response"):
+                            await self.gemini_session.send_tool_response(function_responses=fr)
+                        elif hasattr(self.gemini_session, "send"):
+                            await self.gemini_session.send(input=fr)
                     except Exception as e:
                         logger.warning(f"[GUARD] Failed to push back on end_call: {e}")
                     return
 
             try:
                 from google.genai import types as genai_types
-                await self.gemini_session.send_tool_response(
-                    function_responses=[
-                        genai_types.FunctionResponse(
-                            id=getattr(end_call_fc, 'id', None),
-                            name="end_call",
-                            response={"output": "Call will now end.", "success": True},
-                        )
-                    ],
-                )
+                fr = [
+                    genai_types.FunctionResponse(
+                        id=getattr(end_call_fc, 'id', None),
+                        name="end_call",
+                        response={"output": "Call will now end.", "success": True},
+                    )
+                ]
+                if hasattr(self.gemini_session, "send_tool_response"):
+                    await self.gemini_session.send_tool_response(function_responses=fr)
+                elif hasattr(self.gemini_session, "send"):
+                    await self.gemini_session.send(input=fr)
             except Exception as e:
                 logger.warning(f"[GUARD] Failed to ack end_call: {e}")
             # Let the goodbye actually reach the lead: give the model a
@@ -1022,11 +1042,14 @@ class BaseStreamHandler:
                     )
                 )
 
-            # Use send_tool_response() — the dedicated SDK method for
-            # returning function call results.
-            await self.gemini_session.send_tool_response(
-                function_responses=function_responses,
-            )
+            if hasattr(self.gemini_session, "send_tool_response"):
+                await self.gemini_session.send_tool_response(
+                    function_responses=function_responses,
+                )
+            elif hasattr(self.gemini_session, "send"):
+                await self.gemini_session.send(
+                    input=function_responses,
+                )
             logger.info(f"Sent {len(function_responses)} tool response(s) back to Gemini "
                         f"(ids={[getattr(fc, 'id', None) for fc in original_fcs]})")
         except Exception as e:
@@ -1142,13 +1165,18 @@ class BaseStreamHandler:
             # Ask the agent to wrap up naturally
             try:
                 if self.gemini_session:
-                    await self.gemini_session.send_realtime_input(
-                        text=(
-                            "[SYSTEM: This call has reached its maximum duration. "
-                            "Politely wrap up the conversation now. Thank the caller "
-                            "and say goodbye.]"
-                        )
+                    text_msg = (
+                        "[SYSTEM: This call has reached its maximum duration. "
+                        "Politely wrap up the conversation now. Thank the caller "
+                        "and say goodbye.]"
                     )
+                    if hasattr(self.gemini_session, "_ws") and self.gemini_session._ws:
+                        payload = {"realtime_input": {"text": text_msg}}
+                        await self.gemini_session._ws.send(json.dumps(payload))
+                    elif hasattr(self.gemini_session, "send_realtime_input"):
+                        await self.gemini_session.send_realtime_input(text=text_msg)
+                    elif hasattr(self.gemini_session, "send"):
+                        await self.gemini_session.send(input=text_msg)
             except Exception as e:
                 logger.warning(f"[WATCHDOG] Failed to send wind-down: {e}")
 

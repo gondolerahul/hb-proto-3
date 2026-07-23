@@ -67,7 +67,7 @@ async def process_lead(entry: LeadQueueEntry) -> None:
                 provider="tata_tele",
                 call_sid=f"lead-{entry.lead_id}-{entry.attempt_count}",
                 direction="outbound",
-                session_metadata={
+                metadata={
                     "lead_queue_entry_id": str(entry.id),
                     "lead_id": entry.lead_id,
                     "lead_name": lead_name,
@@ -80,18 +80,32 @@ async def process_lead(entry: LeadQueueEntry) -> None:
             # Link voice session to queue entry
             await queue_svc.mark_calling(entry.id, session.id)
 
+            # Resolve outbound caller ID (DID) for this company/agent
+            from src.voice.number_router import NumberRouter
+            number_router = NumberRouter(db)
+            assignment = await number_router.get_company_number(
+                company_id=entry.company_id,
+                provider="tata_tele",
+                agent_id=entry.agent_id,
+            )
+            if not assignment:
+                raise ValueError(
+                    f"No tata_tele number assigned for company {entry.company_id}"
+                )
+            from_number = assignment.phone_number
+
             # Place the outbound call via Tata Tele
             try:
                 await campaign_exec._place_tata_call(
-                    company_id=entry.company_id,
-                    phone_number=phone,
+                    to=phone,
+                    from_=from_number,
+                    voice_session_id=session.id,
                     agent_id=entry.agent_id,
-                    session_id=session.id,
-                    contact_name=lead_name,
+                    company_id=entry.company_id,
                 )
                 logger.info(
                     f"[LeadQueueWorker] Call placed for lead {entry.lead_id} "
-                    f"(session={session.id})"
+                    f"({lead_name}) (session={session.id})"
                 )
             except Exception as call_err:
                 logger.error(f"[LeadQueueWorker] Call failed for lead {entry.lead_id}: {call_err}")

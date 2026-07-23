@@ -209,11 +209,26 @@ class VideoSession:
                     resampled = frame.to_ndarray(format="s16", layout="mono")
                     pcm16 = resampled.tobytes()
                     try:
-                        if hasattr(gemini_session, "send_audio"):
+                        b64_audio = base64.b64encode(pcm16).decode("utf-8")
+                        if hasattr(gemini_session, "_ws") and gemini_session._ws:
+                            payload = {
+                                "realtime_input": {
+                                    "audio": {
+                                        "data": b64_audio,
+                                        "mime_type": "audio/pcm;rate=16000",
+                                    }
+                                }
+                            }
+                            await gemini_session._ws.send(json.dumps(payload))
+                        elif hasattr(gemini_session, "send_audio"):
                             await gemini_session.send_audio(pcm16)
                         elif hasattr(gemini_session, "send_realtime_input"):
                             await gemini_session.send_realtime_input(
                                 audio={"data": pcm16, "mime_type": "audio/pcm;rate=16000"}
+                            )
+                        elif hasattr(gemini_session, "send"):
+                            await gemini_session.send(
+                                input={"data": pcm16, "mime_type": "audio/pcm;rate=16000"}
                             )
                     except Exception as exc:
                         logger.error(f"[VideoSession] AI audio send error: {exc}")

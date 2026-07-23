@@ -40,7 +40,7 @@ class WebhookStrategy(ABC):
     """Base strategy for detecting and normalizing a specific webhook source."""
 
     @abstractmethod
-    def can_handle(self, request_headers: dict, payload: dict) -> bool:
+    def can_handle(self, request_headers: dict, payload: dict, query_params: dict = None) -> bool:
         """Return True if this strategy can handle the given request."""
 
     @abstractmethod
@@ -71,7 +71,7 @@ class EmailWebhookStrategy(WebhookStrategy):
     Detects via X-Mailgun-* or X-Sg-Signature or X-Postmark-* headers.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return any(
             k.lower().startswith(("x-mailgun", "x-sg-", "x-postmark"))
             for k in headers
@@ -101,22 +101,30 @@ class CRMWebhookStrategy(WebhookStrategy):
     Detects via X-HubSpot-Signature, X-Salesforce-* or payload structure.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
-        return any(
-            k.lower().startswith(("x-hubspot", "x-salesforce", "x-zoho"))
-            for k in headers
-        ) or "crm_event" in payload
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
+        qp = query_params or {}
+        return (
+            any(
+                k.lower().startswith(("x-hubspot", "x-salesforce", "x-zoho"))
+                for k in headers
+            )
+            or "crm_event" in payload
+            or payload.get("source") == "crm"
+            or qp.get("source") == "crm"
+        )
 
     def get_source(self) -> str:
         return "crm"
 
     def normalize(self, headers: dict, payload: dict, query_params: dict) -> dict:
-        # Detect sub-type from payload
-        event_type = payload.get("subscriptionType") or payload.get("crm_event", "crm_update")
+        # Detect sub-type from payload or query params
+        event_type = (
+            payload.get("subscriptionType")
+            or payload.get("crm_event")
+            or query_params.get("event_type")
+            or "crm_update"
+        )
 
-        # Extract entity_id (target agent) from payload or query params.
-        # This allows CRM webhooks to route leads to a specific voice agent
-        # instead of the generic "first active agent" fallback.
         entity_id = (
             payload.get("entity_id")
             or query_params.get("entity_id", "")
@@ -124,19 +132,47 @@ class CRMWebhookStrategy(WebhookStrategy):
 
         properties = payload.get("properties", {})
 
+        phone = (
+            properties.get("phone")
+            or payload.get("phone")
+            or payload.get("mobile")
+            or payload.get("phone_number")
+            or payload.get("customer_number")
+            or query_params.get("phone", "")
+        )
+
+        lead_id = (
+            payload.get("id")
+            or payload.get("lead_id")
+            or payload.get("objectId")
+            or query_params.get("lead_id", "")
+        )
+
+        ad_source = (
+            properties.get("ad_source")
+            or payload.get("ad_source")
+            or query_params.get("ad_source", "")
+        )
+
+        project_id = (
+            properties.get("project_id")
+            or payload.get("project_id")
+            or query_params.get("project_id", "")
+        )
+
         return {
             "client_id": query_params.get("client_id", ""),
             "event_type": event_type,
             "normalized_data": {
                 "object_type": payload.get("objectTypeId") or payload.get("object_type", "contact"),
-                "object_id": payload.get("objectId") or payload.get("id"),
+                "object_id": payload.get("objectId") or payload.get("id") or lead_id,
                 "change_source": payload.get("changeSource", "unknown"),
                 "properties": properties,
                 "entity_id": entity_id,
-                "phone": properties.get("phone", ""),
-                "lead_id": payload.get("id", ""),
-                "ad_source": properties.get("ad_source", ""),
-                "project_id": properties.get("project_id", ""),
+                "phone": phone,
+                "lead_id": lead_id,
+                "ad_source": ad_source,
+                "project_id": project_id,
                 "raw": payload,
             },
         }
@@ -148,7 +184,7 @@ class LinkedInWebhookStrategy(WebhookStrategy):
     Detects via X-Li-Signature or payload structure.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return (
             "x-li-signature" in {k.lower() for k in headers}
             or payload.get("type", "").startswith("linkedin.")
@@ -184,7 +220,7 @@ class LinkedInWebhookStrategy(WebhookStrategy):
 class GitHubWebhookStrategy(WebhookStrategy):
     """Handles GitHub webhooks (push, PR, issue events)."""
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return "x-github-event" in {k.lower() for k in headers}
 
     def get_source(self) -> str:
@@ -218,7 +254,7 @@ class TwilioWebhookStrategy(WebhookStrategy):
     Detects via X-Twilio-Signature header.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return "x-twilio-signature" in {k.lower() for k in headers}
 
     def get_source(self) -> str:
@@ -239,7 +275,7 @@ class FacebookWebhookStrategy(WebhookStrategy):
     Also handles the hub.challenge verification for webhook subscription.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         has_hub_sig = "x-hub-signature-256" in {k.lower() for k in headers}
         is_fb_payload = payload.get("object") in ("page", "instagram", "permissions")
         return has_hub_sig or is_fb_payload
@@ -285,7 +321,7 @@ class TwitterWebhookStrategy(WebhookStrategy):
     Detects via X-Twitter-Webhooks-Signature header.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return (
             "x-twitter-webhooks-signature" in {k.lower() for k in headers}
             or "for_user_id" in payload
@@ -326,7 +362,7 @@ class InstagramWebhookStrategy(WebhookStrategy):
     object='instagram' in the payload.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return payload.get("object") == "instagram"
 
     def get_source(self) -> str:
@@ -367,7 +403,7 @@ class TikTokWebhookStrategy(WebhookStrategy):
     Detects via X-TikTok-Signature header.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return "x-tiktok-signature" in {k.lower() for k in headers}
 
     def get_source(self) -> str:
@@ -395,7 +431,7 @@ class GenericWebhookStrategy(WebhookStrategy):
     Reads source from ?source= query parameter.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return True  # Always matches (must be last in the list)
 
     def get_source(self) -> str:
@@ -404,11 +440,31 @@ class GenericWebhookStrategy(WebhookStrategy):
     def normalize(self, headers: dict, payload: dict, query_params: dict) -> dict:
         source = query_params.get("source", "unknown")
         event_type = query_params.get("event_type") or payload.get("type", "generic_event")
+        entity_id = payload.get("entity_id") or query_params.get("entity_id", "")
+        properties = payload.get("properties", {})
+        phone = (
+            payload.get("phone")
+            or properties.get("phone")
+            or payload.get("mobile")
+            or payload.get("phone_number")
+            or payload.get("customer_number")
+            or query_params.get("phone", "")
+        )
+        lead_id = (
+            payload.get("id")
+            or payload.get("lead_id")
+            or payload.get("objectId")
+            or query_params.get("lead_id", "")
+        )
         return {
             "client_id": query_params.get("client_id", ""),
             "event_type": event_type,
             "normalized_data": {
                 "source": source,
+                "entity_id": entity_id,
+                "phone": phone,
+                "lead_id": lead_id,
+                "properties": properties,
                 "raw": payload,
             },
         }
@@ -422,7 +478,7 @@ class YouTubeWebhookStrategy(WebhookStrategy):
     is typically application/atom+xml.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         ct = headers.get("content-type", "")
         link_header = headers.get("link", "")
         return (
@@ -463,7 +519,7 @@ class PinterestWebhookStrategy(WebhookStrategy):
     and sends events for pin creation, board updates, etc.
     """
 
-    def can_handle(self, headers: dict, payload: dict) -> bool:
+    def can_handle(self, headers: dict, payload: dict, query_params: dict = None) -> bool:
         return (
             "x-pinterest-signature" in headers
             or payload.get("source") == "pinterest"
@@ -508,9 +564,9 @@ WEBHOOK_STRATEGIES: list[WebhookStrategy] = [
 ]
 
 
-def detect_strategy(headers: dict, payload: dict) -> WebhookStrategy:
+def detect_strategy(headers: dict, payload: dict, query_params: dict = None) -> WebhookStrategy:
     for strategy in WEBHOOK_STRATEGIES:
-        if strategy.can_handle(headers, payload):
+        if strategy.can_handle(headers, payload, query_params):
             return strategy
     return WEBHOOK_STRATEGIES[-1]  # GenericWebhookStrategy
 
@@ -542,7 +598,7 @@ async def unified_webhook_inbound(request: Request, background_tasks: Background
     query_params = dict(request.query_params)
 
     # Detect source and normalize
-    strategy = detect_strategy(headers, payload)
+    strategy = detect_strategy(headers, payload, query_params)
     source = strategy.get_source()
 
     # Signature validation (best-effort; log warning on failure, don't block)
