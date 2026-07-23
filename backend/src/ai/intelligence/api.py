@@ -51,3 +51,40 @@ async def list_routing_decisions(
         .limit(limit)
     )).scalars().all()
     return [_decision_out(d) for d in rows]
+
+
+@router.get("/admissions")
+async def list_admissions(
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """The platform's recent model-admission + canary events (§22.3–.4 audit).
+    Fleet-level (not tenant data): which models were admitted/refused and why."""
+    from src.ai.signals.models import Signal, SignalTypes
+    from src.auth.models import Company
+
+    limit = max(1, min(limit, 200))
+    app_id = (await db.execute(
+        select(Company.id).where(Company.type == "APP").limit(1)
+    )).scalar_one_or_none()
+    if app_id is None:
+        return []
+    rows = (await db.execute(
+        select(Signal)
+        .where(
+            Signal.company_id == app_id,
+            Signal.type.in_([
+                SignalTypes.MODEL_ADMISSION_EVALUATED,
+                SignalTypes.MODEL_CANARY_PROMOTED,
+                SignalTypes.MODEL_CANARY_ROLLED_BACK,
+            ]),
+        )
+        .order_by(Signal.created_at.desc())
+        .limit(limit)
+    )).scalars().all()
+    return [
+        {"type": s.type, "payload": s.payload,
+         "created_at": s.created_at.isoformat() if s.created_at else None}
+        for s in rows
+    ]

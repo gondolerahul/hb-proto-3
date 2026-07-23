@@ -23,6 +23,7 @@ from typing import Any, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.intelligence.admission import AdmissionResult, ModelEval, SuiteSet
 from src.ai.intelligence.catalog import FLEET, PRICE_EPOCH, ModelSpec
 from src.ai.intelligence.models import ModelPrice, ModelRegistry, ModelStatus
 
@@ -221,3 +222,28 @@ class RegistryService:
             select(ModelRegistry).where(ModelRegistry.id == model_registry_id)
         )).scalar_one_or_none()
         return dict(row.capability_profile) if row and row.capability_profile else {}
+
+    # -- gated activation (EVX) -------------------------------------------
+
+    async def activate(
+        self, model_registry_id: uuid.UUID, *,
+        candidate: "ModelEval", incumbent: "ModelEval", suites: "SuiteSet",
+        task_classes: Sequence[str] = (),
+    ) -> "AdmissionResult":
+        """Flip a catalog model to ACTIVE **only** through the §22.4 admission
+        gate. On a failed admission the model is left as-is — router preference
+        can never override a refusal (the gate is in the mutation path, EVX §8).
+        The audit signal is persisted whether or not the flip happens."""
+        from src.ai.intelligence.admission import admit_model_change
+
+        result = await admit_model_change(
+            self.db, model_id=model_registry_id, candidate=candidate,
+            incumbent=incumbent, suites=suites, task_classes=task_classes)
+        if result.admitted:
+            model = (await self.db.execute(
+                select(ModelRegistry).where(ModelRegistry.id == model_registry_id)
+            )).scalar_one_or_none()
+            if model is not None:
+                model.status = ModelStatus.ACTIVE
+        await self.db.commit()   # persist the audit signal (+ the flip if admitted)
+        return result
