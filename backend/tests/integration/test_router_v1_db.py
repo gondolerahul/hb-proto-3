@@ -97,18 +97,19 @@ async def setup():
             await s.commit()
 
 
-async def test_route_reproduces_default_and_records_decision(setup):
+async def test_route_selects_the_bound_model_and_records_decision(setup):
     from src.common.database import AsyncSessionLocal
     cid, ir_id, cat_id, sku = setup
 
     async with AsyncSessionLocal() as db:
         binding = await IntelligenceRouter(db, cid).route(RoutingSignals(task_type="text_generation"))
 
-    # Non-inferior: the same integration + model the task default points to.
+    # One catalog-bound candidate → v2 scores it (reason "auto") and selects that
+    # same model: the company's credentialed, bound integration.
     assert binding.integration_id == ir_id
     assert binding.model_name == "m-router"
     assert binding.model_registry_id == cat_id
-    assert binding.reason == "rule"
+    assert binding.reason == "auto"
     assert binding.decision_id is not None
 
     # A decision was committed (its own transaction) — the audit trail.
@@ -118,7 +119,7 @@ async def test_route_reproduces_default_and_records_decision(setup):
             "WHERE id = :d"), {"d": str(binding.decision_id)})).one()
     assert row.task_type == "text_generation"
     assert uuid.UUID(str(row.model_registry_id)) == cat_id
-    assert row.reason == "rule"
+    assert row.reason == "auto"
     assert row.fallback_used is False
 
 
