@@ -50,6 +50,12 @@ class IntegrationRegistry(Base):
     #   anthropic (Vertex AI REQUIRED): {"project_id": "...", "region": "us-east5"}
     #   azure_openai: {"azure_endpoint": "https://...", "api_version": "2025-01-01-preview", "deployment_name": "..."}
     status = Column(String, default="active")
+    # REG (Increment 5 / B12): nullable binding into the global model_registry
+    # catalog. NULL = un-bound legacy row → the router leaves it on the shipped
+    # single-model path; a bound row prices against effective-dated model_prices
+    # (see ai/intelligence/registry.py). Credentials NEVER move to the catalog —
+    # they stay here, per-company. Nullable + backfilled, never a big-bang bind.
+    model_registry_id = Column(UUID(as_uuid=True), ForeignKey("model_registry.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
