@@ -116,13 +116,28 @@ class UsageService:
             except Exception:
                 clean_attribution = attribution
 
+        # B12 reproducibility (Inc 5 / REG): for a catalog-BOUND integration,
+        # stamp the model it resolved to + the unit price actually applied, so
+        # this row re-derives regardless of later config changes and carries the
+        # model version (one join to model_registry). The charge is unchanged —
+        # an UN-bound row's metadata is passed through byte-identical, so the
+        # billing (parity) path does not move.
+        log_meta = metadata
+        if registry_entry.model_registry_id is not None:
+            log_meta = dict(metadata or {})
+            log_meta.setdefault("model_binding", {
+                "model_registry_id": str(registry_entry.model_registry_id),
+                "applied_unit_price": str(registry_entry.internal_cost),
+                "cost_unit": registry_entry.cost_unit,
+            })
+
         usage_log = UsageLog(
             company_id=company_id,
             run_id=execution_id,
             sku_id=registry_entry.id,
             raw_quantity=Decimal(str(raw_quantity)),
             calculated_cost=calculated_cost,
-            log_metadata=metadata,
+            log_metadata=log_meta,
             attribution=clean_attribution,
         )
         

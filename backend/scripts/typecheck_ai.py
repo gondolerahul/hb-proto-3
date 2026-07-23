@@ -52,6 +52,7 @@ CLEAN_PACKAGES: list[str] = [
     "kpi",
     "voice_loop",
     "connectors",
+    "intelligence",
 ]
 
 

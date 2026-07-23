@@ -19,11 +19,20 @@ from src.ai.intelligence.registry import RegistryService
 
 async def main() -> None:
     async with AsyncSessionLocal() as db:
-        report = await RegistryService(db).install_model_catalog()
+        svc = RegistryService(db)
+        report = await svc.install_model_catalog()
+        # Bind existing per-company integrations to their catalog row (attribution
+        # linkage; never touches credentials or cost).
+        backfill = await svc.backfill_integration_bindings()
     print(
         f"model catalog reconciled: "
         f"inserted={report.inserted} updated={report.updated} "
         f"price_windows_opened={report.price_windows_opened}"
+    )
+    print(
+        f"integration bindings backfilled: bound={backfill.bound} "
+        f"unmatched={backfill.unmatched} ambiguous={backfill.ambiguous} "
+        f"skipped_no_model={backfill.skipped_no_model}"
     )
 
 

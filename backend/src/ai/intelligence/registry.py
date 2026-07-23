@@ -36,6 +36,14 @@ class InstallReport:
     price_windows_opened: int = 0
 
 
+@dataclass
+class BackfillReport:
+    bound: int = 0          # matched a single active catalog row, model_registry_id set
+    unmatched: int = 0      # no catalog row for (provider, model_name) — stays NULL (ops reconciles)
+    ambiguous: int = 0      # several catalog rows matched (regions/versions) — left for ops to pick
+    skipped_no_model: int = 0
+
+
 class RegistryService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -130,6 +138,46 @@ class RegistryService:
             return True
 
         return False  # unchanged — idempotent no-op
+
+    # -- backfill ----------------------------------------------------------
+
+    async def backfill_integration_bindings(self) -> BackfillReport:
+        """Bind existing per-company IntegrationRegistry rows to their catalog
+        row by (provider, model_name). Only an *unambiguous* single active match
+        binds; unmatched (old model not in the catalog) and ambiguous (several
+        regions/versions) rows stay NULL for ops to reconcile — never a guess.
+        Never changes credentials or cost; only sets the attribution link."""
+        from src.config.models import IntegrationRegistry  # local: keeps this module import-light
+
+        report = BackfillReport()
+        rows = (await self.db.execute(
+            select(IntegrationRegistry).where(IntegrationRegistry.model_registry_id.is_(None))
+        )).scalars().all()
+
+        for ir in rows:
+            if not ir.model_name:
+                report.skipped_no_model += 1
+                continue
+            matches = (await self.db.execute(
+                select(ModelRegistry).where(
+                    ModelRegistry.provider == ir.provider_name,
+                    ModelRegistry.model_name == ir.model_name,
+                    ModelRegistry.status == ModelStatus.ACTIVE,
+                )
+            )).scalars().all()
+            if len(matches) == 1:
+                # config.IntegrationRegistry is legacy Column-style (not Mapped),
+                # so a direct attribute write trips mypy --strict; setattr is the
+                # clean cross-boundary write.
+                setattr(ir, "model_registry_id", matches[0].id)
+                report.bound += 1
+            elif not matches:
+                report.unmatched += 1
+            else:
+                report.ambiguous += 1
+
+        await self.db.commit()
+        return report
 
     # -- router-facing reads ----------------------------------------------
 
