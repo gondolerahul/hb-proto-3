@@ -1,6 +1,6 @@
 # Increment 5 / RTR — The Model Router (v1 + v2)
 
-> **Status:** ⬜ Design (self-contained) — locked before code.
+> **Status:** ✅ **BUILT** (2026-07-23, branch `inc5/rtr`) — v1 + v2, all of T1–T5, gates green. Build notes §12.
 > **Realizes:** technical §3.3 (the router) + §3.4 (fallback & governance). **Depends on:** REG ([01](./01_model_registry.md)) for the catalog; Inc-1 ENV/`wallet_holds` for headroom. **Gated by:** EVX ([04](./04_eval_extensions.md)) for any rule that would select differently.
 
 ---
@@ -199,3 +199,20 @@ Headroom comes from the shipped budget machinery — `loop/envelopes.py` + `wall
 3. **v1 reproduces current defaults; v2 adds scoring** — the non-inferiority floor (§22.4) is built in before behavior changes.
 4. **Heuristic complexity scoring** — Overview §2.3; a classifier only if the goldens show the heuristic underperforming.
 5. **`routing_mode='router'` is the per-company opt-in and the EVX canary lever** — one flag, not two.
+
+## 12. Build Notes (2026-07-23) — delta log
+
+### 12.1 What shipped
+* v1: `ai/intelligence/{types,router}.py` (`IntelligenceRouter.route` reproduces the task default → non-inferior), `RoutingDecision` + migration **`rtr001`** (routing_decisions + a nullable `usage_logs.routing_decision_id`), the `LLMRouter._resolve_adapter` delegation branch (routed keys uncached — a decision per call), the usage link threaded `LLMResponse → _log_usage → log_usage`, `config.load_integration`, and `GET /ai/intelligence/routing-decisions`.
+* v2: `complexity.py` (heuristic score), `scoring.py` (`Candidate`/`capability_fit`/`cost_pressure`/`utility`), the router's `_candidates`/`_wallet_headroom`/`_enrich`/`reroute`, and `fallback.py` (`is_retryable`) wired into a bounded, routed-only retry in `call_llm`.
+* Tests: `test_routing_scoring.py` (unit goldens), `test_router_v1_db.py` + `test_router_v2_db.py` (delegation, scored pick, downshift, safe fallback-to-default, reroute).
+
+### 12.2 Design deltas (decided during build)
+1. **Candidates are the company's *credentialed* models, not the whole catalog.** §4/§5 read as `eligible()` over the fleet, but the router can only pick a model the tenant has an `IntegrationRegistry` (credentials) for. So `_candidates` = the company's active, catalog-bound integrations, filtered by modality/context/allow-list. A model the tenant lacks keys for is never a candidate; **no catalog-bound candidate → v1 default binding**, so router mode is always safe. `eligible()` (catalog-level) stands for admission/EVX; `_candidates` (company-level) is what routing scores.
+2. **v1's single-candidate case scores through v2** (reason `auto`, same model). Once v2 landed, a company with one bound model goes through scoring — `rule` is now specifically the *no-catalog-bound* fallback. The v1 test's assertion was updated to match.
+3. **Fallback is routed-only, bounded, and billing-safe.** The `call_llm` retry loop wraps `generate`; an un-routed call has no `_pending_binding`, so any error re-raises immediately (the un-routed path is byte-identical — parity held). Billing is post-return in `step_executor`, so a failed-then-retried call bills once, on success. Bounded to two fallbacks. Applied to single-turn `call_llm` only, not `call_llm_react` (whose mid-loop tool side effects must not be blindly retried).
+4. **Wallet headroom is a non-locking *hint*.** `cost_pressure` reads the envelope approximately (`envelope − reserved − spent`), never the FOR-UPDATE-locked wallet-hold row — because it is a *selection* bias, not admission (the E3 lesson, HANDOFF §5). The authoritative wallet-hold admission stays downstream and unchanged.
+5. **The signal surface is the seam's + internal enrichment.** The router fills in `complexity` (heuristic) and `wallet_headroom` itself; no caller passes `reasoning_mode` yet, so complexity today derives mostly from `task_type` (+ tool/context when a caller hints them). Portable to a richer surface without moving the router (§1.1).
+
+### 12.3 Gate results
+`typecheck_ai` (253 files, strict) · layout lint · **parity/eval 16** (non-inferiority — the un-routed path did not move) · **1510 unit** (+11 scoring/fallback goldens) · **20 RTR `*_db`/unit** · `rtr001` apply/rollback/re-apply. The router now selects, downshifts, and falls back — auditable per decision, safe by opt-in, and (later) gated by EVX's canary.
