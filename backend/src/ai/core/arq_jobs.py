@@ -232,9 +232,12 @@ async def process_gateway_event(ctx: dict[str, Any], envelope_dict: dict[str, An
 
     try:
         async with AsyncSessionLocal() as db:
-            # ── Entity resolution: prefer explicit entity_id from payload ────
+            # ── Entity resolution: prefer explicit entity_id from payload/query ────
             entity = None
-            payload_entity_id = raw_data.get("raw", {}).get("entity_id") if isinstance(raw_data, dict) else None
+            payload_entity_id = (
+                raw_data.get("entity_id")
+                or (raw_data.get("raw", {}).get("entity_id") if isinstance(raw_data, dict) else None)
+            )
 
             if payload_entity_id:
                 try:
@@ -269,6 +272,54 @@ async def process_gateway_event(ctx: dict[str, Any], envelope_dict: dict[str, An
                 f"[process_gateway_event] Resolved entity '{entity.name}' "
                 f"({entity.id}) — event={event_type} source={source}"
             )
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Lead Queue path (CRM lead.created → outbound calls)
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            if event_type in ("lead.created", "lead_created"):
+                from src.ai.lead_queue_service import LeadQueueService
+
+                properties = raw_data.get("properties", {}) if isinstance(raw_data, dict) else {}
+                raw_payload = raw_data.get("raw", {}) if isinstance(raw_data, dict) else {}
+
+                phone = (
+                    raw_data.get("phone", "")
+                    or properties.get("phone", "")
+                    or (raw_payload.get("phone", "") if isinstance(raw_payload, dict) else "")
+                    or (raw_payload.get("mobile", "") if isinstance(raw_payload, dict) else "")
+                    or (raw_payload.get("phone_number", "") if isinstance(raw_payload, dict) else "")
+                    or (raw_payload.get("customer_number", "") if isinstance(raw_payload, dict) else "")
+                )
+                lead_id = (
+                    raw_data.get("lead_id", "")
+                    or raw_data.get("object_id", "")
+                    or (raw_payload.get("id", "") if isinstance(raw_payload, dict) else "")
+                    or (raw_payload.get("lead_id", "") if isinstance(raw_payload, dict) else "")
+                )
+
+                if not phone:
+                    logger.warning(
+                        f"[process_gateway_event] lead.created event missing phone — "
+                        f"skipping lead {lead_id}"
+                    )
+                    return
+
+                queue_svc = LeadQueueService(db)
+                await queue_svc.enqueue_lead(
+                    company_id=UUID(client_id),
+                    agent_id=entity.id,
+                    lead_id=lead_id or correlation_id,
+                    phone=phone,
+                    lead_data=raw_payload or raw_data,
+                    ad_source=raw_data.get("ad_source", "") or properties.get("ad_source", "") or (raw_payload.get("ad_source", "") if isinstance(raw_payload, dict) else ""),
+                    project_id=raw_data.get("project_id", "") or properties.get("project_id", "") or (raw_payload.get("project_id", "") if isinstance(raw_payload, dict) else ""),
+                    correlation_id=correlation_id,
+                )
+                logger.info(
+                    f"[process_gateway_event] Lead {lead_id} enqueued for company "
+                    f"{client_id} (agent={entity.id})"
+                )
+                return
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             # APPROACH C: Sheet row → Campaign-based outbound voice call
