@@ -106,7 +106,7 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 * Migration **`iauth001`** — six tables: `channel_bindings`, `account_manager_sessions`, `webauthn_credentials`, `webauthn_challenges`, `totp_secrets`, `oob_confirmations`. New signal types `authn.channel_otp` / `authn.oob_confirm` / `authn.security_alert`; new `INWARD_AUTH_*` + `WEBAUTHN_*` settings.
 * Frontend: `services/authn.service.ts`, `components/SecuritySettings.tsx` (mounted in `UserSettings`), `components/StepUpModal.tsx`.
 
-**Migration head:** `prag002` (Inc 4 PRAGYA-RT, off `voice001`). Previously: `voice001` (Inc 3 VOICE, off `prag001`); `prag001` (Inc 3 PRAGYA, off `iauth001`); `iauth001` (Inc 3 AUTH, off `retr003`); Inc-2 PACK/KAR/ONBOARD and the TRUST economics slice added none; TRUST's safety slice added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`; RETR added `retr001` FTS index, `retr002` chunk structure, `retr003` document domain. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+**Migration head:** `prag002` (Inc 4 PRAGYA-RT, off `voice001`; T5 added no migration — it reuses the shipped `phone_numbers` pool and the IntegrationRegistry). Previously: `voice001` (Inc 3 VOICE, off `prag001`); `prag001` (Inc 3 PRAGYA, off `iauth001`); `iauth001` (Inc 3 AUTH, off `retr003`); Inc-2 PACK/KAR/ONBOARD and the TRUST economics slice added none; TRUST's safety slice added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`; RETR added `retr001` FTS index, `retr002` chunk structure, `retr003` document domain. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
@@ -128,15 +128,14 @@ Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4
 
 **Increment 3 is COMPLETE** — AUTH, PRAGYA and VOICE all built and merged; D1, C4, C6, B7 and C8's script half all closed.
 
-**Increment 4 / PRAGYA-RT — 🟡 PARTIAL (2026-07-22), on `inc4/pragya-rt`.** Increment 3's build surfaced an architectural finding: Pragya was running on a **task** engine while her unit of work is a months-long relationship. Four gaps Inc-3 recorded turned out to be one cause. [01_pragya_runtime.md](./increment-4/01_pragya_runtime.md) locks the seam (**own turn loop; shared governance, metering, memory, tools**) and T1–T4, T6, T7 are built. **T5 — the ASR-LLM-TTS voice adapter and Pragya's own number — is not started.** Build notes + seven design deltas in §12.
+**Increment 4 / PRAGYA-RT — ✅ BUILT & merged to local `master` (2026-07-22).** Increment 3's build surfaced an architectural finding: Pragya was running on a **task** engine while her unit of work is a months-long relationship. Four gaps Inc-3 recorded turned out to be one cause. [01_pragya_runtime.md](./increment-4/01_pragya_runtime.md) locks the seam (**own turn loop; shared governance, metering, memory, tools**). **All of T1–T9 built** — the turn loop, gate boundary, artifact extraction + stage advancement, delegate/promise/report, stage reflection + the drained voice queue, behavioural goldens, child-entity delegation (decision 6), and the ASR-LLM-TTS voice face (decisions 3/5/7). Two audit-found defects fixed (the stage-2 console dead-end; the FE/API turn contract). Build notes in §12. **One honest gap: voice is a *tested seam*, not a live call** — no wire-level Whisper/Gemini call has been made; see §12.5.
 
-**Next up**, in priority order (all recorded in [increment-4/01](./increment-4/01_pragya_runtime.md) §12.4):
-1. **PRAGYA-RT T5** — the ASR-LLM-TTS voice adapter + Pragya's own number. The largest remaining piece, and it needs **provider selection + credentials** (streaming ASR with endpointing, streaming TTS, barge-in) before it is more than a mocked seam.
-2. **A stage-1 research executor** — `DelegationKind.RESEARCH` dispatches, promises and reports, but nothing calls `web_search`/`scraper_tool`, so a research delegation sits `PROMISED` forever. Queue built, executor pending.
-3. **Pragya's tool set** — `runtime._tool_schemas()` returns `[]`. The gated act path is built and tested; nothing feeds it.
-4. **CONN + SOR** — Increment 4's original charter scope (connectors, mastering), unblocked now that PRAGYA-RT's seam has landed.
+**Next up**, in priority order (all in [increment-4/01](./increment-4/01_pragya_runtime.md) §12.4–§12.5):
+1. **Voice go-live** — the wire-level work T5 deliberately left: registry rows for `pragya-asr-whisper-vertex` + `pragya-tts-gemini`, concrete Vertex/Gemini `Transcriber`/`Speaker` adapters, and the carrier-media wiring into `drive_call`. The seam is built and tested; this is the live path.
+2. **A stage-1 research executor** — `DelegationKind.RESEARCH` dispatches/promises/reports but nothing calls `web_search`; a research delegation sits `PROMISED`. Queue built, executor pending.
+3. **CONN + SOR** — Increment 4's original charter scope (connectors, mastering), unblocked now that the PRAGYA-RT seam has landed.
 
-**Closed since Inc 3:** the deferred-run executor (T6 — plus the *correction* that made it drainable), stage advancement and artifact extraction (T3), and the script goldens (T7).
+**Closed by PRAGYA-RT:** the four Inc-3 build gaps (stage advancement + artifact extraction T3, deferred reflection T6, script goldens T7), plus the two audit defects and Pragya's tool surface (T9, child entities). The Inc-3 deferred-set *correction* (Strategize/Decide are `SKIPPED`, not deferred) is what made T6's queue drainable.
 
 The **push** in §1 remains the one standing external action.
 

@@ -1,6 +1,6 @@
 # Increment 4 / PRAGYA-RT — Pragya as a First-Class Runtime
 
-> **Status:** 🟡 PARTIAL (2026-07-22) — T1–T4, T6, T7 built; **T5 (voice adapter) not started** · **Branch:** `inc4/pragya-rt` · build notes in §12
+> **Status:** ✅ BUILT (2026-07-22) — T1–T9 complete, merged to `master`; voice is a **tested seam, not a live call** (§12.5) · **Branch:** `inc4/pragya-rt` (merged) · build notes in §12
 > **Design authority:** Technical §12.1 (the eight-stage loop this forks *from*), §20.3 (the PolicyGate it must not fork), §11.3 (tiers); Functional §4.2–§4.4 (Pragya), §8.1 (voice stack).
 > **Depends on:** Inc-3 AUTH (`require_tier`), Inc-3 PRAGYA (stage machine, scripts, engagement state), Inc-2 ONBOARD (the wizard step APIs she drives).
 
@@ -209,11 +209,11 @@ The two faces can never be confused at the entry point, which is worth more than
 | T2 | ✅ **Gate containment** — import boundary over `ai/pragya/` (revised; see §5.1) | exactly one module reaches the executor; guard proven to fail on an injected violation |
 | T3 | ✅ Artifact extraction + advancement (§4.2) | stages 1/3/4 auto-advance on artifacts; 2/5 require confirmation (goldens) |
 | T4 | ✅ Delegation pattern + Meta-Agent dispatch (§5.2) | board runs async; Pragya promises and reports back |
-| T5 | ⬜ Voice adapter: ASR-LLM-TTS + Pragya's own number | a real call reaches the same turn loop as the console; barge-in works |
+| T5 | ✅ Voice adapter: ASR-LLM-TTS + Pragya's own number | a real call reaches the same turn loop as the console; barge-in works |
 | T6 | ✅ Stage-completion reflection (§4.3) + drain-or-reap `voice_deferred_runs` | reflections written; no unbounded table |
 | T7 | ✅ Behavioural script goldens over recorded turns | script guardrails asserted deterministically; no prose pinning |
-| T9 | ⬜ **Child-entity delegation** (decision 6) — `_tool_schemas` over available children; invoking one dispatches a run | Meta-Agent callable; no raw tool is exposed |
-| T8 | 🟡 Integration + all gates green; build notes; maturity flips | parity/eval unchanged |
+| T9 | ✅ **Child-entity delegation** (decision 6) — `_tool_schemas` over available children; invoking one dispatches a run | Meta-Agent callable; no raw tool is exposed |
+| T8 | ✅ Integration + all gates green; build notes; maturity flips | parity/eval unchanged |
 
 ## 9. Testing the goldens without pinning prose (T7)
 
@@ -299,10 +299,23 @@ Every 🔒 row held. Pragya calls the shared PolicyGate, `inward_auth`, tool exe
 
 Metering shipped with T1 rather than as a follow-up: every turn writes `usage_logs` under `PRAGYA_TURN`, tenant-initiated, and admission is checked before the model call.
 
-### 12.4 What is NOT built
+### 12.4 Built after the first pass (T5, T9, and the two fixes)
 
-* **T5 — the ASR-LLM-TTS voice adapter and Pragya's own number. Not started.** The design (§6) stands; no code exists. It needs provider selection (streaming ASR with endpointing, streaming TTS, barge-in) and credentials before it is more than a mocked seam.
-* **Stage-1 research has a mechanism but no executor.** `DelegationKind.RESEARCH` dispatches, promises and reports, but nothing calls `web_search`/`scraper_tool`, so a research delegation would sit `PROMISED` indefinitely. Same shape as the gap T6 just closed for voice: queue built, executor pending.
-* **Pragya proposes no tools yet.** `runtime._tool_schemas()` returns `[]`. The act path is built, gated and tested; nothing feeds it.
-* **Her governance is hardcoded** (`A1`, no authority bands) rather than seeded as a tunable entity. Deliberate for a platform-provided surface, but tenants cannot tune her bands the way they can an agent's.
-* **The goldens run on hand-written fixtures.** They currently grade the *checkers*. The regression value arrives when live transcripts are piped through them.
+* **T9 — child-entity delegation (decision 6).** `runtime._tool_schemas()`'s empty list is gone; Pragya's surface is `children.child_schemas()` — one `ask_colleague` tool over the tenant's actual child entities. Calling one dispatches a delegation under the child's own governance. `pragya/children.py`.
+* **T5 — the voice face (decision 3/5/7).** `channels/{speech,routing,voice}.py`: ASR-LLM-TTS with providers resolved through the IntegrationRegistry, the number as the routing discriminator, barge-in, and no policy in the pipeline. See §12.5 for what is *not* proven.
+* **The two audit fixes** — the console can now confirm a stage (the engagement no longer dead-ends at stage 2), and the FE/API turn contract is aligned.
+
+Still open, and deliberately so:
+* **Stage-1 research has a mechanism but no executor.** `DelegationKind.RESEARCH` dispatches/promises/reports, but nothing calls `web_search`/`scraper_tool`, so a research delegation sits `PROMISED`. Queue built, executor pending — the same shape T6 closed for voice.
+* **Her governance is hardcoded `A1`, no bands** (decision 10 — accepted for now).
+* **The goldens grade hand-written fixtures.** Regression value arrives when live transcripts are piped through them.
+
+### 12.5 The honest limit on voice — a tested seam, not a live call
+
+T5 built the *seam* and proved it against fakes. **No live ASR or TTS call has been made.** Three things stand between this and a phone call you could place, and none is wired:
+
+1. **Registry rows** for `pragya-asr-whisper-vertex` and `pragya-tts-gemini` (project, region, credentials, cost).
+2. **Concrete adapters** — the `Transcriber`/`Speaker` protocols have no Vertex/Gemini implementations behind them yet.
+3. **Carrier media wiring** — `drive_call` consumes and emits audio frames; nothing connects it to the Twilio/Tata websocket stream.
+
+This is deliberate: the seam is right and tested (provider resolution, routing, barge-in, the turn plumbing), and the wire-level work is a distinct piece better done with credentials in hand than guessed at. Tracked as its own follow-up, not smuggled into "done".
