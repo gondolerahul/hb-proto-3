@@ -94,6 +94,9 @@ install_consent_registry()
 # Install the CONN+SOR connector-backed write-back provider into the SOR seam (Inc 4).
 from src.ai.connectors.writeback import install_connector_writeback
 install_connector_writeback()
+# Connector catalog + binding + SoR ownership-migration API (Inc 4 CONN+SOR).
+from src.ai.connectors.router import router as connectors_router
+app.include_router(connectors_router, prefix="/api/v1")
 # Solo Pack setup-wizard step API (Inc 2 ONBOARD).
 from src.ai.solo_pack.onboarding_router import router as solo_pack_onboarding_router
 app.include_router(solo_pack_onboarding_router, prefix="/api/v1")
