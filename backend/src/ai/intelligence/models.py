@@ -37,10 +37,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.common.database import Base
 
-# FK target must be registered with the metadata before mapper configuration
-# (the same rule connectors/models.py + ai/orm/__init__.py follow). config's
-# IntegrationRegistry gains the reverse FK (model_registry_id) in REG T1.
-from src.config.models import IntegrationRegistry  # noqa: F401
+# NOTE: these tables carry no *outbound* FK to another model — model_prices
+# references model_registry (both defined here). The binding FK runs the other
+# way (config.IntegrationRegistry.model_registry_id -> model_registry.id, added
+# in REG T1), resolved by table name at DDL time, so this module deliberately
+# imports no consumer model. Keeping it import-light means a minimal context
+# (a test that only touches the registry) needn't register auth/config mappers.
 
 __all__ = ["ModelRegistry", "ModelPrice", "ModelStatus"]
 
