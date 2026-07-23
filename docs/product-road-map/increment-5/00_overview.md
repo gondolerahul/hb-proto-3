@@ -2,7 +2,7 @@
 
 > **Document Class:** Increment Design & Implementation Plan (index)
 > **Author:** Buddha Cognitive Lab (drafted by Claude, decisions by Rahul)
-> **Created:** 2026-07-23 · **Status:** Design — seam locked, four decisions taken (§2); no code yet
+> **Created:** 2026-07-23 · **Status:** ✅ **BUILT** — all four workstreams complete (REG · RTR v1+v2 · EVX · FLEET); B12 + D5 closed. See each doc's build-notes section.
 > **Parent:** [build_roadmap.md](../build_roadmap.md) §4 (Increment 5, L) · [00_charter.md](./00_charter.md)
 > **Prerequisite:** Increment 2 (traffic to learn from) + Increment 4 complete on `master`. EVX builds on the shipped eval harness (`tests/eval/`, `tests/parity/`).
 > **Read next:** [01_model_registry.md](./01_model_registry.md) (REG/B12) · [02_router.md](./02_router.md) (RTR v1+v2) · [03_fleet_expansion.md](./03_fleet_expansion.md) (FLEET/D5) · [04_eval_extensions.md](./04_eval_extensions.md) (EVX/§22.2–.4).
@@ -33,11 +33,11 @@ Today `ai/llm/router.py` does *configuration lookup* — it resolves the one mod
 
 | # | Doc | Workstream | Closes | Depends on |
 |---|---|---|---|---|
-| 1 | [01_model_registry.md](./01_model_registry.md) | **REG** — the global `model_registry` + effective-dated `model_prices`; `IntegrationRegistry` binds to it | **B12** | Inc-1 billing/config |
-| 2 | [02_router.md](./02_router.md) | **RTR v1** — registry + static rules + `routing_decisions` attribution, reproducing current defaults | (B12 audit half) | REG |
-| 3 | [02_router.md](./02_router.md) | **RTR v2** — heuristic complexity scoring + wallet-aware downshift + fallback | — | RTR v1, Inc-1 ENV/wallet-holds |
-| 4 | [04_eval_extensions.md](./04_eval_extensions.md) | **EVX** — independent-suite rule, canary rollout, model-change regression gate (§22.2–.4) | **B9** docs+build side | shipped `tests/eval`, `tests/parity` |
-| 5 | [03_fleet_expansion.md](./03_fleet_expansion.md) | **FLEET** — GLM/Qwen/Kimi adapter seam + conservative default allow-list + data-flow disclosure | **D5** | REG, RTR, **EVX (the gate)** |
+| 1 | [01_model_registry.md](./01_model_registry.md) | **REG** ✅ — the global `model_registry` + effective-dated `model_prices`; `IntegrationRegistry` binds to it | **B12** | Inc-1 billing/config |
+| 2 | [02_router.md](./02_router.md) | **RTR v1** ✅ — registry + static rules + `routing_decisions` attribution, reproducing current defaults | (B12 audit half) | REG |
+| 3 | [02_router.md](./02_router.md) | **RTR v2** ✅ — heuristic complexity scoring + wallet-aware downshift + fallback | — | RTR v1, Inc-1 ENV/wallet-holds |
+| 4 | [04_eval_extensions.md](./04_eval_extensions.md) | **EVX** ✅ — independent-suite rule, canary rollout, model-change regression gate (§22.2–.4) | **B9** docs+build side | shipped `tests/eval`, `tests/parity` |
+| 5 | [03_fleet_expansion.md](./03_fleet_expansion.md) | **FLEET** ✅ — GLM/Qwen/Kimi adapter seam + conservative default allow-list + data-flow disclosure | **D5** | REG, RTR, **EVX (the gate)** |
 
 ## 4. Build Order
 

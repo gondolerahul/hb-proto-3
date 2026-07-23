@@ -1,6 +1,6 @@
 # Increment 5 / FLEET — Fleet Expansion + Data-Flow Disclosure (closes D5)
 
-> **Status:** ⬜ Design (self-contained) — locked before code.
+> **Status:** ✅ **BUILT** (2026-07-23, branch `inc5/rtr`) — all of T1–T5, gates green. Build notes §13.
 > **Closes:** register **D5** (data-flow disclosure / sovereignty). **Depends on:** REG ([01](./01_model_registry.md)) for the catalog, RTR ([02](./02_router.md)) for the allow-list filter, **EVX ([04](./04_eval_extensions.md)) as the activation gate.** **Builds as a co-dependent pair with EVX** ([00](./00_overview.md) §4).
 
 ---
@@ -110,3 +110,25 @@ No live GLM/Qwen/Kimi call is made in this increment. Every external call is fak
 2. **Opt-in is an auditable table**, not a JSON flag — D5 wants a record of who accepted which disclosure, when.
 3. **One OpenAI-compatible adapter** for the three, injectable transport, no live call — the Inc-4 tested-seam precedent.
 4. **Activation is EVX-gated** — a provider flips to `active` only through the §22.4 admission check, then canary-first.
+
+## 13. Build Notes (2026-07-23) — delta log
+
+### 13.1 What shipped
+* `ai/llm/openai_compat_adapter.py` — one adapter for the OpenAI-compatible fleet (GLM / Qwen / Kimi), `base_url` per provider, **injectable transport**; `_get_adapter` maps the three providers and their aliases (`glm`, `qwen`/`dashscope`, `kimi`).
+* `catalog.py` — the three rows as `status='preview'`, `default_allowed=False`.
+* `ai/intelligence/allow_list.py` — `effective_allow` (default-allowed ∪ opted-in), `opt_in` / `revoke`, `CURRENT_DISCLOSURE_VERSION`; wired into `IntelligenceRouter._enrich` so the filter runs **before scoring**.
+* `company_provider_optin` + migration **`fleet001`**; `GET /ai/intelligence/providers`, `POST …/opt-in`, `POST …/revoke`.
+* [03a_data_flow_disclosure.md](./03a_data_flow_disclosure.md) — the published D5 artifact (subprocessors, regions, training policy, BabyBuddha statement, certification posture).
+* Tests: `test_openai_compat_adapter.py` (request shaping, tool-call parsing, ReAct loop, base-url resolution, router mapping) · `test_provider_optin_db.py` (defaults vs fleet, disclosure guard, opt-in/revoke, **the D5 property**) · `test_model_catalog.py` split into shipped/expansion cohorts.
+
+### 13.2 Design deltas (decided during build)
+1. **Kimi replaces Mistral (owner decision, 2026-07-23) — so *every* expansion provider is opt-in.** The design had Mistral default-allowed (EU-hosted, clears the conservative bar). With Kimi (Moonshot AI, China-hosted) in its place, all three of GLM/Qwen/Kimi are `default_allowed=False` and the default set is exactly the three shipped providers. This is **strictly more conservative** than designed and simplifies the D5 story: the opt-in cohort is uniform.
+2. **`trains_on_customer_data=true` on the three is a *posture*, not a vendor claim.** Recorded as the platform's conservative assumption pending a signed DPA — which is the stated reason they are opt-in. [03a](./03a_data_flow_disclosure.md) §4 says so explicitly rather than asserting vendor behaviour.
+3. **The allow-list is enforced in `_enrich`, not only in `eligible()`.** §3.1 put the filter in `RegistryService.eligible`; the router's real candidate path is `_candidates` (the company's *credentialed* models, [02](./02_router.md) §12.2 delta 1). So `_enrich` computes `effective_allow` and stamps `signals.allow_list`, which `_candidates` filters on — the filter lands on the path routing actually takes, and the allow-list is recorded in the decision's signal snapshot for audit.
+4. **Two independent gates, deliberately.** Tenant consent (D5 allow-list) and EVX admission (`status='active'`, §22.4) are separate and both required. The D5 property test proves consent alone is checked even for a model that is already catalog-`ACTIVE` and fully credentialed.
+
+### 13.3 The honest limit
+**No live GLM / Qwen / Kimi call is made.** Every call in test goes through the injected transport; the live path (`AsyncOpenAI` against `base_url`) is written but unexercised. Live binding — real endpoint + credentials + an EVX admission run against the live model — is **activation-time ops**, the same discipline voice go-live and the Zoho connector carry.
+
+### 13.4 Gate results
+`typecheck_ai` (259 files, strict) · layout lint · **parity/eval 16** · **1523 unit** (+9) · **24 Inc-5 integration** (all workstreams together) · `fleet001` apply/rollback/re-apply. **D5 closed** — conservative default, auditable revocable opt-in, and the published disclosure.
