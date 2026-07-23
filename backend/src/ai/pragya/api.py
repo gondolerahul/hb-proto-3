@@ -3,10 +3,10 @@
 Company-scoped over the shipped JWT session, which is the console channel's
 bound identity. The route layer stays deliberately thin: it moves turns in and
 out and reports what the conversation layer decided. Every authorisation
-question is answered in `conversation.handle_turn`, so there is one place a
+question is answered in `runtime.run_turn`, so there is one place a
 reviewer has to read to know what Pragya may do.
 
-The SSE endpoint streams the *same* `handle_turn` result rather than a second
+The SSE endpoint streams the *same* `run_turn` result rather than a second
 code path. Streaming a turn that skipped authorisation because it went through
 a different function is exactly the sort of divergence that makes a security
 review meaningless.
@@ -17,19 +17,23 @@ import json
 import uuid
 from typing import Any, AsyncIterator, cast
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.inward_auth.models import ChannelKind
-from src.ai.pragya.conversation import TurnResult, handle_turn
+from src.ai.pragya.reflection import reflect_on_stage
+from src.ai.pragya.runtime import TurnOutcome, TurnRequest, run_turn
 from src.ai.pragya.deployment import (
     integration_readiness,
     operating_report,
     propose_blueprint,
 )
+from src.ai.pragya.advancement import evaluate_eligibility, needs_owner_confirmation
 from src.ai.pragya.engagement import (
+    advance,
+    current_stage,
     engagement_summary,
     get_or_create_engagement,
     recent_turns,
@@ -46,11 +50,14 @@ class ChatRequest(BaseModel):
     message: str
 
 
-def _turn_payload(result: TurnResult) -> dict[str, Any]:
+def _turn_payload(result: TurnOutcome) -> dict[str, Any]:
     """The wire shape of a completed turn.
 
     ``needs_step_up`` / ``needs_oob`` are surfaced so the console can open the
-    right ceremony — the frontend never re-derives the tier itself.
+    right ceremony — the frontend never re-derives the tier itself. For the
+    same reason ``awaiting_confirmation`` is surfaced: stages 2 and 5 advance
+    only on an explicit owner action, and the console has to be *told* that a
+    confirmation is due rather than inferring it from the stage number.
     """
     return {
         "reply": result.reply,
@@ -58,12 +65,18 @@ def _turn_payload(result: TurnResult) -> dict[str, Any]:
         "stage_name": STAGE_INFO[result.stage].name,
         "auth_level": result.auth_level,
         "tier": result.tier,
-        "executed": result.executed,
+        "raised_approval": result.raised_approval,
         "needs_step_up": result.needs_step_up,
         "needs_oob": result.needs_oob,
         "command_ref": result.command_ref,
         "command_summary": result.command.summary if result.command else None,
-        "citations": result.citations,
+        "cost_usd": result.cost_usd,
+        # Engagement progress — without these the nine-stage flow is invisible
+        # to the console and stages 2/5 cannot be confirmed at all.
+        "awaiting_confirmation": result.awaiting_confirmation,
+        "advanced_to": int(result.advanced_to) if result.advanced_to else None,
+        "artifacts_written": list(result.artifacts_written),
+        "reported_delegations": list(result.reported_delegations),
     }
 
 
@@ -87,6 +100,54 @@ async def get_engagement(
         for stage, info in STAGE_INFO.items()
     ]
     return summary
+
+
+@router.post("/advance")
+async def post_advance(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """The owner confirming a stage is done — stages 2 and 5 only.
+
+    An explicit action, deliberately not inferred from the conversation.
+    These two stages exist because the owner's *agreement* is the deliverable
+    (which assumptions were struck; which priority was chosen), and reading
+    agreement out of "yeah, that sounds about right" is precisely the failure
+    they guard against.
+    """
+    engagement = await get_or_create_engagement(
+        db, cast(uuid.UUID, current_user.company_id))
+    stage = current_stage(engagement)
+
+    if not needs_owner_confirmation(stage):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{STAGE_INFO[stage].name} does not wait on confirmation — "
+                   f"it advances once its artifacts are complete")
+
+    eligibility = evaluate_eligibility(stage, engagement.artifacts)
+    if not eligibility.eligible:
+        # Confirming an unfinished stage would carry a half-formed hypothesis
+        # into the configuration that stage 6 builds from.
+        raise HTTPException(status_code=409, detail=eligibility.reason)
+
+    # Reflect before moving on — the same rule the auto-advance path follows.
+    await reflect_on_stage(
+        db, engagement, stage,
+        [{"role": t.role, "content": t.content}
+         for t in await recent_turns(db, cast(uuid.UUID, current_user.company_id),
+                                     limit=30)],
+        company_id=cast(uuid.UUID, current_user.company_id))
+
+    await advance(db, engagement, reason="owner confirmed the stage")
+    await db.commit()
+
+    moved = current_stage(engagement)
+    return {
+        "ok": True,
+        "stage": int(moved),
+        "stage_name": STAGE_INFO[moved].name,
+    }
 
 
 @router.get("/history")
@@ -149,13 +210,12 @@ async def post_chat(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """One turn of conversation."""
-    result = await handle_turn(
-        db,
+    result = await run_turn(db, TurnRequest(
         company_id=cast(uuid.UUID, current_user.company_id),
         user_id=cast(uuid.UUID, current_user.id),
         text=body.message,
         channel_kind=ChannelKind.CONSOLE,
-    )
+    ))
     await db.commit()
     return _turn_payload(result)
 
@@ -173,13 +233,12 @@ async def post_chat_stream(
     path — a refusal must never be able to arrive mid-sentence because tokens
     were already on the wire before the tier was checked.
     """
-    result = await handle_turn(
-        db,
+    result = await run_turn(db, TurnRequest(
         company_id=cast(uuid.UUID, current_user.company_id),
         user_id=cast(uuid.UUID, current_user.id),
         text=body.message,
         channel_kind=ChannelKind.CONSOLE,
-    )
+    ))
     await db.commit()
 
     async def events() -> AsyncIterator[str]:

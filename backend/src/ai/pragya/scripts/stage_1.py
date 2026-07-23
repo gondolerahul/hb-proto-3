@@ -104,6 +104,7 @@ STAGE_1 = StageScript(
             ),
         ),
     ),
+    primary_artifact="baseline.research_summary",
     artifacts=(
         "baseline.research_summary",
         "baseline.sources",          # provenance for every claim above

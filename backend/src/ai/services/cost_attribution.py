@@ -47,6 +47,12 @@ class CostAttribution(str, Enum):
     # asked the question), so it is deliberately NOT in
     # PLATFORM_INITIATED_ATTRIBUTIONS below and draws from tenant budget.
     RERANK           = "rerank"
+    # PRAGYA-RT (Inc 4) — a conversational turn with the account manager.
+    # TENANT-initiated (the owner spoke), so deliberately NOT in
+    # PLATFORM_INITIATED_ATTRIBUTIONS: it draws from the tenant's envelope.
+    # Classifying it as platform work would let ordinary conversation exhaust
+    # the cap that exists to protect tenants *from* platform work (B13).
+    PRAGYA_TURN      = "pragya_turn"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}

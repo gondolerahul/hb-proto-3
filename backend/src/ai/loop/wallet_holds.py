@@ -30,7 +30,8 @@ from src.billing.credit_service import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["hold_amount_for", "place_hold", "settle_hold", "record_graceful_debt", "HOLD_TIER_CAPS"]
+__all__ = ["hold_amount_for", "place_hold", "settle_hold", "record_graceful_debt",
+           "available_for_spend", "HOLD_TIER_CAPS"]
 
 # Per-tier hold ceiling so a wild planner estimate can't lock the whole wallet
 # (decision 2026-07-19: PROCESS $5). Floor is the shipped tier minimum.
@@ -81,6 +82,37 @@ async def _active_holds_total(db: AsyncSession, company_id: uuid.UUID) -> Decima
                WalletHold.status == HoldStatus.ACTIVE)
     )).scalar_one()
     return Decimal(str(total or 0))
+
+
+async def available_for_spend(
+    db: AsyncSession, company_id: uuid.UUID,
+) -> Decimal:
+    """Spendable balance: total − active holds − debt. Read-only, no lock.
+
+    The same arithmetic ``place_hold`` performs under ``FOR UPDATE``, exposed
+    for callers that spend **without** a run to hold against — Pragya's
+    conversational turns (Inc-4 PRAGYA-RT), which have no ``execution_runs``
+    row for a hold to key on.
+
+    Extracted rather than reimplemented on purpose: the Inc-4 seam makes
+    billing a shared component, so a second copy of this arithmetic drifting
+    from the first is exactly the failure that seam exists to prevent.
+
+    **Not a substitute for a hold where a hold is possible.** This reads
+    without locking, so two concurrent callers can both see the same balance.
+    That is acceptable for a serial conversation costing cents per turn; it is
+    not acceptable for concurrent runs, which is why ``place_hold`` still
+    locks (the E3 race).
+    """
+    await CreditService(db).get_or_create_wallet(company_id)
+    wallet = (await db.execute(
+        select(CreditWallet).where(CreditWallet.company_id == company_id)
+    )).scalar_one()
+
+    total = _locked_available(wallet, datetime.utcnow())
+    reserved = await _active_holds_total(db, company_id)
+    debt = Decimal(str(getattr(wallet, "wallet_debt", 0) or 0))
+    return total - reserved - debt
 
 
 async def place_hold(

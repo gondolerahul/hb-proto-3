@@ -106,7 +106,7 @@ Verify with `git log --oneline -25` and `git rev-list --left-right --count origi
 * Migration **`iauth001`** — six tables: `channel_bindings`, `account_manager_sessions`, `webauthn_credentials`, `webauthn_challenges`, `totp_secrets`, `oob_confirmations`. New signal types `authn.channel_otp` / `authn.oob_confirm` / `authn.security_alert`; new `INWARD_AUTH_*` + `WEBAUTHN_*` settings.
 * Frontend: `services/authn.service.ts`, `components/SecuritySettings.tsx` (mounted in `UserSettings`), `components/StepUpModal.tsx`.
 
-**Migration head:** `voice001` (Inc 3 VOICE, off `prag001`). Previously: `prag001` (Inc 3 PRAGYA, off `iauth001`); `iauth001` (Inc 3 AUTH, off `retr003`); Inc-2 PACK/KAR/ONBOARD and the TRUST economics slice added none; TRUST's safety slice added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`; RETR added `retr001` FTS index, `retr002` chunk structure, `retr003` document domain. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
+**Migration head:** `prag002` (Inc 4 PRAGYA-RT, off `voice001`; T5 added no migration — it reuses the shipped `phone_numbers` pool and the IntegrationRegistry). Previously: `voice001` (Inc 3 VOICE, off `prag001`); `prag001` (Inc 3 PRAGYA, off `iauth001`); `iauth001` (Inc 3 AUTH, off `retr003`); Inc-2 PACK/KAR/ONBOARD and the TRUST economics slice added none; TRUST's safety slice added `trust001` consent, `trust002` checkpoint-SLA, `trust003` envelope `budget_class`, `trust004` `subscription_status`; RETR added `retr001` FTS index, `retr002` chunk structure, `retr003` document domain. Run `poetry run alembic upgrade head` from `backend/` on a fresh DB.
 
 ---
 
@@ -128,11 +128,14 @@ Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4
 
 **Increment 3 is COMPLETE** — AUTH, PRAGYA and VOICE all built and merged; D1, C4, C6, B7 and C8's script half all closed.
 
-**Next up**, in rough priority order — the honest gaps the three workstreams left, all recorded in their §N.3 blocks:
-1. **The deferred-run executor** (VOICE §8.3) — the queue exists and the webhook fills it, but no worker drains it into a real eight-stage run, so calls still write no reflections. Largest single gap.
-2. **Pragya's stage advancement + stage-1 research** (PRAGYA §7.3) — exit criteria are prose the model reads, not a checked predicate; nothing calls the Web Intelligence Suite to actually do stage-1 research.
-3. **Handoff triggering** (VOICE §8.3) — recorded and readable, but the realtime handler never decides to hand off.
-4. **Eval goldens over stage transcripts** (PRAGYA T4's second half) — script structure is pinned; script quality is not.
+**Increment 4 / PRAGYA-RT — ✅ BUILT & merged to local `master` (2026-07-22).** Increment 3's build surfaced an architectural finding: Pragya was running on a **task** engine while her unit of work is a months-long relationship. Four gaps Inc-3 recorded turned out to be one cause. [01_pragya_runtime.md](./increment-4/01_pragya_runtime.md) locks the seam (**own turn loop; shared governance, metering, memory, tools**). **All of T1–T9 built** — the turn loop, gate boundary, artifact extraction + stage advancement, delegate/promise/report, stage reflection + the drained voice queue, behavioural goldens, child-entity delegation (decision 6), and the ASR-LLM-TTS voice face (decisions 3/5/7). Two audit-found defects fixed (the stage-2 console dead-end; the FE/API turn contract). Build notes in §12. **One honest gap: voice is a *tested seam*, not a live call** — no wire-level Whisper/Gemini call has been made; see §12.5.
+
+**Next up**, in priority order (all in [increment-4/01](./increment-4/01_pragya_runtime.md) §12.4–§12.5):
+1. **Voice go-live** — the wire-level work T5 deliberately left: registry rows for `pragya-asr-whisper-vertex` + `pragya-tts-gemini`, concrete Vertex/Gemini `Transcriber`/`Speaker` adapters, and the carrier-media wiring into `drive_call`. The seam is built and tested; this is the live path.
+2. **A stage-1 research executor** — `DelegationKind.RESEARCH` dispatches/promises/reports but nothing calls `web_search`; a research delegation sits `PROMISED`. Queue built, executor pending.
+3. **CONN + SOR** — Increment 4's original charter scope (connectors, mastering), unblocked now that the PRAGYA-RT seam has landed.
+
+**Closed by PRAGYA-RT:** the four Inc-3 build gaps (stage advancement + artifact extraction T3, deferred reflection T6, script goldens T7), plus the two audit defects and Pragya's tool surface (T9, child entities). The Inc-3 deferred-set *correction* (Strategize/Decide are `SKIPPED`, not deferred) is what made T6's queue drainable.
 
 The **push** in §1 remains the one standing external action.
 
@@ -183,6 +186,8 @@ From `increment-2/00_overview.md` §2 and each doc's decisions block:
 * **A new `usage_logs` attribution must be classified for B13.** Adding a `CostAttribution` member is not enough — decide whether it belongs in `PLATFORM_INITIATED_ATTRIBUTIONS`. Tenant-asked-for work (like RETR's `rerank`) must stay out, or ordinary tenant activity can exhaust the cap that exists to protect tenants *from* platform work.
 * **`setuptools` is pinned `<81` on purpose** (AUTH): 81 removed `pkg_resources`, which `opentelemetry-instrumentation` imports at module scope, so an unpinned resolve breaks `import src.main` outright. If a `poetry add` ever unpins it, `import src.main` is the fastest check. More generally: **this VM's venv had drifted from `poetry.lock`** (manually pip-installed `google-genai` 2.x / `httpx` 0.28 over a lock saying 0.4/0.26), so any `poetry add` re-syncs the venv *down* to the lock. Re-run the unit suite after touching deps.
 * **Strict typing does not cover SQLAlchemy's `func` namespace** (PRAGYA): `func.case(...)` type-checks fine under mypy `--strict` because `func.*` is `Any`, and then fails at runtime — the correct import is `sqlalchemy.case`. Anything built through `func` needs a test that actually executes the query.
+* **Pragya has her own turn loop but not her own substrate** (Inc-4 seam, locked): governance, `inward_auth`, tool execution, billing, CORTEX, the signal bus and the Meta-Agent are 🔒 shared. `ai/pragya/acting.py` is the **only** module that may reach the tool executor — an import-boundary test enforces it, and that guard was verified to fail on an injected violation.
+* **A checker never observed to fail is a function that returns `True`** (T7): every behavioural golden has a fixture written to violate it, the mapping is asserted total, and each fixture must break only its own check.
 * **An `ai/` package init must not import back toward its own consumers** (VOICE): `voice_loop/__init__` re-exporting `identity` closed the cycle `inward_auth.bindings → solo_pack.consent → templates → voice_loop.profile → identity → bindings`. The init re-exports only `profile`; import submodules directly. Same rule the Solo Pack tools follow.
 * **Check a channel ceiling before session state, not after** (VOICE): `voice_tier_ceiling` applies the T1 voice cap first, so an elevation earned in the console cannot ride onto the next phone call.
 * **Resolve an ambiguous command narrowly, never broadly** (PRAGYA): an unscoped "pause" asks which process rather than pausing all of them. `commands.ALL_TRIGGERS` is reached only by the kill switch or an owner who literally said "everything". A missing target is a question, not a wildcard.

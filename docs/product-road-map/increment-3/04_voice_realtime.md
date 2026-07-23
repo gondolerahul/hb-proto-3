@@ -148,7 +148,7 @@ All seven tasks landed on `inc3/voice`. Gates at merge: **1364 unit** (+39), 16 
 
 ### 8.3 What is NOT wired yet
 
-* **The deferred *runner* is a queue, not an executor.** `queue_deferred_run` / `claim_next` / `mark_done` are built and tested, and the webhook queues on call end — but no arq worker drains the queue into an actual eight-stage run yet. Reflections are therefore still not being written from calls. This is the largest remaining gap and the obvious next task.
+* ~~**The deferred *runner* is a queue, not an executor.**~~ **Closed by Inc-4 PRAGYA-RT T6** (`voice_loop/deferred_runner.py` + two crons). The deferred set was also *corrected* there: Strategize and Decide are `SKIPPED`, not deferred — post-hoc they have no meaning, and deferring them is what produced a queue nobody could drain. A reaper bounds the table.
 * **Handoff is recorded, not triggered.** `record_handoff` persists the switch and `opening_line` gives the receiving agent its first sentence, but nothing in the realtime stack *decides* to hand off mid-call — the websocket handler does not yet consult `latest_handoff` to swap the driving entity.
 * **Step-up links are described, not sent.** `STEP_UP_REDIRECT` is the copy; wiring it to actually deliver a console link over the caller's registered channel reuses AUTH's signal seam and is not done.
 * **Human escalation** (a real telephony bridge) stays deferred by decision 5.

@@ -27,6 +27,8 @@ from enum import Enum
 
 __all__ = [
     "Stage",
+    "SKIPPED_STAGES",
+    "REQUIRED_DEFERRED_STAGES",
     "Disposition",
     "StageProfile",
     "REALTIME_PROFILE",
@@ -72,6 +74,7 @@ class Stage(str, Enum):
 class Disposition(str, Enum):
     LIVE = "live"           # runs on the turn, inside the budget
     DEFERRED = "deferred"   # runs post-call, over the transcript
+    SKIPPED = "skipped"     # has no post-hoc meaning; never runs for voice
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,10 @@ class StageProfile:
     #: Whether the stage costs a model round-trip. The deciding property.
     model_call: bool
     rationale: str
+    #: Deferred work that feeds calibration rather than governance. The
+    #: post-call runner may skip it under budget pressure without weakening
+    #: any guarantee.
+    calibration_only: bool = False
 
 
 #: The §2.1 table as data. The invariant that matters: no stage with
@@ -95,10 +102,11 @@ REALTIME_PROFILE: tuple[StageProfile, ...] = (
         "Gathering it is a read, not a round-trip.",
     ),
     StageProfile(
-        Stage.STRATEGIZE, Disposition.DEFERRED, True,
-        "The planner is a model call. In a live turn the realtime model is "
-        "already choosing what to say; a second planner would be both slow "
-        "and redundant.",
+        Stage.STRATEGIZE, Disposition.SKIPPED, True,
+        "The planner is a model call, and post-hoc it has no meaning at all: "
+        "you cannot plan a conversation that already ended. Increment 3 "
+        "deferred it and produced a queue nobody could drain — corrected in "
+        "Inc-4 PRAGYA-RT, which is where the mismatch was diagnosed.",
     ),
     StageProfile(
         Stage.POLICY_GATE, Disposition.LIVE, False,
@@ -109,7 +117,11 @@ REALTIME_PROFILE: tuple[StageProfile, ...] = (
     StageProfile(
         Stage.PRE_CRITIC, Disposition.DEFERRED, True,
         "A model call, and the one that cannot fit. Its deterministic half "
-        "(the PolicyGate) already ran inline; its LLM judgment runs after.",
+        "(the PolicyGate) already ran inline. Replaying its LLM judgment "
+        "afterwards is **calibration data**, not governance — it answers "
+        "'would the critic have blocked this?' for critic_calibration_job, "
+        "and nothing depends on the answer.",
+        calibration_only=True,
     ),
     StageProfile(
         Stage.ACT, Disposition.LIVE, False,
@@ -132,9 +144,10 @@ REALTIME_PROFILE: tuple[StageProfile, ...] = (
         "is more useful than over a half-finished one.",
     ),
     StageProfile(
-        Stage.DECIDE, Disposition.DEFERRED, False,
-        "Cheap in itself, but it reads what Strategize, Post-Critic and "
-        "Reflect produced. Running it live would decide on absent inputs.",
+        Stage.DECIDE, Disposition.SKIPPED, False,
+        "Decides whether a *task* should continue, replan or abort. A call "
+        "that has ended has already decided. Like Strategize, deferring it "
+        "was an Inc-3 error corrected here.",
     ),
 )
 
@@ -145,6 +158,16 @@ LIVE_STAGES: tuple[Stage, ...] = tuple(
 
 DEFERRED_STAGES: tuple[Stage, ...] = tuple(
     p.stage for p in REALTIME_PROFILE if p.disposition is Disposition.DEFERRED)
+
+#: Stages with no post-hoc meaning. Not skipped for speed — skipped because
+#: running them after the fact would be theatre.
+SKIPPED_STAGES: tuple[Stage, ...] = tuple(
+    p.stage for p in REALTIME_PROFILE if p.disposition is Disposition.SKIPPED)
+
+#: What a post-call run must do to be complete. Excludes calibration.
+REQUIRED_DEFERRED_STAGES: tuple[Stage, ...] = tuple(
+    p.stage for p in REALTIME_PROFILE
+    if p.disposition is Disposition.DEFERRED and not p.calibration_only)
 
 
 def profile_for(stage: Stage) -> StageProfile:

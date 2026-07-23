@@ -128,6 +128,7 @@ STAGE_3 = StageScript(
             ),
         ),
     ),
+    primary_artifact="ingestion.received",
     artifacts=(
         "ingestion.requested",       # what was asked for, and which assumption drove it
         "ingestion.received",        # what actually arrived, with document ids

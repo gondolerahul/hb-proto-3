@@ -289,9 +289,11 @@ async def test_a_finished_call_queues_the_deferred_stages(voice_tenant):
         await db.commit()
 
     assert row is not None
-    # Exactly the stages the live turn could not run.
-    assert set(row.stages) == {"strategize", "pre_critic", "post_critic",
-                               "reflect", "decide"}
+    # The stages the live turn could not run — corrected in Inc-4. Strategize
+    # and Decide are gone: you cannot plan or decide about a call that ended.
+    assert set(row.stages) == {"pre_critic", "post_critic", "reflect"}
+    assert "strategize" not in row.stages
+    assert "decide" not in row.stages
     assert "policy_gate" not in row.stages, "governance ran inline; nothing to defer"
     assert "act" not in row.stages
 
@@ -370,3 +372,255 @@ async def test_a_failing_run_retries_then_gives_up_without_blocking(voice_tenant
             .where(VoiceDeferredRun.call_sid == "CA-fail"))).scalars().one()
     assert row.status == DeferredRunStatus.FAILED
     assert row.error == "model unavailable"
+
+
+# --- draining and reaping (Inc-4 PRAGYA-RT T6) -------------------------------
+
+async def test_the_reaper_bounds_the_table(voice_tenant):
+    """Inc-3 left this queue filling with nothing to empty it. Draining alone
+    would only convert an unbounded queue into an unbounded archive."""
+    from datetime import datetime, timedelta
+
+    from src.ai.voice_loop.deferred_runner import queue_depth, reap_finished
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        row = await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-reap", transcript=_transcript())
+        assert row is not None
+        row.status = DeferredRunStatus.DONE
+        row.completed_at = datetime.utcnow() - timedelta(days=60)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        before = await queue_depth(db)
+        reaped = await reap_finished(db)
+        await db.commit()
+        after = await queue_depth(db)
+
+    assert reaped >= 1
+    assert after < before
+
+
+async def test_the_reaper_leaves_unfinished_work_alone(voice_tenant):
+    """However old a pending row looks, it has not been reflected on yet."""
+    from datetime import datetime, timedelta
+
+    from src.ai.voice_loop.deferred_runner import reap_finished
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        row = await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-old-pending",
+            transcript=_transcript())
+        assert row is not None
+        row.created_at = datetime.utcnow() - timedelta(days=90)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        await reap_finished(db)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        survivor = (await db.execute(
+            select(VoiceDeferredRun).where(
+                VoiceDeferredRun.call_sid == "CA-old-pending"))).scalars().first()
+    assert survivor is not None
+    assert survivor.status == DeferredRunStatus.PENDING
+
+
+async def test_a_drained_run_records_the_corrected_stage_set(voice_tenant, monkeypatch):
+    """Post-Critic and Reflect only — Strategize and Decide were an Inc-3
+    error and running them post-hoc would be theatre."""
+    import src.ai.voice_loop.deferred_runner as runner
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+
+    async def _fake_run(db, row):
+        return {"stages": ["post_critic", "reflect"],
+                "summary": "caller asked about an invoice", "outcome": "resolved"}
+
+    monkeypatch.setattr(runner, "run_deferred", _fake_run)
+
+    async with AsyncSessionLocal() as db:
+        await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-drain", transcript=_transcript())
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        stats = await runner.drain_batch(db, limit=5)
+
+    assert stats["done"] >= 1
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(
+            select(VoiceDeferredRun).where(
+                VoiceDeferredRun.call_sid == "CA-drain"))).scalars().one()
+    assert row.status == DeferredRunStatus.DONE
+    assert set(row.stages) == {"post_critic", "reflect"}
+    assert "strategize" not in row.stages
+    assert "decide" not in row.stages
+
+
+async def test_a_failing_drain_does_not_invalidate_the_call(voice_tenant, monkeypatch):
+    """The conversation happened and was governed inline. Reflection failing
+    afterwards costs learning, not correctness."""
+    import src.ai.voice_loop.deferred_runner as runner
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+
+    async def _boom(db, row):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(runner, "run_deferred", _boom)
+
+    async with AsyncSessionLocal() as db:
+        await queue_deferred_run(
+            db, company_id=cid, call_sid="CA-drain-fail",
+            transcript=_transcript())
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        stats = await runner.drain_batch(db, limit=3)
+    assert stats["failed"] >= 1
+
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(
+            select(VoiceDeferredRun).where(
+                VoiceDeferredRun.call_sid == "CA-drain-fail"))).scalars().one()
+    # Retried, not abandoned on the first failure.
+    assert row.status in (DeferredRunStatus.PENDING, DeferredRunStatus.FAILED)
+    assert "model unavailable" in (row.error or "")
+
+
+# --- the number is the routing discriminator (Inc-4 T5, decision 5) ----------
+
+async def test_a_number_assigned_to_pragya_routes_to_the_inward_face(voice_tenant):
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.pragya.channels.routing import (
+        VoiceFace,
+        assign_pragya_number,
+        route_for_number,
+    )
+    from src.common.database import AsyncSessionLocal
+    from src.voice.phone_pool_models import PhoneNumber
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        db.add(HierarchicalEntity(
+            company_id=cid, name="pragya", display_name="Pragya",
+            type="AGENT", status="ACTIVE"))
+        db.add(PhoneNumber(
+            phone_number="+919900000001", provider="twilio",
+            country_code="+91", status="available", is_active=True))
+        await db.commit()
+
+    try:
+        async with AsyncSessionLocal() as db:
+            await assign_pragya_number(
+                db, company_id=cid, phone_number="+919900000001")
+            await db.commit()
+
+        async with AsyncSessionLocal() as db:
+            # Carrier format differences must not change the routing decision.
+            for dialled in ("+919900000001", "919900000001", "+91 9900-000001"):
+                route = await route_for_number(db, dialled)
+                assert route.face is VoiceFace.PRAGYA, dialled
+                assert route.company_id == cid
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM phone_numbers WHERE phone_number = :p"),
+                             {"p": "+919900000001"})
+            await db.execute(text("DELETE FROM hierarchical_entities WHERE company_id = :c"),
+                             {"c": str(cid)})
+            await db.commit()
+
+
+async def test_a_business_number_routes_to_the_outward_gateway(voice_tenant):
+    """KAR-01 keeps realtime (decision 4) — the two faces must never collide."""
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.pragya.channels.routing import VoiceFace, route_for_number
+    from src.common.database import AsyncSessionLocal
+    from src.voice.phone_pool_models import PhoneNumber
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        gateway = HierarchicalEntity(
+            company_id=cid, name="kar-01-voice-gateway",
+            display_name="Voice Gateway", type="AGENT", status="ACTIVE")
+        db.add(gateway)
+        db.add(HierarchicalEntity(
+            company_id=cid, name="pragya", display_name="Pragya",
+            type="AGENT", status="ACTIVE"))
+        await db.flush()
+        db.add(PhoneNumber(
+            phone_number="+919900000002", provider="twilio",
+            country_code="+91", status="assigned", is_active=True,
+            company_id=cid, agent_id=gateway.id))
+        await db.commit()
+
+    try:
+        async with AsyncSessionLocal() as db:
+            route = await route_for_number(db, "+919900000002")
+        assert route.face is VoiceFace.GATEWAY
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM phone_numbers WHERE phone_number = :p"),
+                             {"p": "+919900000002"})
+            await db.execute(text("DELETE FROM hierarchical_entities WHERE company_id = :c"),
+                             {"c": str(cid)})
+            await db.commit()
+
+
+async def test_an_unassigned_number_routes_to_neither_face(voice_tenant):
+    """Answering an unowned line as an account manager would offer a tenant
+    conversation on a number nobody holds."""
+    from src.ai.pragya.channels.routing import VoiceFace, route_for_number
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        route = await route_for_number(db, "+919900009999")
+    assert route.face is VoiceFace.UNKNOWN
+    assert route.company_id is None
+
+
+async def test_assigning_pragyas_number_refuses_without_a_pragya_entity(voice_tenant):
+    """A number routed inward with nothing behind it answers and then cannot
+    hold a conversation."""
+    from src.ai.pragya.channels.routing import assign_pragya_number
+    from src.common.database import AsyncSessionLocal
+    from src.voice.phone_pool_models import PhoneNumber
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        db.add(PhoneNumber(
+            phone_number="+919900000003", provider="twilio",
+            country_code="+91", status="available", is_active=True))
+        await db.commit()
+
+    try:
+        async with AsyncSessionLocal() as db:
+            with pytest.raises(ValueError, match="Pragya entity"):
+                await assign_pragya_number(
+                    db, company_id=cid, phone_number="+919900000003")
+            await db.rollback()
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM phone_numbers WHERE phone_number = :p"),
+                             {"p": "+919900000003"})
+            await db.commit()
+
+
+async def test_voice_is_refused_when_the_speech_skus_are_unconfigured(voice_tenant):
+    """Checked before answering, not discovered mid-call."""
+    from src.ai.pragya.channels.speech import voice_ready
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+    async with AsyncSessionLocal() as db:
+        ready, why = await voice_ready(db, cid)
+    assert not ready
+    assert "not configured" in why

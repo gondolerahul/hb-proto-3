@@ -69,7 +69,7 @@ async def pragya_tenant():
             await conn.execute(
                 text(f'DROP SCHEMA IF EXISTS "{schema_name_for(cid)}" CASCADE'))
         async with AsyncSessionLocal() as s:
-            for tbl in ("pragya_turns", "pragya_engagements",
+            for tbl in ("pragya_delegations", "pragya_turns", "pragya_engagements",
                         "account_manager_sessions", "channel_bindings",
                         "trigger_registry", "budget_envelopes", "loop_runtime",
                         "wallet_holds", "signals", "execution_runs"):
@@ -334,3 +334,335 @@ async def test_demotion_sweep_is_quiet_on_a_healthy_tenant(pragya_tenant):
 
     assert verdicts, "sweep evaluated no agents at all"
     assert not any(v.demote for v in verdicts)
+
+
+# --- advancement on a live engagement (Inc-4 PRAGYA-RT T3) -------------------
+
+async def test_a_gathering_stage_advances_once_its_artifacts_are_complete(pragya_tenant):
+    """Stage 1 gathers; nothing was agreed, so nothing needs confirming."""
+    from src.ai.pragya.advancement import evaluate_eligibility
+    from src.ai.pragya.scripts import script_for_stage
+    from src.common.database import AsyncSessionLocal
+
+    script = script_for_stage(1)
+    cid, _ = pragya_tenant
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        assert not evaluate_eligibility(Stage.BASELINE, engagement.artifacts).eligible
+
+        await record_artifacts(db, engagement, {
+            k: (["x"] if k != script.primary_artifact else "a services business")
+            for k in script.artifacts})
+        await db.commit()
+
+        result = evaluate_eligibility(Stage.BASELINE, engagement.artifacts)
+        assert result.eligible and not result.needs_confirmation
+
+        await advance(db, engagement, reason="artifacts complete")
+        await db.commit()
+        assert current_stage(engagement) is Stage.ASSUMPTIONS
+
+
+async def test_an_agreement_stage_waits_for_the_owner(pragya_tenant):
+    """Stage 2's deliverable is the owner's review, so complete artifacts make
+    it eligible but must not move it."""
+    from src.ai.pragya.advancement import evaluate_eligibility, needs_owner_confirmation
+    from src.ai.pragya.scripts import script_for_stage
+    from src.common.database import AsyncSessionLocal
+
+    script = script_for_stage(2)
+    cid, _ = pragya_tenant
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        await set_stage(db, engagement, Stage.ASSUMPTIONS, reason="test")
+        await record_artifacts(db, engagement, {
+            k: (["a1", "a2"] if k == script.primary_artifact else [])
+            for k in script.artifacts})
+        await db.commit()
+
+        result = evaluate_eligibility(Stage.ASSUMPTIONS, engagement.artifacts)
+        assert result.eligible
+        assert result.needs_confirmation
+        assert needs_owner_confirmation(Stage.ASSUMPTIONS)
+        # Eligible is not advanced — the engagement has not moved.
+        assert current_stage(engagement) is Stage.ASSUMPTIONS
+
+
+async def test_artifacts_from_an_earlier_stage_survive_re_extraction(pragya_tenant):
+    """Extraction is additive: a re-entered stage refines, never erases."""
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        await record_artifacts(db, engagement, {
+            "baseline.research_summary": "first pass",
+            "baseline.gaps": ["headcount"],
+        })
+        await record_artifacts(db, engagement, {
+            "baseline.research_summary": "corrected pass",
+        })
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        assert engagement.artifacts["baseline.research_summary"] == "corrected pass"
+        assert engagement.artifacts["baseline.gaps"] == ["headcount"]
+
+
+# --- delegation: dispatch, promise, report (Inc-4 PRAGYA-RT T4) --------------
+
+async def test_delegating_records_a_promise_the_platform_can_be_held_to(pragya_tenant):
+    from src.ai.pragya.delegation import DelegationKind, delegate, pending_for
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.RESEARCH,
+            subject="your pricing", stage=Stage.BASELINE)
+        await db.commit()
+
+    assert "your pricing" in promise.promise
+    async with AsyncSessionLocal() as db:
+        outstanding = await pending_for(db, cid)
+    assert len(outstanding) == 1
+    assert outstanding[0].kind == DelegationKind.RESEARCH
+    assert outstanding[0].reported_at is None
+
+
+async def test_a_capability_build_without_a_meta_agent_refuses_rather_than_promises(
+    pragya_tenant,
+):
+    """An unkept promise costs more trust than an honest 'I can't'."""
+    from src.ai.pragya.delegation import DelegationKind, delegate
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(ValueError, match="Meta-Agent"):
+            await delegate(db, company_id=cid,
+                           kind=DelegationKind.CAPABILITY_BUILD,
+                           subject="a payroll reconciler")
+        await db.rollback()
+
+
+async def test_a_capability_build_dispatches_a_run_against_the_board(pragya_tenant):
+    """Pragya starting the board must be indistinguishable from a signal
+    starting it — same run shape, no second entry point."""
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.orm.execution import ExecutionRun
+    from src.ai.pragya.delegation import DelegationKind, delegate
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        board = HierarchicalEntity(
+            company_id=cid, name="meta-agent-board", display_name="Meta Agent",
+            type="AGENT", status="ACTIVE")
+        db.add(board)
+        await db.commit()
+        board_id = board.id
+
+    try:
+        async with AsyncSessionLocal() as db:
+            promise = await delegate(
+                db, company_id=cid, kind=DelegationKind.CAPABILITY_BUILD,
+                subject="a payroll reconciler")
+            await db.commit()
+
+        assert promise.run_id is not None
+        async with AsyncSessionLocal() as db:
+            run = (await db.execute(
+                select(ExecutionRun).where(
+                    ExecutionRun.id == promise.run_id))).scalars().one()
+        assert run.entity_id == board_id
+        assert run.status == "PENDING"
+        assert run.input_data["channel"] == "pragya"
+        assert "payroll reconciler" in run.input_data["input"]
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM pragya_delegations WHERE company_id = :c"),
+                             {"c": str(cid)})
+            await db.execute(text("DELETE FROM execution_runs WHERE company_id = :c"),
+                             {"c": str(cid)})
+            await db.execute(text("DELETE FROM hierarchical_entities WHERE id = :e"),
+                             {"e": str(board_id)})
+            await db.commit()
+
+
+async def test_finished_work_is_reported_once_and_only_once(pragya_tenant):
+    from src.ai.pragya.delegation import (
+        DelegationKind,
+        complete,
+        delegate,
+        mark_reported,
+        unreported_for,
+    )
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.RESEARCH,
+            subject="your website")
+        await db.commit()
+        delegation_id = promise.id
+
+    # Nothing to report while it is still running.
+    async with AsyncSessionLocal() as db:
+        assert await unreported_for(db, cid) == []
+
+    async with AsyncSessionLocal() as db:
+        await complete(db, delegation_id, {"summary": "a services business"})
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        outstanding = await unreported_for(db, cid)
+        assert len(outstanding) == 1
+        await mark_reported(db, outstanding)
+        await db.commit()
+
+    # Reported once: a second turn must not repeat it.
+    async with AsyncSessionLocal() as db:
+        assert await unreported_for(db, cid) == []
+
+
+async def test_failed_work_is_surfaced_not_swallowed(pragya_tenant):
+    from src.ai.pragya.delegation import DelegationKind, delegate, fail, unreported_for
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.RESEARCH, subject="your filings")
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        await fail(db, promise.id, "no search provider configured")
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        outstanding = await unreported_for(db, cid)
+    assert len(outstanding) == 1
+    assert outstanding[0].error == "no search provider configured"
+
+
+async def test_the_confirm_endpoint_is_the_only_way_past_stage_two(pragya_tenant):
+    """The console had no way to call this, so the engagement dead-ended at
+    stage 2. Pins the contract the fixed console depends on."""
+    from src.ai.pragya.advancement import evaluate_eligibility
+    from src.ai.pragya.scripts import script_for_stage
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    script = script_for_stage(2)
+
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        await set_stage(db, engagement, Stage.ASSUMPTIONS, reason="test")
+        await db.commit()
+
+    # Incomplete: confirming must be refused, or a half-formed hypothesis is
+    # carried into the configuration stage 6 builds from.
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        assert not evaluate_eligibility(Stage.ASSUMPTIONS, engagement.artifacts).eligible
+
+        await record_artifacts(db, engagement, {
+            k: (["a1"] if k == script.primary_artifact else [])
+            for k in script.artifacts})
+        await db.commit()
+
+    # Complete: eligible, needs confirmation, and does not move on its own.
+    async with AsyncSessionLocal() as db:
+        engagement = await get_or_create_engagement(db, cid)
+        result = evaluate_eligibility(Stage.ASSUMPTIONS, engagement.artifacts)
+        assert result.eligible and result.needs_confirmation
+        assert current_stage(engagement) is Stage.ASSUMPTIONS
+
+        # The owner's action is what moves it.
+        await advance(db, engagement, reason="owner confirmed the stage")
+        await db.commit()
+        assert current_stage(engagement) is Stage.INGESTION
+
+
+# --- child-entity delegation (Inc-4 T9, decision 6) --------------------------
+
+async def test_a_tenant_with_no_children_gets_no_capability_tool(pragya_tenant):
+    from src.ai.pragya.children import available_children, child_schemas
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        children = await available_children(db, cid)
+    assert child_schemas(children) == []
+
+
+async def test_children_are_the_entities_parented_to_pragya(pragya_tenant):
+    """Her surface is her colleagues — and only hers, not the whole roster."""
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.pragya.children import available_children
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        pragya = HierarchicalEntity(
+            company_id=cid, name="pragya", display_name="Pragya",
+            type="AGENT", status="ACTIVE")
+        db.add(pragya)
+        await db.flush()
+        db.add(HierarchicalEntity(
+            company_id=cid, name="meta-agent-board", display_name="Meta Agent",
+            type="AGENT", status="ACTIVE", parent_id=pragya.id))
+        # Not hers: a Solo Pack worker somewhere else in the tree.
+        db.add(HierarchicalEntity(
+            company_id=cid, name="agt-038-ar", display_name="AR Agent",
+            type="AGENT", status="ACTIVE"))
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        children = await available_children(db, cid)
+
+    handles = {c.handle for c in children}
+    assert "meta_agent_board" in handles
+    assert "agt_038_ar" not in handles, "reached an entity that is not her child"
+
+
+async def test_asking_a_colleague_dispatches_a_run_under_that_child(pragya_tenant):
+    """Calling a child IS dispatching a run — tools and delegation are one
+    mechanism, and the child's own governance applies from there."""
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.ai.orm.execution import ExecutionRun
+    from src.ai.pragya.delegation import DelegationKind, delegate
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = pragya_tenant
+    async with AsyncSessionLocal() as db:
+        child = HierarchicalEntity(
+            company_id=cid, name="deep-research", display_name="Deep Research",
+            type="AGENT", status="ACTIVE")
+        db.add(child)
+        await db.commit()
+        child_id = child.id
+
+    async with AsyncSessionLocal() as db:
+        entity = await db.get(HierarchicalEntity, child_id)
+        promise = await delegate(
+            db, company_id=cid, kind=DelegationKind.COLLEAGUE,
+            subject="your pricing", task="Find their published price list",
+            entity=entity, stage=Stage.BASELINE)
+        await db.commit()
+
+    assert promise.run_id is not None
+    assert "your pricing" in promise.promise
+
+    async with AsyncSessionLocal() as db:
+        run = (await db.execute(
+            select(ExecutionRun).where(
+                ExecutionRun.id == promise.run_id))).scalars().one()
+    assert run.entity_id == child_id
+    assert run.input_data["channel"] == "pragya"
+    assert "price list" in run.input_data["input"]

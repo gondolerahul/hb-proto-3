@@ -26,7 +26,8 @@ from src.common.database import Base
 # FK targets registered before mapper configuration.
 from src.auth.models import Company, User  # noqa: F401
 
-__all__ = ["PragyaEngagement", "PragyaTurn"]
+__all__ = ["PragyaEngagement", "PragyaTurn", "PragyaDelegation",
+           "DelegationStatus"]
 
 
 class PragyaEngagement(Base):
@@ -75,3 +76,46 @@ class PragyaTurn(Base):
     tier: Mapped[str | None] = mapped_column(String(4), nullable=True)
     outcome: Mapped[str | None] = mapped_column(String(24), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class DelegationStatus:
+    PROMISED = "promised"     # dispatched; the owner has been told
+    DONE = "done"
+    FAILED = "failed"
+    REPORTED = "reported"     # outcome delivered back to the owner
+
+
+class PragyaDelegation(Base):
+    """Long work Pragya promised and is waiting on (Inc-4 PRAGYA-RT T4).
+
+    Anything that outlives a conversational turn — a Meta-Agent board build,
+    deep research, a bulk ingest — is dispatched, promised, and reported. This
+    row is the promise: it exists so that "I'm having that built" is a claim
+    the platform can be held to rather than a sentence the model generated.
+
+    ``reported_at`` is separate from ``completed_at`` on purpose. Work that
+    finished but was never reported back is the failure mode this table is
+    designed to make visible: the owner was promised something and heard
+    nothing.
+    """
+
+    __tablename__ = "pragya_delegations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(12), nullable=False, default=DelegationStatus.PROMISED, index=True)
+    #: What Pragya told the owner she was doing — reused when reporting back.
+    promise: Mapped[str] = mapped_column(Text, nullable=False)
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: The run doing the work, when the delegation dispatched one.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
+    stage: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
