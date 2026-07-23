@@ -51,6 +51,7 @@ CLEAN_PACKAGES: list[str] = [
     "pragya",
     "kpi",
     "voice_loop",
+    "connectors",
 ]
 
 
