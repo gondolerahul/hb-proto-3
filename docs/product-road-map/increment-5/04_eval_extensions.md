@@ -1,6 +1,6 @@
 # Increment 5 / EVX — Eval Extensions: The Admission Gate (§22.2–.4)
 
-> **Status:** ⬜ Design (self-contained) — locked before code.
+> **Status:** ✅ **BUILT** (2026-07-23, branch `inc5/rtr`) — all of T1–T5, gates green. Build notes §11.
 > **Realizes:** technical §22.2 (independent-suite rule), §22.3 (canary rollout), §22.4 (model-change regression policy). **Builds on:** the shipped `tests/eval/` + `tests/parity/`. **Gates:** FLEET activation ([03](./03_fleet_expansion.md) §6) and any RTR rule change ([02](./02_router.md)).
 
 ---
@@ -110,3 +110,20 @@ Canary state needs no table — it is the per-company `active`-for-cohort flag +
 3. **Admission spend is `MODEL_ADMISSION`, platform-initiated** — B13-classified, off the tenant budget.
 4. **Canary reuses `routing_mode='router'`** — one flag, live verdicts from data the router already writes.
 5. **The curated routing corpus is the exam** — human-seeded, incumbent-predates-candidate, with a failing-candidate fixture so the gate is proven to bite.
+
+## 11. Build Notes (2026-07-23) — delta log
+
+### 11.1 What shipped
+* `ai/intelligence/admission.py` — `ModelEval`/`SuiteSet`/`AdmissionResult`, the pure `non_inferior`/`within_cost_budget`, `require_independent_suites` (§22.2), and `admit_model_change` (§22.4) emitting a platform-scoped `model.admission_evaluated` audit signal.
+* `RegistryService.activate` — the load-bearing mutation-path gate: a catalog model flips to `active` **only** through it, refusing on a failed admission and raising on a violated suite rule.
+* `ai/intelligence/canary.py` — `watch`/`roll_back`/`promote` (§22.3) over the routed cohort's `routing_decisions` telemetry + the canary signals.
+* `MODEL_ADMISSION` cost attribution (B13 platform-initiated); three `SignalTypes`; `GET /ai/intelligence/admissions`; `tests/eval/routing_corpus.py` (the exam + incumbent-passes/candidate-fails fixtures).
+
+### 11.2 Design deltas (decided during build)
+1. **Admission evaluation is a tested seam, not live model runs.** §3 reads "runs the eval-harness delta report." Consistent with FLEET/voice/Zoho (no live external calls on this VM), the candidate-vs-incumbent `ModelEval` scores are injected and the **pure non-inferiority + cost logic** is what's tested and what bites in the `active`-flip path. Running the corpus through real models to produce those scores is the live/ops step.
+2. **Canary is cohort-level, not a per-model slice.** §5 envisioned "the new model active for *them*" — per-company model gating. The shipped `model_registry.status` is global and the telemetry does not attribute a generate failure to a specific model, so `watch` measures the routed cohort's overall fallback rate (a real SLO from existing data) and `roll_back` reverts the specific model. A finer per-model slice (record `fell_back_from` + per-company model overrides) is future work — noted in `canary.py`.
+3. **No migration, no new table** (as designed). The admission + canary audit trail is the **signal bus**, platform-scoped on the APP company, reusing the shipped `Signal` model; `/admissions` reads those signals.
+4. **`MODEL_ADMISSION` is defined but not yet *exercised*.** No live admission run happens in the tested seam, so no `usage_logs` row carries it here; the attribution is classified (B13, platform-initiated) and ready for the live ops run — the honest limit FLEET activation shares.
+
+### 11.3 Gate results
+`typecheck_ai` (258 files, strict) · layout lint · **parity/eval 16** · **1514 unit** (+4 admission/B13) · **9 EVX unit/`*_db`** (admit / refuse-on-quality / refuse-on-cost / self-generated-raise / canary rollback + high-fallback watch). **EVX is the gate FLEET activation must pass** — [03](./03_fleet_expansion.md) §6.
