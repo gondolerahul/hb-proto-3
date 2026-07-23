@@ -1191,7 +1191,7 @@ The shipped Meta-Agent Board **Validator** (8 deterministic checks) and the manu
 
 ---
 
-## 21. System of Record & Sync Policy — ⬜ road map (design v3.0.3, closes register B4)
+## 21. System of Record & Sync Policy — ✅ built (Increment 4 / CONN+SOR, 2026-07-23; design v3.0.3, closes register B4's mastering machine)
 
 > **Decision (2026-07-18): per-object ownership.** Each canonical object declares its master at onboarding. Objects the tenant already manages in a connected system stay mastered **there** — HireBuddha mirrors, links, and writes back through the connector. Objects with no external home are mastered **in HireBuddha**. One declared rule per object; no big-bang migration.
 

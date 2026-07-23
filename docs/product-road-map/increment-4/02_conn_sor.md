@@ -224,6 +224,73 @@ Branch `inc4/conn-sor` (both workstreams, one machine). Build task-by-task, gate
 
 ---
 
-## 12. Build Notes
+## 12. Build Notes (2026-07-23) — delta log
 
-*(to be written on merge — the §N delta log, per the Increment rhythm)*
+All nine tasks landed on `inc4/conn-sor`. Gates on merge: **1495 unit** (+29 over
+Inc-4 PRAGYA-RT), **16 parity/eval**, **257 integration**, mypy `--strict` over
+**246** files (added the `connectors` package), layout lint exit 0, migrations
+`conn001`/`conn002` up/down/up clean.
+
+### 12.1 What shipped
+
+| Task | Module(s) | Note |
+|---|---|---|
+| T1 | `connectors/catalog.py` | the §6.6 manifest — all ~22 rows, real HBS masters |
+| T2 | `connectors/{models,service,resolver,credentials}.py`, `conn001` | durable bindings + encrypted creds + rehydrate |
+| T3 | `governance/{authority,checkpoints,models}.py`, `conn002` | `external_write` category + the 19th checkpoint |
+| T4 | `tenant_schema/{sor,record_service,data_plane,models}.py` | write-back-first + master-wins + the mirror columns |
+| T5 | `connectors/sync.py`, `record_service.sync_mirror`, `cost_attribution` | `object.synced` + sweep + B13 class |
+| T6 | `connectors/{writeback.py,zoho_books/}` + boot wiring | the Zoho adapter + the generic write-back bridge |
+| T7 | `connectors/sor_migration.py` | the propose→confirm→apply ownership migration |
+| T8 | `connectors/router.py` | the `/ai/connectors/*` admin API |
+| T9 | this doc + register/overview/technical §21 + HANDOFF | gates, notes, maturity flips |
+
+### 12.2 Design deltas (decided during build)
+
+1. **`sor001` was not a migration.** Tenant tables are bootstrapped per-tenant
+   (not control-plane Alembic), so `create_all` can't add a column to an
+   existing tenant schema. The mirror columns land via an idempotent
+   `ADD COLUMN IF NOT EXISTS` in the data-plane bootstrap
+   (`data_plane._sync_columns`) — the tenant-schema **additive-evolution
+   primitive** the platform lacked. Future tenant-table columns append there.
+2. **The write-back seam is a pluggable provider, not an import.** `tenant_schema`
+   must not import `ai.connectors` (a cycle), so `record_service` calls a
+   `WriteBackProvider` installed at boot (`install_connector_writeback`) — the
+   `install_consent_registry` pattern. With no provider installed an external
+   write **fails safe** rather than writing an unconfirmed mirror.
+3. **A 19th HITL checkpoint.** External write-back is an act class the original 18
+   (all internal decisions) did not cover, so `before_external_system_write` was
+   added — the assertion moved 18→19 and `conn002` backfills it idempotently.
+4. **Ownership migration is a two-step API, not a HumanApproval.** `HumanApproval.run_id`
+   is non-nullable and an owner-driven migration has no run, so the §21.4 HITL
+   gate is `propose → owner-confirm → apply` (the router enforces auth) plus a
+   `governance.sor_migrated` audit signal.
+5. **Credentials inline on the binding** (the `IntegrationRegistry.encrypted_api_key`
+   pattern), not a second table — a binding is 1:1 with its credential.
+6. **The Zoho adapter carries two contracts** over one REST surface: `MCPClient`
+   (agent tool path) + `SorConnector` (write-back + change feed). HTTP is an
+   injectable transport, so the whole machine is provable against fakes.
+
+### 12.3 Register status — what this workstream did and did not close
+
+* **B4** (system-of-record) — the mastering **machine is built and proven** on
+  the flagship (write-back-first, master-wins, sync-in, ownership migration);
+  broaden per connector as live bindings come online.
+* **D2** (per-agent credential scoping) — **deferred** (decision 4, §2):
+  per-company credentials were chosen for simplicity, which is the exact shape
+  D2 flags. Closing it later is a per-Process grant layer over `connector_bindings`.
+* **C2** (human-task step type) — **deferred** (§2): physical-fulfillment
+  machinery, separable from mastering; not in scope this increment.
+
+So the CONN/SOR path as chosen **closes no register finding outright** — it
+advances B4's implementation and carries D2 + C2. Recorded here rather than
+glossed.
+
+### 12.4 The honest limit — a tested machine, not a live integration
+
+Every external call is faked (§9). **No live Zoho or external MCP-server call has
+been made.** What remains, per connector, is activation-time ops: real
+credentials in the per-company store, a reachable server / the vendor's live API
+behind the transport, and webhook registration. The seam is right and tested;
+the wire-level connection is a distinct step, done with credentials in hand —
+the same discipline VOICE go-live carries.

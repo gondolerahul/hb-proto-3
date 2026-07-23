@@ -31,9 +31,9 @@ PRAGYA-RT touches an entirely different code area from the connectors, so it run
 
 | # | Doc | Workstream | Closes | Depends on |
 |---|---|---|---|---|
-| 1 | [01_pragya_runtime.md](./01_pragya_runtime.md) | **PRAGYA-RT** — Pragya's own turn loop, the governance seam, the ASR-LLM-TTS voice face, her own number | the four Inc-3 gaps (stage advancement, artifact extraction, deferred reflection, script goldens) | Inc-3 AUTH + PRAGYA |
-| 2 | *(charter, doc TBD)* | **CONN** — the §6.6 connector catalog, MCP-first (accounting/bank feed → calendar, e-sign, enrichment, payouts) | **D2** (per-agent credential scoping) | Inc-1 SCH, GOV |
-| 3 | *(charter, doc TBD)* | **SOR** — per-object mastering, mirrors, write-back, `sync.conflict` (§21) + HBS module depth (§10.3) | **C2** (human-task step type) | CONN |
+| 1 | [01_pragya_runtime.md](./01_pragya_runtime.md) | **PRAGYA-RT** ✅ — Pragya's own turn loop, the governance seam, the ASR-LLM-TTS voice face, her own number | the four Inc-3 gaps (stage advancement, artifact extraction, deferred reflection, script goldens) | Inc-3 AUTH + PRAGYA |
+| 2 | [02_conn_sor.md](./02_conn_sor.md) | **CONN** ✅ **BUILT** — the §6.6 connector catalog + durable bindings + governance | **D2 → deferred** (per-company creds chosen, §2.4) | Inc-1 SCH, GOV |
+| 3 | [02_conn_sor.md](./02_conn_sor.md) | **SOR** ✅ **BUILT** — per-object mastering, mirrors, write-back-first, master-wins, `sync.conflict`, ownership migration (§21) | **C2 → deferred** (physical fulfillment, separable) | CONN |
 
 ## 4. Build Order
 
@@ -45,8 +45,10 @@ After PRAGYA-RT's seam lands (its T1–T3), CONN and SOR proceed in parallel wit
 
 | Finding | Workstream | Note |
 |---|---|---|
-| **D2** per-agent credential scoping | CONN | SoD becomes real here or never — a shared credential defeats the maker/checker split |
-| **C2** human-task step type | SOR | physical fulfillment appears with real operations |
+| **D2** per-agent credential scoping | CONN | **Deferred (2026-07-23).** Per-company credentials were chosen for simplicity (decision §2.4) — the exact shape D2 flags as defeating entity-SoD. Closing it later is a per-Process grant layer over `connector_bindings`; the binding table is designed for it. |
+| **C2** human-task step type | SOR | **Deferred (2026-07-23).** Physical-fulfillment machinery, separable from mastering; out of the CONN+SOR scope as built. |
+
+**B4** (system-of-record) — not a row above, but its mastering *machine* is built and proven on the flagship by CONN+SOR ([02](./02_conn_sor.md) §12.3); it broadens per connector as live bindings come online.
 
 PRAGYA-RT closes no register findings — it closes the four **build gaps** Increment 3 recorded honestly in its own build notes ([03 §7.3](../increment-3/02_pragya_v1.md), [04 §8.3](../increment-3/04_voice_realtime.md)).
 
