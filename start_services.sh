@@ -120,11 +120,22 @@ if pgrep -f "arq src.ai.worker.WorkerSettings" > /dev/null; then
     echo -e "${YELLOW}Arq worker already running. Skipping.${NC}"
 else
     cd "$BACKEND_DIR"
-    # Using 'arq' module instead of 'arq.cli' for better compatibility
-    nohup "$BACKEND_DIR/.venv/bin/python" -m arq src.ai.worker.WorkerSettings > "$LOG_DIR/arq_worker.log" 2>&1 &
+    # Supervised respawn loop. arq exits the process when it loses its Redis
+    # connection; a single Redis restart used to leave the worker dead for
+    # good, which silently stalls every queued job — campaign dialing and CRM
+    # lead.created both ride this queue. Restart it until stop_services.sh
+    # removes the flag.
+    rm -f "$LOG_DIR/arq_worker.stop"
+    nohup bash -c '
+        while [ ! -f "'"$LOG_DIR"'/arq_worker.stop" ]; do
+            "'"$BACKEND_DIR"'/.venv/bin/python" -m arq src.ai.worker.WorkerSettings
+            echo "[supervisor] arq worker exited ($?) — restarting in 5s"
+            sleep 5
+        done
+    ' >> "$LOG_DIR/arq_worker.log" 2>&1 &
     ARQ_PID=$!
     echo $ARQ_PID > "$LOG_DIR/arq_worker.pid"
-    echo -e "${GREEN}✓ Arq Worker started (PID: $ARQ_PID)${NC}"
+    echo -e "${GREEN}✓ Arq Worker started, supervised (PID: $ARQ_PID)${NC}"
 fi
 
 # Step 5: Start Frontend

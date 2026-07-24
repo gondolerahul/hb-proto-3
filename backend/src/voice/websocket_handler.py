@@ -939,6 +939,7 @@ class BaseStreamHandler:
                         f"for session {self.session_id} — lead has spoken"
                     )
                     try:
+                        from google.genai import types as genai_types
                         fr = [
                             genai_types.FunctionResponse(
                                 id=getattr(end_call_fc, 'id', None),

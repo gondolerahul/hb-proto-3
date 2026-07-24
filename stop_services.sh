@@ -61,6 +61,9 @@ kill_port "Frontend" 3000
 
 # Step 2: Stop Arq Worker
 echo -e "${BLUE}[2/5] Stopping Arq Worker...${NC}"
+# Tell the supervisor loop in start_services.sh to stop respawning first,
+# otherwise it restarts the worker we are about to kill.
+touch "$LOG_DIR/arq_worker.stop"
 stop_service "Arq Worker" "$LOG_DIR/arq_worker.pid"
 pkill -f "arq src.ai.worker.WorkerSettings" 2>/dev/null && echo -e "${GREEN}✓ Arq processes terminated${NC}"
 

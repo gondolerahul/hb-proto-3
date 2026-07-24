@@ -59,13 +59,21 @@ async def process_lead(entry: LeadQueueEntry) -> None:
 
             # Create a VoiceSession for tracking
             customer_id = uuid4()  # Ephemeral customer ID for new leads
+            # Placeholder call_sid until Tata returns the real one. It must be
+            # globally unique — voice_sessions.call_sid is UNIQUE, and a lead
+            # the CRM re-sends replays an attempt_count it already used
+            # (enqueue_lead resets the counter on conflict), so the old
+            # 'lead-<id>-<attempt>' form collided and the lead never dialed.
+            # Callbacks correlate on custom_identifier=voice_session_id, not
+            # on this value, so the suffix is safe.
+            call_sid = f"lead-{entry.lead_id[:60]}-{entry.attempt_count}-{uuid4().hex[:8]}"
             session = await session_mgr.create_voice_session(
                 company_id=entry.company_id,
                 customer_id=customer_id,
                 agent_id=entry.agent_id,
                 phone_number=phone,
                 provider="tata_tele",
-                call_sid=f"lead-{entry.lead_id}-{entry.attempt_count}",
+                call_sid=call_sid,
                 direction="outbound",
                 metadata={
                     "lead_queue_entry_id": str(entry.id),
