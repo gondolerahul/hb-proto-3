@@ -108,6 +108,11 @@ class SignalTypes:
     # out by noticing their workforce got quieter.
     GOVERNANCE_AUTONOMY_DEMOTED = "governance.autonomy_demoted"
     INCIDENT_PLATFORM = "incident.platform"
+    # EVX (Inc 5): the eval admission gate + canary rollout audit trail. Platform-
+    # scoped (emitted on the APP company) — a model-fleet change is a §22.4 event.
+    MODEL_ADMISSION_EVALUATED = "model.admission_evaluated"
+    MODEL_CANARY_PROMOTED = "model.canary_promoted"
+    MODEL_CANARY_ROLLED_BACK = "model.canary_rolled_back"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
 

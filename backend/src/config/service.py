@@ -464,3 +464,29 @@ class ConfigService:
 
         return integration, api_key
 
+    async def load_integration(
+        self, integration_id: UUID
+    ) -> Tuple[Optional[IntegrationRegistry], Optional[str]]:
+        """Load an active integration by id + decrypt its key.
+
+        The same (integration, api_key) shape ``resolve_model_for_task`` returns,
+        but keyed by a specific binding id — used by the Intelligence router
+        (Inc 5) once it has chosen a model, so both the routed and un-routed
+        paths build the adapter identically.
+        """
+        result = await self.db.execute(
+            select(IntegrationRegistry).where(
+                IntegrationRegistry.id == integration_id,
+                IntegrationRegistry.status == "active",
+            )
+        )
+        integration = result.scalar_one_or_none()
+        if not integration:
+            return None, None
+
+        api_key = None
+        if integration.encrypted_api_key:
+            api_key = decrypt_api_key(integration.encrypted_api_key)
+
+        return integration, api_key
+

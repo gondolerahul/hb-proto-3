@@ -58,6 +58,11 @@ class CostAttribution(str, Enum):
     # so it draws from the platform envelope (below), never the tenant wallet —
     # a perpetual mirror refresh must not silently burn tenant credits (B13).
     CONNECTOR_SYNC   = "connector_sync"
+    # EVX (Inc 5) — the eval-harness runs that validate a model-fleet change
+    # (§22.4 admission). PLATFORM-initiated: the platform, not the tenant, is
+    # testing a candidate model, so the spend draws from the platform envelope,
+    # never a tenant wallet (B13).
+    MODEL_ADMISSION  = "model_admission"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}
@@ -73,6 +78,7 @@ PLATFORM_INITIATED_ATTRIBUTIONS: frozenset[str] = frozenset({
     CostAttribution.SANDBOX.value,
     CostAttribution.TEST_DRIVER.value,
     CostAttribution.CONNECTOR_SYNC.value,
+    CostAttribution.MODEL_ADMISSION.value,
 })
 
 

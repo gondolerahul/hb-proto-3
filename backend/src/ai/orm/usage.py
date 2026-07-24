@@ -33,6 +33,11 @@ class UsageLog(Base):
     log_metadata: Mapped[Any] = mapped_column(JSON, nullable=True)
     # Structured attribution tag for cost breakdown (see services/cost_attribution.py).
     attribution: Mapped[str] = mapped_column(String(40), nullable=False, server_default="tool")
+    # RTR (Inc 5): the router decision that chose this call's model. Nullable —
+    # set only when routing is active; NULL on the un-routed path. FK column only
+    # (no relationship) to keep this ORM module import-light.
+    routing_decision_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("routing_decisions.id"), nullable=True)
 
     company: Mapped["Company"] = relationship("Company")
     run: Mapped["ExecutionRun | None"] = relationship("ExecutionRun", back_populates="usage_logs")

@@ -69,6 +69,15 @@ def _sanitize_model_name(model_name: str) -> str:
     return model_name
 
 
+# Inc 5 / FLEET — provider names that resolve to the OpenAI-compatible adapter,
+# mapped to the canonical registry key that selects the endpoint (base_url).
+_COMPAT_PROVIDERS: Dict[str, str] = {
+    "zhipu": "zhipu", "glm": "zhipu",
+    "alibaba": "alibaba", "qwen": "alibaba", "dashscope": "alibaba",
+    "moonshot": "moonshot", "kimi": "moonshot",
+}
+
+
 def _get_adapter(provider_name: str, api_key: str, model_name: str, service_metadata: Dict) -> BaseLLMAdapter:
     """
     Instantiate the correct adapter given a provider name.
@@ -86,6 +95,15 @@ def _get_adapter(provider_name: str, api_key: str, model_name: str, service_meta
         return AnthropicAdapter(api_key=api_key, model_name=model_name, service_metadata=service_metadata)
     elif pn in ("azure_openai", "azure", "openai"):
         return AzureOpenAIAdapter(api_key=api_key, model_name=model_name, service_metadata=service_metadata)
+    elif pn in _COMPAT_PROVIDERS:
+        # Inc 5 / FLEET — the OpenAI-compatible fleet (GLM / Qwen / Kimi). One
+        # adapter, base_url per provider. Tested seam: no live call in Inc 5.
+        from src.ai.llm.openai_compat_adapter import OpenAICompatAdapter
+
+        return OpenAICompatAdapter(
+            api_key=api_key, model_name=model_name, service_metadata=service_metadata,
+            provider=_COMPAT_PROVIDERS[pn],
+        )
     else:
         # Default: try Gemini-compatible
         logger.warning(f"Unknown provider '{provider_name}', defaulting to GeminiAdapter")
@@ -110,6 +128,16 @@ class LLMRouter:
         self.db = db
         self.company_id = company_id
         self._adapter_cache: dict = {}  # Per-run cache to avoid repeated DB lookups
+        # RTR (Inc 5): the routing_decisions id from the most recent
+        # ``_resolve_adapter`` call, stamped onto the LLMResponse in ``call_llm``
+        # so ``_log_usage`` can link the usage line to the decision. None on the
+        # un-routed path. Sequential per run; not for concurrent reuse.
+        self._pending_decision_id: Optional[UUID] = None
+        # The routed ModelBinding + the RoutingSignals it used, kept so a
+        # provider error can re-route to the next-best model (fallback, T5).
+        # None on the un-routed path (which never falls back).
+        self._pending_binding = None
+        self._pending_signals = None
 
     async def _resolve_adapter(self, task_type: str, model_override: Optional[str] = None) -> BaseLLMAdapter:
         """Resolve the correct adapter based on task defaults.
@@ -126,14 +154,46 @@ class LLMRouter:
         """
         cache_key = f"{self.company_id}:{task_type}:{model_override or ''}"
         if cache_key in self._adapter_cache:
+            self._pending_decision_id = None  # a cache hit is the un-routed path
             return self._adapter_cache[cache_key]
 
         from src.config.service import ConfigService
         config_svc = ConfigService(self.db)
-        integration, api_key = await config_svc.resolve_model_for_task(
-            company_id=self.company_id,
-            task_type=task_type,
-        )
+
+        # RTR (Inc 5): a company opts into the router per task via
+        # ModelTaskDefault.routing_mode == "router". An explicit model_override
+        # always bypasses the router (the caller pinned the model). A routed
+        # call records a routing_decision *every* call, so routed keys are never
+        # cached; the un-routed path below is byte-identical to before.
+        self._pending_decision_id = None
+        self._pending_binding = None
+        self._pending_signals = None
+        integration = None
+        api_key = None
+        effective_model = ""
+        routed = False
+        if not model_override:
+            task_default = await config_svc.get_task_default(self.company_id, task_type)
+            if task_default is not None and task_default.routing_mode == "router":
+                from src.ai.intelligence.router import IntelligenceRouter
+                from src.ai.intelligence.types import RoutingSignals
+                signals = RoutingSignals(task_type=task_type)
+                binding = await IntelligenceRouter(self.db, self.company_id).route(signals)
+                integration, api_key = await config_svc.load_integration(binding.integration_id)
+                effective_model = binding.model_name
+                self._pending_decision_id = binding.decision_id
+                self._pending_binding = binding          # for fallback re-routing
+                self._pending_signals = signals
+                routed = True
+
+        if not routed:
+            # Un-routed path — unchanged behaviour (the single configured model).
+            integration, api_key = await config_svc.resolve_model_for_task(
+                company_id=self.company_id,
+                task_type=task_type,
+            )
+            effective_model = model_override or (integration.model_name if integration else "") or ""
+
         if not integration:
             raise RuntimeError(
                 f"No model configured for task type '{task_type}' "
@@ -145,8 +205,6 @@ class LLMRouter:
                 f"No API key found for integration '{integration.provider_name}/{integration.model_name}'. "
                 f"Please check the Service Integration configuration."
             )
-        # Entity-level model override takes priority over company defaults
-        effective_model = model_override or integration.model_name or ""
         if model_override:
             logger.info(
                 f"LLMRouter: Model override '{model_override}' "
@@ -158,8 +216,39 @@ class LLMRouter:
             model_name=effective_model,
             service_metadata=integration.service_metadata or {},
         )
-        self._adapter_cache[cache_key] = adapter
+        # Cache only the un-routed adapter — a routed decision is per call.
+        if not routed:
+            self._adapter_cache[cache_key] = adapter
         return adapter
+
+    async def _maybe_fallback_adapter(self, exc: Exception, tried: set) -> Optional[BaseLLMAdapter]:
+        """On a retryable provider fault for a *routed* call, build an adapter for
+        the next-best model. Returns None (→ the caller re-raises) for un-routed
+        calls, non-retryable faults, exhausted alternatives, or the retry bound."""
+        if self._pending_binding is None or self._pending_signals is None:
+            return None
+        if len(tried) >= 3:  # the initial model + up to two fallbacks
+            return None
+        from src.ai.intelligence.fallback import is_retryable
+        if not is_retryable(exc):
+            return None
+        from src.ai.intelligence.router import IntelligenceRouter
+        new_binding = await IntelligenceRouter(self.db, self.company_id).reroute(
+            self._pending_signals, exclude=set(tried))
+        if new_binding is None:
+            return None
+        tried.add(new_binding.model_name)
+        self._pending_binding = new_binding
+        self._pending_decision_id = new_binding.decision_id
+        from src.config.service import ConfigService
+        integration, api_key = await ConfigService(self.db).load_integration(new_binding.integration_id)
+        if not integration or not api_key:
+            return None
+        logger.warning(
+            f"LLMRouter: routing fallback → '{new_binding.model_name}' after {type(exc).__name__}")
+        return _get_adapter(
+            provider_name=integration.provider_name, api_key=api_key,
+            model_name=new_binding.model_name, service_metadata=integration.service_metadata or {})
 
     async def call_llm(
         self,
@@ -189,17 +278,32 @@ class LLMRouter:
             user_prompt=user_prompt,
             history=history,
         ) as _sp:
-            resp = await adapter.generate(
-                system_prompt=system_prompt,
-                messages=messages,
-                tools=tools,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=top_p,
-                **kwargs,
-            )
-            _record_llm_span(_sp, resp)
-            return resp
+            # RTR (Inc 5): a routed call retries the next-best model on a provider
+            # fault (rate-limit/5xx/timeout); the un-routed path has no binding to
+            # fall back to, so it re-raises immediately — behaviour unchanged.
+            tried: set = set()
+            if self._pending_binding is not None:
+                tried.add(self._pending_binding.model_name)
+            while True:
+                try:
+                    resp = await adapter.generate(
+                        system_prompt=system_prompt,
+                        messages=messages,
+                        tools=tools,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        top_p=top_p,
+                        **kwargs,
+                    )
+                except Exception as _err:
+                    _fb = await self._maybe_fallback_adapter(_err, tried)
+                    if _fb is None:
+                        raise
+                    adapter = _fb
+                    continue
+                resp.routing_decision_id = self._pending_decision_id  # RTR: link the usage line
+                _record_llm_span(_sp, resp)
+                return resp
 
     async def call_llm_react(
         self,
@@ -243,6 +347,7 @@ class LLMRouter:
                 max_react_turns=max_react_turns,
                 **kwargs,
             )
+            resp.routing_decision_id = self._pending_decision_id  # RTR: link the usage line
             _record_llm_span(_sp, resp)
             return resp
 
