@@ -258,17 +258,17 @@ Gaps in the *plan*, not the code. These are the ones that need an owner decision
 | # | Road-map gap | Recommendation |
 |---|---|---|
 | VR-01 | **G5 depends on SEGA, not only LEARN/EVX.** Spec §12 says "G5 consumes Inc-6 LEARN/EVX". The promotion pipeline (diff → certified approval → Board build → canary → GA) *is* SEGA's machinery with B11 blast-radius limits (VG-10). | Amend spec §12 sequencing to LEARN + SEGA + EVX; keeps the charter's LEARN → SEGA → GENUI order valid |
-| VR-02 | **The Glasshouse is not in the road map at all.** build_roadmap §4 Inc-6 lists LEARN → SEGA → GENUI → schema evolution. The Twin is a simulation subsystem (twin plane, replay, forecast, honesty grading, scenario store) comparable in size to LEARN — introduced by the Design Gate, never scoped. | Add **TWIN** as a named Inc-6 workstream, or defer the Glasshouse past the flagship launch and drop G5 |
-| VR-03 | **The strategy pipeline is not in the road map.** §15.3's Minutes→Propositions→Resolutions→Mandates→Reviews plus HBS Planning depth (VG-11). Inc-4's "HBS module depth" line named Accounting/HRMS/ERP/Legal — **not Planning**. | Add **STRAT** as an Inc-6 workstream (or an Inc-4 carry-over), sized separately from GENUI |
+| VR-02 ✅ | **The Glasshouse is not in the road map at all.** build_roadmap §4 Inc-6 lists LEARN → SEGA → GENUI → schema evolution. The Twin is a simulation subsystem (twin plane, replay, forecast, honesty grading, scenario store) comparable in size to LEARN — introduced by the Design Gate, never scoped. | Add **TWIN** as a named Inc-6 workstream, or defer the Glasshouse past the flagship launch and drop G5 |
+| VR-03 ✅ | **The strategy pipeline is not in the road map.** §15.3's Minutes→Propositions→Resolutions→Mandates→Reviews plus HBS Planning depth (VG-11). Inc-4's "HBS module depth" line named Accounting/HRMS/ERP/Legal — **not Planning**. | Add **STRAT** as an Inc-6 workstream (or an Inc-4 carry-over), sized separately from GENUI |
 | VR-04 | **The Library's influence machinery needs a retrieval-usage log** (VG-13) — a new store on the hot path, in neither RETR's five tasks nor the road map. | Fold into the GENUI Library workstream; design it at the caller, per the RETR three-stage rule |
 | VR-05 | **Connected drives are not in the §6.6 catalog** (VG-14) yet §15.1 stage 3 depends on them for the onboarding theatre. | Add catalog rows + a document-sync path; small, but it gates the onboarding journey |
-| VR-06 | **Broadcast gates need a KAR-05 family** (VG-15) — the spec names it, the roster is 18, the shipped social path is ungoverned. | Add to Inc-6 scope, or explicitly cut social from the flagship |
+| VR-06 ✅ | **Broadcast gates need a KAR-05 family** (VG-15) — the spec names it, the roster is 18, the shipped social path is ungoverned. | Add to Inc-6 scope, or explicitly cut social from the flagship |
 | VR-07 | **Push infrastructure is in no increment** (VG-19) and G4 blocks on it. | Scope with the Private Line; the single-writer constraint is architectural |
 | VR-08 | **No KPI history store** (VG-12) — the increment whose goal is "Week 12 > Week 1, *measured*" has nothing that records week 1. | Make it an early **LEARN** deliverable; four surfaces unblock at once |
 | VR-09 | **Entity version ledger is unowned** (VG-17). The Gallery needs it, the Glasshouse diff needs it, SEGA needs it for rollback. | Build once in SEGA; GENUI consumes |
 | VR-10 | **"GenUI replaces the React app" is now false by ratification.** Spec §5 scope call + §14.2: partner and platform-admin consoles stay on legacy React and are rebuilt later. | Amend the cutover criteria to "replaces the **tenant** React surface"; the 59-screen parity checklist should mark which screens are out of scope rather than retired |
 | VR-11 | **Voice go-live is a G3 prerequisite, not an ops remainder** (VG-08). | Promote it into Inc-6's critical path |
-| VR-12 | **Certified-action step-up is a gap in the shipped product today** (VG-05), not only in Vihara. | Pull forward as an independent hardening task, ahead of the Inc-6 build |
+| VR-12 ✅ | **Certified-action step-up is a gap in the shipped product today** (VG-05), not only in Vihara. | Pull forward as an independent hardening task, ahead of the Inc-6 build |
 
 ---
 
@@ -303,16 +303,20 @@ Sequencing note: **the Vihara G0 substrate can genuinely start in parallel** (th
 
 ---
 
-## 6. Open questions for the owner
+## 6. Open questions — ALL ANSWERED (2026-07-24)
 
-Carried into the Inc-6 clarifying round together with the charter's own questions 2 and 3.
+Every question this analysis raised was resolved in the clarifying round. Recorded here with its answer; the authoritative list is [00_charter.md](./00_charter.md) §Decisions.
 
-1. **Scope of the flagship** (VR-02/VR-03): does the Vihara launch include the **Glasshouse** and the **strategy pipeline** as built subsystems, or does the flagship ship without G5 and without the Boardroom's Resolutions/Mandates, adding them post-cutover?
-2. **Charter question 2 — cross-tenant learning policy (B10):** pooled with disclosure, or strictly per-tenant with cold start?
-3. **Charter question 3 — learning-store shape:** extend the signal bus + CORTEX Intelligence trees, or a dedicated `learning_signals` store?
-4. **Twin spend classification** (VG-09.7): the spec's risk register says twin spend is visible under the *platform-initiated* budget class, but a tenant running a what-if is tenant-asked-for work — and the B13 convention is explicit that tenant-asked-for work must stay out of `PLATFORM_INITIATED_ATTRIBUTIONS` or ordinary activity exhausts the cap that protects tenants from platform work. Which way?
-5. **Social/broadcast gates** (VR-06): build the KAR-05 governed family, or cut social from the flagship and leave the legacy path?
-6. **Certified-action step-up** (VR-12): pull forward now as a standalone hardening task, or fold into G2?
+| # | Question | Answer |
+|---|---|---|
+| 1 | Flagship scope (VR-02/VR-03) — are TWIN and STRAT built? | **Both in.** Named Increment-6 workstreams |
+| 2 | Cross-tenant learning policy (B10) | **Split** — platform-level pools, tenant-level private, enforced at schema level |
+| 3 | Learning-store shape | **Reuse** the signal bus + CORTEX Intelligence trees |
+| 4 | Twin spend's budget class (VG-09) | **Tenant-initiated** — out of `PLATFORM_INITIATED_ATTRIBUTIONS`, **overriding spec §12.1** |
+| 5 | Social / broadcast gates (VR-06) | **Build KAR-05** — workstream GATE |
+| 6 | Certified-action step-up (VR-12) | **Pulled forward** — ✅ built, §7 below |
+
+**And one the analysis did not ask, which the owner raised:** GENUI is too large and too dependent to sit inside Increment 6 — it consumes *every other* workstream here. It became **[Increment 7](../increment-7/00_charter.md)** (Vihara), opening with the design phase the ratified spec defers, and Scale & Enterprise renumbered to Increment 8. This analysis's VR-01 (G5 depends on SEGA) is what made the dependency visible; the split is the honest conclusion of it.
 
 ---
 
@@ -358,5 +362,6 @@ The three security controls were **mutation-tested**, per the repo convention th
 
 | Date | Change |
 |---|---|
+| 2026-07-24 | v1.2 — all six §6 questions **answered**; VR-02/03/06/12 resolved. GENUI split into **Increment 7** (Vihara), Scale & Enterprise → Increment 8; twin spend ruled **tenant-initiated**, correcting ratified spec §12.1. |
 | 2026-07-24 | v1.1 — **VG-05 / VR-12 closed** (§7): `ai/inward_auth/guard.py`, five certified endpoints gated, the PolicyGate now carries the amount, `IntentKind.CONNECTOR_BINDING` added — plus a **cross-tenant IDOR fix** on `respond_to_approval` found while mapping the work. Four design deltas; three controls mutation-tested. One honest limit: the React app does not yet render the step-up refusal. |
 | 2026-07-24 | v1.0 — first full gap analysis of the ratified Vihara spec against `master` @ `a403cda`: 23 backend gaps (VG-01…VG-23) and 12 road-map gaps (VR-01…VR-12); state re-verified (all gates green, push landed, integration 281); proposed Inc-6 workstream shape with TWIN and STRAT added. |

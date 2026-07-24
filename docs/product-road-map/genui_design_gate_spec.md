@@ -2,7 +2,7 @@
 
 > **Document class:** Design Gate specification — the "detailed, unique design" the Increment-6 charter requires before any GenUI development begins
 > **Author:** Buddha Cognitive Lab (drafted by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.2 — spec ratified; all §14 items closed; §15 key journeys added (onboarding, connections, strategy pipeline, the Library) answering owner questions; cleared to build at G0
+> **Created:** 2026-07-24 · **Status:** v1.3 — spec ratified; all §14 items closed; §15 key journeys added; **twin-spend attribution corrected (§12.1) and the build moved to Increment 7** with a design phase ahead of G0
 > **Parent:** [genui_design_gate_concepts.md](./genui_design_gate_concepts.md) §6 (decision record) · [build_roadmap.md](./build_roadmap.md) §4 Inc-6 GENUI · functional doc §11 · technical doc §8
 > **Selection:** **Sanctum** (shell) + **Firm** (cast) + **Atlas** (world) + **Twin** (what-if organ) + **Private Line** (pocket face), unified per the eight locked decisions of concepts §6.
 
@@ -252,8 +252,12 @@ One coherent launch; the shipped React app remains the operating surface until c
 | Portrait/territory art direction fails the luxury bar | Commission early (pre-G1); two style rounds with owner sign-off before mass production |
 | Manifest latency breaks the theatre | <300ms first-scaffold budget; streamed manifests; intent-shape cache; optimistic skeletons |
 | Voice latency breaks the steward | Reuse the shipped realtime stack; barge-in <200ms; beam decoupled from audio so narration never blocks rendering |
-| Glasshouse overclaims | L6 at manifest-schema level + honesty-grade goldens in CI; twin spend visible under the platform-initiated budget class |
+| Glasshouse overclaims | L6 at manifest-schema level + honesty-grade goldens in CI; twin spend attributed to the **tenant** (see the v1.3 correction below) |
 | Prose quality (lines, stories, standups) | Figures always from deterministic queries; prose frames, never asserts numbers; eval-harness goldens for narrative surfaces |
+
+> **Correction (v1.3, 2026-07-24 — owner decision, Increment-6 charter decision 7):** the row above originally read *"twin spend visible under the platform-initiated budget class"*. That is **wrong**. A tenant running a what-if is tenant-asked-for work, and the B13 convention is explicit that such work must stay out of `PLATFORM_INITIATED_ATTRIBUTIONS` — otherwise ordinary tenant activity exhausts the cap whose entire purpose is protecting tenants *from* platform work (re-chunking, model admission, connector sync). **Twin spend is tenant-initiated**, exactly like RETR's `rerank`. The product consequence is real and TWIN's design must answer it: a Glasshouse that visibly costs money is a Glasshouse people use less, so keeping a what-if cheap (bounded replay windows, cached baselines, no re-embedding) is a design requirement, not an optimisation.
+
+> **Increment note (v1.3):** this spec is now built in **Increment 7**, not Increment 6 — GenUI was split into its own increment on 2026-07-24 because it consumes every other Increment-6 workstream. Increment 7 opens with a **design phase** producing what this document deliberately defers: wireframes for the §5 surfaces, the §9.3 component-registry JSON schema, the manifest and backend API contracts, the §14.5 art bible and portrait style boards, and the device matrix behind §12.1. See [increment-7/00_charter.md](./increment-7/00_charter.md).
 
 ## 13. Design Gate Exit Criteria
 
@@ -331,4 +335,5 @@ The estate's archive, at depth 2, holding everything the business *knows* (disti
 |---|---|
 | 2026-07-24 | v1.0 — first full specification of the selected hybrid (Sanctum + Firm + Atlas + Twin + Private Line), per the eight locked decisions in concepts doc §6. Working name *Vihara* proposed. G0–G6 internal gate plan under the owner's full-flagship decision. |
 | 2026-07-24 | v1.1 — **spec ratified; cleared to build.** All five §14 open items closed by owner decision: *Vihara* ratified; tenant-first scope confirmed; WhatsApp read-mirror in at launch (India-first, read+notify only); ambient sound dropped for launch; portraits via in-house style boards first. §13 amended: motion-prototype criterion folds into G1; art bible via the §14.5 sample round before G1 visuals; G0 may start immediately. |
+| 2026-07-24 | v1.3 — **two corrections after the Increment-6 clarifying round.** (a) **Twin spend is tenant-initiated**, not platform-initiated — §12.1's risk row contradicted the B13 convention and would have let tenant experimentation exhaust the cap that protects tenants from platform work. (b) **Vihara builds in Increment 7**, its own increment, opening with the design phase this spec defers (wireframes · component schema · manifest + API contracts · art bible · device matrix); GenUI consumes every other Increment-6 workstream, so it is a successor rather than a peer. Neither correction reopens the §6.8 full-flagship decision. |
 | 2026-07-24 | v1.2 — **§15 Key Journeys added** (owner questions): onboarding as the staged nine-stage world-build; external connections as **Bridges** (SoR systems, certified OAuth + mastering trays) vs **Broadcast gates** (social/ad channels); the strategy pipeline **Minutes → Propositions → Resolutions → Mandates → Reviews** with plans persisted in the Planning Registry Hall; and **the Library** (documents/KB with provenance, influence, staleness, scoping). Ontology (§4) and surface inventory (§5) extended accordingly — the Library and the Bridges & Gates board were missing surfaces. |

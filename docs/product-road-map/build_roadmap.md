@@ -50,7 +50,9 @@ graph TD
     RTR["RTR — Model router v1→v2 (§3.3)"]
     LEARN["LEARN — Unified learning store + charter tuning"]
     SEGA["SEGA — Self-evolution GA (§9/§12)"]
-    GENUI["GENUI — Generative UI (§8)"]
+    TWIN["TWIN — The Glasshouse (simulation)"]
+    STRAT["STRAT — Strategy pipeline + Planning depth"]
+    GENUI["GENUI — Vihara (§8) — Increment 7"]
     FED["FED — Federation at scale (§17.6)"]
     BB["BB — BabyBuddha / OmniBuddha admission (§3.1)"]
 
@@ -80,8 +82,13 @@ graph TD
     EVX --> BB
     SIG --> LEARN
     EVX --> LEARN
+    SEGA --> TWIN
+    TWIN --> STRAT
     SCH --> GENUI
     LEARN --> GENUI
+    SEGA --> GENUI
+    TWIN --> GENUI
+    STRAT --> GENUI
     LOOP --> FED
 ```
 
@@ -90,12 +97,13 @@ graph TD
 1. **SIG (the signal bus) is the keystone.** The Loop runtime, Karuna gateways, SoR sync, Pragya's reporting, and the unified learning store all hang off it. It is deliberately first after ops debt — and it has *no* unbuilt prerequisites (Postgres + Arq ship today).
 2. **GOV and SCH are parallel roots.** Neither depends on anything unbuilt; both are pure-schema starts. They can proceed alongside SIG with separate hands.
 3. **Nothing on the MVP path depends on the router, Pragya, self-evolution, GenUI, or BabyBuddha.** The expensive, speculative subsystems are all post-MVP by construction — the MVP risk is integration work on proven parts, not research.
+4. **GENUI sinks to the bottom of the graph** (edges added 2026-07-24). It consumes SCH, LEARN, SEGA, TWIN *and* STRAT — every other Increment-6 workstream. That in-degree is what forced the split into its own increment: a workstream depending on all its siblings is a successor, not a peer.
 
 ## 4. The Increment Plan (F3)
 
 Sizing is relative (S < M < L < XL), not calendar time. Each increment ends in a state you can demo, and Increment 2 ends in a state you can *sell*.
 
-> **Per-increment working docs** live in subfolders of this directory — [increment-1/](./increment-1/00_overview.md) (full design + implementation plan) and charter stubs for [increment-2](./increment-2/00_charter.md) through [increment-7](./increment-7/00_charter.md), each deepened just-in-time when its turn comes (with a clarifying-questions round first).
+> **Per-increment working docs** live in subfolders of this directory — [increment-1/](./increment-1/00_overview.md) (full design + implementation plan) and charters for [increment-2](./increment-2/00_charter.md) through [increment-8](./increment-8/00_charter.md), each deepened just-in-time when its turn comes (with a clarifying-questions round first).
 
 ### Increment 0 — Ops & Flag Debt *(S–M, mostly ops)*
 Clear the "built but not live" backlog (`docs/phase12/OPS_REMAINDER.md`): push pending commits · publish `hb-cortex-memory` to PyPI and delete the in-repo copy · sandbox image CVE scan + registry publish + S7 canary→default-ON · Meta-Agent board GA flip · frontend polish items. **Outcome:** the shipped platform *is* the baseline document, with no flag-gated asterisks on the MVP path.
@@ -130,12 +138,15 @@ The three parallel roots, then the Loop:
 ### Increment 5 — The Intelligence Engine *(L)*
 **B12 first** (model registry versioning/regions/price dating — the router is blind without it) → **RTR v1** (registry + static rules + `routing_decisions` attribution) → **RTR v2** (complexity scoring, wallet-aware downshift) → fleet expansion (GLM/Qwen/Kimi behind **D5** data-flow disclosure + conservative default allow-list) → **EVX** (§22.2–.4) wired as the admission gate. **Outcome:** the §3.3 cost story becomes real and auditable.
 
-### Increment 6 — The Self-Improving Platform *(XL, gated hardest)*
-**LEARN** (unified learning store on the signal bus; charter tuning under EVX gates + B10 risk policy) → **SEGA** (self-evolution GA: independent-suite rule + canary + B11 blast-radius limits; tenant-scoped only) → **GENUI** — per owner directive, a **completely new frontend built from scratch**, hard-gated behind the **Design Gate** (✅ **passed 2026-07-24** — the ratified [Vihara spec](./genui_design_gate_spec.md)); the shipped React app remains the surface until cutover → dynamic-schema evolution triggers (§10.2). **Outcome:** the "Week 12 > Week 1" promise, measured by the §22 harness rather than asserted.
+### Increment 6 — The Self-Improving Platform *(XL, gated hardest)* — **backend only**
+Six workstreams ([increment-6/00_overview.md](./increment-6/00_overview.md)): **LEARN** (learning store on the signal bus + CORTEX, charter tuning under EVX, the B10 risk policy, **KPI history**, the density store) → **SEGA** (self-evolution GA: independent-suite rule, the **entity-change canary**, B11 blast-radius limits, the **entity version ledger**, D3 taint) → **TWIN** (the **Glasshouse** — twin plane, replay, forecast, honesty grading, promotion pipeline) → **STRAT** (Minutes→Propositions→Resolutions→Mandates→Reviews + **HBS Planning depth**), with **GATE** (KAR-05 governed broadcast gates) and **LIB** (Library data layer — provenance, the retrieval-usage log, staleness, connected drives) parallelisable throughout. Dynamic-schema evolution triggers (§10.2) land inside LEARN and SEGA. **Outcome:** the "Week 12 > Week 1" promise, measured by the §22 harness rather than asserted — and every store Vihara will read, already accumulating.
 
-> **Scope revision pending owner decision (2026-07-24, from the [gap analysis](./increment-6/00a_genui_backend_gap_analysis.md)):** the Vihara spec introduces three subsystems this plan never scoped — the **Glasshouse** (proposed workstream **TWIN**), the **strategy pipeline + HBS Planning depth** (proposed **STRAT**), and **push / Private-Line** infrastructure. The dependency line also changes: **G5 consumes SEGA** (its promotion pipeline is SEGA's entity-change canary under B11), not only LEARN/EVX. Two prerequisites move onto the critical path ahead of the build — **voice go-live** (G3 cannot pass on a tested seam) and **certified-action step-up** (`require_tier` currently has no REST call sites). And per spec §14.2 the cutover retires the **tenant** React surface only; partner/platform-admin consoles stay legacy and are rebuilt later.
+> **GENUI left this increment (owner decision 2026-07-24)** for [Increment 7](./increment-7/00_charter.md). Four reasons, in full there: GENUI consumes *every other* Inc-6 workstream, so the increment could not close until its most dependent part finished; G0–G6 is seven gates on its own; its exit criteria (zero-training test, a11y audit, device matrix, 30-day parallel run, 59-screen parity) are increment-level, not workstream-level; and the split **does not** reopen the §6.8 full-flagship decision, which was about not phasing Vihara's *launch*.
 
-### Increment 7 — Scale & Enterprise *(L–XL)*
+### Increment 7 — 🏛 Vihara, the GenUI Flagship *(XL)*
+**Phase A — the design phase** the ratified spec explicitly defers: wireframes for the ~17 surfaces at both densities, the **component registry JSON schema** (§9.3 calls it "a build-time artifact"), the manifest contract in full with `honesty_grade` mandatory at schema level (L6), backend API contracts for the estate read model / live stream / Pragya event channel, the **art bible** + §14.5 portrait style boards, and the device matrix behind §12.1's <300ms budget. **Phase B — G0→G6** per spec §12. **Prerequisites:** Increment 6 complete · **voice go-live** (G3 cannot pass on a tested seam) · the step-up refusal rendered in the frontend. Per §14.2 the cutover retires the **tenant** React surface only — partner and platform-admin consoles stay legacy and are rebuilt later, so the 59-screen parity checklist marks them *out of scope*, not *retired*.
+
+### Increment 8 — Scale & Enterprise *(L–XL)*
 **FED** at scale (child Loops, group Pragya view) · **B14** production topology (HA, regions — pull earlier if tenant count demands) · compliance packs incl. **D4** employment-AI gates *(hard gate: the Talent bundle does not GA without D4)* · **BB** — BabyBuddha/OmniBuddha post-training runs and must pass §22.4 admission; falls out of the router as just another registry row if it wins, costs nothing if it doesn't.
 
 ## 5. Open Register Findings → Increment Map
@@ -148,7 +159,8 @@ The three parallel roots, then the Loop:
 | 4 | D2, C2 |
 | 5 | B12, D5 (+ EVX docs side of B9 done) |
 | 6 | B10, B11, D3 (full taint; §18.6 down-payment ships in Inc 1) |
-| 7 | B14, D4 |
+| 7 | *(none of its own — Vihara consumes Inc-6 closures and carries D3's manifest-path obligation)* |
+| 8 | B14, D4 |
 
 Every remaining open finding has exactly one home. When an increment starts, its row above is the checklist; the register is updated as each closes.
 
@@ -170,6 +182,7 @@ Every remaining open finding has exactly one home. When an increment starts, its
 | 2026-07-18 | v1.2 — B6/B8/E3 closed at design level (technical §23–§24): uniform Postgres-in-sandbox data plane with tiered hibernation, owner-writes/others-propose, wallet holds with graceful-finish + bounded debt, share-knowledge-not-habits memory scoping. Increment 1 now has zero open design questions; §24.4 retrieval upgrade may trail into Increment 2. |
 | 2026-07-18 | v1.3 — Increment 0 complete (ops debt cleared); per-increment doc subfolders created: increment-1/ full plan (4 workstream docs + overview), increment-2..7/ charter stubs. Inc-1 build decisions recorded: data plane built in Inc 1 (not staged), HBS spine drafted-then-reviewed, no new frontend in Inc 1. |
 | 2026-07-19 | v1.4 — Increment-1 brainstorm closed: all open questions answered (decisions recorded in each increment-1/ doc §5). Notable: email ingest is SIG's first channel producer; PolicyGate passes unset authority bands through until Inc-2 seeding; uniform configurable default envelope; **KB + CORTEX memory are control-plane permanent** (technical doc v3.0.6 — §10.4/§10.5/§23.4/§24.4 amended; export bundle includes KB+memory dump). Increment 1 is clear to build. |
+| 2026-07-24 | v2.2 — **GENUI split into its own increment** (owner decision). Increment 6 becomes six **backend** workstreams — LEARN · SEGA · **TWIN** · **STRAT** · **GATE** · **LIB** — with a forced order (SEGA's canary is what TWIN's promotion pipeline calls; TWIN's honesty grades are what STRAT's reviews read; LEARN first because KPI history is the increment's longest-lead time series). **Increment 7 is Vihara**, opening with the *design phase* the ratified spec defers (wireframes · component registry schema · manifest + API contracts · art bible · device matrix) ahead of G0–G6; **Scale & Enterprise renumbers to Increment 8**. Three further decisions: twin spend is **tenant-initiated**, overriding spec §12.1 (tenant-asked-for work must not sit in `PLATFORM_INITIATED_ATTRIBUTIONS` or it exhausts the cap protecting tenants from platform work); pooled platform learning is **disclosed but not opt-out**, resting on decision 2's schema guarantee; **KAR-05 broadcast gates are in scope**, closing an ungoverned outbound social path in shipped code. Dependency graph updated — GENUI's in-degree is what forced the split. |
 | 2026-07-24 | v2.1 — **GenUI gap analysis written** ([increment-6/00a_genui_backend_gap_analysis.md](./increment-6/00a_genui_backend_gap_analysis.md)): the ratified Vihara spec walked against `master` @ `a403cda` — **23 backend gaps + 12 road-map gaps**. Increment 6's scope grows: the **Glasshouse** (VR-02, proposed workstream **TWIN**) and the **strategy pipeline + HBS Planning depth** (VR-03, proposed **STRAT**) are net-new subsystems the road map never scoped; **G5 consumes SEGA**, not only LEARN/EVX (VR-01); **push/Private-Line infrastructure is in no increment** (VR-07); **no KPI history store exists** for the increment whose goal is "Week 12 > Week 1, measured" (VR-08); and "GenUI replaces the React app" is false by ratification — partner/platform-admin consoles stay legacy, so cutover retires the *tenant* surface only (VR-10). Two items promoted to prerequisites: **voice go-live** (a G3 gate, not an ops remainder, VR-11) and **certified-action step-up** (`require_tier` has no REST call sites — a live gap in the shipped app, VR-12). Also verified: **the push is done** (`origin/master` = `master` = `a403cda`), all gates green (typecheck 259, unit 1523, parity/eval 16, integration 281, head `fleet001`). Six new owner questions open in the analysis §6. |
 | 2026-07-24 | v2.0 — **GENUI Design Gate PASSED at design level** (run ahead of Inc 6 per owner direction; Inc 5 merged to `master` the same day). Ten-concept brainstorm + owner selection ([genui_design_gate_concepts.md](./genui_design_gate_concepts.md) §6 — the **Sanctum+Firm+Atlas+Twin+Private Line** hybrid, eight locked decisions) + the full ratified spec **[genui_design_gate_spec.md](./genui_design_gate_spec.md) v1.1** ("**Vihara**"): ten Binding Laws, depth ladder, unified estate ontology, W/S/C renderer architecture over one component registry, the Pragya frontend contract, and the G0–G6 internal gate plan under the owner's full-flagship decision; all §14 ratifications closed. Inc-6 charter question 1 answered; GENUI still builds **last** in Inc 6 (LEARN → SEGA → GENUI). |
 | 2026-07-23 | v1.9 — **Increment 5 BUILT** (branch `inc5/rtr`, 15 commits, not yet merged). **REG**: control-plane `model_registry` + effective-dated `model_prices` + per-company binding — **B12 closed**. **RTR v1+v2**: the router in `ai/intelligence/`, reached through the shipped `LLMRouter.call_llm` seam; v1 reproduces defaults (non-inferior) + a `routing_decisions` audit trail, v2 adds heuristic complexity scoring, wallet-aware downshift and next-best fallback. **EVX**: the §22.2–.4 admission gate *in the mutation path* (`RegistryService.activate` refuses a failed admission) + canary + the `MODEL_ADMISSION` B13 attribution — B9's build side. **FLEET**: GLM/Qwen/**Kimi** over one OpenAI-compatible adapter (injectable transport, no live call), all `preview` + opt-in only behind the conservative allow-list, the auditable `company_provider_optin`, and the published data-flow disclosure — **D5 closed**. Migrations `reg001`→`rtr001`→`fleet001`. Gates: typecheck 259 files strict, parity/eval 16, 1523 unit, 24 Inc-5 integration. Honest limits (both activation-time ops): no live GLM/Qwen/Kimi call; admission scoring injected. |

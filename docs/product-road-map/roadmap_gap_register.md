@@ -130,7 +130,7 @@ The most important finding given the folder's purpose. All three docs were origi
 
 **Increments 1–4 are now built** (the inline row Statuses above were reconciled to reality on 2026-07-23). Closed by the builds: Inc 1 executed the §23–§24 designs; **Inc 2** closed **C1, C3, C5, D6, B13, E1, E2, E4** (+ B8's retrieval half); **Inc 3** closed **D1, C4, C6, B7** (+ C8's scripts); **Inc 4 / CONN+SOR** built **B4**'s mastering machine (D2, C2 deferred, see their rows). **40 of 49 findings closed.**
 
-**Still open** (mapped to later increments per [build_roadmap.md](./build_roadmap.md) §5): **B10, B11** (Inc 6 — learning risk + self-evolution blast radius), **B14, D4** (Inc 7 — GA topology + employment-AI), **D3** (Inc 6 — full context taint), **C2, D2** (deferred within Inc 4 — human-task surface + per-agent credential scoping). *(**B12** and **D5** closed by Increment 5 — model registry + data-flow disclosure, 2026-07-23.)*
+**Still open** (mapped to later increments per [build_roadmap.md](./build_roadmap.md) §5): **B10, B11** (Inc 6 — learning risk + self-evolution blast radius), **B14, D4** (**Inc 8** — GA topology + employment-AI; renumbered 2026-07-24 when GenUI/Vihara became Increment 7), **D3** (Inc 6 — full context taint), **C2, D2** (deferred within Inc 4 — human-task surface + per-agent credential scoping). *(**B12** and **D5** closed by Increment 5 — model registry + data-flow disclosure, 2026-07-23.)*
 
 ---
 

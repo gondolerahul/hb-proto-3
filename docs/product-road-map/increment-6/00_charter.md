@@ -1,43 +1,63 @@
-# Increment 6 — The Self-Improving Platform — Charter Stub
+# Increment 6 — The Self-Improving Platform — Charter
 
-> **Status:** Stub — deepened just-in-time; the hardest-gated increment. A clarifying-questions round with Rahul precedes the full docs. **GenUI's Design Gate is PASSED** (2026-07-24) — [genui_design_gate_concepts.md](../genui_design_gate_concepts.md) §6 (owner selection) + the ratified [genui_design_gate_spec.md](../genui_design_gate_spec.md) v1.2 (**Vihara**).
+> **Status:** Charter — decisions locked with Rahul 2026-07-24. **GENUI has been split out** into its own increment ([increment-7/](../increment-7/00_charter.md), *Vihara*), which pushed Scale & Enterprise to [increment-8/](../increment-8/00_charter.md). This increment is now **entirely backend**, which is what its title always promised.
 > **Parent:** [build_roadmap.md](../build_roadmap.md) §4, Increment 6 (XL). **Prerequisite:** Increment 5 (EVX gates operational — nothing self-modifying ships without them).
-> **Read next:** [00a_genui_backend_gap_analysis.md](./00a_genui_backend_gap_analysis.md) — the Vihara spec walked against the shipped code (23 backend gaps, 12 road-map gaps, proposed workstream shape, six extra owner questions).
+> **Read next:** [00_overview.md](./00_overview.md) (the increment plan) · [00a_genui_backend_gap_analysis.md](./00a_genui_backend_gap_analysis.md) (the gap inventory that produced the scope).
 
 ## Goal
 
-The "Week 12 > Week 1" promise, measured by the §22 harness rather than asserted.
+The "Week 12 > Week 1" promise, **measured** by the §22 harness rather than asserted — and the platform state Vihara will need in order to render any of it.
 
-## Scope (from the roadmap, in order)
+## Scope — six workstreams
 
-1. **LEARN** — unified learning store on the signal bus; charter tuning under EVX gates + the B10 risk policy (reward-hacking constraints: Karuna bounds are hard constraints, drift monitors, explicit cross-tenant learning policy).
-2. **SEGA** — self-evolution GA: independent-suite rule + canary + B11 blast-radius limits (**tenant-scoped only**; global tool changes stay on the platform-admin pipeline). Builds on the shipped tool-synthesis pipeline.
-3. **GENUI** — **Vihara**, a completely new frontend built from scratch (Design Gate passed); the shipped React app remains the surface until cutover. Note §14.2 keeps the **partner and platform-admin consoles on legacy React** — the cutover retires the *tenant* surface, not all 59 screens.
-4. **Dynamic-schema evolution triggers** (technical §10.2) — agent-proposed fields, learning-driven def promotion, learning-promoted expression indexes (§19.3).
+| # | Workstream | What it is |
+|---|---|---|
+| 1 | **LEARN** | Unified learning store on the signal bus + CORTEX Intelligence trees; charter tuning under EVX gates; the B10 risk policy; **KPI history**; the per-user density/preference store |
+| 2 | **SEGA** | Self-evolution GA — independent-suite rule, the **entity-change canary**, B11 blast-radius limits (tenant-scoped only), the **entity version ledger**, D3 context taint |
+| 3 | **TWIN** | The Glasshouse subsystem — twin data plane, replay engine, forecast engine, honesty grading, the Scenario Shelf, the promotion pipeline over SEGA's canary |
+| 4 | **STRAT** | The strategy pipeline — Minutes → Propositions → Resolutions → Mandates → Reviews — plus **HBS Planning module depth** |
+| 5 | **GATE** | **KAR-05** governed broadcast gates: social/ad channels enter SIG under the Karuna profile and the consent/DNC registry |
+| 6 | **LIB** | The Library data layer — document provenance & source kinds, the **retrieval-usage log** (influence), staleness, connected drives, artifact→record linkage |
 
-**Proposed additions from the gap analysis** (owner decision pending — question 1 below):
+Plus **dynamic-schema evolution triggers** (technical §10.2) — agent-proposed fields, learning-driven def promotion, learning-promoted expression indexes (§19.3) — which land inside LEARN and SEGA rather than as a seventh workstream.
 
-5. **TWIN** — the Glasshouse as its own subsystem: twin data plane, replay engine, forecast engine, honesty grading (L6) at schema level, the Scenario Shelf, and the promotion pipeline over SEGA's entity-change canary. *Introduced by the Design Gate; never scoped in the road map* (VR-02).
-6. **STRAT** — the strategy pipeline (Minutes → Propositions → Resolutions → Mandates → Reviews) plus HBS **Planning** module depth. The Planning module ships with one object today (`Budget`); Inc-4's HBS-depth line named Accounting/HRMS/ERP/Legal only (VR-03).
+**Not in this increment:** everything Vihara. The manifest substrate, the estate read model, the live event stream, the echo-bus *endpoint*, trays, the Private Line and push all belong to [Increment 7](../increment-7/00_charter.md).
 
 ## Register findings to close here
 
-B10 (learning-system risk blindspots), B11 (self-evolution blast radius), D3 (full context-taint tracking — the §18.6 trust field shipped in Inc 1 is the down-payment). **D3 grows in weight under GenUI**: a manifest architecture lets model output choose what UI renders, so taint rules must cover the manifest path and the certified-set boundary must be a tested invariant (VG-23).
+**B10** (learning-system risk blindspots) · **B11** (self-evolution blast radius) · **D3** (full context-taint tracking — the §18.6 trust field shipped in Inc 1 is the down-payment).
 
 ## Decisions (locked 2026-07-24 with Rahul — do not re-litigate)
 
-1. ~~Design Gate process~~ — **ANSWERED** by the Design Gate itself: concepts §6 (owner selection) + the ratified Vihara spec; §13 there defines the exit criteria and the G0–G6 internal gate plan.
-2. **B10 cross-tenant learning — SPLIT.** *Platform-level* learning (routing decisions, model performance — **no business content**) pools across tenants; *tenant-level* learning (charter tuning, density, behavioural preference) stays strictly per-tenant. The split is drawn where the leakage risk actually lives, and it is a **schema-level** distinction, not a query convention: a learning record must declare its scope and the pooled path must be structurally incapable of carrying tenant content.
-3. **Learning-store shape — REUSE.** Extend the shipped **signal bus** (events) + **CORTEX Intelligence trees** (distilled learning). No dedicated `learning_signals` table. Consequence to design around: both systems now carry a third job, so B10's scoping must be explicit in the record shape (see decision 2) rather than implied by which store a row sits in.
-4. **Flagship scope — BOTH IN, full flagship.** **TWIN** and **STRAT** are named Increment-6 workstreams. G5 ships. This is consistent with the owner's §6.8 full-flagship decision and makes Increment 6 the largest increment attempted.
-5. **Certified-action step-up — PULLED FORWARD** as standalone hardening ahead of the Inc-6 design docs (it is a live gap in the shipped React app, not only a Vihara gap).
+1. ~~Design Gate process~~ — **ANSWERED** by the Design Gate itself: concepts §6 (owner selection) + the ratified Vihara spec; §13 there defines the exit criteria and the G0–G6 gate plan.
+2. **B10 cross-tenant learning — SPLIT.** *Platform-level* learning (routing decisions, model performance — **no business content**) pools across tenants; *tenant-level* learning (charter tuning, density, behavioural preference) stays strictly per-tenant. The split is **schema-level**, not a query convention: a learning record declares its scope, and the pooled path must be *structurally incapable* of carrying tenant content.
+3. **Learning-store shape — REUSE.** Extend the shipped **signal bus** (events) + **CORTEX Intelligence trees** (distilled learning). No dedicated `learning_signals` table. Consequence to design around: both systems now carry a third job, so decision 2's scoping must live in the record shape rather than be implied by which store a row sits in.
+4. **Flagship scope — BOTH IN.** **TWIN** and **STRAT** are named workstreams; the Glasshouse ships.
+5. **Certified-action step-up — PULLED FORWARD.** ✅ Built 2026-07-24 (`ai/inward_auth/guard.py`) — see [00a](./00a_genui_backend_gap_analysis.md) §7.
+6. **GENUI splits into its own increment.** Rationale in [increment-7/00_charter.md](../increment-7/00_charter.md) §Why. Strictly sequential: Increment 6 completes before Vihara's Phase A begins. Scale & Enterprise renumbers to 8.
+7. **Twin spend is TENANT-initiated.** A what-if is tenant-asked-for work, so the attribution stays **out** of `PLATFORM_INITIATED_ATTRIBUTIONS` — the same rule RETR's `rerank` follows. This **overrides spec §12.1**, which put twin spend under the platform-initiated class; that would have let tenant experimentation exhaust the cap whose entire purpose is protecting tenants *from* platform work (B13).
+8. **Pooled platform learning gets no opt-out, but is disclosed.** If decision 2's schema guarantee holds, the pooled path carries platform telemetry, not tenant data — an opt-out would cripple router learning for no privacy gain. The published [data-flow disclosure](../increment-5/03a_data_flow_disclosure.md) is **extended to name exactly what pools**. *(Note the asymmetry with D5's opt-in posture for foreign providers: that governs where tenant data physically goes; this governs aggregate telemetry that by construction contains none.)*
+9. **KAR-05 broadcast gates are IN** (workstream GATE). Social and ad channels become real Karuna gateways — outbound through SIG, governed by the Karuna profile and consent/DNC exactly as KAR-02/03 are. This closes an ungoverned outbound path that exists in shipped code today (`social_connection_service.py` sits outside SIG, Karuna and consent).
 
-## Still open — for the workstream design rounds
+## Build order
 
-* **Twin spend's budget class** (VG-09, for the TWIN doc): spec §12.1 says twin spend sits under the *platform-initiated* class, but a tenant's what-if is tenant-asked-for work — and the B13 convention forbids putting tenant-asked-for work in `PLATFORM_INITIATED_ATTRIBUTIONS`, or ordinary tenant activity exhausts the cap that exists to protect tenants *from* platform work.
-* **Broadcast gates** (VR-06, for the GENUI doc): the full-flagship decision implies the **KAR-05** governed social family is in scope — to be confirmed when the gateway roster is designed, since the shipped `social_connection_service` sits outside SIG/Karuna/consent.
+**LEARN → SEGA → TWIN → STRAT**, with **GATE** and **LIB** parallelisable at any point (neither depends on the other four).
 
-## Prerequisites that must land before the GENUI build
+The order is forced, not preferred: SEGA's entity-change canary is what TWIN's promotion pipeline calls, and TWIN's honesty grades are what STRAT's predicted-vs-realized reviews read. LEARN goes first because its **KPI history** is a time series — it is worth nothing until it has been accumulating, and three later surfaces (the Seasons timeline, plinth trends, mandate reviews) read it. The same "start collecting early" logic puts LIB's **retrieval-usage log** as early as its workstream allows.
 
-* **Certified-action step-up** (VG-05/VR-12) — decision 5: **building now**.
-* **Voice go-live** (VG-08/VR-11) — G3 cannot pass on a tested seam. Ops-coupled (real Vertex/Gemini credentials + carrier media); schedule against a credentialed environment.
+## Known open questions
+
+*(None blocking. Both former blockers were answered by decisions 7 and 9.)*
+
+Carried into the workstream design rounds as design detail rather than owner decisions:
+
+* **Dynamic-schema evolution** (§10.2) splits across LEARN (learning-driven def promotion) and SEGA (agent-proposed fields, under blast-radius limits) — confirm the seam when both docs are written.
+* **Connected drives** (SharePoint / Google Drive) need §6.6 catalog rows; only a generic `notion_knowledge` row exists (VG-14). Sized inside LIB.
+
+---
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-24 | v1.0 — charter deepened from the stub. Nine decisions locked; **GENUI split out to Increment 7** and Scale & Enterprise renumbered to 8; six workstreams named (LEARN · SEGA · TWIN · STRAT · GATE · LIB) with a forced build order; twin spend ruled tenant-initiated *against* spec §12.1; pooled learning disclosed-but-not-opt-out; KAR-05 in scope. |
