@@ -24,17 +24,20 @@ The "Week 12 > Week 1" promise, measured by the §22 harness rather than asserte
 
 B10 (learning-system risk blindspots), B11 (self-evolution blast radius), D3 (full context-taint tracking — the §18.6 trust field shipped in Inc 1 is the down-payment). **D3 grows in weight under GenUI**: a manifest architecture lets model output choose what UI renders, so taint rules must cover the manifest path and the certified-set boundary must be a tested invariant (VG-23).
 
-## Known open questions
+## Decisions (locked 2026-07-24 with Rahul — do not re-litigate)
 
-1. ~~Design Gate process~~ — **ANSWERED 2026-07-24** by the Design Gate: concepts §6 (owner selection) + the ratified Vihara spec; §13 there defines the exit criteria and the G0–G6 internal gate plan.
-2. Cross-tenant learning policy (B10): pooled with disclosure vs strictly per-tenant with cold start.
-3. Learning-store shape: extend the shipped signal bus + CORTEX Intelligence trees vs a dedicated `learning_signals` store.
-4. **Flagship scope** (VR-02/VR-03): does the Vihara launch include TWIN and STRAT as built subsystems, or does it ship without G5 and without the Boardroom's Resolutions/Mandates?
-5. **Twin spend's budget class** (VG-09): spec §12.1 says twin spend sits under the *platform-initiated* class, but a tenant's what-if is tenant-asked-for work — and the B13 convention forbids putting tenant-asked-for work in `PLATFORM_INITIATED_ATTRIBUTIONS`.
-6. **Broadcast gates** (VR-06): build the KAR-05 governed social family, or cut social from the flagship and leave the legacy ungoverned path?
-7. **Certified-action step-up** (VR-12): pull forward now as standalone hardening — `require_tier` has no REST call sites today — or fold into G2?
+1. ~~Design Gate process~~ — **ANSWERED** by the Design Gate itself: concepts §6 (owner selection) + the ratified Vihara spec; §13 there defines the exit criteria and the G0–G6 internal gate plan.
+2. **B10 cross-tenant learning — SPLIT.** *Platform-level* learning (routing decisions, model performance — **no business content**) pools across tenants; *tenant-level* learning (charter tuning, density, behavioural preference) stays strictly per-tenant. The split is drawn where the leakage risk actually lives, and it is a **schema-level** distinction, not a query convention: a learning record must declare its scope and the pooled path must be structurally incapable of carrying tenant content.
+3. **Learning-store shape — REUSE.** Extend the shipped **signal bus** (events) + **CORTEX Intelligence trees** (distilled learning). No dedicated `learning_signals` table. Consequence to design around: both systems now carry a third job, so B10's scoping must be explicit in the record shape (see decision 2) rather than implied by which store a row sits in.
+4. **Flagship scope — BOTH IN, full flagship.** **TWIN** and **STRAT** are named Increment-6 workstreams. G5 ships. This is consistent with the owner's §6.8 full-flagship decision and makes Increment 6 the largest increment attempted.
+5. **Certified-action step-up — PULLED FORWARD** as standalone hardening ahead of the Inc-6 design docs (it is a live gap in the shipped React app, not only a Vihara gap).
 
-## Prerequisites that must land before the build
+## Still open — for the workstream design rounds
 
-* **Voice go-live** (VG-08/VR-11) — G3 cannot pass on a tested seam.
-* **Certified-action step-up** (VG-05/VR-12) — subject to question 7.
+* **Twin spend's budget class** (VG-09, for the TWIN doc): spec §12.1 says twin spend sits under the *platform-initiated* class, but a tenant's what-if is tenant-asked-for work — and the B13 convention forbids putting tenant-asked-for work in `PLATFORM_INITIATED_ATTRIBUTIONS`, or ordinary tenant activity exhausts the cap that exists to protect tenants *from* platform work.
+* **Broadcast gates** (VR-06, for the GENUI doc): the full-flagship decision implies the **KAR-05** governed social family is in scope — to be confirmed when the gateway roster is designed, since the shipped `social_connection_service` sits outside SIG/Karuna/consent.
+
+## Prerequisites that must land before the GENUI build
+
+* **Certified-action step-up** (VG-05/VR-12) — decision 5: **building now**.
+* **Voice go-live** (VG-08/VR-11) — G3 cannot pass on a tested seam. Ops-coupled (real Vertex/Gemini credentials + carrier media); schedule against a credentialed environment.

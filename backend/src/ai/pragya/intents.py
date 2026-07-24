@@ -84,6 +84,7 @@ INTENT_SCHEMA: dict[str, Any] = {
                     IntentKind.REPORT, IntentKind.WORK_ASSIGNMENT,
                     IntentKind.PROCESS_PAUSE, IntentKind.PROCESS_RESUME,
                     IntentKind.AUTONOMY_RAISE, IntentKind.BINDING_CHANGE,
+                    IntentKind.CONNECTOR_BINDING,
                     IntentKind.BULK_DATA_OPERATION, IntentKind.CATEGORISED_ACTION,
                     IntentKind.LOOP_KILL_SWITCH, IntentKind.UNKNOWN,
                 ],
@@ -125,6 +126,9 @@ COMMAND_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
      IntentKind.CATEGORISED_ACTION),
     (re.compile(r"\bregister\b.*\b(number|phone|whatsapp|email)\b", re.I),
      IntentKind.BINDING_CHANGE),
+    (re.compile(r"\b(connect|link|integrate)\b.*\b(account|books|crm|"
+                r"drive|system|zoho|quickbooks|xero|tally)\b", re.I),
+     IntentKind.CONNECTOR_BINDING),
 )
 
 #: Floors imposed by a screen hit, as tiers. Used to check the model did not
@@ -137,6 +141,7 @@ _SCREEN_FLOOR: dict[str, Tier] = {
     IntentKind.BULK_DATA_OPERATION: Tier.T2,
     IntentKind.CATEGORISED_ACTION: Tier.T2,
     IntentKind.BINDING_CHANGE: Tier.T2,
+    IntentKind.CONNECTOR_BINDING: Tier.T2,
 }
 
 

@@ -56,6 +56,7 @@ class IntentKind:
     PROCESS_RESUME = "process_resume"          # T2
     AUTONOMY_RAISE = "autonomy_raise"          # T2
     BINDING_CHANGE = "binding_change"          # T2 — enrolling a channel
+    CONNECTOR_BINDING = "connector_binding"    # T2 — binding an external system
     BULK_DATA_OPERATION = "bulk_data_operation"  # T2
     CATEGORISED_ACTION = "categorised_action"  # T2+, decided by its category
     LOOP_KILL_SWITCH = "loop_kill_switch"      # T3
@@ -73,6 +74,10 @@ INTENT_TIER_FLOOR: dict[str, Tier] = {
     IntentKind.PROCESS_RESUME: Tier.T2,
     IntentKind.AUTONOMY_RAISE: Tier.T2,
     IntentKind.BINDING_CHANGE: Tier.T2,
+    # Handing a third-party system live credentials, and declaring what it may
+    # write back, is a sensitive act for the same reason enrolling a channel is:
+    # it changes who can act on the tenant's behalf.
+    IntentKind.CONNECTOR_BINDING: Tier.T2,
     IntentKind.BULK_DATA_OPERATION: Tier.T2,
     IntentKind.CATEGORISED_ACTION: Tier.T2,
     IntentKind.LOOP_KILL_SWITCH: Tier.T3,

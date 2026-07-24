@@ -125,7 +125,21 @@ async def update_entity(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    from src.ai.inward_auth.guard import enforce_tier, raises_autonomy
+    from src.ai.inward_auth.tiers import CommandIntent, IntentKind
+
     service = AIService(db)
+
+    # VG-05: raising an agent's autonomy band is T2 — it is the act that lets
+    # the workforce do more without asking. Only a *raise* is gated; the read
+    # below is company-scoped, so this cannot leak another tenant's band.
+    if entity_in.governance is not None:
+        existing = await service.get_entity(
+            entity_id, current_user.company_id, current_user.role)
+        if raises_autonomy(getattr(existing, "governance", None), entity_in.governance):
+            await enforce_tier(db, current_user,
+                               CommandIntent(kind=IntentKind.AUTONOMY_RAISE))
+
     return await service.update_entity(entity_id, entity_in, current_user.company_id, user_role=current_user.role)
 
 @router.delete("/entities/{entity_id}")
@@ -460,9 +474,22 @@ async def respond_to_approval(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    from src.ai.inward_auth.guard import enforce_tier, intent_for_approval
+
     status, notes = body.status, body.notes
     service = AIService(db)
-    await service.respond_to_approval(approval_id, status, current_user.id, notes)
+
+    # Scope first, then gate. Loading the approval through the company join is
+    # what stops a cross-tenant response; classifying it is what stops an
+    # un-stepped-up session approving a payout by clicking instead of asking
+    # (VG-05 — Pragya's path has always required the ceremony).
+    approval = await service.get_approval_for_company(
+        approval_id, current_user.company_id)
+    await enforce_tier(db, current_user, intent_for_approval(approval.context_snapshot))
+
+    await service.respond_to_approval(
+        approval_id, status, current_user.id, notes,
+        company_id=current_user.company_id)
 
     # Publish approval response to Redis so the worker's HITL checkpoint loop unblocks
     try:

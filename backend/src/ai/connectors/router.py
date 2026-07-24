@@ -27,6 +27,8 @@ from src.ai.connectors.sor_migration import (
     apply_migration,
     propose_migration,
 )
+from src.ai.inward_auth.guard import enforce_kind
+from src.ai.inward_auth.tiers import IntentKind
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.common.database import get_db
@@ -91,7 +93,13 @@ async def bind(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Activate (or re-activate) a connector for the tenant."""
+    """Activate (or re-activate) a connector for the tenant.
+
+    T2 (VG-05): this route receives live third-party credentials and declares
+    what the connector may write back. Handing an external system the right to
+    act for the tenant is a certified surface, per Vihara §15.2.
+    """
+    await enforce_kind(db, current_user, IntentKind.CONNECTOR_BINDING)
     try:
         binding = await ConnectorService(db).activate(
             cast(uuid.UUID, current_user.company_id), connector_id,
@@ -152,8 +160,15 @@ async def apply_master_migration(
     def_name: str,
     body: MigrateRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Step 2 — execute the owner-confirmed flip (never implicit)."""
+    """Step 2 — execute the owner-confirmed flip (never implicit).
+
+    T2 (VG-05): the flip changes which system is the master of record for an
+    HBS object — Vihara §15.2 calls the mastering declaration a certified tray.
+    Step 1 (``/propose``) stays ungated: a plan is a read.
+    """
+    await enforce_kind(db, current_user, IntentKind.CONNECTOR_BINDING)
     try:
         result = await apply_migration(
             cast(uuid.UUID, current_user.company_id), def_name, body.to_master,

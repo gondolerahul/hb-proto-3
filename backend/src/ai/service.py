@@ -855,8 +855,32 @@ class AIService:
         )
         return result.scalars().all()
 
-    async def respond_to_approval(self, approval_id: UUID, status: str, user_id: UUID, notes: str = None) -> HumanApproval:
-        result = await self.db.execute(select(HumanApproval).where(HumanApproval.id == approval_id))
+    async def get_approval_for_company(self, approval_id: UUID, company_id: UUID) -> HumanApproval:
+        """Load one approval, scoped to its owning tenant.
+
+        The scoping is the point. ``get_pending_approvals`` above has always
+        joined ``ExecutionRun`` to filter by company; ``respond_to_approval``
+        did not, so any authenticated user holding an approval UUID could
+        approve another tenant's HITL card — including a payment. An
+        unguessable identifier is not an authorisation control.
+        """
+        result = await self.db.execute(
+            select(HumanApproval)
+            .join(ExecutionRun)
+            .where(HumanApproval.id == approval_id, ExecutionRun.company_id == company_id)
+        )
+        approval = result.scalar_one_or_none()
+        if not approval:
+            # Deliberately the same 404 a missing row gives: a cross-tenant
+            # probe must not be able to tell "exists elsewhere" from "absent".
+            raise HTTPException(status_code=404, detail="Approval request not found")
+        return approval
+
+    async def respond_to_approval(self, approval_id: UUID, status: str, user_id: UUID, notes: str = None, company_id: UUID = None) -> HumanApproval:
+        stmt = select(HumanApproval).where(HumanApproval.id == approval_id)
+        if company_id is not None:
+            stmt = stmt.join(ExecutionRun).where(ExecutionRun.company_id == company_id)
+        result = await self.db.execute(stmt)
         approval = result.scalar_one_or_none()
         if not approval:
             raise HTTPException(status_code=404, detail="Approval request not found")

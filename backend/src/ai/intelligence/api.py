@@ -18,6 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.intelligence.models import CompanyProviderOptin, ModelRegistry, RoutingDecision
+from src.ai.inward_auth.guard import enforce_kind
+from src.ai.inward_auth.tiers import IntentKind
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.common.database import get_db
@@ -146,8 +148,16 @@ async def opt_in_provider(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Opt this tenant into a non-default-allowed provider (D5). Records who
-    accepted which disclosure version, when."""
+    accepted which disclosure version, when.
+
+    T2 (VG-05): this is the moment tenant data becomes visible to a new
+    jurisdiction. ``/revoke`` stays ungated on purpose — withdrawing consent
+    must never be harder than giving it, and the safe direction should not be
+    blocked by a step-up lockout.
+    """
     from src.ai.intelligence.allow_list import DisclosureError, opt_in
+
+    await enforce_kind(db, current_user, IntentKind.BINDING_CHANGE)
 
     try:
         row = await opt_in(

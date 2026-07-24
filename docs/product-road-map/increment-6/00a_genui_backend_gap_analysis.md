@@ -128,7 +128,11 @@ Two SSE endpoints exist and both are per-object: `ai/router.py:325` (`/execution
 Present: the checkpoint registry (19 defs), `sla_seconds` + `on_timeout` (TRUST `trust002`) for the quiet countdown, the approve/decline path (`/approvals/{id}/respond`).
 Absent: the composed manifest, the recommendation, and **per-path cost** — `planning/cost_estimator.py` estimates plan steps, not the consequences of the branches of one decision.
 
-### VG-05 · Certified actions are not tier-gated outside Pragya — *and this is a live gap today*
+### VG-05 · Certified actions are not tier-gated outside Pragya — ✅ **CLOSED 2026-07-24**
+
+> **Built ahead of the Inc-6 design round** (charter decision 5). See §7 below for the build note. A second, more serious defect was found while mapping the work: `respond_to_approval` had **no company scoping at all** — a cross-tenant IDOR on the HITL approval path. Both are fixed.
+
+The analysis that produced the task, kept for the record:
 
 `require_tier` is called from exactly three places: `inward_auth/api.py:135,199` (the step-up ceremony itself) and `pragya/{commands.py:207, runtime.py:320,342}`. **No other REST endpoint is tier-gated.** Concretely, today:
 
@@ -312,8 +316,47 @@ Carried into the Inc-6 clarifying round together with the charter's own question
 
 ---
 
+---
+
+## 7. Build note — VG-05 / VR-12 closed (2026-07-24)
+
+The first Increment-6 code. Owner decision 5 in the [charter](./00_charter.md) pulled this forward because it is a live gap in the shipped React app, not only a Vihara gap.
+
+### 7.1 What was wrong
+
+1. **No step-up on the REST path.** `require_tier` had exactly three call sites — the step-up ceremony itself (`inward_auth/api.py`) and Pragya (`pragya/{commands,runtime}.py`). Approving a payout, submitting a connector's OAuth credentials, flipping an HBS object's master, consenting to a foreign model provider, and raising an autonomy band were all reachable with a plain logged-in session. The classifier already called every one of them T2 — **only the console disagreed**, so the cheapest way to skip a ceremony was to stop talking and start clicking.
+2. **A cross-tenant hole on the approvals path** (found while mapping the work, not in the original analysis). `AIService.respond_to_approval` selected the approval **by id alone**, while `get_pending_approvals` immediately above it had always joined `ExecutionRun` to filter by company. Any authenticated user holding an approval UUID could approve or reject **another tenant's** HITL card, including a payment. An unguessable identifier is not an authorization control.
+
+### 7.2 What was built
+
+* **`ai/inward_auth/guard.py`** — the missing half of the Inc-3 gate. It owns **no policy**: it carries an intent to `classify` and the answer to `require_tier`, so console and Pragya cannot drift. `enforce_tier` (payload-dependent tier), `enforce_kind` (tier fixed by the route), `intent_for_approval` + `raises_autonomy` (the two pure mappings), `tier_refusal` (one refusal shape, carrying `needs_step_up` / `needs_oob` / `locked` so the caller opens the right ceremony).
+* **Scoping fix** — `AIService.get_approval_for_company` (the explicit scoped read) plus an optional `company_id` filter on `respond_to_approval` itself, so the path is scoped twice. A cross-tenant probe gets **404, not 403**: it must not learn that the id exists elsewhere.
+* **Five certified endpoints gated** — `POST /ai/approvals/{id}/respond` (tier from the approval's own category/amount/band), `POST /ai/connectors/{id}/bind`, `POST /ai/connectors/master/{def}/apply`, `POST /ai/intelligence/providers/{p}/opt-in`, and `PUT /ai/entities/{id}` **only when the edit raises the autonomy band**.
+* **`IntentKind.CONNECTOR_BINDING`** (T2) — added to the classifier, to Pragya's `INTENT_SCHEMA`, and to the keyword screen, so "connect my Zoho Books" screens the same whether typed, spoken or clicked. The `INTENT_SCHEMA` totality test caught the omission, which is what that test is for.
+* **`GateDecision.amount`** — the PolicyGate already computed the amount to compare against the band and then discarded it. It now travels into `context_snapshot`. Without it every high-impact approval failed up to **T3 by artifact rather than by policy**; the fix is the gate supplying the number, never the guard relaxing the rule. This also pre-builds part of what VG-04's tray needs (§6.1 wants each path's cost).
+
+### 7.3 Four design deltas
+
+1. **Imperative call, not a FastAPI dependency.** The first cut used `dependencies=[Depends(CertifiedAction(...))]`. It was replaced because this repo's router tests **invoke handler functions directly** (`test_connectors_router.py`), and a declarative dependency does not run on a direct call — the gate would have been invisible to every test claiming to cover the route, and deleting it would have broken nothing. One mechanism now, in the handler body, where a reader looks.
+2. **An uncategorised approval is T1, not T3.** "Ambiguity fails up" governs an *unknown category string*; the **absence** of a category means a non-policy checkpoint that never passed the §20 matrix and carries no external effect. Treating those as ambiguous would have put a passkey prompt in front of every routine confirmation a Solo Pack tenant sees — a regression disguised as rigour. Pinned by a test.
+3. **Only an autonomy *raise* is gated.** Renaming an agent or tuning a band **downward** stays ungated. A gate that fires constantly is a gate people learn to click through.
+4. **Revocation is never gated.** `/providers/{p}/revoke` stays open on purpose: withdrawing consent must never be harder than giving it, and the safe direction must not be blocked by a step-up lockout.
+
+**One existing suite had to change.** `test_connectors_router.py` bound a connector with a fixture user holding no ceremony — correct before, wrong now. Its fixture creates a real user (the session row FKs to `users`) and elevates it, so those tests exercise connector behaviour *on the far side* of the gate; the refusal path lives in `test_certified_actions_db.py`. A test that had to change is the honest signal that the behaviour changed.
+
+### 7.4 Verification
+
+Gates green: typecheck **260 files** strict · layout lint · **1550 unit** (+27 new) · **16 parity/eval** · **288 integration** (+7 new). No migration — the change is behavioural.
+
+The three security controls were **mutation-tested**, per the repo convention that a checker never observed to fail is a function that returns `True`: removing the approvals gate, removing the connector gate, and restoring the un-scoped approval lookup each made their own test fail with `DID NOT RAISE`, and only their own. The cross-tenant test needed **both** scoping layers removed to fail, which is what proved the second layer is real defence rather than decoration.
+
+**Honest limit:** the gate is enforced server-side and returns a machine-readable refusal, but **the React frontend does not yet handle it** — today a user hitting a gated action sees a generic 403 rather than a step-up modal. `StepUpModal.tsx` and `authn.service.ts` shipped in Inc-3 and have the pieces; wiring them to this refusal shape is a small frontend task, and it is a prerequisite for the shipped console to stay usable on those five endpoints.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-24 | v1.1 — **VG-05 / VR-12 closed** (§7): `ai/inward_auth/guard.py`, five certified endpoints gated, the PolicyGate now carries the amount, `IntentKind.CONNECTOR_BINDING` added — plus a **cross-tenant IDOR fix** on `respond_to_approval` found while mapping the work. Four design deltas; three controls mutation-tested. One honest limit: the React app does not yet render the step-up refusal. |
 | 2026-07-24 | v1.0 — first full gap analysis of the ratified Vihara spec against `master` @ `a403cda`: 23 backend gaps (VG-01…VG-23) and 12 road-map gaps (VR-01…VR-12); state re-verified (all gates green, push landed, integration 281); proposed Inc-6 workstream shape with TWIN and STRAT added. |

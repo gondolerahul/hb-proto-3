@@ -65,6 +65,12 @@ class GateDecision:
     category: str = "generic"
     band: Optional[float] = None
     hard_block: Optional[float] = None
+    # The amount that was compared against the band, in the category's unit.
+    # Carried so the raised approval is self-describing: the human tier gate
+    # (inward_auth.guard) needs it to tell a within-band act from an
+    # above-band one, and would otherwise have to fail every high-impact
+    # approval up to T3 for want of a number the gate already had.
+    amount: Optional[float] = None
 
 
 def _band_for(gov: Governance, rule: "CategoryRule") -> Optional[float]:
@@ -135,7 +141,7 @@ def evaluate_policy(intent: ActIntent, gov: Governance) -> GateDecision:
     if autonomy == AutonomyLevel.A1:
         return GateDecision(
             RAISE_HITL, checkpoint_key=rule.checkpoint_key, category=category,
-            band=band, hard_block=hard,
+            band=band, hard_block=hard, amount=amount,
             reason="A1 (propose) requires human approval of every external effect",
         )
 
@@ -143,7 +149,7 @@ def evaluate_policy(intent: ActIntent, gov: Governance) -> GateDecision:
     if rule.always_hitl:
         return GateDecision(
             RAISE_HITL, checkpoint_key=rule.checkpoint_key, category=category,
-            band=band, hard_block=hard,
+            band=band, hard_block=hard, amount=amount,
             reason=f"{category} always requires human approval",
         )
 
@@ -152,6 +158,7 @@ def evaluate_policy(intent: ActIntent, gov: Governance) -> GateDecision:
         if intent.is_bulk:
             return GateDecision(
                 RAISE_HITL, checkpoint_key=rule.checkpoint_key, category=category,
+                amount=amount,
                 reason="bulk/ambiguous data deletion requires human approval")
         return GateDecision(PASS, category=category, reason="single verified subject")
 
@@ -164,7 +171,7 @@ def evaluate_policy(intent: ActIntent, gov: Governance) -> GateDecision:
         if amount is not None and amount > band:
             return GateDecision(
                 RAISE_HITL, checkpoint_key=rule.checkpoint_key, category=category,
-                band=band, hard_block=hard,
+                band=band, hard_block=hard, amount=amount,
                 reason=f"{category} {amount} exceeds autonomous band {band}")
         return GateDecision(PASS, category=category, band=band,
                             reason=f"{category} within autonomous band {band}")
@@ -298,6 +305,10 @@ class PolicyGate:
                 "reason": decision.reason,
                 "band": decision.band,
                 "hard_block": decision.hard_block,
+                # VG-05: the human tier gate reads amount+band off this snapshot
+                # to classify the approval. Without the amount a high-impact
+                # category fails up to T3 by artifact rather than by policy.
+                "amount": decision.amount,
                 "message": f"PolicyGate: {decision.reason}",
             },
         )
