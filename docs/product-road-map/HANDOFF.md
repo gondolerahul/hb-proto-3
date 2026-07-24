@@ -27,7 +27,7 @@
 
 The remote (`origin`, an HTTPS GitHub URL) is at `19a3d4d` — Increment 1 + Inc-2 design docs + the **SLICE** build (pushed from a credentialed host earlier; read-only `git ls-remote` confirms). This VM has **no write credentials** (`no credential.helper`, no `gh`), so `git push` fails with `could not read Username`. Nothing is lost — all committed:
 
-* **`master`** — has **everything** merged: PACK + KAR + ONBOARD-backend + all of TRUST + **RETR** (verified 2026-07-22: `inc2/retr` IS merged; `git branch --no-merged master` is empty). **28+ commits ahead of `origin/master`**, not yet pushed.
+* **`master`** — has **everything** merged: PACK + KAR + ONBOARD-backend + all of TRUST + **RETR** (verified 2026-07-22: `inc2/retr` IS merged; `git branch --no-merged master` is empty). **15 commits ahead of `origin/master`**, not yet pushed (Increments 1–5).
 
 To publish, from an environment with GitHub write access:
 ```bash
@@ -151,7 +151,7 @@ Build order (from [increment-2/00_overview.md](./increment-2/00_overview.md) §4
 
    **FLEET — ✅ BUILT (2026-07-23, branch `inc5/rtr`), closes D5.** `ai/llm/openai_compat_adapter.py` (one adapter for GLM/Qwen/**Kimi** over an **injectable transport** — no live call), the three catalog rows as `preview` + `default_allowed=False`, `ai/intelligence/allow_list.py` (`effective_allow` = default-allowed ∪ opted-in, read **live**, wired into `IntelligenceRouter._enrich` so the filter runs *before* scoring), `company_provider_optin` (migration **`fleet001`**) + `/ai/intelligence/providers` opt-in/revoke, and the published [03a_data_flow_disclosure.md](./increment-5/03a_data_flow_disclosure.md). **Owner decision (2026-07-23): Kimi (Moonshot AI) replaces Mistral**, so all three expansion providers are China-hosted and opt-in — no default-allowed EU provider, a *stricter* posture than designed. Two independent gates now stand between a new provider and traffic: **tenant consent (D5)** and **EVX admission (§22.4)**. Build notes + four deltas: [03](./increment-5/03_fleet_expansion.md) §13.
 
-   **⇒ INCREMENT 5 IS COMPLETE** — REG + RTR (v1+v2) + EVX + FLEET all built, **B12 and D5 closed**, B9's build side done. 15 commits on `inc5/rtr`, **not yet merged to `master`**. Final gates: typecheck_ai 259 files strict · layout lint · **parity/eval 16** · **1523 unit** · **24 Inc-5 integration** · migrations `reg001`→`rtr001`→`fleet001` apply/rollback/re-apply (new head **`fleet001`**). The honest limits, both activation-time ops: no live GLM/Qwen/Kimi call, and admission *scoring* is injected (the gate logic itself is exercised).
+   **⇒ INCREMENT 5 IS COMPLETE & MERGED to local `master`** (2026-07-24, merge commit `merge(inc5): The Intelligence Engine`) — REG + RTR (v1+v2) + EVX + FLEET all built, **B12 and D5 closed**, B9's build side done. Post-merge gates re-run green on `master`: typecheck_ai 259 files strict · layout lint · parity/eval 16 · 1523 unit · **232 integration** · migration head **`fleet001`**. Migrations `reg001`→`rtr001`→`fleet001` all apply/rollback/re-apply (new head **`fleet001`**). The honest limits, both activation-time ops: no live GLM/Qwen/Kimi call, and admission *scoring* is injected (the gate logic itself is exercised).
 
 **Closed by PRAGYA-RT:** the four Inc-3 build gaps (stage advancement + artifact extraction T3, deferred reflection T6, script goldens T7), plus the two audit defects and Pragya's tool surface (T9, child entities). The Inc-3 deferred-set *correction* (Strategize/Decide are `SKIPPED`, not deferred) is what made T6's queue drainable.
 
