@@ -2,7 +2,7 @@
 
 > **Document class:** increment overview — the plan the six workstream docs hang off.
 > **Author:** Buddha Cognitive Lab (drafted by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.2 — decisions locked; all six workstream docs written; **LEARN complete (T1–T10)**, **SEGA T0–T4 built** (2026-07-25).
+> **Created:** 2026-07-24 · **Status:** v1.2 — decisions locked; all six workstream docs written; **LEARN complete (T1–T10)**, **SEGA T0–T6 built — D3 closed** (2026-07-25).
 > **Parent:** [00_charter.md](./00_charter.md) (goal, scope, the nine decisions) · [build_roadmap.md](../build_roadmap.md) §4
 > **Baseline:** `master` @ `8a54c27` — Increments 1–5 merged and pushed; VG-05 hardening built.
 
@@ -25,7 +25,7 @@ Two things about the shape are worth stating before the workstream docs:
 | # | Workstream | Closes | Doc |
 |---|---|---|---|
 | 1 | **LEARN** — learning store, charter tuning, B10 policy, KPI history, density store | **B10** ✅ closed | [01_learn.md](./01_learn.md) — **BUILT** |
-| 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** | [02_sega.md](./02_sega.md) — **T0–T4 built** |
+| 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** | [02_sega.md](./02_sega.md) — **T0–T6 built**, **D3** ✅ closed |
 | 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | — (VG-09/VG-10) | [03_twin.md](./03_twin.md) ✅ |
 | 4 | **STRAT** — Minutes→Propositions→Resolutions→Mandates→Reviews + HBS Planning depth | — (VG-11) | [04_strat.md](./04_strat.md) ✅ |
 | 5 | **GATE** — KAR-05 governed broadcast gates | — (VG-15) | [05_gate.md](./05_gate.md) ✅ |
@@ -77,7 +77,7 @@ poetry run pytest tests/integration -q         # needs DATABASE_URL
 poetry run alembic upgrade head
 ```
 
-Baseline to beat (as of 2026-07-25, after LEARN + SEGA T0–T4): typecheck **277 files**, **1715 unit**, **16 parity/eval**, **348 integration**, migration head **`sega002`**. *(The Inc-5 baseline this row started from was 260 / 1550 / 16 / 288 / `fleet001`.)*
+Baseline to beat (as of 2026-07-25, after LEARN + SEGA T0–T6): typecheck **281 files**, **1747 unit**, **16 parity/eval**, **355 integration**, migration head **`sega002`**. *(The Inc-5 baseline this row started from was 260 / 1550 / 16 / 288 / `fleet001`.)*
 
 Two gate notes specific to this increment:
 

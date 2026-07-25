@@ -10,6 +10,7 @@ read the history, and put an entity back.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -72,13 +73,16 @@ async def tenant():
         async with AsyncSessionLocal() as s:
             # Children before parents — the canary tests hang runs and signals
             # off the entity, and `execution_runs.entity_id` is a real FK.
-            for tbl in ("human_approvals_by_run", "signals", "execution_runs",
+            for tbl in ("by_run", "signals", "execution_runs",
                         "entity_versions", "hierarchical_entities"):
-                if tbl == "human_approvals_by_run":
-                    await s.execute(text(
-                        "DELETE FROM human_approvals WHERE run_id IN "
-                        "(SELECT id FROM execution_runs WHERE company_id = :c)"),
-                        {"c": str(cid)})
+                if tbl == "by_run":
+                    # Approvals and tool logs hang off runs, not off the
+                    # company — they need the join, and they go first.
+                    for child in ("human_approvals", "tool_interaction_logs"):
+                        await s.execute(text(
+                            f"DELETE FROM {child} WHERE run_id IN "
+                            "(SELECT id FROM execution_runs WHERE company_id = :c)"),
+                            {"c": str(cid)})
                     continue
                 await s.execute(text(f"DELETE FROM {tbl} WHERE company_id = :c"),
                                 {"c": str(cid)})
@@ -455,3 +459,171 @@ async def test_an_entity_with_no_ledger_history_stamps_nothing(tenant):
     async with AsyncSessionLocal() as db:
         assert await stamp_run_version(
             db, entity_id=uuid.uuid4(), cohort_key="k", fraction=0.25) is None
+
+
+# ── T5 · the sweep ───────────────────────────────────────────────────────────
+
+async def test_sweep_promotes_a_healthy_backed_canary(tenant):
+    """A Solo Pack entity with a clean canary and a track record is promoted."""
+    from src.ai.evolution.sweep import sweep_company
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as s:
+        await s.execute(text(
+            "UPDATE hierarchical_entities SET tags = CAST(:t AS json) WHERE id = :e"),
+            {"t": '["solo_pack"]', "e": str(tenant.entity_id)})
+        await s.commit()
+
+    ga = await _version(tenant.company_id, tenant.entity_id, version="2.0.1", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="2.0.2", status="canary")
+    for _ in range(12):
+        await _run_at(tenant.company_id, tenant.entity_id, ga)
+        await _run_at(tenant.company_id, tenant.entity_id, canary)
+
+    async with AsyncSessionLocal() as db:
+        summary = await sweep_company(db, tenant.company_id)
+        await db.commit()
+
+    assert summary["promoted"] == 1
+    async with AsyncSessionLocal() as db:
+        status = (await db.execute(text(
+            "SELECT status FROM entity_versions WHERE id = :i"), {"i": str(canary)})).scalar()
+    assert status == "ga"
+
+
+async def test_sweep_leaves_a_healthy_but_unbacked_canary_alone(tenant):
+    """Healthy evidence, no independent suite: left in place, not promoted on
+    its own say-so and not discarded for doing nothing wrong. A human decides.
+    """
+    from src.ai.evolution.sweep import sweep_company
+    from src.common.database import AsyncSessionLocal
+
+    ga = await _version(tenant.company_id, tenant.entity_id, version="2.1.1", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="2.1.2", status="canary")
+    for _ in range(12):
+        await _run_at(tenant.company_id, tenant.entity_id, ga)
+        await _run_at(tenant.company_id, tenant.entity_id, canary)
+
+    async with AsyncSessionLocal() as db:
+        summary = await sweep_company(db, tenant.company_id)
+        await db.commit()
+
+    assert summary["unpromotable"] == 1
+    assert summary["promoted"] == 0
+    async with AsyncSessionLocal() as db:
+        status = (await db.execute(text(
+            "SELECT status FROM entity_versions WHERE id = :i"), {"i": str(canary)})).scalar()
+    assert status == "canary"
+
+
+async def test_sweep_keeps_observing_a_thin_canary(tenant):
+    """A low-traffic entity sits in canary, and that is a state not a delay."""
+    from src.ai.evolution.sweep import sweep_company
+    from src.common.database import AsyncSessionLocal
+
+    ga = await _version(tenant.company_id, tenant.entity_id, version="2.2.1", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="2.2.2", status="canary")
+    await _run_at(tenant.company_id, tenant.entity_id, ga)
+    await _run_at(tenant.company_id, tenant.entity_id, canary)
+
+    async with AsyncSessionLocal() as db:
+        summary = await sweep_company(db, tenant.company_id)
+        await db.commit()
+
+    assert summary["observed"] == 1
+    assert summary["promoted"] == summary["rolled_back"] == 0
+
+
+async def test_an_undecided_canary_eventually_expires(tenant):
+    """An experiment with no end date is not an experiment.
+
+    Rolled back rather than promoted: the change failed to show it was an
+    improvement, and the burden of proof sits with the change.
+    """
+    from src.ai.evolution.sweep import sweep_company
+    from src.common.database import AsyncSessionLocal
+
+    await _version(tenant.company_id, tenant.entity_id, version="2.3.1", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="2.3.2", status="canary")
+
+    async with AsyncSessionLocal() as db:
+        summary = await sweep_company(
+            db, tenant.company_id, now=datetime.utcnow() + timedelta(days=30))
+        await db.commit()
+
+    assert summary["expired"] == 1
+    async with AsyncSessionLocal() as db:
+        status = (await db.execute(text(
+            "SELECT status FROM entity_versions WHERE id = :i"), {"i": str(canary)})).scalar()
+    assert status == "rolled_back"
+
+
+# ── T6 · taint descends from what the run actually read ──────────────────────
+
+async def test_a_run_that_scraped_the_web_is_no_longer_internal(tenant):
+    """D3's core case, and the one Increment 1 could not see.
+
+    The triggering signal said `internal`; the run then called a scraper. The
+    gate must judge it on what it has read, not on how it started.
+    """
+    from src.ai.evolution.taint import resolve_run_taint
+    from src.common.database import AsyncSessionLocal
+
+    version = await _version(tenant.company_id, tenant.entity_id,
+                             version="3.0.1", status="ga")
+    run_id = await _run_at(tenant.company_id, tenant.entity_id, version)
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text(
+            "INSERT INTO tool_interaction_logs (id, run_id, tool_id, tool_name, "
+            "success, created_at) VALUES (:i, :r, 'scraper_tool', 'scraper_tool', "
+            "true, now())"),
+            {"i": str(uuid.uuid4()), "r": str(run_id)})
+        await db.commit()
+
+        assert await resolve_run_taint(db, run_id, seed="internal") == "counterparty"
+
+
+async def test_a_run_that_read_nothing_external_keeps_its_seed(tenant):
+    from src.ai.evolution.taint import resolve_run_taint
+    from src.common.database import AsyncSessionLocal
+
+    version = await _version(tenant.company_id, tenant.entity_id,
+                             version="3.1.1", status="ga")
+    run_id = await _run_at(tenant.company_id, tenant.entity_id, version)
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text(
+            "INSERT INTO tool_interaction_logs (id, run_id, tool_id, tool_name, "
+            "success, created_at) VALUES (:i, :r, 'calculator', 'calculator', "
+            "true, now())"),
+            {"i": str(uuid.uuid4()), "r": str(run_id)})
+        await db.commit()
+
+        assert await resolve_run_taint(db, run_id, seed="internal") == "internal"
+
+
+async def test_the_resolved_taint_is_stamped_on_the_run(tenant):
+    """A column, because `context_state` is rewritten wholesale and "what did
+    this run know when it asked?" is an incident-review question."""
+    from src.ai.evolution.taint import record_run_taint, resolve_run_taint
+    from src.common.database import AsyncSessionLocal
+
+    version = await _version(tenant.company_id, tenant.entity_id,
+                             version="3.2.1", status="ga")
+    run_id = await _run_at(tenant.company_id, tenant.entity_id, version)
+
+    async with AsyncSessionLocal() as db:
+        level = await resolve_run_taint(db, run_id, seed="counterparty")
+        await record_run_taint(db, run_id, level)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        stamped = (await db.execute(text(
+            "SELECT taint_level FROM execution_runs WHERE id = :i"),
+            {"i": str(run_id)})).scalar()
+    assert stamped == "counterparty"

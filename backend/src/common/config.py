@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     # The largest share of an entity's runs a canarying change may serve. A
     # "canary" at 80% is a deployment with a reassuring name.
     SEGA_CANARY_FRACTION: float = 0.25
+    # An experiment with no end date is not an experiment. An undecided canary
+    # past this many days is rolled back, not promoted — the change failed to
+    # show it was an improvement, and the burden of proof sits with the change.
+    SEGA_CANARY_MAX_DAYS: int = 14
 
     # ── D1 — inward-channel authentication (Inc-3 AUTH, technical §11.3) ──
     # A step-up buys a short window, not a session: every T2/T3 command

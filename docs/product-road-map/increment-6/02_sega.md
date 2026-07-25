@@ -1,6 +1,6 @@
 # Increment 6 / SEGA — Self-Evolution, Bounded (closes B11, D3)
 
-> **Status:** v1.2 — design locked (§3). **T0–T4 BUILT** (2026-07-25, branch `inc6/sega`) — build notes §13. T5–T8 pending.
+> **Status:** v1.3 — design locked (§3). **T0–T6 BUILT** (2026-07-25, branch `inc6/sega`) — build notes §13. T7–T8 pending. **D3 is closed**; B11's predicate awaits its caller (T7).
 > **Closes:** register **B11** (self-evolving code blast radius) + **D3** (context taint / tool-call firewall) + gap-analysis **VG-10** (no canary for agent/process changes) and **VG-17** (no entity version ledger).
 > **Depends on:** LEARN ([01](./01_learn.md)) — SEGA consumes `learning.charter_tuning_proposed` · the shipped Meta-Agent surface (`ai/meta/`) · EVX's `require_independent_suites` + `intelligence/canary.py` (Inc 5) · the PolicyGate (`governance/policy_gate.py`).
 > **Feeds:** TWIN ([03](./03_twin.md)) — the promotion pipeline **calls** this canary; the Glasshouse diff reads the version ledger · Vihara's Gallery (Inc 7).
@@ -188,8 +188,8 @@ New signal types: `governance.entity_versioned`, `governance.entity_rolled_back`
 | **T2** ✅ | `entity_versions` + `sega001`; every `update_entity` writes a ledger row | `*_db` |
 | **T3** ✅ | `evolution/entity_canary.py` — cohort split, health from shipped telemetry, roll_back/promote | unit + `*_db` |
 | **T4** ✅ | Promotion calls `require_independent_suites`; PACK goldens registered as the incumbent suite | unit + `*_db` |
-| **T5** | The 01:50 UTC sweep + `governance.entity_*` signals | `*_db` |
-| **T6** | `evolution/taint_firewall.py` + `taint_level` + descent at the six entry points | unit (**existing PolicyGate tests must pass unchanged**) + `*_db` |
+| **T5** ✅ | The 01:50 UTC sweep + `governance.entity_*` signals | `*_db` |
+| **T6** ✅ | `evolution/taint_firewall.py` + `taint_level` + descent at the six entry points | unit (**existing PolicyGate tests must pass unchanged**) + `*_db` |
 | **T7** | Consume `learning.charter_tuning_proposed` → ledger → canary, end to end | `*_db` |
 | **T8** | Agent-proposed fields over `_sync_columns`, additive-only | unit + `*_db` |
 
@@ -276,15 +276,35 @@ The collision is nastier than a duplicate: **`db.add` defers the INSERT, so the 
 
 Fixed by making the **ledger** decide the number: `record_version` reads the existing versions for the entity and bumps the highest, ordered **numerically** (`1.0.10` above `1.0.9`; a string sort says the opposite). The docstring now states the limit of its own exception handling rather than overstating it.
 
-### 13.7 Verification (T0–T4)
+### 13.7 T5 — the sweep, and a canary that ends
 
-typecheck **277 files** strict · layout lint · **1715 unit** (+63) · **16 parity/eval** · **348 integration** (+19) · migration head **`sega002`**, applies/downgrades/re-applies.
+`evolution/sweep.py` + `evolution/crons.py`, at **01:50 UTC** — after C4's demotion sweep at 01:40, so a rolled-back entity is not simultaneously demoted for the failures its rollback has just removed.
+
+**Four outcomes per canary, and the fourth is the design delta.** Promoted, rolled back, still observing — and **healthy but unpromotable**: evidence is good, but no independent suite backs it (§22.2). Left in place with the reason logged, because the alternatives are promoting on self-assessment or discarding a change that has done nothing wrong. A human can promote it.
+
+**New: a canary expires.** An undecided canary past `SEGA_CANARY_MAX_DAYS` (14) is **rolled back**, not promoted. The design did not say this and it needed to: without it, a low-traffic entity's canary serves a quarter of its traffic *forever* — a permanent split disguised as a trial. Rolled back rather than promoted because the burden of proof sits with the change: it failed to show it was an improvement.
+
+### 13.8 T6 — D3, closed
+
+`evolution/taint_firewall.py` (pure ladder + firewall table) and `evolution/taint.py` (the DB half), with the enforcement replacing Increment 1's `counterparty` special case *inside* `evaluate_policy` — one enforcement point, not two.
+
+**Resolved at the gate, from the durable tool log.** The obvious alternative threads a taint value down through the loop, the step executor and the tool executor, and one of those — `core/agent_loop.py` — is pinned at its line cap. Worse, an in-memory value does not survive a **paused-and-resumed** run, which is exactly the shape a HITL-gated run has: the approval arrives hours later, in another process, and the context that made the act risky must still be known. `tool_interaction_logs` already records what a run called; reading it costs one query **per categorised act**, and a run that never proposes an external effect never pays for it.
+
+**One design delta, and it matters.** §7.4's table put `email_dispatch` and `broadcast` under `counterparty` → HITL. That is wrong, structurally: a run's taint is seeded from its triggering signal, so **every Karuna gateway run is counterparty-tainted from turn one**. Forcing a card there raises an approval on every gateway reply — the whole sellable path (SLICE's email→quote) — and makes A2+ meaningless for the gateways. *Replying to a counterparty is what a gateway is for*; the control that covers it is the Karuna profile (no monetary authority, counterparty text as data), not an approval on every reply. `external_write` stays in that cell: writing into a system of record because a stranger's message said so is a genuine escalation, and it is rare enough that a card is not noise.
+
+**Non-inferiority proved by mutation, not by assertion.** Disabling the firewall call failed **six pre-existing tests** — `test_kar_gateways.py` ×4, `test_policy_gate.py`, `test_policy_gate_loop.py` — which is the strongest available evidence that the new table *carries* the old rule rather than sitting beside it. Removing the descent failed only the new D3 test.
+
+**The new bite** is the `external_verified` row: a run that has read an external system may no longer move money autonomously, however high its band. Before D3 there was no level between "counterparty" and "fully trusted".
+
+### 13.9 Verification (T0–T6)
+
+typecheck **281 files** strict · layout lint · **1747 unit** (+95) · **16 parity/eval** · **355 integration** (+26) · migration head **`sega002`**, applies/downgrades/re-applies.
 
 **Honest limits.**
 
 * `blast_radius.admit_change` is written and mutation-tested but still has **no call sites** — nothing automated passes through it until T7.
-* **Only signal-driven runs are stamped.** `_spawn_run` in the dispatcher assigns a version; Pragya turns, manual executions and the deferred voice queue do not. Canary health therefore reflects the signal-driven workload — the Solo Pack's main path, but not all of it. An unstamped run is `NULL`, which reads as *not attributed*, never as "the incumbent".
-* **No sweep runs the canary yet** (T5). `measure_version`, `assess`, `promote` and `roll_back` are exercised by tests calling them directly; nothing schedules them.
+* **Only signal-driven runs are stamped with a version.** `_spawn_run` assigns one; Pragya turns, manual executions and the deferred voice queue do not. Canary health therefore reflects the signal-driven workload — the Solo Pack's main path, but not all of it. An unstamped run is `NULL`, which reads as *not attributed*, never as "the incumbent".
+* **Taint descends from tool calls only.** Three of §7.3's six entry points are wired: the signal seed, free-web tools, and connector/MCP reads. The other three need stores that do not exist yet — retrieved-chunk provenance is **LIB**, inbound-record-field origin needs the record service to carry it, and child-run taint needs the delegation path to propagate. The map lists all six so the gaps are visible in the code, not only here.
 * The ledger is written by `update_entity` only — entity creation and soft-delete do not record versions.
 
 ---
@@ -293,6 +313,7 @@ typecheck **277 files** strict · layout lint · **1715 unit** (+63) · **16 par
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.3 — **T5 + T6 built** (§13.7–§13.9). **D3 closed**: the four-level taint ladder replaces Increment 1's `counterparty` special case inside `evaluate_policy`, resolved at the gate from the durable tool log so it survives a paused-and-resumed run. Non-inferiority proved by mutation — disabling the firewall fails six pre-existing tests. Two deltas: an undecided canary now **expires** (an experiment with no end date is not an experiment), and outbound comms stay band-based at `counterparty` taint because every Karuna gateway run is counterparty-tainted from turn one. |
 | 2026-07-25 | v1.2 — **T3 + T4 built** (§13.4–§13.7). Migration `sega002` stores the run→version assignment rather than recomputing it; the canary verdict is three-way; the critic BLOCK rate dropped from the health set with the reason; promotion gated by `require_independent_suites` inside the mutation path. **A defect the tests found:** `record_version` bumped from the entity row, which can lag the ledger, and the resulting unique violation surfaced at the caller's commit — the version is now decided by the ledger and ordered numerically. |
 | 2026-07-25 | v1.1 — **T0–T2 built** (§13). Route paths in §2.1 corrected (`/api/v1/ai/tool-registry`, not `/ai/tools`). Rollback made exempt from the rate cap and kill switch but never from scope; `proposal_signal_id`'s FK dropped for import-lightness; `record_version` made non-raising. |
 | 2026-07-25 | v1.0 — design written. B11 restated against the code (the named `tool_versions` table does not exist; the risk does); **a live cross-tenant read of every tenant's tool entries found and scheduled as T0**; blast radius reduced to five checkable limits; the version ledger chosen as full snapshots; the entity canary kept separate from the model canary with the reason; D3 given a four-level ladder, a monotonic descent map and a pure firewall table that reproduces today's behaviour at `counterparty`. |
