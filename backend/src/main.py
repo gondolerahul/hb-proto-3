@@ -123,6 +123,8 @@ app.include_router(kpi_router, prefix="/api/v1")
 # the store ships now so observations start accumulating).
 from src.ai.learning.api import router as learning_router
 app.include_router(learning_router, prefix="/api/v1")
+from src.ai.twin.api import router as twin_router  # Inc 6 / TWIN — the Glasshouse
+app.include_router(twin_router, prefix="/api/v1")
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

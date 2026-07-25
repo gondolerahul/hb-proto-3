@@ -137,6 +137,12 @@ class SignalTypes:
     # is not yet polled.
     BROADCAST_INBOUND = "broadcast.inbound"
     BROADCAST_PUBLISHED = "broadcast.published"
+    # TWIN (Inc 6, VG-09): the Glasshouse's audit trail. A scenario run is
+    # tenant money spent (charter decision 7), and a promotion proposal is an
+    # argument someone may be asked about later — both belong on the bus rather
+    # than only in `twin_runs`.
+    TWIN_SCENARIO_RUN = "twin.scenario_run"
+    TWIN_PROMOTION_PROPOSED = "twin.promotion_proposed"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
 

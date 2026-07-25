@@ -56,6 +56,7 @@ CLEAN_PACKAGES: list[str] = [
     "learning",
     "evolution",
     "library",
+    "twin",
 ]
 
 

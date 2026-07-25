@@ -114,6 +114,24 @@ class Settings(BaseSettings):
     # show it was an improvement, and the burden of proof sits with the change.
     SEGA_CANARY_MAX_DAYS: int = 14
 
+    # ── TWIN (Inc-6) — the Glasshouse. Charter decision 7 made twin spend
+    # TENANT-initiated, so every what-if is visibly the tenant's money. These
+    # are the bounds that keep it cheap enough to actually use.
+    # The default replay window. Short on purpose: most questions a scenario
+    # asks are answered by last week, and a wider default would make the
+    # common case expensive for the benefit of the rare one.
+    TWIN_DEFAULT_WINDOW_DAYS: int = 7
+    # The hard cap. A **refusal**, never a truncation — silently shrinking a
+    # window would make two runs incomparable without saying so.
+    TWIN_MAX_WINDOW_DAYS: int = 30
+    # Below this many daily KPI points a forecast is refused outright rather
+    # than returned with an interval so wide nobody reads it. A forecast the
+    # day after LEARN ships is `unknown`, and it should be.
+    TWIN_MIN_SERIES_POINTS: int = 8
+    # Per-company daily twin spend. At the cap the shelf **parks** ("resumes
+    # tomorrow") rather than failing — the same posture platform work takes.
+    TWIN_DAILY_CAP_USD: float = 5.0
+
     # ── D1 — inward-channel authentication (Inc-3 AUTH, technical §11.3) ──
     # A step-up buys a short window, not a session: every T2/T3 command
     # re-checks at execution time, so this is how long an owner can keep

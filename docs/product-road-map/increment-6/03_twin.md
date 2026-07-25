@@ -1,6 +1,6 @@
 # Increment 6 / TWIN — The Glasshouse (closes VG-09)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Status:** v1.2 — **BUILT 2026-07-25** (branch `inc6/twin`, T1–T11 complete). Build notes + six design deltas in §14.
 > **Closes:** gap-analysis **VG-09** (the Glasshouse has no backend — the largest single gap). Consumes **VG-10**'s canary from SEGA rather than building a second one.
 > **Depends on:** LEARN ([01](./01_learn.md)) — the forecast engine reads `kpi_snapshots` · SEGA ([02](./02_sega.md)) — the promotion pipeline **calls** SEGA's entity canary and version ledger · `tenant_schema/data_plane.py` · the PolicyGate · `inward_auth/guard.py` (certified approval).
 > **Feeds:** STRAT ([04](./04_strat.md)) — mandate reviews read honesty grades · Vihara G5 (Increment 7).
@@ -190,8 +190,82 @@ T1 before everything: if the sibling-schema approach does not hold, every later 
 
 ---
 
+## 14. Build notes — T1 (2026-07-25, branch `inc6/twin`)
+
+**T1 is built. T2–T11 are not.** §11 says T1 goes first because "if the sibling-schema approach does not hold, every later task changes shape, and that is worth knowing in week one." **It holds**, and the risk row in [00_overview](./00_overview.md) §7 can be closed on that basis.
+
+### 14.1 What shipped
+
+`tenant_schema/data_plane.py`: a `Plane` enum threaded through `schema_name_for`, `ensure_ready`, `session` and `get_tenant_session`, defaulting to `LIVE` so all 46 existing call sites mean exactly what they always meant. Schema backend → `t_<hex>_tw`; container backend → a named `twin` schema inside the tenant's own database (the live plane there is the database's default schema and has no name to suffix). Plus `drop_twin` for §4.3's reaper. Tests: `tests/integration/test_twin_plane_db.py` (13).
+
+**No migration, as designed** — tenant tables bootstrap per tenant.
+
+### 14.2 Three build findings
+
+1. **Readiness must be memoised per *plane*, not per tenant.** The shipped `_ready` set keyed on `company_id.hex`; leaving it that way would let a readied live plane make the twin *look* ready, handing back a session pointed at a schema with no tables in it. Keyed `"{hex}:{plane}"` now.
+
+2. **The reaper drops the schema rather than truncating tables.** §4.3 says "rows dropped, schema kept and truncated for reuse". Truncating keeps `tenant_entity_defs` — so a scenario that varied the *schema* (which is exactly what a `charter` or `roster` scenario does) would leave that variation behind for the next run to inherit, silently. Dropping is the honest reset, and re-bootstrapping is cheap because the spine is small (§4.2 already says so).
+
+3. **`schema_translate_map` does not touch textual SQL.** It rewrites SQLAlchemy constructs only, so a raw `SELECT ... FROM tenant.tenant_records` resolves against a literal schema named `tenant` and fails outright. Everything reaching the twin plane must go through the ORM models. This is a constraint on **every later TWIN task** — T2's materialisation in particular, which §4.2 specifies as `INSERT … SELECT` between two schemas and will therefore have to build those statements with real schema names rather than the symbolic token.
+
+### 14.3 What the isolation test actually asserts
+
+Both directions (a twin write is invisible to live; a live write is invisible to the twin), the translate map carries exactly one mapping and it is the twin's, a reaped twin carries nothing over — and, the one that matters, **the real `RecordService` writes only where it was handed**. Isolated plumbing underneath a service that resolves its own schema would be no guarantee at all, so the guarantee is tested through the thing that will actually do the writing.
+
+### 14.4 T2–T11 (same branch, 2026-07-25)
+
+| Task | Where |
+|---|---|
+| T2 | `twin/materialise.py` — `Scope`, bounded `INSERT … SELECT`, `estimate_rows`, `reap` |
+| T3 | `twin/models.py` (`TwinScenario`, `TwinRun`) + migration **`twin001`** |
+| T4 | `twin/grading.py` — pure, total, worst-of-inputs, no input path accepts a grade |
+| T5 | `twin/replay.py` — signal selection over the window, handler injected |
+| T6 | `twin/substitution.py` — the stub registry |
+| T7 | `twin/forecast.py` — over LEARN's `kpi_snapshots`, refusing below the floor |
+| T8 | `twin/cost.py` + `CostAttribution.TWIN_RUN` + `TWIN_*` settings |
+| T9 | `twin/api.py` — shelf CRUD, estimate, runs, compare |
+| T10 | `twin/promotion.py` — evidence onto the approval card; SEGA owns the canary |
+| T11 | `twin/counterparties.py` — deterministic, disclosed simulated people |
+
+### 14.5 Six design deltas
+
+1. **Substitution is deny-by-default**, not the §7 allow-list. §7 lists what to stub; this stubs everything not explicitly recognised as plane-local or a read. The asymmetry decides it: forgetting to allow-list something costs a stubbed call in a rehearsal, while forgetting to deny-list something costs **a real external effect from a simulation**. A test asserts totality over `TOOL_CATEGORY_MAP`, so a category added later is substituted the day it lands — the same property GATE's totality test gives.
+
+2. **Seasonal-naive needed a drift term, and this was a correctness fix rather than a refinement.** Plain seasonal-naive repeats the value one season back, so on any trending series it projects the past and calls it the future — a business growing 10% a week would be forecast flat, forever. The week-on-week differences were already being computed as the residuals, so the drift was free; the interval is now the spread *around* the drift, since a series climbing steadily by 7 a week is highly predictable and the raw differences would have called it wildly noisy. Found by a test asserting a rising line projects upward.
+
+3. **The forecast refusal message is part of the deliverable.** §12 predicted "it will look broken"; the answer is that the refusal names the floor, the count and *why* it resolves with time rather than with a setting. "Not enough history" is filed under "broken"; "8 daily points needed, 3 recorded since 2026-07-22, no backfill by construction" is filed under "ask me again next week".
+
+4. **`twin001` is off `lib001`, not `sega001`.** GATE and LIB landed first, so the chain is `sega002 → gate001 → lib001 → twin001`. The `entity_version_id` FK into SEGA's ledger is what the design cared about, and `sega001` is an ancestor either way.
+
+5. **Two refusals are modelled as *results*, not errors** — over the daily cap and an unacknowledged estimate. `TwinRun.refusal_reason` is a column for this reason: a scenario that did not run is history a tenant may ask about, and swallowing it as an exception would lose it.
+
+6. **The reaper drops the schema rather than truncating** (recorded at T1, §14.2, and it matters more now that T2 exists): a scenario that varied the schema must not leave that variation for the next run to inherit.
+
+### 14.6 Mutation and structural tests
+
+* **T6, the load-bearing one** (§12: "one un-substituted tool is a real external effect from a rehearsal"): the mutation passes the registry through unchanged and asserts the real tool *is* reached, beside the shipped path on the same tool asserting it is not. Plus: the stub holds no reference to the real tool, the live registry is not mutated, and a tool whose schema raises still does not leak through.
+* **T4, structural**: no function in `grading.py` and no Pydantic model in `api.py` accepts a `grade` or an `override`, asserted by reflection — so adding one later fails here rather than quietly softening L6.
+* **T10, structural**: a grep over `ai/twin/` asserts TWIN defines no `CanaryThresholds`, no `assess(`, no `BlastRadius`. Decision 5 in a form that cannot drift.
+* **T2**: documents and `document_chunks` are asserted absent from the twin schema.
+
+### 14.7 Honest limits
+
+* **No scenario runner is wired end-to-end.** T5 selects the signals and counts what a handler did; the handler itself — an agent loop bound to a twin session and the substituted registry — is not built, so nothing yet writes a `TwinRun` from a real replay. The pieces are each tested; the assembly is not, and calling it done would be the dishonest version of this row.
+* **T2 is schema-backend only.** The container backend's live plane is the database's default schema and has no name, so the cross-schema `INSERT … SELECT` needs a different statement shape. It **refuses loudly** rather than copying from the wrong place. The schema backend is the tested default, so this blocks nothing today.
+* **The cost rates are declared, not measured** (`USD_PER_REPLAYED_SIGNAL`), and the estimate says so in the text the tenant reads. A number derived from a model price that changes weekly would be precise and wrong.
+* **The forecast is empty at launch**, by construction — it reads a series that started the day LEARN shipped. Correct, and §12 already called it.
+* **Wallet holds are not yet drawn** for a twin run: the cap and the attribution are in place, but nothing calls the hold mechanism because nothing runs a scenario yet (limit 1).
+
+### 14.8 Gates
+
+typecheck **300** files strict · layout lint · **1915 unit** · **16 parity/eval** (the attribution canary — green) · **421 integration** · `twin001` applies, rolls back and re-applies.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.2 — **T2–T11 BUILT; the workstream is complete.** §14.4–§14.8 added: the task map, six design deltas (deny-by-default substitution; seasonal-naive's missing drift term, which was a correctness fix; the refusal message as deliverable; `twin001` off `lib001`; refusals modelled as results; the reaper dropping rather than truncating), the mutation and structural tests, and five honest limits — chiefly that **no scenario runner is wired end-to-end**: the pieces are tested, the assembly is not. |
+| 2026-07-25 | v1.1 — **T1 BUILT.** §14 added: the sibling-schema prototype holds on both backends, so the overview's "no precedent in the codebase" risk is answered. Three build findings — readiness memoised per plane; the reaper drops rather than truncates (a schema-varying scenario would otherwise be inherited); and `schema_translate_map` not applying to textual SQL, which constrains T2's materialisation. |
 | 2026-07-25 | v1.0 — design written. The twin plane resolved as a sibling schema rather than a third data-plane backend, so both shipped backends host it unchanged; materialisation bounded and explicitly excluding embeddings; honesty grading made computed-only and monotone, with `replay ≠ determinism` stated where it cannot be missed; certified-action safety by tool substitution rather than a dry-run flag; the promotion pipeline delegated to SEGA's canary; six concrete answers to decision 7's cost consequence. |
