@@ -70,10 +70,18 @@ async def tenant():
         yield SimpleNamespace(company_id=cid, entity_id=eid)
     finally:
         async with AsyncSessionLocal() as s:
-            await s.execute(text("DELETE FROM entity_versions WHERE company_id = :c"),
-                            {"c": str(cid)})
-            await s.execute(text("DELETE FROM hierarchical_entities WHERE company_id = :c"),
-                            {"c": str(cid)})
+            # Children before parents — the canary tests hang runs and signals
+            # off the entity, and `execution_runs.entity_id` is a real FK.
+            for tbl in ("human_approvals_by_run", "signals", "execution_runs",
+                        "entity_versions", "hierarchical_entities"):
+                if tbl == "human_approvals_by_run":
+                    await s.execute(text(
+                        "DELETE FROM human_approvals WHERE run_id IN "
+                        "(SELECT id FROM execution_runs WHERE company_id = :c)"),
+                        {"c": str(cid)})
+                    continue
+                await s.execute(text(f"DELETE FROM {tbl} WHERE company_id = :c"),
+                                {"c": str(cid)})
             await s.execute(text("DELETE FROM companies WHERE id = :c"), {"c": str(cid)})
             await s.commit()
 
@@ -228,3 +236,222 @@ async def test_a_restore_refuses_across_tenants(tenant):
 
         assert await restore(db, entity, target, company_id=uuid.uuid4()) is None
         await db.rollback()
+
+
+# ── T3/T4 · the canary, against real telemetry ───────────────────────────────
+
+async def _version(cid: uuid.UUID, eid: uuid.UUID, *, version: str, status: str) -> uuid.UUID:
+    import json
+
+    from src.common.database import AsyncSessionLocal
+
+    vid = uuid.uuid4()
+    async with AsyncSessionLocal() as s:
+        await s.execute(
+            text("INSERT INTO entity_versions (id, entity_id, company_id, version, "
+                 "snapshot, change_kind, status, created_at) VALUES "
+                 "(:i, :e, :c, :v, CAST(:snap AS jsonb), 'charter_tune', :st, now())"),
+            {"i": str(vid), "e": str(eid), "c": str(cid), "v": version,
+             "snap": json.dumps({"goal": f"goal at {version}"}), "st": status})
+        await s.commit()
+    return vid
+
+
+async def _run_at(cid: uuid.UUID, eid: uuid.UUID, version_id: uuid.UUID, *,
+                  status="COMPLETED", cost="0.10") -> uuid.UUID:
+    from src.common.database import AsyncSessionLocal
+
+    rid = uuid.uuid4()
+    async with AsyncSessionLocal() as s:
+        await s.execute(
+            text("INSERT INTO execution_runs (id, entity_id, company_id, status, "
+                 "total_cost_usd, entity_version_id, created_at) VALUES "
+                 "(:i, :e, :c, :s, :cost, :v, now())"),
+            {"i": str(rid), "e": str(eid), "c": str(cid), "s": status,
+             "cost": cost, "v": str(version_id)})
+        await s.commit()
+    return rid
+
+
+async def test_health_is_measured_per_version(tenant):
+    """The reason sega002 stores the assignment: a verdict compares one
+    version's runs against another's, which needs the runs attributed."""
+    from src.ai.evolution.entity_canary import measure_version
+    from src.common.database import AsyncSessionLocal
+
+    ga = await _version(tenant.company_id, tenant.entity_id, version="1.0.1", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="1.0.2", status="canary")
+
+    for _ in range(12):
+        await _run_at(tenant.company_id, tenant.entity_id, ga)
+    for _ in range(11):
+        await _run_at(tenant.company_id, tenant.entity_id, canary, status="FAILED")
+
+    async with AsyncSessionLocal() as db:
+        incumbent = await measure_version(db, ga)
+        candidate = await measure_version(db, canary)
+
+    assert incumbent.runs == 12 and incumbent.failures == 0
+    assert candidate.runs == 11 and candidate.failures == 11
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM execution_runs WHERE company_id = :c"),
+                         {"c": str(tenant.company_id)})
+        await db.commit()
+
+
+async def test_a_regressing_canary_is_rolled_back_and_the_entity_restored(tenant):
+    """End to end: measure → assess → roll back → the entity is back where it
+    was, and the ledger says so."""
+    from src.ai.evolution.entity_canary import assess, measure_version, roll_back
+    from src.ai.evolution.models import EntityVersion
+    from src.ai.orm.entity import HierarchicalEntity
+    from src.common.database import AsyncSessionLocal
+    from sqlalchemy import select
+
+    ga = await _version(tenant.company_id, tenant.entity_id, version="1.0.1", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="1.0.2", status="canary")
+    for _ in range(12):
+        await _run_at(tenant.company_id, tenant.entity_id, ga)
+    for _ in range(12):
+        await _run_at(tenant.company_id, tenant.entity_id, canary, status="FAILED")
+
+    async with AsyncSessionLocal() as db:
+        verdict = assess(await measure_version(db, canary),
+                         await measure_version(db, ga))
+        assert verdict.action == "roll_back"
+
+        entity = (await db.execute(select(HierarchicalEntity).where(
+            HierarchicalEntity.id == tenant.entity_id))).scalar_one()
+        version = (await db.execute(select(EntityVersion).where(
+            EntityVersion.id == canary))).scalar_one()
+
+        await roll_back(db, entity, version, company_id=tenant.company_id)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        entity = (await db.execute(select(HierarchicalEntity).where(
+            HierarchicalEntity.id == tenant.entity_id))).scalar_one()
+        assert entity.goal == "goal at 1.0.1"
+
+        statuses = dict((await db.execute(text(
+            "SELECT version, status FROM entity_versions WHERE entity_id = :e"),
+            {"e": str(tenant.entity_id)})).all())
+        assert statuses["1.0.2"] == "rolled_back"
+
+        emitted = (await db.execute(text(
+            "SELECT type FROM signals WHERE company_id = :c"),
+            {"c": str(tenant.company_id)})).scalars().all()
+        assert "governance.entity_rolled_back" in emitted
+
+        await db.execute(text("DELETE FROM signals WHERE company_id = :c"),
+                         {"c": str(tenant.company_id)})
+        await db.execute(text("DELETE FROM execution_runs WHERE company_id = :c"),
+                         {"c": str(tenant.company_id)})
+        await db.commit()
+
+
+async def test_promotion_refuses_a_change_no_independent_suite_backs(tenant):
+    """T4 — the exam predates the student, and this entity sat no exam.
+
+    The refusal is inside `promote`, before the status flip, so a new caller
+    cannot forget it (the `RegistryService.activate` precedent).
+    """
+    from src.ai.evolution.entity_canary import promote
+    from src.ai.evolution.models import EntityVersion
+    from src.ai.intelligence.admission import AdmissionError, SuiteSet
+    from src.common.database import AsyncSessionLocal
+    from sqlalchemy import select
+
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="1.0.5", status="canary")
+
+    async with AsyncSessionLocal() as db:
+        version = (await db.execute(select(EntityVersion).where(
+            EntityVersion.id == canary))).scalar_one()
+        with pytest.raises(AdmissionError):
+            await promote(db, version,
+                          suites=SuiteSet(incumbent_golden=True, platform_curated=False))
+        await db.rollback()
+
+    async with AsyncSessionLocal() as db:
+        status = (await db.execute(text(
+            "SELECT status FROM entity_versions WHERE id = :i"), {"i": str(canary)})).scalar()
+    assert status == "canary", "a refused promotion must not have moved the version"
+
+
+async def test_a_backed_promotion_supersedes_the_previous_ga(tenant):
+    """One GA at a time, or "which version is live" has two answers."""
+    from src.ai.evolution.entity_canary import promote
+    from src.ai.evolution.models import EntityVersion
+    from src.ai.intelligence.admission import SuiteSet
+    from src.common.database import AsyncSessionLocal
+    from sqlalchemy import select
+
+    old_ga = await _version(tenant.company_id, tenant.entity_id,
+                            version="1.0.6", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="1.0.7", status="canary")
+
+    async with AsyncSessionLocal() as db:
+        version = (await db.execute(select(EntityVersion).where(
+            EntityVersion.id == canary))).scalar_one()
+        await promote(db, version,
+                      suites=SuiteSet(incumbent_golden=True, platform_curated=True))
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        statuses = dict((await db.execute(text(
+            "SELECT id::text, status FROM entity_versions WHERE entity_id = :e"),
+            {"e": str(tenant.entity_id)})).all())
+    assert statuses[str(canary)] == "ga"
+    assert statuses[str(old_ga)] == "superseded"
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM signals WHERE company_id = :c"),
+                         {"c": str(tenant.company_id)})
+        await db.commit()
+
+
+async def test_stamping_prefers_the_incumbent_when_there_is_no_canary(tenant):
+    """Ordinary life: no experiment running, every run attributed to GA."""
+    from src.ai.evolution.entity_canary import stamp_run_version
+    from src.common.database import AsyncSessionLocal
+
+    ga = await _version(tenant.company_id, tenant.entity_id, version="1.0.8", status="ga")
+    async with AsyncSessionLocal() as db:
+        assigned = await stamp_run_version(
+            db, entity_id=tenant.entity_id, cohort_key=str(uuid.uuid4()), fraction=0.25)
+    assert assigned == ga
+
+
+async def test_stamping_splits_traffic_when_a_canary_exists(tenant):
+    """Both sides get served, and neither gets all of it."""
+    from src.ai.evolution.entity_canary import stamp_run_version
+    from src.common.database import AsyncSessionLocal
+
+    ga = await _version(tenant.company_id, tenant.entity_id, version="1.0.9", status="ga")
+    canary = await _version(tenant.company_id, tenant.entity_id,
+                            version="1.1.0", status="canary")
+
+    async with AsyncSessionLocal() as db:
+        assignments = [
+            await stamp_run_version(db, entity_id=tenant.entity_id,
+                                    cohort_key=str(uuid.uuid4()), fraction=0.5)
+            for _ in range(40)
+        ]
+
+    assert set(assignments) == {ga, canary}
+
+
+async def test_an_entity_with_no_ledger_history_stamps_nothing(tenant):
+    """NULL means "not attributed", never "the incumbent" — a run from an
+    unstamped path must not be counted as evidence for either side."""
+    from src.ai.evolution.entity_canary import stamp_run_version
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        assert await stamp_run_version(
+            db, entity_id=uuid.uuid4(), cohort_key="k", fraction=0.25) is None

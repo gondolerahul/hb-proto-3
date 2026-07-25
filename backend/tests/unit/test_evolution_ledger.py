@@ -74,3 +74,32 @@ def test_governance_is_snapshotted_even_though_it_is_never_self_modified():
     """
     assert "governance" in SNAPSHOT_BLOCKS
     assert "capabilities" in SNAPSHOT_BLOCKS
+
+
+# ── version ordering (the collision this prevents) ───────────────────────────
+
+def test_versions_are_ordered_numerically_not_lexically():
+    """`"1.0.10"` is above `"1.0.9"`; a string sort says the opposite.
+
+    This is what stops the ledger handing out a number that already exists —
+    a collision that surfaces at the caller's *commit*, because `db.add`
+    defers the INSERT, and takes their whole transaction with it.
+    """
+    from src.ai.evolution.ledger import highest_version
+
+    assert highest_version(["1.0.9", "1.0.10", "1.0.2"]) == "1.0.10"
+    assert highest_version(["1.0.1", "2.0.0", "1.9.9"]) == "2.0.0"
+
+
+def test_unparseable_versions_are_skipped_not_ranked():
+    """A version nobody can order should not decide what comes next."""
+    from src.ai.evolution.ledger import highest_version
+
+    assert highest_version(["junk", "1.0.3", "v2"]) == "1.0.3"
+
+
+def test_an_empty_or_all_bad_ledger_has_no_highest():
+    from src.ai.evolution.ledger import highest_version
+
+    assert highest_version([]) is None
+    assert highest_version(["junk", "nonsense"]) is None

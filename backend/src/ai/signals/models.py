@@ -122,6 +122,11 @@ class SignalTypes:
     LEARNING_CHARTER_TUNING_PROPOSED = "learning.charter_tuning_proposed"
     LEARNING_DRIFT_DETECTED = "learning.drift_detected"
     LEARNING_DENSITY_OBSERVED = "learning.density_observed"
+    # SEGA (Inc 6, B11/VG-17): the entity version ledger's audit trail. A
+    # promotion and a rollback are both governance events an owner may be asked
+    # about later, so they go on the bus rather than only into a table.
+    GOVERNANCE_ENTITY_VERSIONED = "governance.entity_versioned"
+    GOVERNANCE_ENTITY_ROLLED_BACK = "governance.entity_rolled_back"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
 

@@ -1,6 +1,6 @@
 # Increment 6 / SEGA — Self-Evolution, Bounded (closes B11, D3)
 
-> **Status:** v1.1 — design locked (§3). **T0–T2 BUILT** (2026-07-25, branch `inc6/sega`) — build notes §13. T3–T8 pending.
+> **Status:** v1.2 — design locked (§3). **T0–T4 BUILT** (2026-07-25, branch `inc6/sega`) — build notes §13. T5–T8 pending.
 > **Closes:** register **B11** (self-evolving code blast radius) + **D3** (context taint / tool-call firewall) + gap-analysis **VG-10** (no canary for agent/process changes) and **VG-17** (no entity version ledger).
 > **Depends on:** LEARN ([01](./01_learn.md)) — SEGA consumes `learning.charter_tuning_proposed` · the shipped Meta-Agent surface (`ai/meta/`) · EVX's `require_independent_suites` + `intelligence/canary.py` (Inc 5) · the PolicyGate (`governance/policy_gate.py`).
 > **Feeds:** TWIN ([03](./03_twin.md)) — the promotion pipeline **calls** this canary; the Glasshouse diff reads the version ledger · Vihara's Gallery (Inc 7).
@@ -186,8 +186,8 @@ New signal types: `governance.entity_versioned`, `governance.entity_rolled_back`
 | **T0** ✅ | **Scope the tool registry reads** (§2.1) — company join on list + get, 404 on cross-tenant miss, platform (`company_id IS NULL`) rows stay visible to all | `*_db`, **mutation-tested** |
 | **T1** ✅ | `evolution/blast_radius.py` — the five limits, pure | unit, **each limit mutation-tested** |
 | **T2** ✅ | `entity_versions` + `sega001`; every `update_entity` writes a ledger row | `*_db` |
-| **T3** | `evolution/entity_canary.py` — cohort split, health from shipped telemetry, roll_back/promote | unit + `*_db` |
-| **T4** | Promotion calls `require_independent_suites`; PACK goldens registered as the incumbent suite | unit |
+| **T3** ✅ | `evolution/entity_canary.py` — cohort split, health from shipped telemetry, roll_back/promote | unit + `*_db` |
+| **T4** ✅ | Promotion calls `require_independent_suites`; PACK goldens registered as the incumbent suite | unit + `*_db` |
 | **T5** | The 01:50 UTC sweep + `governance.entity_*` signals | `*_db` |
 | **T6** | `evolution/taint_firewall.py` + `taint_level` + descent at the six entry points | unit (**existing PolicyGate tests must pass unchanged**) + `*_db` |
 | **T7** | Consume `learning.charter_tuning_proposed` → ledger → canary, end to end | `*_db` |
@@ -247,11 +247,45 @@ Each limit was mutation-tested on its own and failed **only** its own tests: the
 
 `SNAPSHOT_BLOCKS` fixes what a version *is*, so a block added to `HierarchicalEntity` later is a deliberate addition to history rather than a silent omission — and secrets or transient attributes cannot drift in. Note the ledger snapshots `governance` and `capabilities` **even though they are never self-modified**: the ledger records what happened, `blast_radius` decides what may happen, and conflating them would leave the most consequential human edits unrecorded.
 
-### 13.4 Verification (T0–T2)
+### 13.4 T3 — the canary
 
-typecheck **276 files** strict · layout lint · **1691 unit** (+39) · **16 parity/eval** · **341 integration** (+12) · migration head **`sega001`**, applies/downgrades/re-applies.
+`evolution/entity_canary.py` + migration **`sega002`** (`execution_runs.entity_version_id`) + the stamp in `signals/dispatcher._spawn_run`.
 
-**Honest limits.** `blast_radius.admit_change` is written and tested but has **no call sites yet** — nothing automated goes through it until T7 wires the LEARN proposal path, so today it is a guarantee waiting for a caller. The ledger is written by `update_entity` only; entity *creation* and soft-delete do not yet record versions.
+**The verdict is three-way: healthy / unhealthy / *not decided yet*.** Collapsing "not enough evidence" into either of the others is the failure mode — into healthy and every change ships on a quiet week, into unhealthy and every change is rolled back on one. §6's "a canary is a state, not a delay" is that third value, and it has its own tests.
+
+**Four deltas.**
+
+1. **A stored assignment, not a recomputed one** (`sega002`). The cohort split is a deterministic hash, so in principle the side could be re-derived — but only under the *fraction that was in force at the time*. Change the fraction and every past run silently re-assigns, quietly rewriting the evidence a rollback decision rested on. `entity_version_id` records what actually happened. **No FK**, for the `sega001` reason: `execution_runs` is imported almost everywhere and an FK would drag the evolution mappers in with it.
+2. **The cohort hash is `hashlib`, not `hash()`.** Python salts `hash()` per process, so a worker restart would silently re-draw every in-flight cohort. Pinned by a test.
+3. **Health is judged relative to the entity's own predecessor, never a fleet average.** An entity whose normal failure rate is 30% is not unhealthy for being itself; the question is whether *this version* is worse than the one before it.
+4. **The critic BLOCK rate was dropped from the health set.** The design listed it; it lives in `execution_runs.context_state`, a JSON blob the loop rewrites wholesale, and a health metric read from an unversioned blob is one that will silently change meaning. Failure rate, human-rejection rate and cost per run are real columns, and human rejection is the one a pure uptime metric would have missed — a change people keep refusing is a bad change even when nothing errors.
+
+### 13.5 T4 — admission before promotion
+
+`promote()` calls EVX's `require_independent_suites` **before** the status flip, inside the function rather than beside it — the `RegistryService.activate` precedent: a gate in the mutation path cannot be forgotten by a new caller. A test asserts a refused promotion leaves the version still `canary`.
+
+`suites_for_entity` maps §22.2 onto an entity honestly: `platform_curated` is true when the entity descends from a Solo Pack template (the **PACK behavioural goldens**, `increment-2/03b`, cover its class), and `incumbent_golden` is true when a predecessor accumulated enough observed runs to have set a bar — *"the exam predates the student"* in the form an entity can supply it.
+
+**The consequence is real and intended: a tenant's hand-built agent has no curated suite and therefore cannot be promoted automatically.** A human may still promote it; these limits govern *automated* change only.
+
+### 13.6 A defect the tests found
+
+`record_version` bumped from `entity.version`, and the entity row can lag the ledger — the canary and promotion paths write versions directly, and a restore deliberately does not rewind `entity.version`. The bump then collided with a row that already existed.
+
+The collision is nastier than a duplicate: **`db.add` defers the INSERT, so the unique violation surfaces at the caller's *commit*** and takes their whole transaction with it. So the module's "never raises, a person's edit is never lost" promise did not actually hold — a `try/except` around row construction cannot catch a flush-time failure.
+
+Fixed by making the **ledger** decide the number: `record_version` reads the existing versions for the entity and bumps the highest, ordered **numerically** (`1.0.10` above `1.0.9`; a string sort says the opposite). The docstring now states the limit of its own exception handling rather than overstating it.
+
+### 13.7 Verification (T0–T4)
+
+typecheck **277 files** strict · layout lint · **1715 unit** (+63) · **16 parity/eval** · **348 integration** (+19) · migration head **`sega002`**, applies/downgrades/re-applies.
+
+**Honest limits.**
+
+* `blast_radius.admit_change` is written and mutation-tested but still has **no call sites** — nothing automated passes through it until T7.
+* **Only signal-driven runs are stamped.** `_spawn_run` in the dispatcher assigns a version; Pragya turns, manual executions and the deferred voice queue do not. Canary health therefore reflects the signal-driven workload — the Solo Pack's main path, but not all of it. An unstamped run is `NULL`, which reads as *not attributed*, never as "the incumbent".
+* **No sweep runs the canary yet** (T5). `measure_version`, `assess`, `promote` and `roll_back` are exercised by tests calling them directly; nothing schedules them.
+* The ledger is written by `update_entity` only — entity creation and soft-delete do not record versions.
 
 ---
 
@@ -259,5 +293,6 @@ typecheck **276 files** strict · layout lint · **1691 unit** (+39) · **16 par
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.2 — **T3 + T4 built** (§13.4–§13.7). Migration `sega002` stores the run→version assignment rather than recomputing it; the canary verdict is three-way; the critic BLOCK rate dropped from the health set with the reason; promotion gated by `require_independent_suites` inside the mutation path. **A defect the tests found:** `record_version` bumped from the entity row, which can lag the ledger, and the resulting unique violation surfaced at the caller's commit — the version is now decided by the ledger and ordered numerically. |
 | 2026-07-25 | v1.1 — **T0–T2 built** (§13). Route paths in §2.1 corrected (`/api/v1/ai/tool-registry`, not `/ai/tools`). Rollback made exempt from the rate cap and kill switch but never from scope; `proposal_signal_id`'s FK dropped for import-lightness; `record_version` made non-raising. |
 | 2026-07-25 | v1.0 — design written. B11 restated against the code (the named `tool_versions` table does not exist; the risk does); **a live cross-tenant read of every tenant's tool entries found and scheduled as T0**; blast radius reduced to five checkable limits; the version ledger chosen as full snapshots; the entity canary kept separate from the model canary with the reason; D3 given a four-level ladder, a monotonic descent map and a pure firewall table that reproduces today's behaviour at `counterparty`. |

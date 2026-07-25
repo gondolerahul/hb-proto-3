@@ -31,6 +31,7 @@ from src.ai.evolution.models import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "highest_version",
     "next_version",
     "snapshot_of",
     "record_version",
@@ -57,12 +58,32 @@ def next_version(current: str | None) -> str:
     a malformed version string is not a reason to refuse to record history,
     which is the moment history matters most.
     """
-    parts = (current or "1.0.0").split(".")
-    try:
-        major, minor, patch = (int(parts[0]), int(parts[1]), int(parts[2]))
-    except (IndexError, ValueError):
+    parsed = _parse(current)
+    if parsed is None:
         return "1.0.1"
+    major, minor, patch = parsed
     return f"{major}.{minor}.{patch + 1}"
+
+
+def _parse(version: str | None) -> tuple[int, int, int] | None:
+    parts = (version or "").split(".")
+    try:
+        return int(parts[0]), int(parts[1]), int(parts[2])
+    except (IndexError, ValueError):
+        return None
+
+
+def highest_version(versions: list[str]) -> str | None:
+    """The greatest parseable version in a list, ordered numerically. Pure.
+
+    Numerically, not lexically: ``"1.0.10"`` is above ``"1.0.9"``, and a string
+    sort says the opposite. Unparseable entries are skipped rather than ranked,
+    because a version nobody can order should not decide what comes next.
+    """
+    ranked = [(p, v) for v, p in ((v, _parse(v)) for v in versions) if p is not None]
+    if not ranked:
+        return None
+    return max(ranked)[1]
 
 
 async def record_version(
@@ -78,18 +99,32 @@ async def record_version(
 ) -> EntityVersion | None:
     """Write a ledger row for ``entity``'s current state. The caller commits.
 
-    Returns ``None`` on failure and never raises. That is a deliberate
-    asymmetry with the rest of SEGA: the blast-radius predicate must refuse
-    loudly, but *recording history* must never be the reason a human's edit
-    fails. A missing ledger row is a gap in an audit trail; a failed save is a
-    person's work lost.
+    **The next version comes from the ledger, not from the entity row.** They
+    can drift — the canary and promotion paths write versions directly, and a
+    restore deliberately does not rewind ``entity.version`` — and bumping from
+    a stale entity value collides with a row that already exists. That
+    collision is nastier than it looks: ``db.add`` defers the INSERT, so the
+    unique violation surfaces at the caller's *commit* and takes their whole
+    transaction with it. The ledger owns the constraint, so the ledger decides
+    the number.
+
+    Returns ``None`` when the row cannot be *constructed*. Note the honest
+    limit of that: it cannot catch a failure that only happens at flush time,
+    which is exactly why the collision above is prevented rather than caught.
 
     ``bump=False`` records the state under the entity's existing version — used
     when capturing the "before" of a change that is about to happen.
     """
     try:
-        version = next_version(getattr(entity, "version", None)) if bump else str(
-            getattr(entity, "version", None) or "1.0.0")
+        if bump:
+            existing = list((await db.execute(
+                select(EntityVersion.version).where(
+                    EntityVersion.entity_id == entity.id)
+            )).scalars().all())
+            base = highest_version(existing) or getattr(entity, "version", None)
+            version = next_version(base)
+        else:
+            version = str(getattr(entity, "version", None) or "1.0.0")
 
         row = EntityVersion(
             entity_id=entity.id,

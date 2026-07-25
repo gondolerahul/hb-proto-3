@@ -102,6 +102,14 @@ class Settings(BaseSettings):
     # which is what keeps an empty store from making every model look bad.
     LEARN_OBSERVATION_MIN_SAMPLES: int = 20
 
+    # ── B11 — SEGA (Inc-6). Blast-radius limits on automated self-evolution.
+    # A self-heal loop that has found a way to keep proposing is contained by
+    # arithmetic rather than by judgement.
+    SEGA_MAX_CHANGES_PER_DAY: int = 3
+    # The largest share of an entity's runs a canarying change may serve. A
+    # "canary" at 80% is a deployment with a reassuring name.
+    SEGA_CANARY_FRACTION: float = 0.25
+
     # ── D1 — inward-channel authentication (Inc-3 AUTH, technical §11.3) ──
     # A step-up buys a short window, not a session: every T2/T3 command
     # re-checks at execution time, so this is how long an owner can keep
