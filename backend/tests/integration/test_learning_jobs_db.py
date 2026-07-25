@@ -1,4 +1,4 @@
-"""LEARN T2 + T3 — the two daily jobs, against a real database.
+"""LEARN T2-T5 — the jobs, the read path, and the learning loop, against a real DB.
 
 T2 (`pool_day`) is where the B10 floor meets actual rows: the pure grouping is
 covered in `test_learning_pooling.py`, so what matters here is that the SQL
@@ -7,8 +7,14 @@ doubling it, and that a below-floor group leaves **nothing** behind.
 
 T3 (`snapshot_company` / `snapshot_all`) is the job that starts the clock. The
 property worth a database is the one that looks like a bug until you know the
-rule: a brand-new tenant produces ten rows of *recorded absence*, not zero rows
-and not ten zeroes.
+rule: a brand-new tenant records *absences*, not zeroes — with the one honest
+exception the tests pin.
+
+T4 (`get_kpi_history`) is the single read path four later surfaces share, so
+company scoping and the shape of an empty series both matter here.
+
+T5 (`outcomes`) is charter decision 3 in practice: the signal bus *is* the
+tenant learning store, and candidates land in the shipped CORTEX lifecycle.
 
 Self-managed committed fixtures (the `test_certified_actions_db.py` pattern) —
 these jobs commit, and the tenant plane bootstraps on a different connection
@@ -58,9 +64,15 @@ async def _drop_company(cid: uuid.UUID) -> None:
     async with engine.begin() as conn:
         await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name_for(cid)}" CASCADE'))
     async with AsyncSessionLocal() as s:
-        for tbl in ("kpi_snapshots", "routing_decisions", "human_approvals_noop"):
-            if tbl == "human_approvals_noop":
-                continue
+        # Children before parents — `ensure_sheel` (used by the candidate test)
+        # creates an entity plus its loop rows, and cortex trees hang off the
+        # company too. Same ordering discipline as `test_certified_actions_db`.
+        await s.execute(text(
+            "DELETE FROM cortex_nodes WHERE tree_id IN "
+            "(SELECT id FROM cortex_trees WHERE company_id = :c)"), {"c": str(cid)})
+        for tbl in ("cortex_trees", "kpi_snapshots", "routing_decisions", "signals",
+                    "budget_envelopes", "loop_runtime", "execution_runs",
+                    "hierarchical_entities"):
             await s.execute(text(f"DELETE FROM {tbl} WHERE company_id = :c"), {"c": str(cid)})
         await s.execute(text("DELETE FROM companies WHERE id = :c"), {"c": str(cid)})
         await s.commit()
@@ -308,3 +320,285 @@ async def test_the_reaper_bounds_the_table_and_spares_the_window(companies):
             "SELECT DISTINCT captured_on FROM kpi_snapshots WHERE company_id = :c"),
             {"c": str(cid)})).scalars().all()
     assert remaining == [recent]
+
+
+# ── T4 · the history read path ───────────────────────────────────────────────
+
+def _user(company_id: uuid.UUID):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(id=uuid.uuid4(), company_id=company_id, role="admin")
+
+
+async def test_history_returns_the_recorded_series_absences_included(companies):
+    """Absences are part of the series, not noise filtered out of it.
+
+    A caller drawing a trend needs to see where the line starts and why it
+    could not start earlier — which is the whole reason the snapshot job
+    records unmeasurable days at all.
+    """
+    from src.ai.kpi.api import get_kpi_history
+    from src.ai.learning.kpi_snapshot import snapshot_company
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[3]
+    async with AsyncSessionLocal() as db:
+        for offset in range(3):
+            await snapshot_company(db, cid, on=DAY - timedelta(days=offset))
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        out = await get_kpi_history(
+            keys=None, from_date=DAY - timedelta(days=7), to_date=DAY,
+            current_user=_user(cid), db=db)
+
+    assert len(out["series"]) == 10
+    open_pipeline = next(s for s in out["series"] if s["key"] == "open_pipeline_value")
+    assert len(open_pipeline["points"]) == 3
+    assert [p["captured_on"] for p in open_pipeline["points"]] == sorted(
+        p["captured_on"] for p in open_pipeline["points"]), "series must be chronological"
+    assert all(p["value"] is None and not p["measurable"] for p in open_pipeline["points"])
+    assert open_pipeline["first_measurable_on"] is None
+    assert open_pipeline["measurable_days"] == 0
+
+    # ...and a KPI that *is* measurable on day one reports when it became so.
+    hitl = next(s for s in out["series"] if s["key"] == "agent_hitl_load")
+    assert hitl["measurable_days"] == 3
+    assert hitl["first_measurable_on"] == (DAY - timedelta(days=2)).isoformat()
+
+
+async def test_history_is_company_scoped(companies):
+    """The read is scoped by the session's company, never by a caller-supplied id."""
+    from src.ai.kpi.api import get_kpi_history
+    from src.ai.learning.kpi_snapshot import snapshot_company
+    from src.common.database import AsyncSessionLocal
+
+    owner, stranger = companies[0], companies[1]
+    async with AsyncSessionLocal() as db:
+        await snapshot_company(db, owner, on=DAY)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        out = await get_kpi_history(
+            keys=None, from_date=DAY, to_date=DAY, current_user=_user(stranger), db=db)
+
+    assert all(s["points"] == [] for s in out["series"])
+
+
+async def test_history_of_a_tenant_with_no_snapshots_is_empty_not_an_error(companies):
+    """Empty is the honest answer before the job has ever run for this tenant."""
+    from src.ai.kpi.api import get_kpi_history
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        out = await get_kpi_history(
+            keys=None, from_date=None, to_date=None,
+            current_user=_user(companies[2]), db=db)
+
+    assert len(out["series"]) == 10
+    assert all(s["points"] == [] for s in out["series"])
+    assert all(s["first_measurable_on"] is None for s in out["series"])
+
+
+async def test_history_rejects_an_unknown_key(companies):
+    """An empty series for a typo is indistinguishable from "no data yet"."""
+    from fastapi import HTTPException
+
+    from src.ai.kpi.api import get_kpi_history
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(HTTPException) as exc:
+            await get_kpi_history(
+                keys="open_pipeline_value,revenue_vibes", from_date=None, to_date=None,
+                current_user=_user(companies[0]), db=db)
+    assert exc.value.status_code == 400
+    assert "revenue_vibes" in str(exc.value.detail)
+
+
+async def test_history_refuses_a_range_wider_than_retention(companies):
+    """A silently truncated series is worse than a refusal."""
+    from fastapi import HTTPException
+
+    from src.ai.kpi.api import get_kpi_history
+    from src.common.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(HTTPException) as exc:
+            await get_kpi_history(
+                keys=None, from_date=DAY - timedelta(days=500), to_date=DAY,
+                current_user=_user(companies[0]), db=db)
+    assert exc.value.status_code == 400
+
+
+# ── T5 · outcomes on the bus, candidates in the tree ─────────────────────────
+
+async def test_an_outcome_becomes_a_company_scoped_signal(companies):
+    """Charter decision 3 in one assertion: the bus *is* the tenant store.
+
+    And the tenant half of decision 2 comes free with it — `signals.company_id`
+    is NOT NULL, so a tenant learning event cannot exist without a tenant. That
+    is precisely why the pooled half needed a different table (T1).
+    """
+    from src.ai.learning.outcomes import Outcome, OutcomeKind, record_outcome
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[0]
+    outcome = Outcome(entity_id=uuid.uuid4(), run_id=uuid.uuid4(),
+                      kind=OutcomeKind.CSAT_NEGATIVE, detail="csat=-1")
+    async with AsyncSessionLocal() as db:
+        signal_id = await record_outcome(db, company_id=cid, outcome=outcome)
+        await db.commit()
+    assert signal_id is not None
+
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(text(
+            "SELECT company_id, type, trust, payload FROM signals WHERE id = :i"),
+            {"i": str(signal_id)})).one()
+    assert row.company_id == cid
+    assert row.type == "learning.outcome_observed"
+    assert row.trust == "internal"
+    assert row.payload["kind"] == "csat_negative"
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM signals WHERE id = :i"), {"i": str(signal_id)})
+        await db.commit()
+
+
+async def test_the_same_run_is_never_counted_twice(companies):
+    """A run has one ending. A re-processed run must not inflate a threshold —
+    the dedupe is what stops a replay from manufacturing a pattern."""
+    from src.ai.learning.outcomes import Outcome, OutcomeKind, record_outcome
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[1]
+    outcome = Outcome(entity_id=uuid.uuid4(), run_id=uuid.uuid4(),
+                      kind=OutcomeKind.RUN_FAILED)
+    async with AsyncSessionLocal() as db:
+        first = await record_outcome(db, company_id=cid, outcome=outcome)
+        await db.commit()
+        second = await record_outcome(db, company_id=cid, outcome=outcome)
+        await db.commit()
+
+    assert first is not None
+    assert second is None, "a duplicate outcome must be dropped, not re-emitted"
+
+    async with AsyncSessionLocal() as db:
+        count = (await db.execute(text(
+            "SELECT count(*) FROM signals WHERE company_id = :c AND type = :t"),
+            {"c": str(cid), "t": "learning.outcome_observed"})).scalar()
+        assert count == 1
+        await db.execute(text("DELETE FROM signals WHERE company_id = :c"), {"c": str(cid)})
+        await db.commit()
+
+
+async def test_outcomes_read_back_from_the_bus_and_distil(companies):
+    """The round trip: emit → read → distil. No intermediate store anywhere."""
+    from src.ai.learning.outcomes import (
+        Outcome, OutcomeKind, distil, observed_outcomes, record_outcome,
+    )
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[2]
+    entity = uuid.uuid4()
+    async with AsyncSessionLocal() as db:
+        for _ in range(3):
+            await record_outcome(db, company_id=cid, outcome=Outcome(
+                entity_id=entity, run_id=uuid.uuid4(),
+                kind=OutcomeKind.APPROVAL_REJECTED))
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        outcomes = await observed_outcomes(db, cid)
+    assert len(outcomes) == 3
+
+    candidates = distil(outcomes)
+    assert len(candidates) == 1
+    assert candidates[0].entity_id == entity
+    assert candidates[0].observations == 3
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM signals WHERE company_id = :c"), {"c": str(cid)})
+        await db.commit()
+
+
+async def test_one_tenants_outcomes_are_invisible_to_another(companies):
+    """Tenant learning stays per-tenant — the other half of the B10 split."""
+    from src.ai.learning.outcomes import Outcome, OutcomeKind, observed_outcomes, record_outcome
+    from src.common.database import AsyncSessionLocal
+
+    owner, stranger = companies[0], companies[3]
+    async with AsyncSessionLocal() as db:
+        await record_outcome(db, company_id=owner, outcome=Outcome(
+            entity_id=uuid.uuid4(), run_id=uuid.uuid4(), kind=OutcomeKind.RUN_FAILED))
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        assert await observed_outcomes(db, stranger) == []
+        await db.execute(text("DELETE FROM signals WHERE company_id = :c"), {"c": str(owner)})
+        await db.commit()
+
+
+async def test_a_candidate_for_an_unknown_entity_writes_nothing(companies):
+    """Scope first, then write — the VG-05 lesson, applied to a payload reader.
+
+    The entity id arrives in a signal, and `get_or_create_intelligence_tree`
+    will *create* a tree for any id it is handed. Without the ownership check
+    a malformed or foreign id would mint an orphan tree attributed to this
+    company, and a learning loop must never break the work it learns from, so
+    it declines quietly rather than raising.
+    """
+    from src.ai.learning.outcomes import CandidateRule, OutcomeKind, write_candidate
+    from src.common.database import AsyncSessionLocal
+
+    candidate = CandidateRule(entity_id=uuid.uuid4(), kind=OutcomeKind.RUN_FAILED,
+                              observations=3, statement="3 runs failed.")
+    async with AsyncSessionLocal() as db:
+        assert await write_candidate(db, company_id=companies[0], candidate=candidate) is None
+        await db.rollback()
+
+    async with AsyncSessionLocal() as db:
+        trees = (await db.execute(text(
+            "SELECT count(*) FROM cortex_trees WHERE company_id = :c"),
+            {"c": str(companies[0])})).scalar()
+    assert trees == 0, "an unknown entity must not mint a tree"
+
+
+async def test_a_candidate_for_a_real_entity_lands_with_its_provenance(companies):
+    """Two producers write candidates into the same tree now (the reflector and
+    this loop), so `kind` has to say which — otherwise a debugger asking *which
+    loop taught the agent this* has no way to find out."""
+    from src.ai.learning.outcomes import CandidateRule, OutcomeKind, write_candidate
+    from src.ai.loop.service import ensure_sheel
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[1]
+    async with AsyncSessionLocal() as db:
+        sheel = await ensure_sheel(db, cid)
+        await db.commit()
+        entity_id = sheel.id
+
+    candidate = CandidateRule(entity_id=entity_id, kind=OutcomeKind.CSAT_NEGATIVE,
+                              observations=4, statement="Rated poorly 4 times.")
+    async with AsyncSessionLocal() as db:
+        node_id = await write_candidate(db, company_id=cid, candidate=candidate)
+        await db.commit()
+
+    assert node_id is not None
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(text(
+            "SELECT source_ref, content FROM cortex_nodes WHERE id = :i"),
+            {"i": str(node_id)})).one()
+    assert row.source_ref["status"] == "candidate", (
+        "it must enter the shipped lifecycle as a candidate, not as a confirmed rule")
+    assert row.source_ref["kind"] == "outcome_candidate"
+    assert row.source_ref["observations"] == 4
+    assert "4 times" in row.content
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM cortex_nodes WHERE tree_id IN "
+                              "(SELECT id FROM cortex_trees WHERE company_id = :c)"),
+                         {"c": str(cid)})
+        await db.execute(text("DELETE FROM cortex_trees WHERE company_id = :c"),
+                         {"c": str(cid)})
+        await db.commit()

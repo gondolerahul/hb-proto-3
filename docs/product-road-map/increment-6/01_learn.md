@@ -1,6 +1,6 @@
 # Increment 6 / LEARN — The Learning Store, and the History That Makes It Measurable (closes B10)
 
-> **Status:** v1.2 — design locked (§3). **T1–T3 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T4–T10 pending.
+> **Status:** v1.3 — design locked (§3). **T1–T5 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T6–T10 pending.
 > **Closes:** register **B10** (learning-system risk blindspots) + gap-analysis **VG-12** (no KPI history store).
 > **Depends on:** the shipped signal bus (`ai/signals/`), CORTEX Intelligence trees (`ai/memory/intelligence_tree_service.py` + `rule_lifecycle.py`), the C6 KPI registry (`ai/kpi/`), RTR's `routing_decisions` (`ai/intelligence/models.py`), EVX's admission gate (`ai/intelligence/admission.py`).
 > **Feeds:** SEGA ([02](./02_sega.md)) — LEARN proposes, SEGA admits · TWIN ([03](./03_twin.md)) — the forecast engine reads `kpi_snapshots` · STRAT ([04](./04_strat.md)) — mandate reviews read the same series · Vihara G1/G2 (Increment 7) — plinth trends and the Seasons timeline.
@@ -195,8 +195,8 @@ One migration off `fleet001`, four tables, no tenant-schema changes. New package
 | **T1** ✅ | **The B10 guarantee, first.** `learning/models.py` + `learn001`. Assert the `platform_observations` column set is exactly §4.2; assert no FK to `companies`. **If this cannot hold, stop and reopen decision 3** (§4.4) | unit + `*_db` |
 | **T2** ✅ | `learning/pooling.py` — the daily aggregation job with the k-anonymity floor; ~~upsert semantics~~ **replace-the-day** (§14.2); drop (never defer) below-floor groups | unit (pure grouping) + `*_db` |
 | **T3** ✅ | `learning/kpi_snapshot.py` + the reaper + the arq 01:25 cron; unmeasurable KPIs snapshot as absence | `*_db`, incl. a re-run idempotency test |
-| **T4** | `GET /ai/kpi/history` | router test |
-| **T5** | The four `learning.*` signal types + `learning/outcomes.py` (observation → candidate rule via the shipped lifecycle) | unit + `*_db` |
+| **T4** ✅ | `GET /ai/kpi/history` | router test |
+| **T5** ✅ | The four `learning.*` signal types + `learning/outcomes.py` (observation → candidate rule via the shipped lifecycle) | unit + `*_db` |
 | **T6** | Charter-tuning proposals + the §7 refusals + the LEARN⇸SEGA import boundary test | unit, **mutation-tested** |
 | **T7** | `learning/drift.py` — the weekly behaviour series + `learning.drift_detected`, wired as a C4 trigger | unit + `*_db` |
 | **T8** | `user_preferences` + get/set API + `learning.density_observed` | router + `*_db` |
@@ -273,11 +273,35 @@ T9 is where the billing canary bites: it touches the routing path, and the HANDO
 
 **One typing note:** SQLAlchemy's async `Result` is typed without `rowcount`, so the reaper counts via `DELETE … RETURNING id`. Worth knowing before the next `DELETE`-shaped job — it type-checks fine through `func`-style access and fails under `--strict` here.
 
-### 14.4 Verification (T1–T3)
+### 14.4 T4 — the one read path
 
-typecheck **265 files** strict · layout lint · **1584 unit** (+30) · **16 parity/eval** · **305 integration** (+17) · migration head `learn001`, applies/downgrades/re-applies.
+`GET /ai/kpi/history?keys=&from=&to=` on the shipped `/ai/kpi` router, beside `/definitions` and `/business`. `/business` answers *what is true now* from records; `/history` answers *what was true then* from snapshots, and they must be different sources because the records a KPI is computed from change.
 
-**Honest limit:** both jobs are wired to arq crons but have **never run on a live schedule** — they are exercised by tests that call them directly. And the KPI series genuinely starts the day this deploys; there is no backfill, by construction.
+Three choices worth recording:
+
+* **Absences are returned, not filtered.** Each series carries `first_measurable_on` and `measurable_days`, so a caller drawing a trend can say *"this became measurable in Week 5"* rather than starting a line in the middle with no explanation.
+* **An unknown key is a 400, not an empty series.** A typo returning `[]` is indistinguishable from "no data yet", and the second is a legitimate state this endpoint reports constantly.
+* **A range wider than retention is refused**, because silently truncating a series makes two queries incomparable without saying so.
+
+### 14.5 T5 — outcomes on the bus, candidates in the tree
+
+Four `learning.*` signal types (all company-scoped by `signals.company_id`'s NOT NULL — the tenant half of decision 2, free) and `learning/outcomes.py`: `classify_outcome` (pure), `distil` (pure), `record_outcome`, `observed_outcomes`, `write_candidate`.
+
+**Three deltas.**
+
+1. **Silence is the default, and it is the common case.** `classify_outcome` returns `None` for a clean run nobody rated. An event per run would bury the events that teach something. The gradeable endings are: an explicit CSAT, a rejected approval card, a failed run — in that precedence, because a human who rated the work had the last word and the most context. An *approved* card is not evidence: approval is the expected path at A1 and says the system worked, not that the agent did anything notable.
+2. **Three observations before anything is proposed**, matching `rule_lifecycle.PROMOTE_AFTER` deliberately — so a rule that reaches an agent's prompt has been corroborated six times, not three. One bad run is a bad day; a loop that reacts to it oscillates.
+3. **A scoping guard the reflector never needed.** `write_candidate` takes its entity id from a *signal payload*, and `get_or_create_intelligence_tree` will **create** a tree for any id it is handed — so a malformed or foreign id would mint an orphan tree attributed to this company. The entity is now loaded through its company join first. Same lesson as VG-05, in a new place: a payload reader needs scoping that a call-site reader does not. **Mutation-tested** — disabling the check failed exactly one test.
+
+Candidates land in the shipped CORTEX lifecycle as `status: "candidate"` and carry `kind: "outcome_candidate"`, distinguishing them from the reflector's `reflection_candidate`. §12's risk row asked for exactly that: with two producers writing into one tree, *which loop taught the agent this* has to be stored rather than inferred.
+
+A test also asserts that **no statement this loop can produce is governance-shaped** — the proposal vocabulary is fixed data and cannot express "widen this agent's authority". T6 adds the refusal for a proposal that tries; T5's producer cannot phrase one.
+
+### 14.6 Verification (T1–T5)
+
+typecheck **266 files** strict · layout lint · **1606 unit** (+52) · **16 parity/eval** · **316 integration** (+28) · migration head `learn001`, applies/downgrades/re-applies.
+
+**Honest limits.** The two crons are wired into the arq schedule but have **never run on a live schedule** — tests call them directly. T5's loop has **no runner**: nothing calls `classify_outcome` at the end of a run yet, so no outcome is observed in production; wiring it to the loop's completion path is T6's neighbour and is not built. And the KPI series genuinely starts the day this deploys — there is no backfill, by construction.
 
 ---
 
@@ -285,6 +309,7 @@ typecheck **265 files** strict · layout lint · **1584 unit** (+30) · **16 par
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.3 — **T4 + T5 built** (§14.4–§14.6). The history read path returns absences with `first_measurable_on`; outcomes ride the signal bus and distil into the shipped CORTEX candidate lifecycle with provenance. One scoping guard added and mutation-tested — `write_candidate` reads its entity id from a payload, and the tree service creates a tree for any id it is handed. |
 | 2026-07-25 | v1.2 — **T2 + T3 built** (§14.2–§14.4). Pooling replaces the day rather than upserting it; the floor is mutation-tested and counts distinct companies, not rows. The snapshot job's scope corrected to `type='TENANT'` (`companies` has no `deleted_at`), and the "a new tenant is all absences" claim corrected — `agent_hitl_load` is genuinely measurable at zero on day one. |
 | 2026-07-25 | v1.1 — **T1 built** (§14). The B10 stop-or-go passed. One real defect found by the DB-level test: the pooled grain needed a `coalesce` expression index because Postgres treats NULLs as distinct in a unique constraint. |
 | 2026-07-25 | v1.0 — design written. B10 split into its three real questions; the pooled record shaped so tenant content cannot fit; k-anonymity applied in the job rather than the table; `kpi_snapshots` with the honest-absence rule persisted; the LEARN⇸SEGA seam confirmed (propose vs dispose); reward hacking answered structurally; drift feeding C4 rather than duplicating it. |
