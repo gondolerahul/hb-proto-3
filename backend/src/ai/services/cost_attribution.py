@@ -63,6 +63,16 @@ class CostAttribution(str, Enum):
     # testing a candidate model, so the spend draws from the platform envelope,
     # never a tenant wallet (B13).
     MODEL_ADMISSION  = "model_admission"
+    # TWIN (Inc 6) — a Glasshouse scenario run. TENANT-initiated (the tenant
+    # asked the what-if), so deliberately NOT in
+    # PLATFORM_INITIATED_ATTRIBUTIONS. This **overrides ratified spec §12.1**,
+    # which put twin spend under the platform class: doing that would let
+    # tenant experimentation exhaust the cap that exists to protect tenants
+    # *from* platform work (B13) — the same rule RERANK and PRAGYA_TURN follow.
+    # Charter decision 7. The product consequence (a Glasshouse that visibly
+    # costs money is one people use less) is answered by TWIN §6's bounded
+    # windows, cached baselines and estimate-before-spend, not by reclassifying.
+    TWIN_RUN         = "twin_run"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}
