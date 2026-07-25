@@ -1,6 +1,6 @@
 # Increment 6 / GATE — KAR-05, the Governed Broadcast Gates (closes VG-15)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Status:** v1.1 — **BUILT 2026-07-25** (branch `inc6/gate`, T1–T7 complete). Build notes + six design deltas in §11.
 > **Closes:** gap-analysis **VG-15** (broadcast gates have no KAR family) — charter decision 9.
 > **Depends on:** the shipped Karuna gateway builder (`solo_pack/templates/gateways.py`), the signal bus, the PolicyGate's `CATEGORY_RULES` / `TOOL_CATEGORY_MAP`, TRUST's consent registry (D6).
 > **Independent:** touches nothing LEARN, SEGA, TWIN or STRAT modify — buildable at any point in the increment ([00_overview](./00_overview.md) §3).
@@ -134,8 +134,73 @@ T1+T2 are the ones that close the live hole; T5–T7 are the inbound half. If th
 
 ---
 
+## 11. Build notes (2026-07-25, branch `inc6/gate`)
+
+All of T1–T7. Migration **`gate001`** (off `sega002`, new head). Roster **18 → 19**.
+
+### 11.1 What shipped
+
+| Task | Where |
+|---|---|
+| T1 | `governance/authority.py` (`broadcast` + `ad_spend` rules, `ad_spend` → `HIGH_IMPACT_CATEGORIES`), `schemas/governance.py` (`AuthorityBands.ad_spend_usd`), `governance/checkpoints.py` (the 20th + 21st + their SLAs), migration `gate001` |
+| T2 | `governance/authority.py` — 36 exact `TOOL_CATEGORY_MAP` entries; `tests/unit/test_gate_broadcast_categories.py` (the totality test) |
+| T3 | `solo_pack/consent.py` (`check_channel_posture` seam), `trust/consent_registry.py` (`evaluate_channel_posture`, `set_channel_posture`, `CHANNEL_POSTURE_IDENTITY`) |
+| T4 | `solo_pack/consent.py` (`filter_audience`, `AudienceFilter`) |
+| T3+T4 enforcement | `trust/broadcast_guard.py` + the call in `ai/tools/social/base.py::run_with_context` |
+| T5 | `solo_pack/templates/gateways.py` (`KAR_05_BROADCAST`), `templates/__init__.py` (`GATEWAYS`) |
+| T6 | `signals/broadcast_inbound.py`, `signals/models.py` (two signal types), the publish audit in `base.py::_audit_publish` |
+| T7 | `tests/unit/test_gate_kar05.py`, `tests/integration/test_gate_broadcast_{db,inbound_db}.py` |
+
+### 11.2 Six design deltas
+
+1. **Two checkpoints, not one.** §7 named only the 20th (`before_public_broadcast`), but `ad_spend` carries an amount band and needs a checkpoint to raise. Borrowing `before_outbound_payout_above_band` would have made an ad campaign **un-opt-out-able** (payout is `platform_mandatory`), AUTO_DENY in 4h rather than 8h, and mislabelled to the approver as an outbound payout. So `before_ad_spend_above_band` is the **21st**; seed 19 → 21.
+
+2. **The taint firewall kept a hand-copied `HIGH_IMPACT_CATEGORIES`** while its own docstring claimed it imported one — and the copy drifted the first time it was tested. Adding `ad_spend` to the governance constant left the firewall permitting exactly the act governance had just forbidden. Now read live through a lazy import (so the module keeps no module-scope governance import, which is what SEGA §7 actually wanted) with a test pinning the two in sync. **This was a live latent defect, not a GATE-introduced one** — any future addition to the set would have half-landed the same way.
+
+3. **Mappings are exact, not substring.** §4.2's pattern table (`google_ads_*_campaign`, `*_manage_ad_groups`) does not survive contact: `youtube_ads_manage_ad_groups` writes while `google_ads_get_ad_groups` reads, and one needle resolves the wrong one. 36 exact keys instead, with the totality test supplying the completeness that exactness costs.
+
+4. **Two social tools are not broadcasts.** `facebook_send_message` is person-addressed, so it is ordinary outbound comms (`email_dispatch`, the category the SLICE gave `send_email`) and the person-addressed consent check applies to it literally. `linkedin_sales_save_lead` mutates an external system of record, which is Inc-4's `external_write`. Both would have failed the totality test as neither publish nor read, which is the test working as intended.
+
+5. **T4 has no live feed, and this is recorded rather than hidden.** §5.2 assumed a custom-audience upload of emails/phone numbers. **No shipped audience tool accepts one** — `meta_ads_manage_audiences` builds from a `rule` object, `x_ads_manage_audiences` from an `audience_type`; the raw list never reaches the platform through this surface. The filter is built, tested and wired at the one point such a list would arrive, and a test fails if any social tool grows an audience parameter, so it is noticed rather than staying quietly decorative.
+
+6. **The suppressed count cannot reach the HITL card.** §5.2 says it travels into `context_snapshot`, but the card is raised by the PolicyGate *before* execution and the filtering happens *at* execution. Surfacing it would need a gate-time hook; with no live feed (delta 5) there is nothing to display, so it was not built. `suppressed_count` is carried on the guard result and onto `broadcast.published`.
+
+**Enforcement point.** The consent checks live in `SocialMediaTool.run_with_context` — the one method all 64 tools funnel through — so a platform module added later inherits them by construction rather than by remembering. Same reasoning as T2's totality test, and the same reasoning HANDOFF §5 records for putting security gates in the handler body.
+
+### 11.3 Mutation tests
+
+Four controls, each failing only its own tests:
+
+| Mutation | Fails |
+|---|---|
+| drop the `linkedin_create_post` mapping | "A1 publish raises a card" + the totality test |
+| drop `ad_spend` from `HIGH_IMPACT_CATEGORIES` | the firewall refusal + the high-impact assertions |
+| add a new uncategorised social tool | the totality guard — **the exact bug this workstream exists to fix**, now caught in CI |
+| delete the guard block from `base.py` | the two call-site tests, and nothing else |
+
+The last is the one that matters most: without it the guard would be tested only through direct calls, and the wiring could be deleted without failing anything (HANDOFF §5, the VG-05 lesson).
+
+### 11.4 Two shipped-code fixes found while building
+
+* **`test_kpi_rollup.py`'s arq test was silently order-dependent** — it reaches the *global* engine while the `db` fixture wraps conftest's, and it never disposed. It passed or failed purely on suite composition, and the job swallows the error, so it was never asserting what it claimed. Fixed with the documented convention.
+* **Roster and checkpoint counts were asserted as literals** in eight places (`18`, `16`, `19`, the gateway names spelled out). Every one failed on KAR-05 for a reason unrelated to what it tested. Rewritten to derive from `SOLO_PACK_TEMPLATES` / `GATEWAYS` / `CHECKPOINT_SEED`.
+
+### 11.5 Honest limits
+
+* **No live platform call** (decision 5). The producer takes already-fetched items; polling the sixteen platforms is an injected transport, the Zoho/expansion-fleet posture.
+* **T6 has no poller.** `emit_broadcast_inbound` has no scheduled caller yet, so `broadcast.inbound` only flows when something calls it. The outbound audit half *is* live, wired at the tool base.
+* **Credentials stay in `social_connections`** (decision 4) — two credential stores still exist. Recorded, not fixed.
+* **Categorising 64 tools is a behaviour change.** An A1 tenant whose agent has been posting freely will start seeing cards. That is the point, and it belongs in release notes rather than a silent deploy.
+
+### 11.6 Gates
+
+typecheck **285** files strict · layout lint · **1834 unit** · **16 parity/eval** · **384 integration** · `gate001` applies, rolls back and re-applies · migration head `gate001`.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.1 — **BUILT (T1–T7).** §11 added: build notes, six design deltas (two checkpoints not one; the taint firewall's drifted duplicate; exact rather than substring mappings; two social tools that are not broadcasts; T4's absent live feed; the suppressed count that cannot reach the card), four mutation tests, two shipped-code fixes found while building, and the honest limits. |
 | 2026-07-25 | v1.0 — design written. The finding sharpened against the code: **64 social/ad tools across 16 platforms, none categorised**, so the PolicyGate passes every public post and every ad-budget commitment. Split into three independent fixes; two new categories with `ad_spend` in `HIGH_IMPACT_CATEGORIES`; a totality test over the tool directory as the durable guard; consent split into channel posture and audience DNC; KAR-05 built with the shipped Karuna builder, roster 18→19; credentials deliberately left in place with the reason. |

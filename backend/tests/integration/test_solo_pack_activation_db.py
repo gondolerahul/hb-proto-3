@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 
 from src.ai.orm.entity import HierarchicalEntity
 from src.ai.signals.models import TriggerRegistration
+from src.ai.solo_pack.templates import GATEWAYS, SOLO_PACK_TEMPLATES
 from src.ai.solo_pack.activation import (
     activate_bundle,
     activate_slice,
@@ -24,6 +25,22 @@ from src.ai.tenant_schema.data_plane import schema_name_for, tenant_data_plane
 from src.ai.tenant_schema.models import TenantEntityDef
 
 pytestmark = [pytest.mark.needs_db, pytest.mark.asyncio]
+
+
+def _expected_trigger_patterns() -> set[str]:
+    """Every distinct ``trigger_patterns`` entry declared across the roster.
+
+    Derived rather than counted by hand so that adding a gateway or an agent
+    updates the expectation with the thing that changed. The literal 16 went
+    stale the moment Inc-6 GATE added KAR-05's `broadcast.inbound`.
+    """
+    return {
+        pattern
+        for template in SOLO_PACK_TEMPLATES
+        for pattern in template.get("metadata_extensions", {}).get(
+            "trigger_patterns", [])
+    }
+
 
 
 @pytest_asyncio.fixture
@@ -135,8 +152,12 @@ class TestPackActivation:
         from src.common.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             result = await activate_solo_pack(db, tenant)
-        # 3 gateways + 6 processes + 9 workforce agents.
-        assert len(result) == 18
+        # 4 gateways + 6 processes + 9 workforce agents. Counted from the
+        # manifest rather than a literal: the literal was 18 and went stale
+        # when Inc-6 GATE added KAR-05, failing for a reason unrelated to
+        # what this test is about. SOLO_PACK_TEMPLATES is the one place the
+        # roster size is stated.
+        assert len(result) == len(SOLO_PACK_TEMPLATES)
 
         async with AsyncSessionLocal() as db:
             ents = {e.name: e for e in (await db.execute(
@@ -192,15 +213,21 @@ class TestPackActivation:
         assert {"email.inbound", "message.inbound", "voice.inbound", "lead.inbound",
                 "ticket.opened", "invoice.overdue", "ledger.unreconciled", "reg.change",
                 "schedule.optimize"} <= patterns
-        assert len(regs) == 16  # every trigger_pattern across the roster, once
+        # Every distinct trigger_pattern across the roster, once. Derived for
+        # the same reason as the roster count above.
+        assert len(regs) == len(_expected_trigger_patterns())
 
     async def test_bundle_seeds_only_its_processes(self, tenant):
         from src.common.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             result = await activate_bundle(db, tenant, "fiscal")
-        # Fiscal's authored Wave-0 processes are P08 + P10 (+ the shared gateways).
-        assert set(result.keys()) == {
-            "kar-02-email-gateway", "kar-03-whatsapp-gateway", "kar-01-voice-gateway",
+        # Fiscal's authored Wave-0 processes are P08 + P10. The gateways are
+        # shared by every bundle, so they come from GATEWAYS rather than
+        # being re-listed here — the point of this test is which *processes*
+        # a bundle seeds, and spelling the gateways out made it fail when
+        # KAR-05 joined, for a reason that had nothing to do with bundles.
+        gateway_names = {g["name"] for g in GATEWAYS}
+        assert set(result.keys()) == gateway_names | {
             "p08-order-to-cash", "agt-038-accounts-receivable",
             "p10-record-to-report", "agt-046-bookkeeping-reconciliation",
         }
@@ -209,7 +236,7 @@ class TestPackActivation:
         from src.common.database import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             via_sentinel = await activate_bundle(db, tenant, "solo_pack")
-        assert len(via_sentinel) == 18
+        assert len(via_sentinel) == len(SOLO_PACK_TEMPLATES)
 
     async def test_unknown_bundle_raises(self, tenant):
         from src.common.database import AsyncSessionLocal
@@ -230,5 +257,5 @@ class TestPackActivation:
                 select(TriggerRegistration).where(TriggerRegistration.company_id == tenant)
             )).scalars().all()
         assert first == second
-        assert len([e for e in ents if e.name != "Sheel"]) == 18
-        assert len(trigs) == 16
+        assert len([e for e in ents if e.name != "Sheel"]) == len(SOLO_PACK_TEMPLATES)
+        assert len(trigs) == len(_expected_trigger_patterns())

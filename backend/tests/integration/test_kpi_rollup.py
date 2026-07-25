@@ -96,7 +96,22 @@ async def test_refresh_view_succeeds(db) -> None:
 
 async def test_arq_kpi_rollup_refresh_returns_success(db) -> None:
     """End-to-end run of the cron coroutine. It opens its own session
-    so the test session doesn't need to commit."""
+    so the test session doesn't need to commit.
+
+    The dispose is load-bearing, not hygiene. This test reaches the *global*
+    engine (the cron opens its own ``AsyncSessionLocal``), not the conftest
+    ``_engine`` the ``db`` fixture wraps, and pytest-asyncio gives each test a
+    fresh event loop while asyncpg connections cannot be shared across loops.
+    Without it the job inherits whatever pooled connection an earlier test left
+    behind and fails with "attached to a different loop" — which it did, and
+    silently: the job catches the error and this test only ever passed because
+    of what happened to run before it. It is the same convention every other
+    integration module here follows (HANDOFF §5).
+    """
+    from src.common.database import engine
+
+    await engine.dispose()
+
     from src.ai.core.arq_jobs import kpi_rollup_refresh
     result = await kpi_rollup_refresh(ctx={})
     assert isinstance(result, dict)

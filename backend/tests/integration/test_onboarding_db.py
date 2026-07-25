@@ -11,10 +11,23 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
+from src.ai.solo_pack.templates import SOLO_PACK_TEMPLATES
 from src.ai.solo_pack.onboarding import activate_for_company, onboarding_status
 from src.ai.tenant_schema.data_plane import schema_name_for, tenant_data_plane
 
 pytestmark = [pytest.mark.needs_db, pytest.mark.asyncio]
+
+
+def _expected_trigger_patterns() -> set[str]:
+    """Every distinct ``trigger_patterns`` entry across the roster (derived, so
+    a new gateway updates the expectation with the thing that changed)."""
+    return {
+        pattern
+        for template in SOLO_PACK_TEMPLATES
+        for pattern in template.get("metadata_extensions", {}).get(
+            "trigger_patterns", [])
+    }
+
 
 
 @pytest_asyncio.fixture
@@ -61,13 +74,14 @@ async def test_status_before_and_after_activation(onboard_tenant):
 
     async with AsyncSessionLocal() as db:
         result = await activate_for_company(db, cid, "solo_pack")
-    assert len(result) == 18
+    assert len(result) == len(SOLO_PACK_TEMPLATES)
 
     async with AsyncSessionLocal() as db:
         after = await onboarding_status(db, cid)
     assert after["activated"] is True
-    assert after["entity_count"] == 18       # solo_pack-tagged entities (not Sheel)
-    assert after["trigger_count"] == 16
+    # solo_pack-tagged entities (not Sheel), read off the manifest.
+    assert after["entity_count"] == len(SOLO_PACK_TEMPLATES)
+    assert after["trigger_count"] == len(_expected_trigger_patterns())
     assert after["console_path"] == "/ai/approvals"
     assert "kar-03-whatsapp-gateway" in after["entities"]
 

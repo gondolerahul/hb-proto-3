@@ -56,6 +56,7 @@ from src.ai.solo_pack.templates.gateways import (
     KAR_01_VOICE,
     KAR_01_VOICE_STUB,
     KAR_03_WHATSAPP,
+    KAR_05_BROADCAST,
 )
 from src.ai.solo_pack.templates.intelligence import (
     AGT_051,
@@ -67,7 +68,7 @@ __all__ = [
     # SLICE (back-compat) ------------------------------------------------------
     "KAR_02_EMAIL", "P03_ACQUISITION", "AGT_013", "AGT_015", "SLICE_TEMPLATES",
     # Gateways (KAR) -----------------------------------------------------------
-    "KAR_03_WHATSAPP", "KAR_01_VOICE", "KAR_01_VOICE_STUB",
+    "KAR_03_WHATSAPP", "KAR_01_VOICE", "KAR_01_VOICE_STUB", "KAR_05_BROADCAST",
     # PACK entities ------------------------------------------------------------
     "P06_RESOLVE", "AGT_030", "AGT_035", "AGT_092",
     "P08_ORDER_TO_CASH", "AGT_038", "P10_RECORD_TO_REPORT", "AGT_046",
@@ -95,9 +96,10 @@ class ProcessGroup:
         return (self.process, *self.agents)
 
 
-# The shared outward gateways (feed every process). All three are live as of
-# Inc-3 VOICE — KAR-01 replaced its Inc-2 stub.
-GATEWAYS: list[dict[str, Any]] = [KAR_02_EMAIL, KAR_03_WHATSAPP, KAR_01_VOICE]
+# The shared outward gateways (feed every process). KAR-01 replaced its Inc-2
+# stub in Inc-3 VOICE; Inc-6 GATE added KAR-05, taking the roster to 19.
+GATEWAYS: list[dict[str, Any]] = [
+    KAR_02_EMAIL, KAR_03_WHATSAPP, KAR_01_VOICE, KAR_05_BROADCAST]
 
 # The six Wave-0 processes with their workforce agents (the seeding tree).
 PROCESS_GROUPS: list[ProcessGroup] = [

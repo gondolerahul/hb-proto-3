@@ -14,6 +14,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select, text
 
+from src.ai.solo_pack.templates import SOLO_PACK_TEMPLATES
 from src.ai.governance.demotion_sweep import apply_demotions
 from src.ai.inward_auth.models import AuthLevel, ChannelKind
 from src.ai.inward_auth.sessions import elevate, get_or_create_session
@@ -276,7 +277,8 @@ async def test_pragya_activation_equals_the_wizard_output(pragya_tenant):
         deployed = await deploy_bundle(db, cid, "solo_pack", user_id=uid)
         await db.commit()
 
-    assert deployed["activated"] and deployed["entity_count"] == 18
+    assert deployed["activated"]
+    assert deployed["entity_count"] == len(SOLO_PACK_TEMPLATES)
 
     async with AsyncSessionLocal() as db:
         wizard_status = await onboarding_status(db, cid)

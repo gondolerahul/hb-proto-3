@@ -129,6 +129,14 @@ class SignalTypes:
     GOVERNANCE_ENTITY_ROLLED_BACK = "governance.entity_rolled_back"
     #: An agent asked for a field its HBS object lacked (§10.2, additive only).
     GOVERNANCE_SCHEMA_FIELD_PROPOSED = "governance.schema_field_proposed"
+    # GATE (Inc 6, KAR-05/VG-15): the broadcast channels join the bus. Inbound
+    # mentions, public comments and platform DMs arrive as `broadcast.inbound`
+    # (trust: counterparty, like every other Karuna channel) for KAR-05 to
+    # parse as data; a successful publish emits `broadcast.published` (trust:
+    # internal) so the *outbound* half is audited even where the inbound half
+    # is not yet polled.
+    BROADCAST_INBOUND = "broadcast.inbound"
+    BROADCAST_PUBLISHED = "broadcast.published"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
 

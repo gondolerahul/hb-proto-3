@@ -78,12 +78,34 @@ CATEGORY_RULES: dict[str, CategoryRule] = {
     "external_write": CategoryRule(
         "external_write", "before_external_system_write",
         None, None, None, "none"),
+    # Public broadcast (Inc-6 GATE, KAR-05): publishing to a public or
+    # semi-public audience — a post, a public reply, an uploaded video. Shaped
+    # like email_dispatch: no amount band, so at A1 every publish raises a card
+    # and at A2+ it is autonomous comms. Deliberately *not* `public_statement`,
+    # which is always_hitl and means a PR/incident statement — folding routine
+    # marketing into it would make every scheduled post an approval.
+    "broadcast": CategoryRule(
+        "broadcast", "before_public_broadcast",
+        None, None, None, "none"),
+    # Ad spend (Inc-6 GATE): committing budget on an ad platform. Carries an
+    # amount band like payout does, so a small boost is autonomous at A3 while
+    # a large campaign is not. Separate from `broadcast` (GATE decision 1):
+    # publishing and committing money are different acts, and merging them
+    # would either under-govern spend or make every post cost an approval.
+    "ad_spend": CategoryRule(
+        "ad_spend", "before_ad_spend_above_band",
+        "ad_spend_usd", 200.0, 5000.0, "usd"),
 }
 
 # Categories that a counterparty-trust triggering signal may not drive at all
 # (§18.6 trust down-payment): money movement + binding commitments.
+# `ad_spend` joins them (Inc-6 GATE decision 2): a hostile DM must not be able
+# to drive money into an ad platform, for the same reason it cannot drive a
+# payout. `broadcast` deliberately does NOT — a counterparty message prompting
+# a public reply is ordinary support work, and the taint firewall already
+# routes it through a human at the untrusted levels.
 HIGH_IMPACT_CATEGORIES: frozenset[str] = frozenset(
-    {"payout", "refund", "contract", "vendor_creation"}
+    {"payout", "refund", "contract", "vendor_creation", "ad_spend"}
 )
 
 # tool_id → action category seed. The shipped catalogue has no payout/refund
@@ -111,6 +133,70 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     "create_bill": "external_write",
     "record_payment": "external_write",
     "write_back": "external_write",
+    # ── Social / ad platforms (Inc-6 GATE T2) ─────────────────────────
+    # `src/ai/tools/social/` ships 64 tools across 16 platforms and not one was
+    # categorised, so every public post and every ad-budget commitment resolved
+    # to PASS at every autonomy band — including A1, where every categorised
+    # external effect is supposed to raise a card.
+    #
+    # These are keyed **exactly**, not by substring, because the names collide
+    # in ways substrings resolve wrongly: `youtube_ads_manage_ad_groups` writes
+    # while `google_ads_get_ad_groups` reads, and one careless needle would
+    # categorise a dashboard refresh or miss a campaign. Exactness costs
+    # completeness, so completeness is what the totality test in
+    # `tests/unit/test_gate_broadcast_categories.py` enforces: every tool under
+    # `ai/tools/social/` must be mapped here or match a read pattern, and a new
+    # one that is neither fails CI.
+    #
+    # Write verbs map, read verbs deliberately do not (the connector
+    # precedent) — reading a platform's analytics is not an external effect,
+    # and categorising it would turn every dashboard refresh into an approval.
+    "facebook_create_post": "broadcast",
+    "facebook_manage_comments": "broadcast",
+    "instagram_publish_media": "broadcast",
+    "instagram_manage_comments": "broadcast",
+    "linkedin_create_post": "broadcast",
+    "linkedin_manage_comments": "broadcast",
+    "pinterest_create_pin": "broadcast",
+    "pinterest_manage_boards": "broadcast",
+    "quora_post_answer": "broadcast",
+    "reddit_create_post": "broadcast",
+    "reddit_manage_comments": "broadcast",
+    "tiktok_publish_video": "broadcast",
+    "tiktok_manage_comments": "broadcast",
+    "twitter_create_post": "broadcast",
+    "youtube_upload_video": "broadcast",
+    "youtube_manage_comments": "broadcast",
+    "youtube_manage_playlists": "broadcast",
+    # Ad surfaces. `*_manage_audiences` maps to ad_spend rather than broadcast
+    # because an audience is *who the money reaches* — and it is also where
+    # T4's DNC check bites. Creatives, ad sets, ad squads, line items, keywords
+    # and targeting all decide where committed budget goes, so they carry the
+    # same band as creating the campaign.
+    "google_ads_create_campaign": "ad_spend",
+    "google_ads_manage_keywords": "ad_spend",
+    "linkedin_ads_create_campaign": "ad_spend",
+    "linkedin_ads_manage_audiences": "ad_spend",
+    "linkedin_ads_manage_creatives": "ad_spend",
+    "meta_ads_create_campaign": "ad_spend",
+    "meta_ads_manage_adsets": "ad_spend",
+    "meta_ads_manage_audiences": "ad_spend",
+    "snapchat_ads_create_campaign": "ad_spend",
+    "snapchat_ads_manage_ad_squads": "ad_spend",
+    "snapchat_ads_manage_audiences": "ad_spend",
+    "x_ads_create_campaign": "ad_spend",
+    "x_ads_manage_audiences": "ad_spend",
+    "x_ads_manage_line_items": "ad_spend",
+    "youtube_ads_create_campaign": "ad_spend",
+    "youtube_ads_manage_ad_groups": "ad_spend",
+    "youtube_ads_manage_targeting": "ad_spend",
+    # Two social tools that are outbound effects but not broadcasts. A DM is
+    # person-addressed, so it is ordinary outbound comms (the same category the
+    # SLICE gave `send_email`) and the person-addressed consent check applies
+    # to it literally. Saving a lead into Sales Navigator mutates the tenant's
+    # external system of record, which is Inc-4's category.
+    "facebook_send_message": "email_dispatch",
+    "linkedin_sales_save_lead": "external_write",
 }
 
 

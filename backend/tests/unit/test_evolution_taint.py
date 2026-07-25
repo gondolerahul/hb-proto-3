@@ -166,3 +166,27 @@ def test_the_firewall_is_total():
     for taint in [*LADDER, None, "nonsense"]:
         for category in ["payout", "external_write", "email_dispatch", "generic", ""]:
             assert firewall(taint, category) in {ALLOW, HITL, REFUSE}
+
+
+# ── The high-impact set is single-sourced (Inc-6 GATE) ────────────────
+
+
+def test_the_firewall_reads_the_live_high_impact_set():
+    """The firewall must not keep its own copy of HIGH_IMPACT_CATEGORIES.
+
+    It used to, and the copy drifted the first time the governance constant
+    moved: Increment 6 / GATE added ``ad_spend`` so that a hostile inbound
+    message could not drive money into an ad platform, and the hand-copied set
+    here silently kept permitting it. This test fails if anyone reintroduces a
+    literal.
+    """
+    from src.ai.governance.authority import HIGH_IMPACT_CATEGORIES
+
+    for category in HIGH_IMPACT_CATEGORIES:
+        assert firewall("counterparty", category) == REFUSE, category
+        assert firewall("external_verified", category) == HITL, category
+
+
+def test_ad_spend_is_refused_to_a_counterparty_tainted_run():
+    """The concrete case the drift would have missed."""
+    assert firewall("counterparty", "ad_spend") == REFUSE
