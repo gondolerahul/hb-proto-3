@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 import pgvector.sqlalchemy
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,6 +32,35 @@ class Document(Base):
     # RETR T3 — the HBS module this document belongs to, enforced by the Inc-1
     # domain viewport at retrieval. NULL reads as "general" (common knowledge).
     memory_domain: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ── LIB T1 (Inc 6): provenance — where this document came from ──────
+    # Spec §15.4 wants a Library that knows, for every document, where it came
+    # from, who uses it, whether it is still true, and how to open it at the
+    # passage that answered the question. `documents` knew none of the four.
+    #
+    # Existing rows backfill to source_kind='upload' with everything else NULL,
+    # which is the honest answer: we genuinely do not know. SEGA's taint ladder
+    # reads absent provenance as `external_verified` rather than `internal`
+    # for exactly that reason.
+    source_kind: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default="upload")
+    source_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: sha-256 of the extracted text — change detection without re-reading.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ingested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    ingested_by_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("execution_runs.id"), nullable=True)
+    #: What period the content *describes* — deliberately not when it was
+    #: uploaded. A price list uploaded today may describe last year, and
+    #: staleness computed from created_at would call it fresh. NULL where
+    #: unknown, and staleness then falls back to created_at saying so.
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True)
+    staleness_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="fresh")
+    staleness_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -1,6 +1,6 @@
 # Increment 6 / LIB — The Library Data Layer (closes VG-13, VG-14)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Status:** v1.1 — design locked (§3). **T1 + T2 BUILT 2026-07-25** (branch `inc6/lib`, pulled forward — see §13). T3–T8 not started.
 > **Closes:** gap-analysis **VG-13** (provenance, influence, staleness, artifact linkage, citations) + **VG-14** (connected drives cataloged only generically). Optionally **VG-16** (§8) — otherwise unowned.
 > **Depends on:** RETR's shipped retrieval stack (`memory/{hybrid_retrieval,chunking,retrieval_filters,reranker}.py`), the connector catalog (`connectors/catalog.py`), `orm/document.py`, `artifact_models.py`.
 > **Independent** of LEARN/SEGA/TWIN/STRAT — but **start early**: the retrieval-usage log is a time series with the same "worthless empty" problem as KPI history ([00_overview](./00_overview.md) §3).
@@ -170,8 +170,46 @@ T2 as early as the plan allows — every week without it is a week of influence 
 
 ---
 
+## 13. Build notes — T1 + T2 only (2026-07-25, branch `inc6/lib`)
+
+**T1 and T2 are built. T3–T8 are not.** Pulled forward at the owner's direction on the §10 argument: both are time series, and a time series started later cannot be backfilled — every week without the usage log is a week of influence data that does not exist. The rest of LIB follows the normal order.
+
+### 13.1 What shipped
+
+| Task | Where |
+|---|---|
+| T1 | 10 provenance columns on `orm/document.py`; `library/provenance.py` (`SourceKind`, `StalenessState`, `content_hash`); migration **`lib001`** with the `upload` backfill |
+| T2 | `library/models.py` (`RetrievalUsage`), `library/usage_log.py` (`query_hash`, `log_retrieval_usage`), the call in `memory/memory_service.py` after rerank |
+| supporting | `document_id` added to the hybrid-retrieval projection; `library` added to `CLEAN_PACKAGES` and to `migrations/env.py` |
+
+### 13.2 Four design deltas
+
+1. **`lib001` carries T1 + T2 only.** §9 scoped `document_influence_daily`, `artifacts.document_id`/`record_ref` and `connector_bindings.credentials_expire_at` into the same migration. They are not here: shipping tables nothing writes to is dead schema that reads as a built feature. They land with the tasks that use them (`lib002`).
+
+2. **Retrieval had to start carrying `document_id`.** `RetrievedChunk.metadata` carried `memory_domain` and the retriever scores but not the document — so the usage log had nothing to attribute to, and §7.2's citations would have had nothing to open. Both retrieval SQL statements already `JOIN documents`, so it is one extra column in the projection and no new query.
+
+3. **The guard is duplicated at the call site, on purpose — and a mutation test is why.** `log_retrieval_usage` swallows its own exceptions, so in principle the call site needs nothing. The T2 mutation test (make the log raise, assert retrieval still returns) **failed**: `search_semantic` wraps its whole v1 path in a catch-all that returns `[]`, so anything escaping the logger surfaced not as an error but as *the agent retrieving nothing, silently*. That is the worst available outcome and exactly what decision 2 forbids. The answer path must not depend on the analytics path's internal discipline, so it now guards independently.
+
+   This is the clearest case so far of a mutation test paying for itself: every unit test passed, the logger's own `try` looked sufficient, and the defect was visible only by breaking the thing on purpose.
+
+4. **`query_hash` normalises case as well as whitespace.** §5.1 says "the normalised query"; lower-casing is part of it, because "What is our refund policy?" and "what is our refund policy?" are the same question asked twice, and counting them separately understates a document's influence. The privacy claim is unchanged and deliberately narrow — the *text* is not stored; the hash is for de-duplication, not anonymity (§11 says so and the module docstring repeats it).
+
+### 13.3 Honest limits
+
+* **Nothing reads the log yet.** T3's rollup and reaper are not built, so `retrieval_usages` grows unbounded until they are. At ≤ `top_k` rows per retrieval this is fine for a while and is not fine forever — **T3 is the first thing LIB should build next**, and the index the reaper needs (`ix_retrieval_usages_doc_day`) is already in place.
+* **The series starts empty**, by construction — the same property LEARN's KPI history has, and the reason both were pulled forward.
+* **Provenance detail is only stamped by the column defaults.** T1 ships the vocabulary and the backfill; wiring each ingest path to record a real `source_uri` / `content_hash` / `ingested_by_*` belongs with T5 and T7, which create those paths. Today every row honestly reads `upload` with unknown detail.
+* **`staleness_state` is stored but never computed** — that is T4. Everything is `fresh` because nothing has looked yet, which is a fact about the sweep's absence rather than about the documents.
+
+### 13.4 Gates
+
+typecheck **289** files strict · layout lint · **1847 unit** · **16 parity/eval** (retrieval goldens unregressed — the log sits after the measured path) · **391 integration** · `lib001` applies, rolls back and re-applies · migration head **`lib001`**.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.1 — **T1 + T2 BUILT** (pulled forward: both are time series that cannot be backfilled). §13 added: build notes, four design deltas (`lib001` scoped to what is used; retrieval now carries `document_id`; the call-site guard a **failing mutation test** forced; case-normalised `query_hash`), and the honest limits — chiefly that T3's rollup and reaper are the next thing LIB must build. |
 | 2026-07-25 | v1.0 — design written. The retrieval-usage log placed at `memory_service.py`'s single `hybrid_search` call site per the RETR three-stage rule, made non-blocking and bounded by a rollup plus a reaper; provenance given an `effective_from` distinct from `created_at`; staleness made a stated flag with its reason, never a silent withholding; artifacts filed as Documents; a passage endpoint so citations open where the answer came from; SharePoint/Google Drive catalog rows plus a document-sync path separate from the record sweep; VG-16 picked up as an optional task since no workstream owned it. |

@@ -140,7 +140,7 @@ async def _lexical_candidates(
     """Postgres full-text ranking over document_chunks (GIN-indexed, retr001)."""
     scope = _scope_clause(entity_id, company_id)
     stmt = text(f"""
-        SELECT dc.id::text, dc.content, d.memory_domain,
+        SELECT dc.id::text, dc.content, d.memory_domain, d.id::text,
                ts_rank_cd(to_tsvector('english', dc.content),
                           plainto_tsquery('english', :q)) AS rank
         FROM   document_chunks dc
@@ -159,7 +159,8 @@ async def _lexical_candidates(
     })).fetchall()
     return [
         RetrievedChunk(chunk_id=r[0], content=r[1],
-                       metadata={"memory_domain": r[2], "lexical_rank": float(r[3])})
+                       metadata={"memory_domain": r[2], "document_id": r[3],
+                                 "lexical_rank": float(r[4])})
         for r in rows
     ]
 
@@ -172,7 +173,7 @@ async def _semantic_candidates(
     """The existing pgvector cosine ranking, unchanged in behaviour."""
     scope = _scope_clause(entity_id, company_id)
     stmt = text(f"""
-        SELECT dc.id::text, dc.content, d.memory_domain,
+        SELECT dc.id::text, dc.content, d.memory_domain, d.id::text,
                1 - (dc.embedding <=> CAST(:vec AS vector)) AS score
         FROM   document_chunks dc
         JOIN   documents d ON d.id = dc.document_id
@@ -190,7 +191,8 @@ async def _semantic_candidates(
     })).fetchall()
     return [
         RetrievedChunk(chunk_id=r[0], content=r[1],
-                       metadata={"memory_domain": r[2], "cosine": float(r[3])})
+                       metadata={"memory_domain": r[2], "document_id": r[3],
+                                 "cosine": float(r[4])})
         for r in rows
     ]
 
