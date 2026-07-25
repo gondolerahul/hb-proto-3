@@ -26,6 +26,7 @@ from src.ai import lead_queue_model  # CRM lead queue
 from src.ai.intelligence import models as intelligence_models  # Inc 5 / REG — model registry (B12)
 from src.ai.learning import models as learning_models  # Inc 6 / LEARN — learning stores (B10)
 from src.ai.evolution import models as evolution_models  # Inc 6 / SEGA — entity version ledger (VG-17)
+from src.ai.library import models as library_models  # Inc 6 / LIB — retrieval-usage log (VG-13)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

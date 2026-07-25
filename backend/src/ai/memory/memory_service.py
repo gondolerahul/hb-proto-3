@@ -237,7 +237,28 @@ class MemoryRouter:
             if reranking:
                 hits = await llm_rerank(
                     self.db, company_id, query, hits, top_k=top_k)
-            return [h.as_dict() for h in hits]
+            results = [h.as_dict() for h in hits]
+
+            # LIB T2 — record what the agent actually *received*, here rather
+            # than inside hybrid_search: the reranker and the top_k cut sit
+            # between the two, and only what came back is influence.
+            #
+            # Guarded here as well as inside `log_retrieval_usage`, and the
+            # duplication is deliberate. This whole method is wrapped in a
+            # catch-all that returns `[]`, so anything escaping the logger
+            # would not surface as an error — it would surface as *the agent
+            # retrieving nothing*, silently, which is the worst available
+            # outcome and precisely what decision 2 forbids. The answer path
+            # must not depend on the analytics path's internal discipline.
+            try:
+                from src.ai.library.usage_log import log_retrieval_usage
+
+                await log_retrieval_usage(
+                    company_id, query, results, entity_id=entity_id)
+            except Exception as log_error:  # noqa: BLE001 — see above
+                logger.debug(f"Retrieval-usage logging skipped: {log_error}")
+
+            return results
 
         except Exception as e:
             logger.debug(f"Semantic search skipped: {e}")
