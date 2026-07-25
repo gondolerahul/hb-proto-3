@@ -168,13 +168,29 @@ class AIService:
                 
         return entity
 
-    async def update_entity(self, entity_id: UUID, entity_in: HierarchicalEntityUpdate, company_id: UUID, user_role: str = None) -> HierarchicalEntity:
+    async def update_entity(
+        self, entity_id: UUID, entity_in: HierarchicalEntityUpdate, company_id: UUID,
+        user_role: str = None, *, changed_by_user_id: UUID = None,
+        change_kind: str = "human",
+    ) -> HierarchicalEntity:
         entity = await self.get_entity(entity_id, company_id, user_role=user_role)
-        
+
         update_data = entity_in.model_dump(mode='json', exclude_unset=True)
         for field, value in update_data.items():
             setattr(entity, field, value)
-            
+
+        # SEGA T2 (VG-17) — every entity write leaves a version behind, human
+        # edits included. A ledger that recorded only automated changes could
+        # not answer "what did this agent look like last Tuesday", which is the
+        # question the Gallery and every incident review actually ask. Written
+        # in this transaction so there is no state where the entity has moved
+        # and its history has not; it never raises, because losing a person's
+        # edit to an audit-trail failure is the worse outcome.
+        from src.ai.evolution.ledger import record_version
+        await record_version(
+            self.db, entity, company_id=company_id, change_kind=change_kind,
+            changed_by_user_id=changed_by_user_id)
+
         self.db.add(entity)
         await self.db.commit()
         await self.db.refresh(entity)

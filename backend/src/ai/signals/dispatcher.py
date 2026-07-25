@@ -183,6 +183,14 @@ async def _spawn_run(db: AsyncSession, signal: Signal, entity: Any) -> Any:
         },
         status=RunStatus.PENDING,
     )
+
+    # SEGA T3 — attribute the run to the entity version serving it, so a
+    # regression check can compare it against the previous version's runs.
+    # Never raises; an experiment must not be able to stop the work it observes.
+    from src.ai.evolution.entity_canary import stamp_run_version
+
+    run.entity_version_id = await stamp_run_version(db, entity_id=entity.id)
+
     db.add(run)
     await db.flush()
     return run

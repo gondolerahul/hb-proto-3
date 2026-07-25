@@ -63,17 +63,33 @@ class ToolManagementService:
     # List all tools (built-in + custom from DB)
     # ------------------------------------------------------------------
 
-    async def list_all_tools(self) -> List[dict]:
+    async def list_all_tools(
+        self, viewer_company_id: Optional[uuid.UUID] = None,
+    ) -> List[dict]:
         """
         Return a merged list of all tools.
         - Built-in tools from the in-memory ToolRegistry
         - Custom tools from the DB
         DB entries override built-in metadata (e.g., is_enabled flag).
+
+        ``viewer_company_id`` scopes the DB half (SEGA T0). A tenant sees
+        platform tools (``company_id IS NULL``) plus its own; it must not see
+        another tenant's custom or *synthesized* entries, whose ``configuration``
+        blob carries the tool's spec, source and audit — a description of how
+        that business does something. ``None`` means unrestricted and is for
+        platform admins only; it is the pre-Inc-6 behaviour, kept for the admin
+        console rather than for tenants.
         """
         from src.ai.tools import ToolRegistry
 
-        # 1. Get all DB entries (keyed by name)
-        result = await self.db.execute(select(ToolRegistryEntry))
+        # 1. Get the DB entries this viewer may see (keyed by name).
+        query = select(ToolRegistryEntry)
+        if viewer_company_id is not None:
+            query = query.where(
+                (ToolRegistryEntry.company_id.is_(None))
+                | (ToolRegistryEntry.company_id == viewer_company_id)
+            )
+        result = await self.db.execute(query)
         db_entries = {entry.name: entry for entry in result.scalars().all()}
 
         # 2. Get built-in tools
@@ -179,21 +195,49 @@ class ToolManagementService:
             )
         return entry
 
-    async def get_tool(self, tool_id: uuid.UUID) -> ToolRegistryEntry:
-        """Get a tool entry by ID."""
-        result = await self.db.execute(
-            select(ToolRegistryEntry).where(ToolRegistryEntry.id == tool_id)
-        )
+    async def get_tool(
+        self, tool_id: uuid.UUID, viewer_company_id: Optional[uuid.UUID] = None,
+    ) -> ToolRegistryEntry:
+        """Get a tool entry by ID, scoped to what this viewer may see.
+
+        A cross-tenant miss returns **404, not 403** — a probe must not learn
+        that an id exists in another tenant. Same rule as the VG-05 approvals
+        fix; an unguessable identifier was never an authorization control.
+
+        ``viewer_company_id=None`` is unrestricted and is for the platform-admin
+        write paths (``update_tool`` / ``delete_tool`` / ``toggle_tool``), which
+        are already role-gated.
+        """
+        query = select(ToolRegistryEntry).where(ToolRegistryEntry.id == tool_id)
+        if viewer_company_id is not None:
+            query = query.where(
+                (ToolRegistryEntry.company_id.is_(None))
+                | (ToolRegistryEntry.company_id == viewer_company_id)
+            )
+        result = await self.db.execute(query)
         entry = result.scalar_one_or_none()
         if not entry:
             raise HTTPException(status_code=404, detail="Tool not found")
         return entry
 
-    async def get_tool_by_name(self, name: str) -> Optional[ToolRegistryEntry]:
-        """Get a tool entry by name."""
-        result = await self.db.execute(
-            select(ToolRegistryEntry).where(ToolRegistryEntry.name == name)
-        )
+    async def get_tool_by_name(
+        self, name: str, viewer_company_id: Optional[uuid.UUID] = None,
+    ) -> Optional[ToolRegistryEntry]:
+        """Get a tool entry by name, scoped like :meth:`get_tool`.
+
+        Worth knowing when extending this: ``ToolRegistryEntry.name`` is unique
+        **globally**, so two tenants cannot hold the same custom tool name — a
+        cross-tenant collision surfaces as a 409 at create time. Scoping the
+        read does not change that; it only stops one tenant reading another's
+        entry through a guessed name.
+        """
+        query = select(ToolRegistryEntry).where(ToolRegistryEntry.name == name)
+        if viewer_company_id is not None:
+            query = query.where(
+                (ToolRegistryEntry.company_id.is_(None))
+                | (ToolRegistryEntry.company_id == viewer_company_id)
+            )
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def update_tool(

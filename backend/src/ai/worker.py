@@ -59,6 +59,7 @@ from src.ai.loop.heartbeat import loop_heartbeat
 from src.ai.loop.watchdog import loop_watchdog
 from src.ai.memory.rechunk_cron import chunk_upgrade_sweep
 from src.ai.trust.crons import dunning_sweep
+from src.ai.evolution.crons import entity_canary_sweep
 from src.ai.governance.crons import demotion_sweep
 from src.ai.learning.crons import (
     drift_sweep,
@@ -186,6 +187,11 @@ try:
         # of its triggers. LEARN measures; C4 alone decides what it costs.
         cron(drift_sweep, weekday=0, hour=1, minute=5),
         cron(demotion_sweep, hour=1, minute=40),
+        # SEGA T5 — judge every open entity canary. Deliberately *after* the
+        # demotion sweep: demotion is about authority and this is about
+        # version, and running demotion first means a rolled-back entity is not
+        # simultaneously demoted for the failures its rollback just removed.
+        cron(entity_canary_sweep, hour=1, minute=50),
         # B10 — pool yesterday's routing decisions, k-anonymity floor applied in
         # the job. Yesterday because a day cannot be aggregated until it is over.
         cron(platform_pooling_sweep, hour=2, minute=10),

@@ -2,7 +2,7 @@
 
 > **Document class:** increment overview — the plan the six workstream docs hang off.
 > **Author:** Buddha Cognitive Lab (drafted by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.1 — decisions locked; **all six workstream docs written 2026-07-25** (§2). Build not started.
+> **Created:** 2026-07-24 · **Status:** v1.2 — decisions locked; all six workstream docs written; **LEARN complete (T1–T10)**, **SEGA complete — B11 + D3 closed** (2026-07-25). Next: TWIN.
 > **Parent:** [00_charter.md](./00_charter.md) (goal, scope, the nine decisions) · [build_roadmap.md](../build_roadmap.md) §4
 > **Baseline:** `master` @ `8a54c27` — Increments 1–5 merged and pushed; VG-05 hardening built.
 
@@ -24,8 +24,8 @@ Two things about the shape are worth stating before the workstream docs:
 
 | # | Workstream | Closes | Doc |
 |---|---|---|---|
-| 1 | **LEARN** — learning store, charter tuning, B10 policy, KPI history, density store | **B10** | [01_learn.md](./01_learn.md) ✅ |
-| 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** | [02_sega.md](./02_sega.md) ✅ |
+| 1 | **LEARN** — learning store, charter tuning, B10 policy, KPI history, density store | **B10** ✅ closed | [01_learn.md](./01_learn.md) — **BUILT** |
+| 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** ✅ closed | [02_sega.md](./02_sega.md) — **BUILT** |
 | 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | — (VG-09/VG-10) | [03_twin.md](./03_twin.md) ✅ |
 | 4 | **STRAT** — Minutes→Propositions→Resolutions→Mandates→Reviews + HBS Planning depth | — (VG-11) | [04_strat.md](./04_strat.md) ✅ |
 | 5 | **GATE** — KAR-05 governed broadcast gates | — (VG-15) | [05_gate.md](./05_gate.md) ✅ |
@@ -33,7 +33,7 @@ Two things about the shape are worth stating before the workstream docs:
 
 **Two live defects in shipped code** surfaced while writing the designs, both scheduled as their workstream's **first** task rather than as new findings:
 
-* **SEGA T0** — `GET /ai/tools` and `GET /ai/tools/{id}` are unscoped by company, so any authenticated user reads **every tenant's** custom and synthesized tool entries, `configuration` blob included ([02](./02_sega.md) §2.1). Same shape as the VG-05 IDOR; same fix.
+* **SEGA T0** ✅ **fixed 2026-07-25** — `GET /api/v1/ai/tool-registry` and `.../{tool_id}` were unscoped by company, so any authenticated user read **every tenant's** custom and synthesized tool entries, `configuration` blob included ([02](./02_sega.md) §2.1, §13.1). Same shape as the VG-05 IDOR; same fix, mutation-tested in two layers.
 * **GATE T1–T2** — the **64 social/ad tools** in `ai/tools/social/` appear in no `TOOL_CATEGORY_MAP` entry, so the PolicyGate `PASS`es every public post and every ad-budget commitment at every autonomy band ([05](./05_gate.md) §1).
 
 Workstreams 3–6 close no *register* finding because the register predates the Design Gate. They close **gap-analysis** findings instead, and the register is not retro-fitted — the gap analysis is their register.
@@ -77,7 +77,7 @@ poetry run pytest tests/integration -q         # needs DATABASE_URL
 poetry run alembic upgrade head
 ```
 
-Baseline to beat: typecheck **260 files**, **1550 unit**, **16 parity/eval**, **288 integration**, migration head **`fleet001`**.
+Baseline to beat (as of 2026-07-25, after LEARN + SEGA): typecheck **283 files**, **1772 unit**, **16 parity/eval**, **364 integration**, migration head **`sega002`**. *(The Inc-5 baseline this row started from was 260 / 1550 / 16 / 288 / `fleet001`.)*
 
 Two gate notes specific to this increment:
 

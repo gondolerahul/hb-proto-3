@@ -111,15 +111,34 @@ def evaluate_policy(intent: ActIntent, gov: Governance) -> GateDecision:
     band = _band_for(gov, rule)
     amount = _amount_for(intent, rule.unit)
 
-    # §18.6 trust down-payment: a counterparty-trust triggering signal may not
-    # drive a high-impact category at all — refuse before autonomy is even
-    # considered. (Full taint tracking: register D3, Increment 6.)
-    if intent.counterparty_trust == "counterparty" and category in HIGH_IMPACT_CATEGORIES:
-        return GateDecision(
-            BLOCK, checkpoint_key=rule.checkpoint_key, category=category,
-            band=band, hard_block=hard,
-            reason=f"counterparty-trust signal cannot drive {category}",
-        )
+    # D3 (Inc-6 SEGA) — the context-taint firewall, which *replaces* Increment
+    # 1's `counterparty` special case with the four-level table it was the
+    # down-payment on. One enforcement point, not two: a second gate elsewhere
+    # would be a second answer to "may this run do this".
+    #
+    # `intent.counterparty_trust` now carries the run's accumulated taint,
+    # which starts at the triggering signal's trust and only ever descends as
+    # untrusted content enters (`evolution/taint_firewall.descend`). At
+    # `counterparty` the behaviour is identical to what shipped.
+    from src.ai.evolution.taint_firewall import HITL as TAINT_HITL
+    from src.ai.evolution.taint_firewall import REFUSE as TAINT_REFUSE
+    from src.ai.evolution.taint_firewall import firewall
+
+    if intent.counterparty_trust is not None:
+        zone = firewall(intent.counterparty_trust, category)
+        if zone == TAINT_REFUSE:
+            return GateDecision(
+                BLOCK, checkpoint_key=rule.checkpoint_key, category=category,
+                band=band, hard_block=hard, amount=amount,
+                reason=f"{intent.counterparty_trust}-trust context cannot drive {category}",
+            )
+        if zone == TAINT_HITL:
+            return GateDecision(
+                RAISE_HITL, checkpoint_key=rule.checkpoint_key, category=category,
+                band=band, hard_block=hard, amount=amount,
+                reason=(f"{category} needs a human while this run's context is "
+                        f"{intent.counterparty_trust}-trust"),
+            )
 
     # Hard-block ceiling is absolute — above it, no autonomy level may proceed.
     if hard is not None and amount is not None and amount > hard:
@@ -345,18 +364,28 @@ async def gate_and_maybe_stop(
     Returns True when the run must stop this iteration. Lives here (not in the
     AgentLoop) so governance orchestration is one testable unit and the loop
     stays thin. Signal trust (§18.6) is read from the run input the loop seeds
-    into ``context_state``. Fail-open on evaluation error — a gate bug must not
-    wedge runs; the save-time validator is the front-line guard on bad config.
+    into ``context_state``, and **lowered by whatever the run has since read**
+    (D3, Inc-6 SEGA — `evolution/taint`). Fail-open on evaluation error — a gate
+    bug must not wedge runs; the save-time validator is the front-line guard on
+    bad config.
     """
     from src.ai.core.agent_loop_sse import event_async
+    from src.ai.evolution.taint import record_run_taint, resolve_run_taint
 
     run_id = getattr(state, "run_id", None)
     sig = state.context_state.get("signal") if isinstance(
         getattr(state, "context_state", None), dict) else None
     signal_trust = sig.get("trust") if isinstance(sig, dict) else None
 
+    # The signal's trust is only the *seed*. A run started by an internal
+    # schedule that has since scraped a web page is no longer internal, and
+    # before D3 the gate could not tell. One query, and only on a categorised
+    # act — an uncategorised step never reaches here.
+    taint = await resolve_run_taint(gate.db, run_id, seed=signal_trust)
+    await record_run_taint(gate.db, run_id, taint)
+
     try:
-        decision = await gate.evaluate(move, entity, signal_trust)
+        decision = await gate.evaluate(move, entity, taint)
     except Exception as exc:  # noqa: BLE001
         logger.warning("PolicyGate evaluation failed (fail-open to critics): %s", exc)
         return False

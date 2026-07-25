@@ -1,6 +1,6 @@
 # Increment 6 / SEGA — Self-Evolution, Bounded (closes B11, D3)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Status:** ✅ **v2.0 — COMPLETE.** All of T0–T8 built (2026-07-25, branch `inc6/sega`). Build notes §13. **Closes register B11 and D3** + gap-analysis VG-10 and VG-17.
 > **Closes:** register **B11** (self-evolving code blast radius) + **D3** (context taint / tool-call firewall) + gap-analysis **VG-10** (no canary for agent/process changes) and **VG-17** (no entity version ledger).
 > **Depends on:** LEARN ([01](./01_learn.md)) — SEGA consumes `learning.charter_tuning_proposed` · the shipped Meta-Agent surface (`ai/meta/`) · EVX's `require_independent_suites` + `intelligence/canary.py` (Inc 5) · the PolicyGate (`governance/policy_gate.py`).
 > **Feeds:** TWIN ([03](./03_twin.md)) — the promotion pipeline **calls** this canary; the Glasshouse diff reads the version ledger · Vihara's Gallery (Inc 7).
@@ -38,8 +38,10 @@ So B11's specific claim needs restating against the code: the `tool_versions` ta
 
 `ToolRegistryEntry.name` is declared `unique=True` **globally**, and both read paths ignore company:
 
-* `ToolManagementService.list_all_tools()` — `select(ToolRegistryEntry)` with no filter, reached by `GET /ai/tools` behind plain `get_current_user`;
-* `ToolManagementService.get_tool(tool_id)` — selects by id alone, reached by `GET /ai/tools/{id}`, also plain `get_current_user`.
+* `ToolManagementService.list_all_tools()` — `select(ToolRegistryEntry)` with no filter, reached by `GET /api/v1/ai/tool-registry` behind plain `get_current_user`;
+* `ToolManagementService.get_tool(tool_id)` — selects by id alone, reached by `GET /api/v1/ai/tool-registry/{tool_id}`, also plain `get_current_user`.
+
+> **Route paths corrected 2026-07-25** (v1.1): v1.0 of this doc wrote these as `/ai/tools` and `/ai/tools/{id}`. The router's prefix is `/api/v1/ai/tool-registry` — a wrong path in a security finding is a defect in the record, so it is fixed here rather than quietly.
 
 So any authenticated user of any tenant can list and read **every other tenant's** custom and synthesized tool entries, including the `configuration` blob that carries the tool's `spec`, `source` and `audit`. Writes are `app_admin_only`, so this is disclosure rather than cross-tenant mutation — but a synthesized tool's spec describes how a competitor's business does something, which is exactly the material a tenant expects to be private.
 
@@ -181,15 +183,15 @@ New signal types: `governance.entity_versioned`, `governance.entity_rolled_back`
 
 | # | Task | Gate |
 |---|---|---|
-| **T0** | **Scope the tool registry reads** (§2.1) — company join on list + get, 404 on cross-tenant miss, platform (`company_id IS NULL`) rows stay visible to all | `*_db`, **mutation-tested** |
-| **T1** | `evolution/blast_radius.py` — the five limits, pure | unit, **each limit mutation-tested** |
-| **T2** | `entity_versions` + `sega001`; every `update_entity` writes a ledger row | `*_db` |
-| **T3** | `evolution/entity_canary.py` — cohort split, health from shipped telemetry, roll_back/promote | unit + `*_db` |
-| **T4** | Promotion calls `require_independent_suites`; PACK goldens registered as the incumbent suite | unit |
-| **T5** | The 01:50 UTC sweep + `governance.entity_*` signals | `*_db` |
-| **T6** | `evolution/taint_firewall.py` + `taint_level` + descent at the six entry points | unit (**existing PolicyGate tests must pass unchanged**) + `*_db` |
-| **T7** | Consume `learning.charter_tuning_proposed` → ledger → canary, end to end | `*_db` |
-| **T8** | Agent-proposed fields over `_sync_columns`, additive-only | unit + `*_db` |
+| **T0** ✅ | **Scope the tool registry reads** (§2.1) — company join on list + get, 404 on cross-tenant miss, platform (`company_id IS NULL`) rows stay visible to all | `*_db`, **mutation-tested** |
+| **T1** ✅ | `evolution/blast_radius.py` — the five limits, pure | unit, **each limit mutation-tested** |
+| **T2** ✅ | `entity_versions` + `sega001`; every `update_entity` writes a ledger row | `*_db` |
+| **T3** ✅ | `evolution/entity_canary.py` — cohort split, health from shipped telemetry, roll_back/promote | unit + `*_db` |
+| **T4** ✅ | Promotion calls `require_independent_suites`; PACK goldens registered as the incumbent suite | unit + `*_db` |
+| **T5** ✅ | The 01:50 UTC sweep + `governance.entity_*` signals | `*_db` |
+| **T6** ✅ | `evolution/taint_firewall.py` + `taint_level` + descent at the six entry points | unit (**existing PolicyGate tests must pass unchanged**) + `*_db` |
+| **T7** ✅ | Consume `learning.charter_tuning_proposed` → ledger → canary, end to end | `*_db`, **mutation-tested** |
+| **T8** ✅ | Agent-proposed fields ~~over `_sync_columns`~~ — no DDL needed (§13.11) | unit + `*_db` |
 
 T0 first on purpose: it is a live disclosure in shipped code, and adding capability to a leaking surface is the wrong order.
 
@@ -215,8 +217,134 @@ T0 first on purpose: it is a live disclosure in shipped code, and adding capabil
 
 ---
 
+## 13. Build notes (2026-07-25, branch `inc6/sega`)
+
+### 13.1 T0 — the leak, closed
+
+`_viewer_scope(user)` in the router decides what a reader may see: **`None` (unrestricted) only for `app_admin`**, every other role scoped to its own company plus the platform's own `company_id IS NULL` rows. The service's `list_all_tools` and `get_tool` take that scope; a cross-tenant `get_tool` is a **404, not a 403**, because a probe must not learn the id exists elsewhere.
+
+**The admin write paths were deliberately left unscoped.** `update_tool` / `delete_tool` / `toggle_tool` load through the unrestricted read and are already `app_admin_only`. Scoping them would break platform administration to fix a hole that is not on that path — this is a disclosure fix, not a permissions rewrite.
+
+**Two layers, mutation-tested separately.** Removing the router's scoping failed both leak tests; removing only the service's detail-read scoping failed only the detail test. A positive test also pins that a tenant still sees its own tools, the platform's, and the whole built-in catalogue — over-tightening is the failure mode a scoping fix most easily introduces.
+
+### 13.2 T1 — five limits, five refusals watched
+
+`evolution/blast_radius.py` is pure and total: `admit_change(ChangeRequest, Limits)` raises `BlastRadiusError` or returns. The facts it judges (changes today, subscription status, canary fraction) are gathered by the caller and carried on the request, which is what keeps the whole of B11's answer a function.
+
+**One delta: rollback is exempt from the rate cap and the kill switch.** Undoing an automated change is the safe direction, and the safe direction must never be harder than the unsafe one — the asymmetry VG-05 established for consent revocation and autonomy lowering. A tenant at the daily cap, or read-only, must still be able to get back. **Rollback stays subject to scope**, because a rollback of another tenant's entity is not a safe direction; it is a cross-tenant write.
+
+Each limit was mutation-tested on its own and failed **only** its own tests: the global-artifact check (3 tests), the rate cap (1), the cohort cap (2), the kill switch (2), and the rollback exemption (2). B11 says *nothing forbids* — the answer is only real if the suite has watched it forbid.
+
+### 13.3 T2 — the ledger
+
+`evolution/models.EntityVersion` + `evolution/ledger.py` + migration **`sega001`** (new head, off `learn001`; also adds `execution_runs.taint_level` for T6). `AIService.update_entity` now records a version **in the same transaction as the edit**, so there is no state where an entity has moved and its history has not.
+
+**Three deltas.**
+
+1. **`proposal_signal_id` carries no FK.** The ORM is import-light (the `intelligence/models.py` precedent) and an FK to `signals` made the mapper fail to configure in any context that had not imported the signal bus — caught immediately by the `*_db` suite. Dropped in both the model and the migration, following the shipped `CallLog.voice_session_id` precedent. There is a second, better reason: a signal can be reaped or replayed, and a version must outlive the proposal that caused it.
+2. **`record_version` never raises.** A deliberate asymmetry with the rest of SEGA, where refusals are loud: a missing ledger row is a gap in an audit trail, while a failed save is a person's work lost. Recording history must never be the reason an edit fails.
+3. **`next_version` is a patch bump, and says it is not semver.** Nothing here can tell a breaking charter change from a typo fix, and a scheme implying it could would be lying in a field people read. A malformed existing version starts a fresh `1.0.1` series rather than raising — a bad version string is not a reason to refuse to record history, which is the moment history matters most.
+
+`SNAPSHOT_BLOCKS` fixes what a version *is*, so a block added to `HierarchicalEntity` later is a deliberate addition to history rather than a silent omission — and secrets or transient attributes cannot drift in. Note the ledger snapshots `governance` and `capabilities` **even though they are never self-modified**: the ledger records what happened, `blast_radius` decides what may happen, and conflating them would leave the most consequential human edits unrecorded.
+
+### 13.4 T3 — the canary
+
+`evolution/entity_canary.py` + migration **`sega002`** (`execution_runs.entity_version_id`) + the stamp in `signals/dispatcher._spawn_run`.
+
+**The verdict is three-way: healthy / unhealthy / *not decided yet*.** Collapsing "not enough evidence" into either of the others is the failure mode — into healthy and every change ships on a quiet week, into unhealthy and every change is rolled back on one. §6's "a canary is a state, not a delay" is that third value, and it has its own tests.
+
+**Four deltas.**
+
+1. **A stored assignment, not a recomputed one** (`sega002`). The cohort split is a deterministic hash, so in principle the side could be re-derived — but only under the *fraction that was in force at the time*. Change the fraction and every past run silently re-assigns, quietly rewriting the evidence a rollback decision rested on. `entity_version_id` records what actually happened. **No FK**, for the `sega001` reason: `execution_runs` is imported almost everywhere and an FK would drag the evolution mappers in with it.
+2. **The cohort hash is `hashlib`, not `hash()`.** Python salts `hash()` per process, so a worker restart would silently re-draw every in-flight cohort. Pinned by a test.
+3. **Health is judged relative to the entity's own predecessor, never a fleet average.** An entity whose normal failure rate is 30% is not unhealthy for being itself; the question is whether *this version* is worse than the one before it.
+4. **The critic BLOCK rate was dropped from the health set.** The design listed it; it lives in `execution_runs.context_state`, a JSON blob the loop rewrites wholesale, and a health metric read from an unversioned blob is one that will silently change meaning. Failure rate, human-rejection rate and cost per run are real columns, and human rejection is the one a pure uptime metric would have missed — a change people keep refusing is a bad change even when nothing errors.
+
+### 13.5 T4 — admission before promotion
+
+`promote()` calls EVX's `require_independent_suites` **before** the status flip, inside the function rather than beside it — the `RegistryService.activate` precedent: a gate in the mutation path cannot be forgotten by a new caller. A test asserts a refused promotion leaves the version still `canary`.
+
+`suites_for_entity` maps §22.2 onto an entity honestly: `platform_curated` is true when the entity descends from a Solo Pack template (the **PACK behavioural goldens**, `increment-2/03b`, cover its class), and `incumbent_golden` is true when a predecessor accumulated enough observed runs to have set a bar — *"the exam predates the student"* in the form an entity can supply it.
+
+**The consequence is real and intended: a tenant's hand-built agent has no curated suite and therefore cannot be promoted automatically.** A human may still promote it; these limits govern *automated* change only.
+
+### 13.6 A defect the tests found
+
+`record_version` bumped from `entity.version`, and the entity row can lag the ledger — the canary and promotion paths write versions directly, and a restore deliberately does not rewind `entity.version`. The bump then collided with a row that already existed.
+
+The collision is nastier than a duplicate: **`db.add` defers the INSERT, so the unique violation surfaces at the caller's *commit*** and takes their whole transaction with it. So the module's "never raises, a person's edit is never lost" promise did not actually hold — a `try/except` around row construction cannot catch a flush-time failure.
+
+Fixed by making the **ledger** decide the number: `record_version` reads the existing versions for the entity and bumps the highest, ordered **numerically** (`1.0.10` above `1.0.9`; a string sort says the opposite). The docstring now states the limit of its own exception handling rather than overstating it.
+
+### 13.7 T5 — the sweep, and a canary that ends
+
+`evolution/sweep.py` + `evolution/crons.py`, at **01:50 UTC** — after C4's demotion sweep at 01:40, so a rolled-back entity is not simultaneously demoted for the failures its rollback has just removed.
+
+**Four outcomes per canary, and the fourth is the design delta.** Promoted, rolled back, still observing — and **healthy but unpromotable**: evidence is good, but no independent suite backs it (§22.2). Left in place with the reason logged, because the alternatives are promoting on self-assessment or discarding a change that has done nothing wrong. A human can promote it.
+
+**New: a canary expires.** An undecided canary past `SEGA_CANARY_MAX_DAYS` (14) is **rolled back**, not promoted. The design did not say this and it needed to: without it, a low-traffic entity's canary serves a quarter of its traffic *forever* — a permanent split disguised as a trial. Rolled back rather than promoted because the burden of proof sits with the change: it failed to show it was an improvement.
+
+### 13.8 T6 — D3, closed
+
+`evolution/taint_firewall.py` (pure ladder + firewall table) and `evolution/taint.py` (the DB half), with the enforcement replacing Increment 1's `counterparty` special case *inside* `evaluate_policy` — one enforcement point, not two.
+
+**Resolved at the gate, from the durable tool log.** The obvious alternative threads a taint value down through the loop, the step executor and the tool executor, and one of those — `core/agent_loop.py` — is pinned at its line cap. Worse, an in-memory value does not survive a **paused-and-resumed** run, which is exactly the shape a HITL-gated run has: the approval arrives hours later, in another process, and the context that made the act risky must still be known. `tool_interaction_logs` already records what a run called; reading it costs one query **per categorised act**, and a run that never proposes an external effect never pays for it.
+
+**One design delta, and it matters.** §7.4's table put `email_dispatch` and `broadcast` under `counterparty` → HITL. That is wrong, structurally: a run's taint is seeded from its triggering signal, so **every Karuna gateway run is counterparty-tainted from turn one**. Forcing a card there raises an approval on every gateway reply — the whole sellable path (SLICE's email→quote) — and makes A2+ meaningless for the gateways. *Replying to a counterparty is what a gateway is for*; the control that covers it is the Karuna profile (no monetary authority, counterparty text as data), not an approval on every reply. `external_write` stays in that cell: writing into a system of record because a stranger's message said so is a genuine escalation, and it is rare enough that a card is not noise.
+
+**Non-inferiority proved by mutation, not by assertion.** Disabling the firewall call failed **six pre-existing tests** — `test_kar_gateways.py` ×4, `test_policy_gate.py`, `test_policy_gate_loop.py` — which is the strongest available evidence that the new table *carries* the old rule rather than sitting beside it. Removing the descent failed only the new D3 test.
+
+**The new bite** is the `external_verified` row: a run that has read an external system may no longer move money autonomously, however high its band. Before D3 there was no level between "counterparty" and "fully trusted".
+
+### 13.10 T7 — the predicate gets its caller, and T3 gets a correction
+
+`evolution/proposals.py` consumes `learning.charter_tuning_proposed`: load the entity **through its company**, gather the facts, `admit_change`, apply, record a `canary` version carrying `proposal_signal_id`.
+
+**B11 is closed end-to-end here, and only here.** Until this module existed the predicate was a guarantee with no caller — B11 asks what *forbids* a self-heal from mutating a global artifact, and an answer nothing routes through is not an answer. Bypassing `admit_change` at this call site fails **three** end-to-end refusal tests (governance field, suspended tenant, daily cap), which is what makes it load-bearing rather than decorative.
+
+**Every refusal is visible.** A refused proposal parks its signal with the reason on `last_error`. A silent refusal and a silent bug look identical from outside, and "why did nothing happen?" needs an answer in the place a human is already looking.
+
+**The addition appends; it does not replace.** A learning proposal adds to what a colleague was told. Replacing a goal an owner wrote with a sentence a loop inferred is exactly the overreach the field allow-list exists to bound — and a test asserts the owner's original words survive.
+
+**The T3 correction.** T3 shipped a stable-hash **traffic split**: a fraction of runs attributed to the candidate, the rest to the incumbent. Wiring T7 showed it was wrong, and wrong in the direction that produces confident nonsense. An entity has exactly **one row** — applying a charter tune mutates it, so from that moment *every* run behaves as the candidate, and labelling 75% of them "incumbent" would have compared the new version against itself and reported a clean result. The alternative, not mutating until GA, is worse: the "candidate" cohort then behaves identically and every canary passes.
+
+A true A/B needs the loop to compose an agent from a **version snapshot** rather than from the entity row — a change to `core/agent_loop.py`, which is pinned at its line cap, and it is not built. So `in_canary_cohort` was **deleted** (with its tests) rather than left as dead code with a promise, and what ships is an honest **staged rollout with a watched window**: the change is live for everyone, and the comparison is against the previous version's *historical* runs. That is the same shape `intelligence/canary.py` uses. It is a real regression check; it is simply not an A/B, and calling it one would have been the lie. A test pins that the split does not come back casually.
+
+### 13.11 T8 — agent-proposed fields, and a second design correction
+
+**§8 said this lands "through the shipped `data_plane._sync_columns` primitive". It does not, because it needs no DDL at all.** A tenant object's fields live in `TenantEntityDef.fields` — a JSONB list — and its records are JSONB documents in `TenantRecord.data`. Adding a field is an append and a version bump. `_sync_columns` manages the Inc-4 SoR *mirror* columns and is unrelated. Worth stating plainly, because the design's sentence would send a reader hunting for a migration that should not exist.
+
+**Additive only, and absent rather than gated.** There is no `drop`, `rename` or `retype` entry point — a test asserts no such function exists in the module. A dropped field is data loss no rollback recovers: the ledger can restore an entity's *definition*, but nothing restores records whose values went with the field. Three further refusals earn their place:
+
+* **An existing name is refused** — "adding" a name that exists is a retype in disguise.
+* **A proposed field is never `required`** — making it required retroactively invalidates every record that predates it, which is the same data loss arriving as a validation error on the next write.
+* **`ref` is not proposable** — a ref creates an edge in the object graph and materialises link rows. Proposing relationships between business objects is a modelling decision, not a missing column, and it belongs to a human.
+
+Two test bugs found and fixed while writing this, both worth knowing: `emit_proposal` dedupes on `(entity, field, evidence)`, so five identical proposals are **one** proposal by design; and **raw `text()` SQL does not get `schema_translate_map`** — only ORM/Table constructs carrying the symbolic `tenant` schema do, so a tenant-plane query must go through the ORM.
+
+### 13.12 Verification (T0–T8 — SEGA complete)
+
+typecheck **283 files** strict · layout lint · **1772 unit** (+120) · **16 parity/eval** · **364 integration** (+35) · migration head **`sega002`**, applies/downgrades/re-applies.
+
+**Register B11 and D3 are both closed.** B11: automated change passes one predicate with five limits, each mutation-tested alone, and the predicate is load-bearing at its only caller. D3: a four-level taint ladder that only descends, a pure firewall table, and enforcement inside `evaluate_policy` — proven non-regressive by six pre-existing tests failing when it is disabled.
+
+**Honest limits.**
+
+* **The rollout is not an A/B** (§13.10). A true one needs version-snapshot composition in the loop.
+* **Only signal-driven runs are stamped with a version.** `_spawn_run` assigns one; Pragya turns, manual executions and the deferred voice queue do not. An unstamped run is `NULL` — *not attributed*, never "the incumbent".
+* **Taint descends from tool calls only.** Three of §7.3's six entry points are wired: the signal seed, free-web tools, connector/MCP reads. The other three need stores that do not exist yet — retrieved-chunk provenance is **LIB**, inbound-record-field origin needs the record service to carry it, child-run taint needs the delegation path to propagate. The source map lists all six so the gaps are visible in the code.
+* **`consume_proposals` has no cron.** T7 is driven by tests calling it; scheduling it beside the canary sweep is a one-line addition, deliberately not made until a proposal path has been watched once.
+* **T8 has no producer.** Nothing yet *detects* that an agent keeps needing a missing field; `apply_field_proposal` is the safe applier for a proposal a human or a later detector supplies.
+* The ledger is written by `update_entity` only — entity creation and soft-delete do not record versions.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | ✅ **v2.0 — SEGA COMPLETE.** T7 + T8 built (§13.10–§13.12). **B11 closed end-to-end** — the predicate now has a caller, and bypassing it fails three refusal tests. **Two design corrections:** T3's traffic split was deleted (an entity has one row, so the split compared a version against itself) and replaced with an honest staged rollout; and T8 needs no DDL, because tenant fields are JSONB rather than columns. |
+| 2026-07-25 | v1.3 — **T5 + T6 built** (§13.7–§13.9). **D3 closed**: the four-level taint ladder replaces Increment 1's `counterparty` special case inside `evaluate_policy`, resolved at the gate from the durable tool log so it survives a paused-and-resumed run. Non-inferiority proved by mutation — disabling the firewall fails six pre-existing tests. Two deltas: an undecided canary now **expires** (an experiment with no end date is not an experiment), and outbound comms stay band-based at `counterparty` taint because every Karuna gateway run is counterparty-tainted from turn one. |
+| 2026-07-25 | v1.2 — **T3 + T4 built** (§13.4–§13.7). Migration `sega002` stores the run→version assignment rather than recomputing it; the canary verdict is three-way; the critic BLOCK rate dropped from the health set with the reason; promotion gated by `require_independent_suites` inside the mutation path. **A defect the tests found:** `record_version` bumped from the entity row, which can lag the ledger, and the resulting unique violation surfaced at the caller's commit — the version is now decided by the ledger and ordered numerically. |
+| 2026-07-25 | v1.1 — **T0–T2 built** (§13). Route paths in §2.1 corrected (`/api/v1/ai/tool-registry`, not `/ai/tools`). Rollback made exempt from the rate cap and kill switch but never from scope; `proposal_signal_id`'s FK dropped for import-lightness; `record_version` made non-raising. |
 | 2026-07-25 | v1.0 — design written. B11 restated against the code (the named `tool_versions` table does not exist; the risk does); **a live cross-tenant read of every tenant's tool entries found and scheduled as T0**; blast radius reduced to five checkable limits; the version ledger chosen as full snapshots; the entity canary kept separate from the model canary with the reason; D3 given a four-level ladder, a monotonic descent map and a pure firewall table that reproduces today's behaviour at `counterparty`. |

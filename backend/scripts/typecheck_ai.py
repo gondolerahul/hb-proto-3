@@ -54,6 +54,7 @@ CLEAN_PACKAGES: list[str] = [
     "connectors",
     "intelligence",
     "learning",
+    "evolution",
 ]
 
 
