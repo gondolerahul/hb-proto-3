@@ -2,7 +2,7 @@
 
 > **Document class:** increment overview — the plan the six workstream docs hang off.
 > **Author:** Buddha Cognitive Lab (drafted by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.2 — decisions locked; all six workstream docs written; **LEARN complete (T1–T10)**, **SEGA complete — B11 + D3 closed** (2026-07-25). Next: TWIN.
+> **Created:** 2026-07-24 · **Status:** v1.3 — decisions locked; all six workstream docs written. **LEARN, SEGA, GATE and TWIN complete; LIB T1–T2 built** (2026-07-25). **B10, B11, D3, VG-09, VG-10, VG-12, VG-15, VG-17 closed.** Remaining: **STRAT** (whose T2 is a blocking owner review) and **LIB T3–T8**.
 > **Parent:** [00_charter.md](./00_charter.md) (goal, scope, the nine decisions) · [build_roadmap.md](../build_roadmap.md) §4
 > **Baseline:** `master` @ `8a54c27` — Increments 1–5 merged and pushed; VG-05 hardening built.
 
@@ -26,7 +26,7 @@ Two things about the shape are worth stating before the workstream docs:
 |---|---|---|---|
 | 1 | **LEARN** — learning store, charter tuning, B10 policy, KPI history, density store | **B10** ✅ closed | [01_learn.md](./01_learn.md) — **BUILT** |
 | 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** ✅ closed | [02_sega.md](./02_sega.md) — **BUILT** |
-| 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | — (VG-09/VG-10) | [03_twin.md](./03_twin.md) — **IN PROGRESS** |
+| 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | **VG-09** ✅ closed | [03_twin.md](./03_twin.md) — **BUILT** (T1–T11) |
 | 4 | **STRAT** — Minutes→Propositions→Resolutions→Mandates→Reviews + HBS Planning depth | — (VG-11) | [04_strat.md](./04_strat.md) ✅ |
 | 5 | **GATE** — KAR-05 governed broadcast gates | **VG-15** ✅ closed | [05_gate.md](./05_gate.md) — **BUILT** (T1–T7) |
 | 6 | **LIB** — Library data layer: provenance, influence, staleness, drives | — (VG-13/VG-14, opt. VG-16) | [06_lib.md](./06_lib.md) — **T1+T2 BUILT**, T3–T8 open |
@@ -81,7 +81,7 @@ poetry run pytest tests/integration -q         # needs DATABASE_URL
 poetry run alembic upgrade head
 ```
 
-Baseline to beat (as of 2026-07-25, after LEARN + SEGA + **GATE** + **LIB T1–T2**): typecheck **289 files**, **1847 unit**, **16 parity/eval**, **391 integration**, migration head **`lib001`**. *(After LEARN + SEGA it was 283 / 1772 / 16 / 364 / `sega002`; the Inc-5 baseline this row started from was 260 / 1550 / 16 / 288 / `fleet001`.)*
+Baseline to beat (as of 2026-07-25, after LEARN + SEGA + **GATE** + **LIB T1–T2** + **TWIN**): typecheck **300 files**, **1915 unit**, **16 parity/eval**, **421 integration**, migration head **`twin001`**. *(After GATE + LIB it was 289 / 1847 / 16 / 391 / `lib001`; after LEARN + SEGA, 283 / 1772 / 16 / 364 / `sega002`; the Inc-5 baseline this row started from was 260 / 1550 / 16 / 288 / `fleet001`.)*
 
 **A gate note earned the hard way (LIB T2):** the integration suite is **order-dependent in places that do not announce it**. `test_kpi_rollup.py` reached the *global* engine without disposing it, so it passed or failed purely on what ran before it — adding nine tests elsewhere broke it. If a test fails in the full run but passes alone, suspect a missing `await engine.dispose()` before blaming the change.
 
@@ -98,7 +98,7 @@ Head is **`fleet001`**. As designed (v1.1 — the provisional table above was re
 |---|---|---|
 | LEARN | **`learn001`** | `platform_observations` (no company column, §4), `kpi_snapshots`, `entity_behaviour_weekly`, `user_preferences` |
 | SEGA | **`sega001`** | `entity_versions`; `execution_runs.taint_level` |
-| TWIN | **`twin001`** | `twin_scenarios`, `twin_runs`. The twin *plane* is **not** a migration — it is a sibling tenant schema (`t_<hex>_tw`), bootstrapped like any tenant schema |
+| TWIN | **`twin001`** ✅ | `twin_scenarios`, `twin_runs`. The twin *plane* is **not** a migration — it is a sibling tenant schema (`t_<hex>_tw`), bootstrapped like any tenant schema. Landed off **`lib001`** rather than `sega001`, GATE and LIB having merged first; the `entity_version_id` FK into SEGA's ledger resolves either way |
 | STRAT | **none** | The seven Planning objects are HBS **seed data**; `seed_hbs_spine` is additive and idempotent, so existing tenants pick them up on the next `ensure_ready` |
 | GATE | **`gate001`** ✅ | The **20th and 21st** HITL checkpoint backfill (`before_public_broadcast`, `before_ad_spend_above_band`) — the same shape as `conn002`'s 19th. **Two, not one**: `ad_spend` carries an amount band, and borrowing the payout checkpoint would have made an ad campaign un-opt-out-able ([05](./05_gate.md) §11.2). Everything else is declared data |
 | LIB | **`lib001`** ✅ (T1+T2) | `documents` provenance columns + `retrieval_usages`. **`document_influence_daily`, `artifacts.document_id`/`record_ref` and `credentials_expire_at` were deliberately left out** — shipping tables nothing writes to is dead schema that reads as a built feature; they land with T3/T5/T7/T8 as `lib002` ([06](./06_lib.md) §13.2) |
@@ -112,7 +112,7 @@ The two carve-outs held, both established precedent: **tenant tables are bootstr
 | Risk | Why it is real here |
 |---|---|
 | **The increment is the largest attempted** | Six workstreams, four of them net-new subsystems. Inc 2 (six workstreams) is the closest precedent and it was the MVP. Deferring GATE or LIB is the cheapest relief valve if it runs long — both are independent by construction (§3). |
-| **TWIN has no precedent in the codebase** | Nothing simulation-shaped exists. Prototype the plane before the engines ([03](./03_twin.md) T1). *Design update (v1.1): the twin plane is a **sibling schema**, not a third backend mode — so `data_plane.py`'s two backends stay two, which removes most of what this row feared.* |
+| ~~**TWIN has no precedent in the codebase**~~ ✅ **closed** | Nothing simulation-shaped existed. The plane was prototyped first ([03](./03_twin.md) T1) and **it held** — the twin is a sibling schema, so `data_plane.py`'s two backends stayed two and no new infrastructure was needed. What the row feared did not happen. |
 | **Decision 2's guarantee may not survive contact** | If the pooled/tenant split cannot be made structural, decision 8 reopens (§4). Find out in LEARN's first task, not its last — [01](./01_learn.md) T1 is written as exactly that stop-or-go. |
 | **STRAT is domain modelling, not plumbing** | Minutes/Propositions/Resolutions/Mandates are business objects a tenant will *see*. They need the same review the HBS spine got. **[04](./04_strat.md) T2 is a blocking owner review** of the seven object sheets — build does not start until it closes. |
 | **Measuring "Week 12 > Week 1" needs Week 1** | Every deferral of LEARN pushes the first honest answer out by the same amount, and no later effort recovers it. |
