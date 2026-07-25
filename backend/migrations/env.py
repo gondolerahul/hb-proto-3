@@ -24,6 +24,7 @@ from src.ai import social_models
 from src.voice import models as voice_models
 from src.ai import lead_queue_model  # CRM lead queue
 from src.ai.intelligence import models as intelligence_models  # Inc 5 / REG — model registry (B12)
+from src.ai.learning import models as learning_models  # Inc 6 / LEARN — learning stores (B10)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

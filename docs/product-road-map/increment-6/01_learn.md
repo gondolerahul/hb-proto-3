@@ -1,6 +1,6 @@
 # Increment 6 / LEARN — The Learning Store, and the History That Makes It Measurable (closes B10)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Status:** v1.1 — design locked (§3). **T1 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T2–T10 pending.
 > **Closes:** register **B10** (learning-system risk blindspots) + gap-analysis **VG-12** (no KPI history store).
 > **Depends on:** the shipped signal bus (`ai/signals/`), CORTEX Intelligence trees (`ai/memory/intelligence_tree_service.py` + `rule_lifecycle.py`), the C6 KPI registry (`ai/kpi/`), RTR's `routing_decisions` (`ai/intelligence/models.py`), EVX's admission gate (`ai/intelligence/admission.py`).
 > **Feeds:** SEGA ([02](./02_sega.md)) — LEARN proposes, SEGA admits · TWIN ([03](./03_twin.md)) — the forecast engine reads `kpi_snapshots` · STRAT ([04](./04_strat.md)) — mandate reviews read the same series · Vihara G1/G2 (Increment 7) — plinth trends and the Seasons timeline.
@@ -192,7 +192,7 @@ One migration off `fleet001`, four tables, no tenant-schema changes. New package
 
 | # | Task | Gate |
 |---|---|---|
-| **T1** | **The B10 guarantee, first.** `learning/models.py` + `learn001`. Assert the `platform_observations` column set is exactly §4.2; assert no FK to `companies`. **If this cannot hold, stop and reopen decision 3** (§4.4) | unit + `*_db` |
+| **T1** ✅ | **The B10 guarantee, first.** `learning/models.py` + `learn001`. Assert the `platform_observations` column set is exactly §4.2; assert no FK to `companies`. **If this cannot hold, stop and reopen decision 3** (§4.4) | unit + `*_db` |
 | **T2** | `learning/pooling.py` — the daily aggregation job with the k-anonymity floor; upsert semantics; drop (never defer) below-floor groups | unit (pure grouping) + `*_db` |
 | **T3** | `learning/kpi_snapshot.py` + the reaper + the arq 01:25 cron; unmeasurable KPIs snapshot as absence | `*_db`, incl. a re-run idempotency test |
 | **T4** | `GET /ai/kpi/history` | router test |
@@ -228,8 +228,29 @@ T9 is where the billing canary bites: it touches the routing path, and the HANDO
 
 ---
 
+## 14. Build notes — T1 (2026-07-25, branch `inc6/learn`)
+
+**The guarantee holds.** §4.4's stop-or-go passed: the pooled path can be made structurally incapable of carrying tenant content without contorting anything, so charter decisions 2 and 8 both stand and the increment proceeds as designed.
+
+**What was built.** `ai/learning/` (added to `CLEAN_PACKAGES`) with `models.py` — `PlatformObservation`, `KpiSnapshot`, `EntityBehaviourWeekly`, `UserPreference` — plus migration **`learn001`** off `fleet001` (the new head) and registration in `migrations/env.py`. Import-light throughout (column FKs, no `relationship()`), following the `intelligence/models.py` precedent, so a test touching only these tables need not register the auth/execution mapper graph.
+
+**Three design deltas.**
+
+1. **The grain needed an expression index, not a unique constraint.** `model_registry_id` is nullable — `routing_decisions`' is, because an un-bound legacy integration still routes — and **Postgres treats NULLs as distinct in a unique constraint**. A plain `UniqueConstraint` would therefore have permitted an unbounded number of identical *"no model"* buckets, and T2's daily upsert would have appended forever for exactly the rows most likely to exist early. The grain is now a unique index over `coalesce(model_registry_id, <nil uuid>)`. Chosen over PG15's `NULLS NOT DISTINCT` so the schema carries no version floor. **The `*_db` test found this**, which is the argument for writing the database-level assertions rather than trusting the metadata ones.
+2. **`POOLED_COLUMNS` lives in the model module, not only in the test.** A reader adding a column should meet the constraint in the file they are editing; a test three directories away is a discovery made after the fact.
+3. **The metadata tests read `fk.target_fullname`, not `fk.column`.** Resolving the `Column` requires the referenced table to be in the same metadata, which import-lightness deliberately prevents. The declared string is the right thing to assert anyway — it is what the DDL emits.
+
+**The guarantee is mutation-tested.** Adding `company_id` + a `notes` JSONB to `PlatformObservation` failed exactly four tests — no-company-column, no-tenant-FK, exact-column-set, no-free-form-column — and left the tenant-path and KPI tests green. A guarantee no test has been observed to enforce is a comment.
+
+**Verification.** typecheck **262 files** strict · layout lint · **1570 unit** (+16) · **16 parity/eval** · **296 integration** (+8) · `learn001` applies, downgrades and re-applies; head is `learn001`.
+
+**Honest limit:** these are stores with no writers yet. Nothing populates `platform_observations` until T2 and nothing populates `kpi_snapshots` until T3 — so the KPI series still starts on the day T3 lands, not today.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.1 — **T1 built** (§14). The B10 stop-or-go passed. One real defect found by the DB-level test: the pooled grain needed a `coalesce` expression index because Postgres treats NULLs as distinct in a unique constraint. |
 | 2026-07-25 | v1.0 — design written. B10 split into its three real questions; the pooled record shaped so tenant content cannot fit; k-anonymity applied in the job rather than the table; `kpi_snapshots` with the honest-absence rule persisted; the LEARN⇸SEGA seam confirmed (propose vs dispose); reward hacking answered structurally; drift feeding C4 rather than duplicating it. |
