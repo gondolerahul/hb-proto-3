@@ -26,15 +26,19 @@ Two things about the shape are worth stating before the workstream docs:
 |---|---|---|---|
 | 1 | **LEARN** — learning store, charter tuning, B10 policy, KPI history, density store | **B10** ✅ closed | [01_learn.md](./01_learn.md) — **BUILT** |
 | 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** ✅ closed | [02_sega.md](./02_sega.md) — **BUILT** |
-| 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | — (VG-09/VG-10) | [03_twin.md](./03_twin.md) ✅ |
+| 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | — (VG-09/VG-10) | [03_twin.md](./03_twin.md) — **IN PROGRESS** |
 | 4 | **STRAT** — Minutes→Propositions→Resolutions→Mandates→Reviews + HBS Planning depth | — (VG-11) | [04_strat.md](./04_strat.md) ✅ |
-| 5 | **GATE** — KAR-05 governed broadcast gates | — (VG-15) | [05_gate.md](./05_gate.md) ✅ |
-| 6 | **LIB** — Library data layer: provenance, influence, staleness, drives | — (VG-13/VG-14, opt. VG-16) | [06_lib.md](./06_lib.md) ✅ |
+| 5 | **GATE** — KAR-05 governed broadcast gates | **VG-15** ✅ closed | [05_gate.md](./05_gate.md) — **BUILT** (T1–T7) |
+| 6 | **LIB** — Library data layer: provenance, influence, staleness, drives | — (VG-13/VG-14, opt. VG-16) | [06_lib.md](./06_lib.md) — **T1+T2 BUILT**, T3–T8 open |
 
 **Two live defects in shipped code** surfaced while writing the designs, both scheduled as their workstream's **first** task rather than as new findings:
 
 * **SEGA T0** ✅ **fixed 2026-07-25** — `GET /api/v1/ai/tool-registry` and `.../{tool_id}` were unscoped by company, so any authenticated user read **every tenant's** custom and synthesized tool entries, `configuration` blob included ([02](./02_sega.md) §2.1, §13.1). Same shape as the VG-05 IDOR; same fix, mutation-tested in two layers.
-* **GATE T1–T2** — the **64 social/ad tools** in `ai/tools/social/` appear in no `TOOL_CATEGORY_MAP` entry, so the PolicyGate `PASS`es every public post and every ad-budget commitment at every autonomy band ([05](./05_gate.md) §1).
+* **GATE T1–T2** ✅ **fixed 2026-07-25** — the **64 social/ad tools** in `ai/tools/social/` appeared in no `TOOL_CATEGORY_MAP` entry, so the PolicyGate `PASS`ed every public post and every ad-budget commitment at every autonomy band ([05](./05_gate.md) §1, §11). Two categories, 36 exact mappings, and a totality test so the next uncategorised social tool fails CI rather than shipping.
+
+**⇒ Both live shipped-code defects the design round found are now closed.**
+
+A third, smaller one was found *while building* GATE and is worth recording here because it is the same species: **`evolution/taint_firewall.py` held a hand-copied `HIGH_IMPACT_CATEGORIES`** while its docstring claimed it imported one. It drifted the first time the governance constant moved — GATE added `ad_spend` and the firewall silently kept permitting it. Now read live, with a test pinning the two in sync ([05](./05_gate.md) §11.2).
 
 Workstreams 3–6 close no *register* finding because the register predates the Design Gate. They close **gap-analysis** findings instead, and the register is not retro-fitted — the gap analysis is their register.
 
@@ -77,7 +81,9 @@ poetry run pytest tests/integration -q         # needs DATABASE_URL
 poetry run alembic upgrade head
 ```
 
-Baseline to beat (as of 2026-07-25, after LEARN + SEGA): typecheck **283 files**, **1772 unit**, **16 parity/eval**, **364 integration**, migration head **`sega002`**. *(The Inc-5 baseline this row started from was 260 / 1550 / 16 / 288 / `fleet001`.)*
+Baseline to beat (as of 2026-07-25, after LEARN + SEGA + **GATE** + **LIB T1–T2**): typecheck **289 files**, **1847 unit**, **16 parity/eval**, **391 integration**, migration head **`lib001`**. *(After LEARN + SEGA it was 283 / 1772 / 16 / 364 / `sega002`; the Inc-5 baseline this row started from was 260 / 1550 / 16 / 288 / `fleet001`.)*
+
+**A gate note earned the hard way (LIB T2):** the integration suite is **order-dependent in places that do not announce it**. `test_kpi_rollup.py` reached the *global* engine without disposing it, so it passed or failed purely on what ran before it — adding nine tests elsewhere broke it. If a test fails in the full run but passes alone, suspect a missing `await engine.dispose()` before blaming the change.
 
 Two gate notes specific to this increment:
 
@@ -94,8 +100,8 @@ Head is **`fleet001`**. As designed (v1.1 — the provisional table above was re
 | SEGA | **`sega001`** | `entity_versions`; `execution_runs.taint_level` |
 | TWIN | **`twin001`** | `twin_scenarios`, `twin_runs`. The twin *plane* is **not** a migration — it is a sibling tenant schema (`t_<hex>_tw`), bootstrapped like any tenant schema |
 | STRAT | **none** | The seven Planning objects are HBS **seed data**; `seed_hbs_spine` is additive and idempotent, so existing tenants pick them up on the next `ensure_ready` |
-| GATE | **`gate001`** | The 20th HITL checkpoint backfill (`before_public_broadcast`) — the same shape as `conn002`'s 19th. Everything else is declared data |
-| LIB | **`lib001`** | `documents` provenance columns, `retrieval_usages`, `document_influence_daily`, `artifacts.document_id`/`record_ref`, optional `connector_bindings.credentials_expire_at` |
+| GATE | **`gate001`** ✅ | The **20th and 21st** HITL checkpoint backfill (`before_public_broadcast`, `before_ad_spend_above_band`) — the same shape as `conn002`'s 19th. **Two, not one**: `ad_spend` carries an amount band, and borrowing the payout checkpoint would have made an ad campaign un-opt-out-able ([05](./05_gate.md) §11.2). Everything else is declared data |
+| LIB | **`lib001`** ✅ (T1+T2) | `documents` provenance columns + `retrieval_usages`. **`document_influence_daily`, `artifacts.document_id`/`record_ref` and `credentials_expire_at` were deliberately left out** — shipping tables nothing writes to is dead schema that reads as a built feature; they land with T3/T5/T7/T8 as `lib002` ([06](./06_lib.md) §13.2) |
 
 The two carve-outs held, both established precedent: **tenant tables are bootstrapped per-tenant, not migrated** (SCH, Inc 1), and **new HBS objects are seed data** (`tenant_schema/hbs_seed/`) — which is why the largest domain-model change in the increment (STRAT's seven objects, spine 27→34) adds no migration at all.
 
