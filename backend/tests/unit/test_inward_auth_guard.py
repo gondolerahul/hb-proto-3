@@ -133,3 +133,68 @@ def test_connector_binding_is_sensitive():
     from src.ai.inward_auth.tiers import CommandIntent
 
     assert classify(CommandIntent(kind=IntentKind.CONNECTOR_BINDING)).tier is Tier.T2
+
+
+# ── the refusal shape the console acts on ─────────────────────────────────────
+
+def test_refusal_carries_the_command_it_refused():
+    """A T3 refusal must name its command or the act cannot be completed.
+
+    The out-of-band leg binds its nonce to a ``command_ref``; a refusal that
+    omits one leaves the console with nothing to bind to, so the ceremony it
+    just told the user to run cannot finish. The server supplies the reference
+    — one the client invented would let a confirmation for one command
+    authorise another.
+    """
+    from src.ai.inward_auth.guard import tier_refusal
+    from src.ai.inward_auth.sessions import require_tier
+
+    session = _unelevated_session()
+    decision = require_tier(session, Tier.T3)
+    assert decision.needs_oob is True
+
+    exc = tier_refusal(decision, "T3", "irreversible payout",
+                       command_ref="approval:abc", command_summary="a payout approval")
+    assert exc.status_code == 403
+    assert exc.detail["error"] == "step_up_required"
+    assert exc.detail["command_ref"] == "approval:abc"
+    assert exc.detail["command_summary"] == "a payout approval"
+    assert exc.detail["needs_oob"] is True
+
+
+def test_refusal_keys_are_present_even_when_unnamed():
+    """The console reads the same keys either way — absence is null, not missing."""
+    from src.ai.inward_auth.guard import tier_refusal
+    from src.ai.inward_auth.sessions import require_tier
+
+    exc = tier_refusal(require_tier(_unelevated_session(), Tier.T2), "T2", "why")
+    assert exc.detail["command_ref"] is None
+    assert exc.detail["command_summary"] is None
+
+
+def _unelevated_session():
+    """A bound console session holding nothing beyond the login."""
+    from src.ai.inward_auth.models import AccountManagerSession, AuthLevel, ChannelKind
+
+    return AccountManagerSession(
+        channel_kind=ChannelKind.CONSOLE,
+        auth_level=AuthLevel.BOUND,
+        failed_stepups=0,
+    )
+
+
+# ── approval_summary ──────────────────────────────────────────────────────────
+
+def test_summary_names_the_category_and_the_money():
+    """The human confirms while reading what they are confirming."""
+    from src.ai.inward_auth.guard import approval_summary
+
+    assert approval_summary({"category": "payment_execution", "amount": 5000}) == (
+        "a payment execution approval for 5,000.00")
+
+
+def test_summary_of_an_uncategorised_card_claims_nothing():
+    from src.ai.inward_auth.guard import approval_summary
+
+    assert approval_summary({"reason": "confirm the plan"}) == "this approval"
+    assert approval_summary(None) == "this approval"

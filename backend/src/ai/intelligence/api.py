@@ -157,7 +157,10 @@ async def opt_in_provider(
     """
     from src.ai.intelligence.allow_list import DisclosureError, opt_in
 
-    await enforce_kind(db, current_user, IntentKind.BINDING_CHANGE)
+    await enforce_kind(
+        db, current_user, IntentKind.BINDING_CHANGE,
+        command_ref=f"provider-optin:{provider}",
+        command_summary=f"letting {provider} process this tenant's data")
 
     try:
         row = await opt_in(

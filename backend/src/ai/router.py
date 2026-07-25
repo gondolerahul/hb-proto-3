@@ -137,8 +137,10 @@ async def update_entity(
         existing = await service.get_entity(
             entity_id, current_user.company_id, current_user.role)
         if raises_autonomy(getattr(existing, "governance", None), entity_in.governance):
-            await enforce_tier(db, current_user,
-                               CommandIntent(kind=IntentKind.AUTONOMY_RAISE))
+            await enforce_tier(
+                db, current_user, CommandIntent(kind=IntentKind.AUTONOMY_RAISE),
+                command_ref=f"entity:{entity_id}:autonomy",
+                command_summary="raising this agent's autonomy band")
 
     return await service.update_entity(entity_id, entity_in, current_user.company_id, user_role=current_user.role)
 
@@ -474,7 +476,8 @@ async def respond_to_approval(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    from src.ai.inward_auth.guard import enforce_tier, intent_for_approval
+    from src.ai.inward_auth.guard import (
+        approval_summary, enforce_tier, intent_for_approval)
 
     status, notes = body.status, body.notes
     service = AIService(db)
@@ -485,7 +488,10 @@ async def respond_to_approval(
     # (VG-05 — Pragya's path has always required the ceremony).
     approval = await service.get_approval_for_company(
         approval_id, current_user.company_id)
-    await enforce_tier(db, current_user, intent_for_approval(approval.context_snapshot))
+    await enforce_tier(
+        db, current_user, intent_for_approval(approval.context_snapshot),
+        command_ref=f"approval:{approval_id}",
+        command_summary=approval_summary(approval.context_snapshot))
 
     await service.respond_to_approval(
         approval_id, status, current_user.id, notes,

@@ -36,6 +36,7 @@ from src.ai.inward_auth.tiers import CommandIntent, IntentKind, classify
 from src.auth.models import User
 
 __all__ = [
+    "approval_summary",
     "enforce_kind",
     "enforce_tier",
     "intent_for_approval",
@@ -69,6 +70,26 @@ def intent_for_approval(snapshot: Any) -> CommandIntent:
         amount=_num(snap.get("amount")),
         band=_num(snap.get("band")),
     )
+
+
+def approval_summary(snapshot: Any) -> str:
+    """One line naming what a HITL card actually authorises.
+
+    The console shows this back to the human *during* the ceremony, so the
+    thing being confirmed is stated at the moment of confirming rather than
+    remembered from the card behind the modal. Read off the gate's own snapshot
+    for the same reason :func:`intent_for_approval` is — user input never
+    describes the act it is asking to authorise.
+    """
+    snap = snapshot if isinstance(snapshot, dict) else {}
+    category = snap.get("category")
+    if not category or category == "generic":
+        return "this approval"
+    amount = _num(snap.get("amount"))
+    label = str(category).replace("_", " ")
+    if amount is None:
+        return f"a {label} approval"
+    return f"a {label} approval for {amount:,.2f}"
 
 
 #: The A0–A4 ladder as ranks, so "is this a raise" is an ordering question and
@@ -113,8 +134,22 @@ def _num(raw: Any) -> float | None:
         return None
 
 
-def tier_refusal(decision: Any, tier_name: str, why: str) -> HTTPException:
-    """The one refusal shape every certified endpoint returns."""
+def tier_refusal(
+    decision: Any,
+    tier_name: str,
+    why: str,
+    command_ref: str | None = None,
+    command_summary: str | None = None,
+) -> HTTPException:
+    """The one refusal shape every certified endpoint returns.
+
+    ``command_ref`` is what makes a **T3** refusal actionable rather than
+    merely informative: the out-of-band leg binds its nonce to a command, so a
+    refusal that does not name the command it refused leaves the console with
+    nothing to bind to and the act uncompletable. The server supplies it — a
+    reference the client invented would let one command's confirmation
+    authorise another.
+    """
     return HTTPException(status_code=403, detail={
         "error": "step_up_required",
         "tier": tier_name,
@@ -125,6 +160,8 @@ def tier_refusal(decision: Any, tier_name: str, why: str) -> HTTPException:
         "needs_step_up": decision.needs_step_up,
         "needs_oob": decision.needs_oob,
         "locked": decision.locked,
+        "command_ref": command_ref,
+        "command_summary": command_summary,
     })
 
 
@@ -132,6 +169,8 @@ async def enforce_tier(
     db: AsyncSession,
     user: User,
     intent: CommandIntent,
+    command_ref: str | None = None,
+    command_summary: str | None = None,
 ) -> AccountManagerSession:
     """Classify ``intent`` and refuse unless this console session may run it.
 
@@ -153,7 +192,9 @@ async def enforce_tier(
         # The session row may have just been created; keep it rather than
         # losing the lockout/activity state to the rollback the 403 triggers.
         await db.commit()
-        raise tier_refusal(decision, result.tier.name, result.reason)
+        raise tier_refusal(
+            decision, result.tier.name, result.reason,
+            command_ref=command_ref, command_summary=command_summary)
     return session
 
 
@@ -162,6 +203,8 @@ async def enforce_kind(
     user: User,
     kind: str,
     category: str | None = None,
+    command_ref: str | None = None,
+    command_summary: str | None = None,
 ) -> AccountManagerSession:
     """:func:`enforce_tier` for a route whose intent is fixed by its path.
 
@@ -177,4 +220,6 @@ async def enforce_kind(
     security control the suite cannot observe failing is a control that does
     not exist.
     """
-    return await enforce_tier(db, user, CommandIntent(kind=kind, category=category))
+    return await enforce_tier(
+        db, user, CommandIntent(kind=kind, category=category),
+        command_ref=command_ref, command_summary=command_summary)

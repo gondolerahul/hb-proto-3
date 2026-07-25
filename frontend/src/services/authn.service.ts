@@ -42,6 +42,44 @@ export interface StepUpOutcome {
     elevated_until?: string | null;
 }
 
+/**
+ * The 403 body every certified endpoint returns (`inward_auth/guard.py`).
+ *
+ * It is an *instruction*, not a message: it says which ceremony is missing, so
+ * the console opens the right one instead of showing a dead-end error. The
+ * tier itself is never re-derived here — a second copy of the §20 rules in the
+ * browser is a second thing to keep correct, and the one that would drift.
+ */
+export interface StepUpRefusal {
+    tier: 'T0' | 'T1' | 'T2' | 'T3';
+    why: string;
+    reason: string;
+    current_level: AuthLevel;
+    required_level: AuthLevel;
+    needs_step_up: boolean;
+    needs_oob: boolean;
+    locked: boolean;
+    /** Binds the T3 out-of-band nonce to this command; server-supplied. */
+    command_ref: string | null;
+    command_summary: string | null;
+}
+
+/**
+ * Recognise a step-up refusal in an axios error, or return null.
+ *
+ * Null means "not mine" — the caller's own error handling should run. Only a
+ * 403 carrying the `step_up_required` marker is claimed, so an ordinary
+ * permission denial still reads as one.
+ */
+export const parseStepUpRefusal = (error: any): StepUpRefusal | null => {
+    if (error?.response?.status !== 403) return null;
+    const detail = error.response?.data?.detail;
+    if (!detail || typeof detail !== 'object' || detail.error !== 'step_up_required') {
+        return null;
+    }
+    return detail as StepUpRefusal;
+};
+
 export interface PasskeyCredential {
     id: string;
     label: string | null;
