@@ -1,6 +1,6 @@
 # Increment 6 / LEARN — The Learning Store, and the History That Makes It Measurable (closes B10)
 
-> **Status:** v1.3 — design locked (§3). **T1–T5 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T6–T10 pending.
+> **Status:** v1.4 — design locked (§3). **T1–T8 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T9 (bounded scoring correction) and T10 (disclosure) pending.
 > **Closes:** register **B10** (learning-system risk blindspots) + gap-analysis **VG-12** (no KPI history store).
 > **Depends on:** the shipped signal bus (`ai/signals/`), CORTEX Intelligence trees (`ai/memory/intelligence_tree_service.py` + `rule_lifecycle.py`), the C6 KPI registry (`ai/kpi/`), RTR's `routing_decisions` (`ai/intelligence/models.py`), EVX's admission gate (`ai/intelligence/admission.py`).
 > **Feeds:** SEGA ([02](./02_sega.md)) — LEARN proposes, SEGA admits · TWIN ([03](./03_twin.md)) — the forecast engine reads `kpi_snapshots` · STRAT ([04](./04_strat.md)) — mandate reviews read the same series · Vihara G1/G2 (Increment 7) — plinth trends and the Seasons timeline.
@@ -197,9 +197,9 @@ One migration off `fleet001`, four tables, no tenant-schema changes. New package
 | **T3** ✅ | `learning/kpi_snapshot.py` + the reaper + the arq 01:25 cron; unmeasurable KPIs snapshot as absence | `*_db`, incl. a re-run idempotency test |
 | **T4** ✅ | `GET /ai/kpi/history` | router test |
 | **T5** ✅ | The four `learning.*` signal types + `learning/outcomes.py` (observation → candidate rule via the shipped lifecycle) | unit + `*_db` |
-| **T6** | Charter-tuning proposals + the §7 refusals + the LEARN⇸SEGA import boundary test | unit, **mutation-tested** |
-| **T7** | `learning/drift.py` — the weekly behaviour series + `learning.drift_detected`, wired as a C4 trigger | unit + `*_db` |
-| **T8** | `user_preferences` + get/set API + `learning.density_observed` | router + `*_db` |
+| **T6** ✅ | Charter-tuning proposals + the §7 refusals + the LEARN⇸SEGA import boundary test **+ the harvest runner** (§14.7) | unit, **mutation-tested** |
+| **T7** ✅ | `learning/drift.py` — the weekly behaviour series + `learning.drift_detected`, wired as a C4 trigger | unit + `*_db` |
+| **T8** ✅ | `user_preferences` + get/set API + `learning.density_observed` | router + `*_db` |
 | **T9** | Bounded observation correction in `intelligence/scoring.py`; **parity/eval must stay 16 green** | parity/eval + unit |
 | **T10** | Extend [03a_data_flow_disclosure.md](../increment-5/03a_data_flow_disclosure.md) to name the pooled columns (decision 3's obligation) | doc |
 
@@ -297,11 +297,45 @@ Candidates land in the shipped CORTEX lifecycle as `status: "candidate"` and car
 
 A test also asserts that **no statement this loop can produce is governance-shaped** — the proposal vocabulary is fixed data and cannot express "widen this agent's authority". T6 adds the refusal for a proposal that tries; T5's producer cannot phrase one.
 
-### 14.6 Verification (T1–T5)
+### 14.6 T6 — the refusals, the boundary, and the runner
 
-typecheck **266 files** strict · layout lint · **1606 unit** (+52) · **16 parity/eval** · **316 integration** (+28) · migration head `learn001`, applies/downgrades/re-applies.
+`learning/tuning.py` + `learning/harvest.py`, plus the `learning_harvest_sweep` cron at **02:30 UTC**.
 
-**Honest limits.** The two crons are wired into the arq schedule but have **never run on a live schedule** — tests call them directly. T5's loop has **no runner**: nothing calls `classify_outcome` at the end of a run yet, so no outcome is observed in production; wiring it to the loop's completion path is T6's neighbour and is not built. And the KPI series genuinely starts the day this deploys — there is no backfill, by construction.
+**The §7 refusals are structural, in three layers.** A proposal's *field* must be on a two-item allow-list (`goal`, `description`); the five governance-shaped blocks (`governance`, `capabilities`, `logic_gate`, `identity`, `metadata_extensions`) are refused by name with their own message, and an unknown field fails closed so a block added to the entity model later must be opted *in*. The check is on the field rather than on content because content inspection is pattern matching, and D3 records why this platform does not lean on that. On top of it, `propose_from_candidate` is the only constructor the loop uses and it admits its own output, so a generated proposal can never be one the gate would refuse.
+
+**Mechanism 1 became a grep.** A test walks the whole of `src/ai` and asserts **no KPI key appears outside `kpi/` and `learning/`**. It passes today with zero offenders — KPIs really are only reported, never targeted. The moment one reaches a prompt, a goal or a critic, an agent has an incentive to move the number rather than do the work it measures, which is B10's reward-hacking scenario exactly.
+
+**The LEARN⇸SEGA boundary is an import test**, following Pragya's gate-containment precedent: no module under `ai/learning/` may import `AIService`, `update_entity`, `create_entity`, `delete_entity` or the record service, and none may *define* an `apply_`/`mutate_`-shaped function. Reading `HierarchicalEntity` is allowed and named as allowed — T5's scoping check is a read, and a security control.
+
+**One design correction: the runner is a sweep, not a completion hook.** The obvious place to grade a run is where it finishes, and it is the wrong place — **`csat_score` arrives after the run ends**, when a person comes back and rates the work. A completion hook would systematically miss the strongest evidence the platform has and grade everything on the weakest ("did it fail?"). The 48h look-back against a daily cron deliberately overlaps so a run finished at 23:59 and rated at 00:30 is not lost between sweeps; double counting is impossible because `record_outcome` dedupes on the run id, and a test pins that a re-run observes zero. It also keeps a new write off the hot loop path and out of `core/agent_loop.py`, which is at its line cap.
+
+### 14.7 T7 — drift, and exactly one authority
+
+`learning/drift.py` + `entity_behaviour_weekly` + the Monday **01:05** sweep — deliberately before C4's 01:40 demotion sweep, which now reads the drift signals as one more input.
+
+**The wiring is a new trigger, not a new authority.** `DemotionTrigger.BEHAVIOUR_DRIFT` joins C4's enum, `AgentObservations` gains `drifted_metrics`, and `demotion_sweep` reads the metric *names* off the signal bus rather than recomputing the judgement. Two demotion authorities would be the "which store is this row in" confusion moved into the enforcement layer, where it would be worse.
+
+**Most of the work is restraint**, and most of the tests are about not firing: a baseline under three weeks detects nothing; a metric that never varied gives no scale (zero variance would make any change infinitely many sigmas away — arithmetic, not evidence); an agent is compared **against itself, never a fleet average**, so a meticulous agent that always escalates is not flagged for being itself; and a metric with no denominator is `None`, not `0`, so a quiet week does not read as a collapse and then fire again on recovery. That last one is the C6 honest-absence rule turning up in a second place that needed it.
+
+**Two honest gaps recorded in code.** `consent_refusal_rate` stays `None` — the shipped consent registry keeps no per-send decision record, so the axis is absent rather than invented, and it belongs to GATE. And `mean_steps` is *tool calls per run*, a named proxy, because `execution_runs` records no step count.
+
+**A test that would have passed for the wrong reason.** The first drift fixture used `ensure_sheel`, and Sheel is not an `AGENT`-type entity — so the sweep measured nothing and a `pytest.skip` guard hid it. Replaced with a real AGENT fixture; the assertion now bites.
+
+### 14.8 T8 — preferences
+
+`learning/preferences.py` + `GET/PUT /ai/learning/preferences` + `POST /ai/learning/preferences/observe-density`.
+
+* **A stated choice always outranks an observed one.** `learn_preference` returns `None` rather than overwriting a hand-set value. A system that keeps re-learning past a decision the person made is the most irritating thing a preference store can do.
+* **`learned` is a column, not an inference**, so a surface can always say *"we set this for you"*. A silently applied preference is indistinguishable from a bug.
+* **Observing and setting are separate calls.** `observe_density` emits a signal; it changes nothing. "We noticed" and "we changed something" are distinctions a person is entitled to.
+* **Keys are namespaced** (`density`, `notify`, `surface`) and anything else is refused — without that this table becomes a per-user JSON dump, which is what every preference store becomes if nothing stops it.
+* **Not a certified action**, on purpose: choosing how dense your own dashboard is confers no capability and moves no money, and gating it would be the kind of ceremony that teaches people to click through ceremonies.
+
+### 14.9 Verification (T1–T8)
+
+typecheck **271 files** strict · layout lint · **1637 unit** (+83) · **16 parity/eval** · **326 integration** (+38) · migration head `learn001`, applies/downgrades/re-applies.
+
+**Honest limits.** Four crons are wired into the arq schedule and **none has run on a live schedule** — every test calls them directly. Charter-tuning proposals reach the bus but **nothing consumes them**: SEGA is not built, so a proposal sits as a signal, which is the correct state and not a working feature. `consent_refusal_rate` is unmeasurable until GATE (§14.7). And the KPI series starts the day this deploys — there is no backfill, by construction.
 
 ---
 
@@ -309,6 +343,7 @@ typecheck **266 files** strict · layout lint · **1606 unit** (+52) · **16 par
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.4 — **T6 + T7 + T8 built** (§14.6–§14.9). The §7 refusals made structural and the LEARN⇸SEGA boundary made an import test; **the runner corrected from a completion hook to a sweep** because CSAT arrives after a run ends. Drift wired into C4 as one more trigger rather than a second demotion authority, with `consent_refusal_rate` left honestly absent until GATE. Preferences ship with stated-beats-learned and a `learned` flag the surface must show. |
 | 2026-07-25 | v1.3 — **T4 + T5 built** (§14.4–§14.6). The history read path returns absences with `first_measurable_on`; outcomes ride the signal bus and distil into the shipped CORTEX candidate lifecycle with provenance. One scoping guard added and mutation-tested — `write_candidate` reads its entity id from a payload, and the tree service creates a tree for any id it is handed. |
 | 2026-07-25 | v1.2 — **T2 + T3 built** (§14.2–§14.4). Pooling replaces the day rather than upserting it; the floor is mutation-tested and counts distinct companies, not rows. The snapshot job's scope corrected to `type='TENANT'` (`companies` has no `deleted_at`), and the "a new tenant is all absences" claim corrected — `agent_hitl_load` is genuinely measurable at zero on day one. |
 | 2026-07-25 | v1.1 — **T1 built** (§14). The B10 stop-or-go passed. One real defect found by the DB-level test: the pooled grain needed a `coalesce` expression index because Postgres treats NULLs as distinct in a unique constraint. |

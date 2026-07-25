@@ -71,6 +71,7 @@ async def _drop_company(cid: uuid.UUID) -> None:
             "DELETE FROM cortex_nodes WHERE tree_id IN "
             "(SELECT id FROM cortex_trees WHERE company_id = :c)"), {"c": str(cid)})
         for tbl in ("cortex_trees", "kpi_snapshots", "routing_decisions", "signals",
+                    "user_preferences", "entity_behaviour_weekly",
                     "budget_envelopes", "loop_runtime", "execution_runs",
                     "hierarchical_entities"):
             await s.execute(text(f"DELETE FROM {tbl} WHERE company_id = :c"), {"c": str(cid)})
@@ -601,4 +602,339 @@ async def test_a_candidate_for_a_real_entity_lands_with_its_provenance(companies
                          {"c": str(cid)})
         await db.execute(text("DELETE FROM cortex_trees WHERE company_id = :c"),
                          {"c": str(cid)})
+        await db.commit()
+
+
+# ── T6 · the harvest closes the loop ─────────────────────────────────────────
+
+
+async def _make_agent(cid: uuid.UUID, *, level: str = "A2") -> uuid.UUID:
+    """A real AGENT-type entity.
+
+    The drift sweep and C4's demotion sweep both filter on `type = 'AGENT'`, and
+    Sheel (the Loop runtime entity) is not one — so a fixture built on
+    `ensure_sheel` measures nothing and the test passes for the wrong reason.
+    """
+    import json
+
+    from src.common.database import AsyncSessionLocal
+
+    eid = uuid.uuid4()
+    async with AsyncSessionLocal() as s:
+        await s.execute(
+            text("INSERT INTO hierarchical_entities (id, company_id, version, type, "
+                 "status, name, display_name, governance, created_at, updated_at) "
+                 "VALUES (:i, :c, '1.0.0', 'AGENT', 'ACTIVE', :n, :n, "
+                 "CAST(:g AS json), now(), now())"),
+            {"i": str(eid), "c": str(cid), "n": f"drift-agent-{eid.hex[:6]}",
+             "g": json.dumps({"autonomy_level": level})})
+        await s.commit()
+    return eid
+
+
+async def _run_with(cid: uuid.UUID, entity_id: uuid.UUID, *, status="COMPLETED",
+                    csat=None, at: datetime | None = None) -> uuid.UUID:
+    from src.common.database import AsyncSessionLocal
+
+    run_id = uuid.uuid4()
+    async with AsyncSessionLocal() as s:
+        await s.execute(
+            text("INSERT INTO execution_runs (id, entity_id, company_id, status, "
+                 "csat_score, created_at, completed_at) VALUES "
+                 "(:i, :e, :c, :s, :k, :ts, :ts)"),
+            {"i": str(run_id), "e": str(entity_id), "c": str(cid), "s": status,
+             "k": csat, "ts": at or datetime.utcnow()})
+        await s.commit()
+    return run_id
+
+
+async def test_the_harvest_grades_distils_and_proposes(companies):
+    """End to end: three rated-poor runs become one candidate and one proposal.
+
+    Nothing in between is mocked — the observations go out on the real bus, the
+    candidate lands in the real CORTEX tree, and the proposal is a real signal
+    for SEGA to consume.
+    """
+    from src.ai.learning.harvest import harvest_company
+    from src.ai.loop.service import ensure_sheel
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[0]
+    async with AsyncSessionLocal() as db:
+        sheel = await ensure_sheel(db, cid)
+        await db.commit()
+        entity_id = sheel.id
+
+    for _ in range(3):
+        await _run_with(cid, entity_id, csat=-1)
+
+    async with AsyncSessionLocal() as db:
+        summary = await harvest_company(db, cid)
+        await db.commit()
+
+    assert summary["observed"] == 3
+    assert summary["candidates"] == 1
+    assert summary["candidates_written"] == 1
+    assert summary["proposals"] == 1
+
+    async with AsyncSessionLocal() as db:
+        proposal = (await db.execute(text(
+            "SELECT payload FROM signals WHERE company_id = :c AND type = :t"),
+            {"c": str(cid), "t": "learning.charter_tuning_proposed"})).one()
+    assert proposal.payload["field"] == "goal", "only prose is ever proposed"
+    assert proposal.payload["evidence_observations"] == 3
+
+
+async def test_two_bad_runs_propose_nothing(companies):
+    """Below the threshold the loop is silent all the way through — no
+    candidate, no proposal, nothing for SEGA to consider."""
+    from src.ai.learning.harvest import harvest_company
+    from src.ai.loop.service import ensure_sheel
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[1]
+    async with AsyncSessionLocal() as db:
+        sheel = await ensure_sheel(db, cid)
+        await db.commit()
+        entity_id = sheel.id
+
+    for _ in range(2):
+        await _run_with(cid, entity_id, status="FAILED")
+
+    async with AsyncSessionLocal() as db:
+        summary = await harvest_company(db, cid)
+        await db.commit()
+
+    assert summary["observed"] == 2
+    assert summary["candidates"] == 0
+    assert summary["proposals"] == 0
+
+
+async def test_rerunning_the_harvest_does_not_manufacture_evidence(companies):
+    """The overlapping window is safe because observations dedupe on the run.
+
+    Without that, a daily sweep with a 48h look-back would count every run
+    twice and cross the threshold on its own.
+    """
+    from src.ai.learning.harvest import harvest_company
+    from src.ai.loop.service import ensure_sheel
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[2]
+    async with AsyncSessionLocal() as db:
+        sheel = await ensure_sheel(db, cid)
+        await db.commit()
+        entity_id = sheel.id
+
+    await _run_with(cid, entity_id, status="FAILED")
+    await _run_with(cid, entity_id, status="FAILED")
+
+    async with AsyncSessionLocal() as db:
+        await harvest_company(db, cid)
+        await db.commit()
+        second = await harvest_company(db, cid)
+        await db.commit()
+
+    assert second["observed"] == 0, "a re-graded run must not count again"
+    assert second["candidates"] == 0, "two runs are still two runs after a re-run"
+
+
+async def test_a_clean_tenant_harvests_nothing(companies):
+    """Runs that graded nothing produce no observations and no noise."""
+    from src.ai.learning.harvest import harvest_company
+    from src.ai.loop.service import ensure_sheel
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[3]
+    async with AsyncSessionLocal() as db:
+        sheel = await ensure_sheel(db, cid)
+        await db.commit()
+        entity_id = sheel.id
+
+    for _ in range(5):
+        await _run_with(cid, entity_id, status="COMPLETED")
+
+    async with AsyncSessionLocal() as db:
+        summary = await harvest_company(db, cid)
+        await db.commit()
+
+    assert summary["graded_runs"] == 5
+    assert summary["observed"] == 0
+    assert summary["proposals"] == 0
+
+
+# ── T7 · drift, and the one authority that acts on it ────────────────────────
+
+async def test_the_drift_sweep_records_a_week_and_stays_quiet_without_a_baseline(companies):
+    """A first measured week is a measurement, never a finding."""
+    from src.ai.learning.drift import sweep_company, week_start_of
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[0]
+    entity_id = await _make_agent(cid)
+
+    last_week = week_start_of(datetime.utcnow().date()) - timedelta(days=7)
+    for _ in range(3):
+        await _run_with(cid, entity_id, status="FAILED",
+                        at=datetime.combine(last_week + timedelta(days=1),
+                                            datetime.min.time()))
+
+    async with AsyncSessionLocal() as db:
+        summary = await sweep_company(db, cid)
+        await db.commit()
+
+    assert summary["entities_measured"] == 1
+    assert summary["drift_findings"] == 0, "no baseline yet — nothing to differ from"
+
+    async with AsyncSessionLocal() as db:
+        row = (await db.execute(text(
+            "SELECT runs, mean_steps FROM entity_behaviour_weekly "
+            "WHERE entity_id = :e AND week_start = :w"),
+            {"e": str(entity_id), "w": last_week})).one()
+    assert row.runs == 3
+
+
+async def test_a_silent_week_is_not_measured(companies):
+    """An agent that did nothing has not changed; recording a zero week would
+    drag its own baseline and fire drift when it resumed."""
+    from src.ai.learning.drift import sweep_company
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[1]
+    await _make_agent(cid)
+
+    async with AsyncSessionLocal() as db:
+        summary = await sweep_company(db, cid)
+        await db.commit()
+
+    assert summary["entities_measured"] == 0
+    assert summary["drift_findings"] == 0
+
+
+async def test_the_demotion_sweep_reads_drift_as_one_more_trigger(companies):
+    """C4 stays the only authority that can take a level away.
+
+    LEARN emits `learning.drift_detected`; the demotion sweep reads it as one
+    input among several rather than recomputing the judgement, so there is
+    exactly one answer to "is this agent drifting".
+    """
+    from src.ai.governance.demotion import DemotionTrigger, evaluate_demotion
+    from src.ai.governance.demotion_sweep import gather_observations
+    from src.ai.schemas.governance import AutonomyLevel
+    from src.ai.signals.models import SignalSource, SignalTypes
+    from src.ai.signals.service import emit_signal
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[2]
+    entity_id = await _make_agent(cid)
+
+    async with AsyncSessionLocal() as db:
+        await emit_signal(
+            db, company_id=cid, source=SignalSource.TELEMETRY,
+            type=SignalTypes.LEARNING_DRIFT_DETECTED,
+            payload={"entity_id": str(entity_id), "metric": "rejection_rate",
+                     "current": 0.6, "baseline_mean": 0.05, "baseline_sigma": 0.01},
+            dedupe_key=f"drift-test-{entity_id}")
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
+        observations = await gather_observations(db, cid)
+
+    mine = [o for o in observations if o.agent_id == str(entity_id)]
+    assert mine, "the agent should have been measured"
+
+    assert mine[0].drifted_metrics == ("rejection_rate",)
+    verdict = evaluate_demotion(mine[0])
+    assert DemotionTrigger.BEHAVIOUR_DRIFT in verdict.triggers
+    assert verdict.to_level != AutonomyLevel.A4
+
+
+# ── T8 · preferences ─────────────────────────────────────────────────────────
+
+async def _make_user(cid: uuid.UUID) -> uuid.UUID:
+    from src.common.database import AsyncSessionLocal
+
+    uid = uuid.uuid4()
+    async with AsyncSessionLocal() as s:
+        await s.execute(
+            text("INSERT INTO users (id, company_id, email, full_name, hashed_password, "
+                 "role, is_active, created_at, updated_at) VALUES "
+                 "(:u, :c, :e, 'Pref Tester', 'x', 'admin', true, now(), now())"),
+            {"u": str(uid), "c": str(cid), "e": f"pref-{uid.hex[:8]}@example.test"})
+        await s.commit()
+    return uid
+
+
+async def test_a_stated_preference_is_never_overwritten_by_a_learned_one(companies):
+    """The most irritating thing a preference store can do is keep re-learning
+    past a decision the person already made."""
+    from src.ai.learning.preferences import get_preferences, learn_preference, set_preference
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[3]
+    uid = await _make_user(cid)
+
+    async with AsyncSessionLocal() as db:
+        await set_preference(db, user_id=uid, company_id=cid,
+                             key="density.surface.ledger", value="comfortable")
+        await db.commit()
+
+        assert await learn_preference(db, user_id=uid, company_id=cid,
+                                      key="density.surface.ledger", value="compact") is None
+        await db.commit()
+
+        prefs = await get_preferences(db, uid)
+
+    assert prefs["density.surface.ledger"]["value"] == "comfortable"
+    assert prefs["density.surface.ledger"]["learned"] is False
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM user_preferences WHERE user_id = :u"),
+                         {"u": str(uid)})
+        await db.execute(text("DELETE FROM users WHERE id = :u"), {"u": str(uid)})
+        await db.commit()
+
+
+async def test_a_learned_value_stays_marked_learned_until_stated(companies):
+    """A surface must always be able to say "we set this for you" — a silently
+    applied preference is indistinguishable from a bug."""
+    from src.ai.learning.preferences import get_preferences, learn_preference, set_preference
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[3]
+    uid = await _make_user(cid)
+
+    async with AsyncSessionLocal() as db:
+        await learn_preference(db, user_id=uid, company_id=cid,
+                               key="density.surface.inbox", value="compact")
+        await db.commit()
+        assert (await get_preferences(db, uid))["density.surface.inbox"]["learned"] is True
+
+        await set_preference(db, user_id=uid, company_id=cid,
+                             key="density.surface.inbox", value="compact")
+        await db.commit()
+        assert (await get_preferences(db, uid))["density.surface.inbox"]["learned"] is False
+
+        await db.execute(text("DELETE FROM user_preferences WHERE user_id = :u"),
+                         {"u": str(uid)})
+        await db.execute(text("DELETE FROM users WHERE id = :u"), {"u": str(uid)})
+        await db.commit()
+
+
+async def test_an_unknown_namespace_is_refused(companies):
+    """Without namespaces this table becomes a per-user JSON dump, which is
+    what every preference store becomes if nothing stops it."""
+    from src.ai.learning.preferences import InvalidPreferenceKey, set_preference
+    from src.common.database import AsyncSessionLocal
+
+    cid = companies[3]
+    uid = await _make_user(cid)
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(InvalidPreferenceKey):
+            await set_preference(db, user_id=uid, company_id=cid,
+                                 key="secrets.api_token", value="hunter2")
+        await db.rollback()
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM users WHERE id = :u"), {"u": str(uid)})
         await db.commit()

@@ -21,7 +21,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["kpi_snapshot_sweep", "platform_pooling_sweep"]
+__all__ = ["drift_sweep", "kpi_snapshot_sweep", "learning_harvest_sweep",
+           "platform_pooling_sweep"]
 
 
 async def kpi_snapshot_sweep(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -42,6 +43,57 @@ async def kpi_snapshot_sweep(ctx: dict[str, Any]) -> dict[str, Any]:
             return {**summary, "reaped": reaped}
     except Exception as exc:  # noqa: BLE001
         logger.error("kpi_snapshot_sweep failed: %s", exc)
+        return {"error": str(exc)}
+
+
+async def learning_harvest_sweep(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Cron: grade recent runs, distil, propose (LEARN T6).
+
+    Daily rather than at run completion, because CSAT arrives *after* a run
+    ends — see ``harvest.py``. Runs at 02:30, after the pooling sweep, so a
+    heavy tenant's harvest never delays the platform aggregate.
+    """
+    from src.ai.learning.harvest import harvest_all
+    from src.common.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as db:
+            summary = await harvest_all(db)
+            await db.commit()
+            return summary
+    except Exception as exc:  # noqa: BLE001
+        logger.error("learning_harvest_sweep failed: %s", exc)
+        return {"error": str(exc)}
+
+
+async def drift_sweep(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Cron: measure last week's behaviour and emit drift (LEARN T7).
+
+    **Weekly, on Monday, and it must run before C4's daily demotion sweep can
+    read it** — which it does, since Monday 01:05 precedes Monday 01:40. Emits
+    only; ``governance/demotion`` decides what a drift finding is worth.
+    """
+    from src.ai.learning.drift import sweep_company
+    from src.common.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
+
+    totals = {"entities_measured": 0, "drift_findings": 0}
+    try:
+        async with AsyncSessionLocal() as db:
+            company_ids = [r[0] for r in (await db.execute(
+                _text("SELECT id FROM companies WHERE type = 'TENANT'"))).all()]
+            for company_id in company_ids:
+                try:
+                    summary = await sweep_company(db, company_id)
+                    totals["entities_measured"] += int(summary["entities_measured"])
+                    totals["drift_findings"] += int(summary["drift_findings"])
+                    await db.commit()
+                except Exception as exc:  # noqa: BLE001
+                    await db.rollback()
+                    logger.warning("drift sweep failed for company %s: %s", company_id, exc)
+            return {**totals, "companies": len(company_ids)}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("drift_sweep failed: %s", exc)
         return {"error": str(exc)}
 
 

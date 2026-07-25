@@ -61,6 +61,11 @@ class DemotionTrigger(str, Enum):
     CRITIC_BLOCK_SURGE = "critic_block_surge"
     HARD_BLOCK_INCIDENT = "hard_block_incident"
     OWNER_COMMAND = "owner_command"
+    #: Inc-6 LEARN (B10's drift half): this agent's behaviour moved off its own
+    #: trailing baseline and nobody decided it should. LEARN measures and emits
+    #: ``learning.drift_detected``; demotion stays here, so there is exactly one
+    #: authority that can take a level away.
+    BEHAVIOUR_DRIFT = "behaviour_drift"
 
 
 @dataclass(frozen=True)
@@ -103,6 +108,10 @@ class AgentObservations:
     gate_blocks: int = 0
     hard_block_incidents: int = 0
     owner_demotion_requested: bool = False
+    #: Metrics LEARN found off this agent's own baseline in the window (T7).
+    #: Names, not numbers: the sweep reports *what* moved so the reason a human
+    #: reads is specific, and the judging already happened in `learning/drift`.
+    drifted_metrics: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -199,6 +208,17 @@ def evaluate_demotion(
             triggers.append(DemotionTrigger.CRITIC_BLOCK_SURGE)
             reasons.append(
                 f"{block_rate:.0%} of its governed actions were blocked")
+
+    # Inc-6 LEARN T7. Drift is not a failure — an agent can drift while every
+    # SLO holds — so it needs its own branch and its own floor, which
+    # `learning/drift` already applied (a baseline of at least three weeks, a
+    # 2.5σ step). Repeating a threshold here would be a second opinion on a
+    # judgement already made; the trigger is *that* it was made.
+    if obs.drifted_metrics:
+        triggers.append(DemotionTrigger.BEHAVIOUR_DRIFT)
+        reasons.append(
+            "behaviour moved off its own baseline: "
+            + ", ".join(sorted(obs.drifted_metrics)))
 
     if not triggers:
         return DemotionVerdict(
