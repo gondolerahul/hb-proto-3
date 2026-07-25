@@ -82,6 +82,26 @@ class Settings(BaseSettings):
     TRUST_REQUIRE_VERIFIED_FOR_CREDITS: bool = True
     TRUST_SIGNUP_MAX_PER_IP_PER_DAY: int = 3
 
+    # ── B10 — LEARN (Inc-6). Pooled platform learning carries no tenant
+    # content by construction (no company column on platform_observations),
+    # but a bucket only one tenant contributed to is still attributable by
+    # anyone who can read the opt-in list. The floor is applied inside the
+    # aggregation job, where company ids are still visible; groups below it
+    # are dropped, never deferred.
+    LEARN_POOL_MIN_CONTRIBUTORS: int = 3
+    # KPI history is a time series and its value is a function of how long it
+    # has run. 400 days keeps a full year plus a comparison window; the reaper
+    # exists because a store with no reaper is an unbounded archive.
+    LEARN_KPI_RETENTION_DAYS: int = 400
+    # How far a pooled observation may move a model's *declared* capability
+    # profile, on a 0-1 axis. Bounded so a bad week cannot invert the router's
+    # ordering — a genuinely bad model is removed by EVX admission, never by
+    # score drift. Set to 0.0 to disable observation-corrected routing.
+    LEARN_OBSERVATION_WEIGHT: float = 0.2
+    # Below this many pooled observations a model gets no correction at all,
+    # which is what keeps an empty store from making every model look bad.
+    LEARN_OBSERVATION_MIN_SAMPLES: int = 20
+
     # ── D1 — inward-channel authentication (Inc-3 AUTH, technical §11.3) ──
     # A step-up buys a short window, not a session: every T2/T3 command
     # re-checks at execution time, so this is how long an owner can keep

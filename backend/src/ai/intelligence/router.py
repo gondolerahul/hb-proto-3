@@ -44,6 +44,29 @@ class IntelligenceRouter:
         self.db = db
         self.company_id = company_id
 
+    async def _observation_prior(self) -> tuple[dict[UUID, float], float]:
+        """The pooled fleet observations, and how far they may move a score.
+
+        The **only** edge from routing into LEARN, and it is deliberately here
+        rather than inside ``scoring`` — the scoring functions stay pure and
+        DB-free, and there is one place to look for "does routing read learning".
+
+        Fails to ``({}, 0.0)`` on anything unexpected, which is exactly the
+        no-correction path: a learning input that can break routing is not an
+        input worth having (B10 is about blindspots, not about coupling the
+        revenue path to an experiment).
+        """
+        try:
+            from src.ai.learning.observation_prior import observed_reliability
+            from src.common.config import settings
+
+            weight = float(getattr(settings, "LEARN_OBSERVATION_WEIGHT", 0.0))
+            if weight <= 0.0:
+                return {}, 0.0
+            return dict(await observed_reliability(self.db)), weight
+        except Exception:  # noqa: BLE001
+            return {}, 0.0
+
     async def route(self, signals: RoutingSignals) -> ModelBinding:
         """Pick a model for a step, record the decision, return the binding."""
         signals = await self._enrich(signals)
@@ -73,7 +96,10 @@ class IntelligenceRouter:
         candidates = [c for c in await self._candidates(signals) if c.model_name not in exclude]
         if not candidates:
             return None
-        best = max(candidates, key=lambda c: utility(c, signals.complexity, signals))
+        observed, weight = await self._observation_prior()
+        best = max(candidates, key=lambda c: utility(
+            c, signals.complexity, signals,
+            observed=observed, observation_weight=weight))
         decision_id = await self._record(
             task_type=signals.task_type, model_registry_id=best.model_registry_id,
             reason="fallback", signals=signals, fallback_used=True)
@@ -118,10 +144,16 @@ class IntelligenceRouter:
                 if c.model_name == signals.pinned_model:
                     return (c.integration_id, c.model_name, c.provider, c.model_registry_id, "pinned")
 
-        best = max(candidates, key=lambda c: utility(c, signals.complexity, signals))
+        observed, weight = await self._observation_prior()
+        best = max(candidates, key=lambda c: utility(
+            c, signals.complexity, signals,
+            observed=observed, observation_weight=weight))
         best_fit = max(
             candidates,
-            key=lambda c: capability_fit(c.capability_profile, signals.complexity, signals.needs_tools),
+            key=lambda c: capability_fit(
+                c.capability_profile, signals.complexity, signals.needs_tools,
+                observed_reliability=observed.get(c.model_registry_id),
+                observation_weight=weight),
         )
         # "downshift" when cost pressure moved the pick off the most-capable model.
         reason = "downshift" if (best is not best_fit and cost_pressure(signals) > 1.0) else "auto"

@@ -56,6 +56,44 @@ def _autonomy_of(entity: HierarchicalEntity) -> AutonomyLevel:
         return AutonomyLevel.A1
 
 
+async def _drifted_metrics(
+    db: AsyncSession, company_id: uuid.UUID, entity_id: uuid.UUID, cutoff: datetime,
+) -> tuple[str, ...]:
+    """Which metrics LEARN reported as drifted for this agent in the window.
+
+    Read off the signal bus rather than recomputed here — LEARN owns the
+    measurement and this sweep owns the consequence. Re-deriving the judgement
+    would create a second answer to "is this agent drifting", which is the one
+    thing the split is meant to avoid.
+
+    Absent or malformed signals mean *no drift*, not an error: this is one input
+    among several, and a learning-side outage must not silently start (or stop)
+    demoting agents.
+    """
+    from src.ai.signals.models import Signal
+
+    try:
+        rows = (await db.execute(
+            select(Signal.payload).where(
+                Signal.company_id == company_id,
+                Signal.type == SignalTypes.LEARNING_DRIFT_DETECTED,
+                Signal.created_at >= cutoff,
+            )
+        )).scalars().all()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("demotion sweep: drift lookup failed for %s: %s", entity_id, exc)
+        return ()
+
+    metrics = {
+        str(payload.get("metric"))
+        for payload in rows
+        if isinstance(payload, dict)
+        and str(payload.get("entity_id")) == str(entity_id)
+        and payload.get("metric")
+    }
+    return tuple(sorted(metrics))
+
+
 async def gather_observations(
     db: AsyncSession,
     company_id: uuid.UUID,
@@ -112,6 +150,7 @@ async def gather_observations(
             runs_failed=runs_failed,
             p95_latency_ms=p95,
             latency_floor_ms=float(floor) if floor else None,
+            drifted_metrics=await _drifted_metrics(db, company_id, entity.id, cutoff),
         ))
 
     return observations

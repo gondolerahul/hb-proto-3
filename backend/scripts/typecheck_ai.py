@@ -53,6 +53,7 @@ CLEAN_PACKAGES: list[str] = [
     "voice_loop",
     "connectors",
     "intelligence",
+    "learning",
 ]
 
 

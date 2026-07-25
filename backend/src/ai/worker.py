@@ -60,6 +60,12 @@ from src.ai.loop.watchdog import loop_watchdog
 from src.ai.memory.rechunk_cron import chunk_upgrade_sweep
 from src.ai.trust.crons import dunning_sweep
 from src.ai.governance.crons import demotion_sweep
+from src.ai.learning.crons import (
+    drift_sweep,
+    kpi_snapshot_sweep,
+    learning_harvest_sweep,
+    platform_pooling_sweep,
+)
 from src.ai.voice_loop.crons import voice_deferred_reap, voice_deferred_sweep
 from src.ai.lead_queue_worker import poll_lead_queue_task
 
@@ -169,7 +175,24 @@ try:
         # days, so a trend cannot change between two minutes; running it on
         # the 60s sweeper would repeat per-agent aggregates 1,440× for the
         # same answer. Sits after the dunning sweep.
+        # LEARN (Inc 6) — the KPI history this increment exists to measure
+        # against. 01:25 sits after C5's dunning sweep (a reading should reflect
+        # the billing state just entered) and before C4's demotion sweep (a
+        # demotion decided at 01:40 belongs to tomorrow's series). Unmeasurable
+        # KPIs are recorded as absences, never skipped.
+        cron(kpi_snapshot_sweep, hour=1, minute=25),
+        # LEARN T7 — weekly behaviour series + drift. Monday 01:05, deliberately
+        # *before* the demotion sweep below, which reads the drift signals as one
+        # of its triggers. LEARN measures; C4 alone decides what it costs.
+        cron(drift_sweep, weekday=0, hour=1, minute=5),
         cron(demotion_sweep, hour=1, minute=40),
+        # B10 — pool yesterday's routing decisions, k-anonymity floor applied in
+        # the job. Yesterday because a day cannot be aggregated until it is over.
+        cron(platform_pooling_sweep, hour=2, minute=10),
+        # LEARN T6 — grade recent runs, distil, propose. Daily rather than at
+        # run completion because CSAT arrives *after* a run ends, so a
+        # completion hook would miss the best evidence the platform has.
+        cron(learning_harvest_sweep, hour=2, minute=30),
         # Inc-4 T6 — drain the post-call queue Inc-3 left filling. Small batch,
         # no deadline: a call reflected on an hour late is worth what one
         # reflected on immediately is worth, and the provider rate limit

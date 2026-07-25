@@ -113,6 +113,15 @@ class SignalTypes:
     MODEL_ADMISSION_EVALUATED = "model.admission_evaluated"
     MODEL_CANARY_PROMOTED = "model.canary_promoted"
     MODEL_CANARY_ROLLED_BACK = "model.canary_rolled_back"
+    # LEARN (Inc 6, B10): tenant-level learning rides the shipped bus rather
+    # than a store of its own (charter decision 3). Every one of these is
+    # company-scoped by the NOT NULL FK below — which is the tenant half of
+    # decision 2's split, and the reason the *pooled* half needed a different
+    # table entirely (a signal cannot exist without a company).
+    LEARNING_OUTCOME_OBSERVED = "learning.outcome_observed"
+    LEARNING_CHARTER_TUNING_PROPOSED = "learning.charter_tuning_proposed"
+    LEARNING_DRIFT_DETECTED = "learning.drift_detected"
+    LEARNING_DENSITY_OBSERVED = "learning.density_observed"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
 

@@ -119,6 +119,10 @@ app.include_router(pragya_router, prefix="/api/v1")
 # dashboards, so the two can never disagree.
 from src.ai.kpi.api import router as kpi_router
 app.include_router(kpi_router, prefix="/api/v1")
+# Inc-6 LEARN — per-user preference/density store (Vihara is the consumer;
+# the store ships now so observations start accumulating).
+from src.ai.learning.api import router as learning_router
+app.include_router(learning_router, prefix="/api/v1")
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")
