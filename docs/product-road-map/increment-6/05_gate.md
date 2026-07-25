@@ -1,0 +1,141 @@
+# Increment 6 / GATE — KAR-05, the Governed Broadcast Gates (closes VG-15)
+
+> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Closes:** gap-analysis **VG-15** (broadcast gates have no KAR family) — charter decision 9.
+> **Depends on:** the shipped Karuna gateway builder (`solo_pack/templates/gateways.py`), the signal bus, the PolicyGate's `CATEGORY_RULES` / `TOOL_CATEGORY_MAP`, TRUST's consent registry (D6).
+> **Independent:** touches nothing LEARN, SEGA, TWIN or STRAT modify — buildable at any point in the increment ([00_overview](./00_overview.md) §3).
+> **Parent:** [00_overview.md](./00_overview.md) · [00_charter.md](./00_charter.md) decision 9.
+
+---
+
+## 1. The finding, stated precisely
+
+The charter says `social_connection_service.py` "sits outside SIG, Karuna and consent". Walking the code, the exposure is larger and more specific than that sentence implies.
+
+**`src/ai/tools/social/` ships 64 tools across 16 platforms** — LinkedIn, X/Twitter, Facebook, Instagram, TikTok, YouTube, Pinterest, Reddit, Quora, plus the ad surfaces (Meta Ads, LinkedIn Ads, Google Ads, YouTube Ads, X Ads, Snapchat Ads) and LinkedIn Sales Navigator. Among them: `linkedin_create_post`, `instagram_publish_media`, `tiktok_publish_video`, `quora_post_answer`, `meta_ads_create_campaign`, `google_ads_*`.
+
+**Not one of them appears in `TOOL_CATEGORY_MAP`.** The PolicyGate only gates *categorised* acts (the HANDOFF §5 convention says so in as many words), so every one of these resolves to `PASS`:
+
+* an agent at **A1** — the band where *every* categorised external effect raises a HITL card — can publish to the public internet with no card;
+* an agent can create an ad campaign with a budget, and no amount band is consulted, because ad spend is not a category;
+* nothing checks consent or DNC on an audience upload;
+* nothing emits a signal, so there is no outbound audit trail and no inbound path back;
+* a counterparty-trust signal (a hostile DM) can drive all of it — `HIGH_IMPACT_CATEGORIES` cannot refuse a category that does not exist.
+
+Compare the outbound email path, which the SLICE governed on day one: `send_email` → `email_dispatch` → HITL card at A1. Broadcast is the same act with a larger audience and less governance.
+
+## 2. Three separate holes, three separate fixes
+
+| Hole | Consequence | Fix |
+|---|---|---|
+| **No category** | No band check, no HITL card, invisible to `HIGH_IMPACT_CATEGORIES` | §4 — two new categories + tool mappings |
+| **No consent posture** | Nothing decides whether this tenant broadcasts on this channel for this purpose; audience uploads bypass DNC entirely | §5 |
+| **Not on the bus** | No outbound audit, and inbound mentions/comments/DMs never reach an agent | §6 — the KAR-05 gateway |
+
+They are genuinely independent, and the first is worth shipping even if the third slips.
+
+## 3. Decisions
+
+1. **Broadcast and ad spend are two categories, not one.** Publishing a post and committing money are different acts with different bands. Merging them would either under-govern spend or make every post cost an approval.
+2. **`ad_spend` joins `HIGH_IMPACT_CATEGORIES`.** A counterparty-trust signal must not be able to drive money into an ad platform, for the same reason it cannot drive a payout.
+3. **The KAR-05 gateway holds no ad tools.** The Karuna builder enforces "no monetary authority" by construction; ad tools belong to a marketing process agent, never to the inbound face.
+4. **Credentials do not move.** `social_connections` keeps the OAuth tokens. Migrating live third-party tokens into `connector_bindings` is real risk for no governance gain — GATE's subject is governance, consent and the bus. Consolidation is a later CONN pass, and it is recorded as an honest limit (§9).
+5. **Inbound polling ships as a tested seam** — the Inc-4/Inc-5 precedent (Zoho, the expansion fleet). No live platform API call is made in this workstream; the transport is injectable.
+
+## 4. Governing the outbound act
+
+### 4.1 Two categories
+
+Added to `governance/authority.py::CATEGORY_RULES`:
+
+* **`broadcast`** — publishing to a public or semi-public audience. Shaped like `email_dispatch`: no amount band, so at A1 every publish raises a card and at A2+ it is autonomous comms. The checkpoint is a new HITL checkpoint definition, `before_public_broadcast` — the 20th.
+* **`ad_spend`** — committing budget on an ad platform. Carries an **amount band** like `payout` does, so a small boost is autonomous at A3 while a large campaign is not, and it is added to `HIGH_IMPACT_CATEGORIES` (decision 2).
+
+### 4.2 The tool mappings
+
+`TOOL_CATEGORY_MAP` gains entries following the connector precedent exactly: **write verbs map, read verbs deliberately do not.** Reading a platform's analytics is not an external effect and must stay `PASS`, or every dashboard refresh becomes an approval.
+
+| Maps to `broadcast` | Maps to `ad_spend` | Stays uncategorised |
+|---|---|---|
+| `linkedin_create_post`, `instagram_publish_media`, `tiktok_publish_video`, `facebook_*_post`, `twitter_*_post`, `pinterest_create_pin`, `reddit_*_submit`, `quora_post_answer`, `youtube_*_upload`, `*_manage_comments` | `meta_ads_create_campaign`, `linkedin_ads_create_campaign`, `google_ads_*_campaign`, `youtube_ads_create_campaign`, `x_ads_*_campaign`, `snapchat_ads_create_campaign`, `*_manage_adsets`, `*_manage_ad_groups`, `*_manage_audiences` | `*_get_analytics`, `*_report`, `*_get_profile`, `*_search_*`, `*_get_videos`, `linkedin_sales_get_*` |
+
+`*_manage_comments` maps to `broadcast` because a public reply is a public statement. `*_manage_audiences` maps to `ad_spend` rather than `broadcast` because an audience is who the money reaches, and it is also where §5's consent check bites.
+
+**The mapping must be total over the shipped tool set**, asserted by a test that walks `ai/tools/social/` and fails on any tool name matching neither an outbound nor a read pattern. A new social tool added later without a category is the exact bug this workstream exists to fix, and it should fail in CI rather than in production.
+
+## 5. Consent, and what it means for a broadcast
+
+A broadcast is not person-addressed, so `check_outbound_consent(company, channel, to_address, purpose)` does not fit as-is. Two distinct checks:
+
+**5.1 Channel posture (for `broadcast`).** Per-tenant, per-platform, per-purpose: *may this tenant publish to LinkedIn for marketing purposes?* This is the tenant's own policy — some businesses are regulated out of public statements, some want a human on every post regardless of band. Stored the way the consent registry already stores tenant posture (`ai/trust/consent_registry.py`), checked before the tool executes. The default follows decision 8 of Increment 2 — **consent is tenant-configured from day one**, no imposed global default — which here means: absent an explicit posture, `broadcast` is allowed and governed by band alone, and the tenant may tighten it.
+
+**5.2 DNC on audiences (for `ad_spend`).** An ad "custom audience" upload is a list of real people's emails or phone numbers, and it is the one place in the broadcast surface where the shipped DNC registry applies literally. Every identifier in an audience payload is checked through `check_outbound_consent`; suppressed identifiers are **removed and counted**, and the count travels into the HITL card's `context_snapshot`. Refusing the whole upload because of one unsubscribed address would push tenants to do it by hand outside the platform, which is worse for the person who unsubscribed.
+
+## 6. KAR-05 — the gateway
+
+Built with the shipped `_karuna_gateway` builder, so the posture comes by construction: `karuna_profile: true`, **no authority bands**, CRM-scoped memory, counterparty text as *data* and never as prompt directive.
+
+* **Consumes** `broadcast.inbound` — mentions, public comments, and platform DMs.
+* **Emits** `lead.inbound` / `ticket.opened`, the same shape KAR-02 (email) and KAR-03 (WhatsApp) emit. A comment asking about pricing becomes a lead; a comment reporting a broken order becomes a ticket. Nothing new downstream.
+* **Roster:** 18 → **19**. `activate_slice` still seeds email-only.
+* **Metadata:** `broadcast_provider`, which makes the deploy Karuna gate treat it as externally bound — so a KAR-05 that lost its `karuna_profile` would fail to publish, exactly as KAR-01/03 do.
+
+**The producer** `signals/broadcast_inbound.py` follows `whatsapp_inbound.py` and `voice_inbound.py` line for line: `trust: counterparty`, dedupe on the platform's own item id, subscription-gated, fail-safe cutover. Scope for this increment: the platforms a tenant actually holds a `social_connections` row for, transport injected (decision 5).
+
+**Outbound audit:** a successful publish emits `broadcast.published` (trust `internal`), so the outbound half is on the bus even where the inbound half is not yet polled.
+
+## 7. Data model
+
+| Change | Where | Migration |
+|---|---|---|
+| `broadcast`, `ad_spend` in `CATEGORY_RULES` + `TOOL_CATEGORY_MAP` | `governance/authority.py` | none |
+| `before_public_broadcast` — the **20th** HITL checkpoint | `governance/checkpoints.py` | **`gate001`** — a checkpoint backfill, exactly like `conn002`'s 19th |
+| `ad_spend` in `HIGH_IMPACT_CATEGORIES` | `governance/authority.py` | none |
+| `broadcast.inbound`, `broadcast.published` signal types | `signals/models.py` | none |
+| KAR-05 template | `solo_pack/templates/gateways.py` + `GATEWAYS` | none |
+| Channel posture | reuses the consent registry's tenant-posture storage | none |
+
+One small migration — the checkpoint backfill — for the same reason `conn002` existed: existing tenants need the new checkpoint row or their governance preview is missing a checkpoint that the gate can raise.
+
+## 8. Task plan
+
+| # | Task | Gate |
+|---|---|---|
+| **T1** | The two categories + the 20th checkpoint + `gate001`; `ad_spend` into `HIGH_IMPACT_CATEGORIES` | unit + `*_db` |
+| **T2** | `TOOL_CATEGORY_MAP` entries + **the totality test** over `ai/tools/social/` | unit |
+| **T3** | Channel posture in the consent registry + the pre-execute check | unit + `*_db` |
+| **T4** | Audience DNC filtering, with the suppressed count on the HITL card | unit + `*_db` |
+| **T5** | KAR-05 template + roster 19 + the injection golden (the `test_kar_gateways.py` pattern) | unit |
+| **T6** | `signals/broadcast_inbound.py` + `broadcast.published`, transport injected | unit + `*_db` |
+| **T7** | End-to-end: an A1 agent calling `linkedin_create_post` raises a card; an A3 agent's card-free publish still emits the audit signal | `*_db`, **mutation-tested** (drop the category mapping and the "A1 publish raises a card" test must fail, alone) |
+
+T1+T2 are the ones that close the live hole; T5–T7 are the inbound half. If the increment runs long, the overview names GATE as a relief valve — the honest split is that **T1–T4 should not be deferred** (they close an ungoverned outbound path in shipped code) while T5–T7 can be.
+
+## 9. Honest risks and limits
+
+| Risk / limit | Statement |
+|---|---|
+| **No live platform call** | Decision 5. The transport is injectable and faked in tests, the same posture Zoho (Inc 4) and the expansion fleet (Inc 5) carry. Live go-live is activation-time ops |
+| **Credentials stay in `social_connections`** | Decision 4. Two credential stores exist afterwards (`connector_bindings` and `social_connections`), which is a real inconsistency and is recorded rather than hidden |
+| **Categorising 64 tools will break someone's flow** | That is the point — an A1 tenant whose agent has been posting freely will start seeing cards. It is a behaviour change and it belongs in release notes, not in a silent deploy |
+| **Pattern-matched mappings can drift** | The totality test (T2) is the guard, and it is the load-bearing test in this workstream |
+| **16 platforms is a lot of inbound surface** | T6 is scoped to platforms with an existing connection row. A tenant with no LinkedIn connection gets no LinkedIn polling and no empty error |
+
+## 10. Brainstorm decisions
+
+*(Answered — do not re-litigate.)*
+
+1. **One category or two:** two (§3.1).
+2. **Ad spend and hostile input:** `HIGH_IMPACT_CATEGORIES` (§3.2).
+3. **Gateway holds ad tools:** never (§3.3).
+4. **Credential consolidation:** out of scope, recorded (§3.4).
+5. **Audience with an unsubscribed address:** filter and count, do not refuse (§5.2).
+6. **Default posture:** tenant-configured, permissive until set — Inc-2 decision 8 (§5.1).
+
+---
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-25 | v1.0 — design written. The finding sharpened against the code: **64 social/ad tools across 16 platforms, none categorised**, so the PolicyGate passes every public post and every ad-budget commitment. Split into three independent fixes; two new categories with `ad_spend` in `HIGH_IMPACT_CATEGORIES`; a totality test over the tool directory as the durable guard; consent split into channel posture and audience DNC; KAR-05 built with the shipped Karuna builder, roster 18→19; credentials deliberately left in place with the reason. |

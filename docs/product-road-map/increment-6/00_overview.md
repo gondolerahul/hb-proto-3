@@ -2,7 +2,7 @@
 
 > **Document class:** increment overview — the plan the six workstream docs hang off.
 > **Author:** Buddha Cognitive Lab (drafted by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.0 — decisions locked, workstream docs in progress
+> **Created:** 2026-07-24 · **Status:** v1.1 — decisions locked; **all six workstream docs written 2026-07-25** (§2). Build not started.
 > **Parent:** [00_charter.md](./00_charter.md) (goal, scope, the nine decisions) · [build_roadmap.md](../build_roadmap.md) §4
 > **Baseline:** `master` @ `8a54c27` — Increments 1–5 merged and pushed; VG-05 hardening built.
 
@@ -24,12 +24,17 @@ Two things about the shape are worth stating before the workstream docs:
 
 | # | Workstream | Closes | Doc |
 |---|---|---|---|
-| 1 | **LEARN** — learning store, charter tuning, B10 policy, KPI history, density store | **B10** | `01_learn.md` |
-| 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** | `02_sega.md` |
-| 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | — (VG-09/VG-10) | `03_twin.md` |
-| 4 | **STRAT** — Minutes→Propositions→Resolutions→Mandates→Reviews + HBS Planning depth | — (VG-11) | `04_strat.md` |
-| 5 | **GATE** — KAR-05 governed broadcast gates | — (VG-15) | `05_gate.md` |
-| 6 | **LIB** — Library data layer: provenance, influence, staleness, drives | — (VG-13/VG-14) | `06_lib.md` |
+| 1 | **LEARN** — learning store, charter tuning, B10 policy, KPI history, density store | **B10** | [01_learn.md](./01_learn.md) ✅ |
+| 2 | **SEGA** — self-evolution GA, entity-change canary, version ledger, taint | **B11**, **D3** | [02_sega.md](./02_sega.md) ✅ |
+| 3 | **TWIN** — the Glasshouse: twin plane, replay, forecast, honesty grading | — (VG-09/VG-10) | [03_twin.md](./03_twin.md) ✅ |
+| 4 | **STRAT** — Minutes→Propositions→Resolutions→Mandates→Reviews + HBS Planning depth | — (VG-11) | [04_strat.md](./04_strat.md) ✅ |
+| 5 | **GATE** — KAR-05 governed broadcast gates | — (VG-15) | [05_gate.md](./05_gate.md) ✅ |
+| 6 | **LIB** — Library data layer: provenance, influence, staleness, drives | — (VG-13/VG-14, opt. VG-16) | [06_lib.md](./06_lib.md) ✅ |
+
+**Two live defects in shipped code** surfaced while writing the designs, both scheduled as their workstream's **first** task rather than as new findings:
+
+* **SEGA T0** — `GET /ai/tools` and `GET /ai/tools/{id}` are unscoped by company, so any authenticated user reads **every tenant's** custom and synthesized tool entries, `configuration` blob included ([02](./02_sega.md) §2.1). Same shape as the VG-05 IDOR; same fix.
+* **GATE T1–T2** — the **64 social/ad tools** in `ai/tools/social/` appear in no `TOOL_CATEGORY_MAP` entry, so the PolicyGate `PASS`es every public post and every ad-budget commitment at every autonomy band ([05](./05_gate.md) §1).
 
 Workstreams 3–6 close no *register* finding because the register predates the Design Gate. They close **gap-analysis** findings instead, and the register is not retro-fitted — the gap analysis is their register.
 
@@ -81,27 +86,29 @@ Two gate notes specific to this increment:
 
 ## 6. Migrations
 
-Head is **`fleet001`**. This increment adds a lot of schema — provisionally:
+Head is **`fleet001`**. As designed (v1.1 — the provisional table above was replaced by what the six docs actually specify):
 
-| Workstream | Expected tables |
-|---|---|
-| LEARN | learning records (two shapes, per decision 2), `kpi_snapshots`, user preference/density |
-| SEGA | `entity_versions` (the ledger), canary cohorts, taint annotations |
-| TWIN | scenarios, twin runs, honesty-graded results; the twin plane is likely **not** a migration (tenant schemas bootstrap per-tenant — the Inc-4 precedent in `data_plane._sync_columns`) |
-| STRAT | monuments + review schedule; **Planning HBS objects are tenant-schema seed, not Alembic** |
-| GATE | none expected — gateways are templates, bindings reuse `connector_bindings` |
-| LIB | `documents` provenance columns, retrieval-usage log, staleness flags |
+| Workstream | Migration | Tables / columns |
+|---|---|---|
+| LEARN | **`learn001`** | `platform_observations` (no company column, §4), `kpi_snapshots`, `entity_behaviour_weekly`, `user_preferences` |
+| SEGA | **`sega001`** | `entity_versions`; `execution_runs.taint_level` |
+| TWIN | **`twin001`** | `twin_scenarios`, `twin_runs`. The twin *plane* is **not** a migration — it is a sibling tenant schema (`t_<hex>_tw`), bootstrapped like any tenant schema |
+| STRAT | **none** | The seven Planning objects are HBS **seed data**; `seed_hbs_spine` is additive and idempotent, so existing tenants pick them up on the next `ensure_ready` |
+| GATE | **`gate001`** | The 20th HITL checkpoint backfill (`before_public_broadcast`) — the same shape as `conn002`'s 19th. Everything else is declared data |
+| LIB | **`lib001`** | `documents` provenance columns, `retrieval_usages`, `document_influence_daily`, `artifacts.document_id`/`record_ref`, optional `connector_bindings.credentials_expire_at` |
 
-Note the two carve-outs, both established precedent: **tenant tables are bootstrapped per-tenant, not migrated** (SCH, Inc 1), and **new HBS objects are seed data** (`tenant_schema/hbs_seed/`), so STRAT's Planning depth adds spine entries rather than a migration.
+The two carve-outs held, both established precedent: **tenant tables are bootstrapped per-tenant, not migrated** (SCH, Inc 1), and **new HBS objects are seed data** (`tenant_schema/hbs_seed/`) — which is why the largest domain-model change in the increment (STRAT's seven objects, spine 27→34) adds no migration at all.
+
+**Four new `ai/` packages** — `learning`, `evolution`, `twin`, `strategy` — plus **`library`** (LIB). Five, not four: the §5 gate note predates the workstream docs. Each must be added to `CLEAN_PACKAGES` in `scripts/typecheck_ai.py`.
 
 ## 7. Honest risks
 
 | Risk | Why it is real here |
 |---|---|
 | **The increment is the largest attempted** | Six workstreams, four of them net-new subsystems. Inc 2 (six workstreams) is the closest precedent and it was the MVP. Deferring GATE or LIB is the cheapest relief valve if it runs long — both are independent by construction (§3). |
-| **TWIN has no precedent in the codebase** | Nothing simulation-shaped exists. The twin *data plane* is the risky part; `data_plane.py`'s two-backend design is the intended host but has never run a third mode. Prototype the plane before the engines. |
-| **Decision 2's guarantee may not survive contact** | If the pooled/tenant split cannot be made structural, decision 8 reopens (§4). Find out in LEARN's first task, not its last. |
-| **STRAT is domain modelling, not plumbing** | Minutes/Propositions/Resolutions/Mandates are business objects a tenant will *see*. They need the same review the HBS spine got (drafted, then reviewed by Rahul), not just an engineer's guess. |
+| **TWIN has no precedent in the codebase** | Nothing simulation-shaped exists. Prototype the plane before the engines ([03](./03_twin.md) T1). *Design update (v1.1): the twin plane is a **sibling schema**, not a third backend mode — so `data_plane.py`'s two backends stay two, which removes most of what this row feared.* |
+| **Decision 2's guarantee may not survive contact** | If the pooled/tenant split cannot be made structural, decision 8 reopens (§4). Find out in LEARN's first task, not its last — [01](./01_learn.md) T1 is written as exactly that stop-or-go. |
+| **STRAT is domain modelling, not plumbing** | Minutes/Propositions/Resolutions/Mandates are business objects a tenant will *see*. They need the same review the HBS spine got. **[04](./04_strat.md) T2 is a blocking owner review** of the seven object sheets — build does not start until it closes. |
 | **Measuring "Week 12 > Week 1" needs Week 1** | Every deferral of LEARN pushes the first honest answer out by the same amount, and no later effort recovers it. |
 
 ---
@@ -110,4 +117,5 @@ Note the two carve-outs, both established precedent: **tenant tables are bootstr
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.1 — **all six workstream docs written.** §2 links them and records the two live shipped-code defects their design work surfaced (unscoped tool-registry reads; 64 uncategorised social/ad tools), each scheduled as its workstream's first task. §6 replaced with the migrations as designed (`learn001` · `sega001` · `twin001` · none · `gate001` · `lib001`) and corrected to **five** new packages. §7 updated where a design answered a risk. |
 | 2026-07-24 | v1.0 — increment plan written after the clarifying round: six workstreams, forced build order with the reasons, the four decisions that carry code obligations, gate baseline and migration expectations, honest risks. |
