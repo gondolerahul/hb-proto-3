@@ -61,6 +61,9 @@ class AuthorityBands(BaseModel):
     contract_tcv_usd: Optional[float] = None
     price_change_pct: Optional[float] = None
     vendor_exposure_usd: Optional[float] = None
+    # Inc-6 GATE: the autonomous-up-to ceiling for ad-platform budget
+    # commitments (`ad_spend`). Tenant-tunable like every other band.
+    ad_spend_usd: Optional[float] = None
 
 
 class BudgetRef(BaseModel):

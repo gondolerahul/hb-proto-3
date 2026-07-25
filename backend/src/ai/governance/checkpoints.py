@@ -44,6 +44,8 @@ _CATEGORY_SLA: dict[str, tuple[int, str]] = {
     "email": (86400, OnTimeout.AUTO_PARK),           # 24h — a draft can wait
     "external_write": (86400, OnTimeout.AUTO_PARK),  # 24h — a write-back can park + re-raise
     "public_statement": (86400, OnTimeout.AUTO_PARK),  # 24h
+    "broadcast": (86400, OnTimeout.AUTO_PARK),       # 24h — an unposted post can wait
+    "ad_spend": (28800, OnTimeout.AUTO_DENY),        # 8h — money out, so silence fails safe
     "discount": (86400, OnTimeout.AUTO_PARK),        # 24h
     "governance": (172800, OnTimeout.ESCALATE),      # 48h
     "employment_offer": (172800, OnTimeout.ESCALATE),  # 48h
@@ -121,6 +123,20 @@ CHECKPOINT_SEED: list[dict[str, Any]] = [
     {"key": "before_external_system_write", "category": "external_write",
      "description": "Writing back to an external system of record via a connector (SOR, §21).",
      "default_threshold": None, "threshold_unit": None, "platform_mandatory": False},
+    # ── The 20th and 21st, added by Increment 6 / GATE (KAR-05) ───────
+    # Broadcast and ad spend are two acts, not one (GATE decision 1), so they
+    # need two checkpoints. The design doc named only the 20th; giving
+    # `ad_spend` its own rather than borrowing the payout checkpoint is a
+    # build-time correction — `before_outbound_payout_above_band` is
+    # platform_mandatory, AUTO_DENYs in 4h and describes itself as a payout, so
+    # an ad campaign raised against it would be un-opt-out-able, wrongly
+    # urgent, and mislabelled on the card.
+    {"key": "before_public_broadcast", "category": "broadcast",
+     "description": "Publishing to a public or semi-public audience (post, public reply, upload).",
+     "default_threshold": None, "threshold_unit": None, "platform_mandatory": False},
+    {"key": "before_ad_spend_above_band", "category": "ad_spend",
+     "description": "Committing budget on an ad platform above the autonomous band.",
+     "default_threshold": 200.0, "threshold_unit": "usd", "platform_mandatory": False},
 ]
 
 # Stamp each row with its per-category SLA (C3) so the seed carries sla_seconds
@@ -135,7 +151,9 @@ MANDATORY_KEYS: frozenset[str] = frozenset(
     row["key"] for row in CHECKPOINT_SEED if row["platform_mandatory"]
 )
 
-assert len(CHECKPOINT_SEED) == 19, (
+assert len(CHECKPOINT_SEED) == 21, (
     "Blueprint §9.7 defines 18 checkpoints; Increment 4 / CONN+SOR adds the "
-    "19th (before_external_system_write) for external system-of-record write-back"
+    "19th (before_external_system_write) for external system-of-record "
+    "write-back; Increment 6 / GATE adds the 20th and 21st "
+    "(before_public_broadcast, before_ad_spend_above_band) for KAR-05"
 )

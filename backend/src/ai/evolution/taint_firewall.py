@@ -160,10 +160,25 @@ def descend_all(current: str | None, sources: Iterable[str]) -> str:
     return level if level is not None else "external_verified"
 
 
-#: Categories a counterparty-tainted run may not drive at all — the shipped
-#: ``HIGH_IMPACT_CATEGORIES``, imported lazily in :func:`firewall` so this
-#: module stays free of governance imports and can be reasoned about alone.
-_HIGH_IMPACT = frozenset({"payout", "refund", "contract", "vendor_creation"})
+def _high_impact() -> frozenset[str]:
+    """The shipped ``HIGH_IMPACT_CATEGORIES``, read live.
+
+    Imported lazily *inside* this function so the module keeps no governance
+    import at module scope and can still be reasoned about alone — which is
+    what SEGA §7 wanted, and what the previous comment here claimed while
+    actually holding a hand-copied duplicate of the set.
+
+    The duplicate was a real drift hazard rather than a stylistic one, and it
+    drifted the first time it was tested: Increment 6 / GATE added ``ad_spend``
+    to ``HIGH_IMPACT_CATEGORIES`` — so that a hostile inbound message cannot
+    drive money into an ad platform — and the copy here silently did not get
+    it, leaving the firewall permitting exactly the act the governance
+    constant had just forbidden. One source, so the next addition cannot
+    half-land.
+    """
+    from src.ai.governance.authority import HIGH_IMPACT_CATEGORIES
+
+    return HIGH_IMPACT_CATEGORIES
 
 #: Writing into another business system on the strength of tainted content.
 #:
@@ -205,17 +220,18 @@ def firewall(taint: str | None, category: str) -> str:
     money autonomously, however high its band.
     """
     level = rank(taint)
+    high_impact = _high_impact()
 
     if level < 0 or taint == "counterparty":
         # Unknown levels are treated as the most tainted (see `rank`).
-        if category in _HIGH_IMPACT:
+        if category in high_impact:
             return REFUSE
         if category in _OUTWARD:
             return HITL
         return ALLOW
 
     if taint == "external_verified":
-        if category in _HIGH_IMPACT:
+        if category in high_impact:
             return HITL
         return ALLOW
 
