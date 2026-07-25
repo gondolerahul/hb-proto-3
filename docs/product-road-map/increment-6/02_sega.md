@@ -1,6 +1,6 @@
 # Increment 6 / SEGA — Self-Evolution, Bounded (closes B11, D3)
 
-> **Status:** v1.3 — design locked (§3). **T0–T6 BUILT** (2026-07-25, branch `inc6/sega`) — build notes §13. T7–T8 pending. **D3 is closed**; B11's predicate awaits its caller (T7).
+> **Status:** ✅ **v2.0 — COMPLETE.** All of T0–T8 built (2026-07-25, branch `inc6/sega`). Build notes §13. **Closes register B11 and D3** + gap-analysis VG-10 and VG-17.
 > **Closes:** register **B11** (self-evolving code blast radius) + **D3** (context taint / tool-call firewall) + gap-analysis **VG-10** (no canary for agent/process changes) and **VG-17** (no entity version ledger).
 > **Depends on:** LEARN ([01](./01_learn.md)) — SEGA consumes `learning.charter_tuning_proposed` · the shipped Meta-Agent surface (`ai/meta/`) · EVX's `require_independent_suites` + `intelligence/canary.py` (Inc 5) · the PolicyGate (`governance/policy_gate.py`).
 > **Feeds:** TWIN ([03](./03_twin.md)) — the promotion pipeline **calls** this canary; the Glasshouse diff reads the version ledger · Vihara's Gallery (Inc 7).
@@ -190,8 +190,8 @@ New signal types: `governance.entity_versioned`, `governance.entity_rolled_back`
 | **T4** ✅ | Promotion calls `require_independent_suites`; PACK goldens registered as the incumbent suite | unit + `*_db` |
 | **T5** ✅ | The 01:50 UTC sweep + `governance.entity_*` signals | `*_db` |
 | **T6** ✅ | `evolution/taint_firewall.py` + `taint_level` + descent at the six entry points | unit (**existing PolicyGate tests must pass unchanged**) + `*_db` |
-| **T7** | Consume `learning.charter_tuning_proposed` → ledger → canary, end to end | `*_db` |
-| **T8** | Agent-proposed fields over `_sync_columns`, additive-only | unit + `*_db` |
+| **T7** ✅ | Consume `learning.charter_tuning_proposed` → ledger → canary, end to end | `*_db`, **mutation-tested** |
+| **T8** ✅ | Agent-proposed fields ~~over `_sync_columns`~~ — no DDL needed (§13.11) | unit + `*_db` |
 
 T0 first on purpose: it is a live disclosure in shipped code, and adding capability to a leaking surface is the wrong order.
 
@@ -296,15 +296,45 @@ Fixed by making the **ledger** decide the number: `record_version` reads the exi
 
 **The new bite** is the `external_verified` row: a run that has read an external system may no longer move money autonomously, however high its band. Before D3 there was no level between "counterparty" and "fully trusted".
 
-### 13.9 Verification (T0–T6)
+### 13.10 T7 — the predicate gets its caller, and T3 gets a correction
 
-typecheck **281 files** strict · layout lint · **1747 unit** (+95) · **16 parity/eval** · **355 integration** (+26) · migration head **`sega002`**, applies/downgrades/re-applies.
+`evolution/proposals.py` consumes `learning.charter_tuning_proposed`: load the entity **through its company**, gather the facts, `admit_change`, apply, record a `canary` version carrying `proposal_signal_id`.
+
+**B11 is closed end-to-end here, and only here.** Until this module existed the predicate was a guarantee with no caller — B11 asks what *forbids* a self-heal from mutating a global artifact, and an answer nothing routes through is not an answer. Bypassing `admit_change` at this call site fails **three** end-to-end refusal tests (governance field, suspended tenant, daily cap), which is what makes it load-bearing rather than decorative.
+
+**Every refusal is visible.** A refused proposal parks its signal with the reason on `last_error`. A silent refusal and a silent bug look identical from outside, and "why did nothing happen?" needs an answer in the place a human is already looking.
+
+**The addition appends; it does not replace.** A learning proposal adds to what a colleague was told. Replacing a goal an owner wrote with a sentence a loop inferred is exactly the overreach the field allow-list exists to bound — and a test asserts the owner's original words survive.
+
+**The T3 correction.** T3 shipped a stable-hash **traffic split**: a fraction of runs attributed to the candidate, the rest to the incumbent. Wiring T7 showed it was wrong, and wrong in the direction that produces confident nonsense. An entity has exactly **one row** — applying a charter tune mutates it, so from that moment *every* run behaves as the candidate, and labelling 75% of them "incumbent" would have compared the new version against itself and reported a clean result. The alternative, not mutating until GA, is worse: the "candidate" cohort then behaves identically and every canary passes.
+
+A true A/B needs the loop to compose an agent from a **version snapshot** rather than from the entity row — a change to `core/agent_loop.py`, which is pinned at its line cap, and it is not built. So `in_canary_cohort` was **deleted** (with its tests) rather than left as dead code with a promise, and what ships is an honest **staged rollout with a watched window**: the change is live for everyone, and the comparison is against the previous version's *historical* runs. That is the same shape `intelligence/canary.py` uses. It is a real regression check; it is simply not an A/B, and calling it one would have been the lie. A test pins that the split does not come back casually.
+
+### 13.11 T8 — agent-proposed fields, and a second design correction
+
+**§8 said this lands "through the shipped `data_plane._sync_columns` primitive". It does not, because it needs no DDL at all.** A tenant object's fields live in `TenantEntityDef.fields` — a JSONB list — and its records are JSONB documents in `TenantRecord.data`. Adding a field is an append and a version bump. `_sync_columns` manages the Inc-4 SoR *mirror* columns and is unrelated. Worth stating plainly, because the design's sentence would send a reader hunting for a migration that should not exist.
+
+**Additive only, and absent rather than gated.** There is no `drop`, `rename` or `retype` entry point — a test asserts no such function exists in the module. A dropped field is data loss no rollback recovers: the ledger can restore an entity's *definition*, but nothing restores records whose values went with the field. Three further refusals earn their place:
+
+* **An existing name is refused** — "adding" a name that exists is a retype in disguise.
+* **A proposed field is never `required`** — making it required retroactively invalidates every record that predates it, which is the same data loss arriving as a validation error on the next write.
+* **`ref` is not proposable** — a ref creates an edge in the object graph and materialises link rows. Proposing relationships between business objects is a modelling decision, not a missing column, and it belongs to a human.
+
+Two test bugs found and fixed while writing this, both worth knowing: `emit_proposal` dedupes on `(entity, field, evidence)`, so five identical proposals are **one** proposal by design; and **raw `text()` SQL does not get `schema_translate_map`** — only ORM/Table constructs carrying the symbolic `tenant` schema do, so a tenant-plane query must go through the ORM.
+
+### 13.12 Verification (T0–T8 — SEGA complete)
+
+typecheck **283 files** strict · layout lint · **1772 unit** (+120) · **16 parity/eval** · **364 integration** (+35) · migration head **`sega002`**, applies/downgrades/re-applies.
+
+**Register B11 and D3 are both closed.** B11: automated change passes one predicate with five limits, each mutation-tested alone, and the predicate is load-bearing at its only caller. D3: a four-level taint ladder that only descends, a pure firewall table, and enforcement inside `evaluate_policy` — proven non-regressive by six pre-existing tests failing when it is disabled.
 
 **Honest limits.**
 
-* `blast_radius.admit_change` is written and mutation-tested but still has **no call sites** — nothing automated passes through it until T7.
-* **Only signal-driven runs are stamped with a version.** `_spawn_run` assigns one; Pragya turns, manual executions and the deferred voice queue do not. Canary health therefore reflects the signal-driven workload — the Solo Pack's main path, but not all of it. An unstamped run is `NULL`, which reads as *not attributed*, never as "the incumbent".
-* **Taint descends from tool calls only.** Three of §7.3's six entry points are wired: the signal seed, free-web tools, and connector/MCP reads. The other three need stores that do not exist yet — retrieved-chunk provenance is **LIB**, inbound-record-field origin needs the record service to carry it, and child-run taint needs the delegation path to propagate. The map lists all six so the gaps are visible in the code, not only here.
+* **The rollout is not an A/B** (§13.10). A true one needs version-snapshot composition in the loop.
+* **Only signal-driven runs are stamped with a version.** `_spawn_run` assigns one; Pragya turns, manual executions and the deferred voice queue do not. An unstamped run is `NULL` — *not attributed*, never "the incumbent".
+* **Taint descends from tool calls only.** Three of §7.3's six entry points are wired: the signal seed, free-web tools, connector/MCP reads. The other three need stores that do not exist yet — retrieved-chunk provenance is **LIB**, inbound-record-field origin needs the record service to carry it, child-run taint needs the delegation path to propagate. The source map lists all six so the gaps are visible in the code.
+* **`consume_proposals` has no cron.** T7 is driven by tests calling it; scheduling it beside the canary sweep is a one-line addition, deliberately not made until a proposal path has been watched once.
+* **T8 has no producer.** Nothing yet *detects* that an agent keeps needing a missing field; `apply_field_proposal` is the safe applier for a proposal a human or a later detector supplies.
 * The ledger is written by `update_entity` only — entity creation and soft-delete do not record versions.
 
 ---
@@ -313,6 +343,7 @@ typecheck **281 files** strict · layout lint · **1747 unit** (+95) · **16 par
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | ✅ **v2.0 — SEGA COMPLETE.** T7 + T8 built (§13.10–§13.12). **B11 closed end-to-end** — the predicate now has a caller, and bypassing it fails three refusal tests. **Two design corrections:** T3's traffic split was deleted (an entity has one row, so the split compared a version against itself) and replaced with an honest staged rollout; and T8 needs no DDL, because tenant fields are JSONB rather than columns. |
 | 2026-07-25 | v1.3 — **T5 + T6 built** (§13.7–§13.9). **D3 closed**: the four-level taint ladder replaces Increment 1's `counterparty` special case inside `evaluate_policy`, resolved at the gate from the durable tool log so it survives a paused-and-resumed run. Non-inferiority proved by mutation — disabling the firewall fails six pre-existing tests. Two deltas: an undecided canary now **expires** (an experiment with no end date is not an experiment), and outbound comms stay band-based at `counterparty` taint because every Karuna gateway run is counterparty-tainted from turn one. |
 | 2026-07-25 | v1.2 — **T3 + T4 built** (§13.4–§13.7). Migration `sega002` stores the run→version assignment rather than recomputing it; the canary verdict is three-way; the critic BLOCK rate dropped from the health set with the reason; promotion gated by `require_independent_suites` inside the mutation path. **A defect the tests found:** `record_version` bumped from the entity row, which can lag the ledger, and the resulting unique violation surfaced at the caller's commit — the version is now decided by the ledger and ordered numerically. |
 | 2026-07-25 | v1.1 — **T0–T2 built** (§13). Route paths in §2.1 corrected (`/api/v1/ai/tool-registry`, not `/ai/tools`). Rollback made exempt from the rate cap and kill switch but never from scope; `proposal_signal_id`'s FK dropped for import-lightness; `record_version` made non-raising. |

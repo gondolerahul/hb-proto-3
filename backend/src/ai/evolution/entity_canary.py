@@ -14,9 +14,10 @@ Three properties worth keeping when extending this:
    the evidence honestly does not exist yet. That is correct behaviour. The
    surface must render it as a state; a verdict on three runs is noise wearing
    a decision's clothes.
-2. **The cohort split is stable.** Assignment hashes the triggering signal id,
-   so the same signal replayed lands on the same side — otherwise a retry would
-   read as a canary result.
+2. **It is a staged rollout, not an A/B.** An entity has one row, so a change
+   is live for everyone the moment it applies; the comparison is against the
+   previous version's *historical* runs. See ``stamp_run_version`` for why the
+   traffic split this originally shipped with had to go.
 3. **Promotion is gated by admission, not by health alone.** ``require_independent_suites``
    (EVX §22.2) runs first: *the exam predates the student*, whether the student
    is a model or an agent.
@@ -25,7 +26,6 @@ Design: docs/product-road-map/increment-6/02_sega.md §6, §7.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
@@ -44,7 +44,6 @@ __all__ = [
     "DEFAULT_THRESHOLDS",
     "VersionHealth",
     "CanaryVerdict",
-    "in_canary_cohort",
     "assess",
     "measure_version",
     "stamp_run_version",
@@ -111,24 +110,6 @@ class CanaryVerdict:
         if not self.decided:
             return "observe"
         return "promote" if self.healthy else "roll_back"
-
-
-def in_canary_cohort(cohort_key: str, fraction: float) -> bool:
-    """Is this unit of work served by the candidate version? Pure and stable.
-
-    A hash of the key rather than a random draw, so the same triggering signal
-    always lands the same side. A retried signal that flipped cohorts would
-    contaminate both sides of the comparison with the same event.
-    """
-    if fraction <= 0.0:
-        return False
-    if fraction >= 1.0:
-        return True
-    digest = hashlib.sha256(cohort_key.encode("utf-8")).digest()
-    # First four bytes as a fraction of the space — plenty for a cohort split,
-    # and deterministic across processes (unlike ``hash()``, which is salted).
-    bucket = int.from_bytes(digest[:4], "big") / 0xFFFFFFFF
-    return bucket < fraction
 
 
 def assess(
@@ -208,41 +189,46 @@ async def measure_version(db: AsyncSession, version_id: uuid.UUID) -> VersionHea
 
 
 async def stamp_run_version(
-    db: AsyncSession, *, entity_id: uuid.UUID, cohort_key: str, fraction: float,
+    db: AsyncSession, *, entity_id: uuid.UUID,
 ) -> uuid.UUID | None:
-    """Which version should serve this run — the candidate, or the incumbent?
+    """Which version is serving this run? Whichever one is live.
 
-    Returns the version id to stamp on the run, or ``None`` when the entity has
-    no ledger history at all (nothing to attribute to, and nothing to compare).
+    **Correction to the T3 design (2026-07-25).** This originally split traffic
+    by a stable hash: a fraction of runs attributed to the candidate, the rest
+    to the incumbent. That was wrong, and wrong in the direction that produces
+    confident nonsense.
 
-    Never raises: a canary is an experiment, and an experiment must not be able
-    to stop the work it is observing.
+    An entity has exactly **one** row. Applying a charter tune mutates it, so
+    from that moment *every* run behaves as the candidate — labelling 75% of
+    them "incumbent" would have compared the new version against itself and
+    called it a regression-free result. The alternative, not mutating until GA,
+    is worse: then the "candidate" cohort behaves identically to the incumbent,
+    every canary passes, and the gate is decorative.
+
+    A true A/B needs the loop to compose an agent from a *version snapshot*
+    rather than from the entity row, which is a change to
+    ``core/agent_loop.py`` — pinned at its line cap — and is not built. So what
+    ships is an honest **staged rollout with a watched window**: the change is
+    live for everyone, and the comparison is against the previous version's
+    *historical* runs. That is the same shape ``intelligence/canary.py`` uses,
+    and it is a real regression check; it is simply not an A/B, and calling it
+    one would have been the lie.
+
+    Returns ``None`` when the entity has no ledger history at all — nothing to
+    attribute to, and nothing to compare against.
+
+    Never raises: an experiment must not be able to stop the work it observes.
     """
     try:
-        canary = (await db.execute(
+        live = (await db.execute(
             select(EntityVersion)
             .where(EntityVersion.entity_id == entity_id,
-                   EntityVersion.status == VersionStatus.CANARY)
+                   EntityVersion.status.in_(
+                       (VersionStatus.CANARY, VersionStatus.GA)))
             .order_by(EntityVersion.created_at.desc())
             .limit(1)
         )).scalar_one_or_none()
-
-        incumbent = (await db.execute(
-            select(EntityVersion)
-            .where(EntityVersion.entity_id == entity_id,
-                   EntityVersion.status == VersionStatus.GA)
-            .order_by(EntityVersion.created_at.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-
-        if canary is None:
-            return incumbent.id if incumbent else None
-        if incumbent is None:
-            # Nothing to compare against; the candidate serves everything and
-            # the canary will report "insufficient samples" forever, which is
-            # honest — there is no baseline.
-            return canary.id
-        return canary.id if in_canary_cohort(cohort_key, fraction) else incumbent.id
+        return live.id if live else None
     except Exception as exc:  # noqa: BLE001
         logger.debug("canary: could not stamp a version for %s: %s", entity_id, exc)
         return None

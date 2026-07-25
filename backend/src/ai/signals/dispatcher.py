@@ -184,17 +184,12 @@ async def _spawn_run(db: AsyncSession, signal: Signal, entity: Any) -> Any:
         status=RunStatus.PENDING,
     )
 
-    # SEGA T3 — attribute the run to the entity version that serves it, so a
-    # canary verdict can compare candidate against incumbent later. The cohort
-    # key is the *signal* id, not the run id: the same signal replayed must land
-    # on the same side, or a retry would read as a canary result. Never raises;
-    # an experiment must not be able to stop the work it observes.
+    # SEGA T3 — attribute the run to the entity version serving it, so a
+    # regression check can compare it against the previous version's runs.
+    # Never raises; an experiment must not be able to stop the work it observes.
     from src.ai.evolution.entity_canary import stamp_run_version
-    from src.common.config import settings
 
-    run.entity_version_id = await stamp_run_version(
-        db, entity_id=entity.id, cohort_key=str(signal.id),
-        fraction=float(getattr(settings, "SEGA_CANARY_FRACTION", 0.25)))
+    run.entity_version_id = await stamp_run_version(db, entity_id=entity.id)
 
     db.add(run)
     await db.flush()

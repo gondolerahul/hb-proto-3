@@ -419,35 +419,36 @@ async def test_a_backed_promotion_supersedes_the_previous_ga(tenant):
         await db.commit()
 
 
-async def test_stamping_prefers_the_incumbent_when_there_is_no_canary(tenant):
-    """Ordinary life: no experiment running, every run attributed to GA."""
+async def test_stamping_attributes_a_run_to_the_live_version(tenant):
+    """Ordinary life: no change in flight, every run attributed to the GA row."""
     from src.ai.evolution.entity_canary import stamp_run_version
     from src.common.database import AsyncSessionLocal
 
     ga = await _version(tenant.company_id, tenant.entity_id, version="1.0.8", status="ga")
     async with AsyncSessionLocal() as db:
-        assigned = await stamp_run_version(
-            db, entity_id=tenant.entity_id, cohort_key=str(uuid.uuid4()), fraction=0.25)
-    assert assigned == ga
+        assert await stamp_run_version(db, entity_id=tenant.entity_id) == ga
 
 
-async def test_stamping_splits_traffic_when_a_canary_exists(tenant):
-    """Both sides get served, and neither gets all of it."""
+async def test_every_run_goes_to_the_canary_while_one_is_live(tenant):
+    """The T7 correction, at the database.
+
+    An entity has one row: applying a change makes it live for everyone, so
+    every run is attributed to the candidate. Splitting the attribution would
+    have labelled runs that behaved as the candidate "incumbent" and then
+    compared the version against itself.
+    """
     from src.ai.evolution.entity_canary import stamp_run_version
     from src.common.database import AsyncSessionLocal
 
-    ga = await _version(tenant.company_id, tenant.entity_id, version="1.0.9", status="ga")
+    await _version(tenant.company_id, tenant.entity_id, version="1.0.9", status="ga")
     canary = await _version(tenant.company_id, tenant.entity_id,
                             version="1.1.0", status="canary")
 
     async with AsyncSessionLocal() as db:
-        assignments = [
-            await stamp_run_version(db, entity_id=tenant.entity_id,
-                                    cohort_key=str(uuid.uuid4()), fraction=0.5)
-            for _ in range(40)
-        ]
+        assignments = [await stamp_run_version(db, entity_id=tenant.entity_id)
+                       for _ in range(20)]
 
-    assert set(assignments) == {ga, canary}
+    assert set(assignments) == {canary}
 
 
 async def test_an_entity_with_no_ledger_history_stamps_nothing(tenant):
@@ -457,8 +458,7 @@ async def test_an_entity_with_no_ledger_history_stamps_nothing(tenant):
     from src.common.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as db:
-        assert await stamp_run_version(
-            db, entity_id=uuid.uuid4(), cohort_key="k", fraction=0.25) is None
+        assert await stamp_run_version(db, entity_id=uuid.uuid4()) is None
 
 
 # ── T5 · the sweep ───────────────────────────────────────────────────────────

@@ -1,16 +1,14 @@
-"""SEGA T3/T4 — the cohort split and the verdict, decidable without a database.
+"""SEGA T3/T4 — the verdict, decidable without a database.
 
-Two things carry the weight here.
+The **three-way verdict** is what carries the weight: healthy / unhealthy /
+*not decided yet*. Collapsing "not enough evidence" into either of the others
+is the failure mode — into healthy and every change ships on a quiet week, into
+unhealthy and every change is rolled back on one. A low-traffic entity sits in
+`canary` for weeks, and that is a state rather than a delay.
 
-The **three-way verdict**: healthy / unhealthy / *not decided yet*. Collapsing
-"not enough evidence" into either of the others is the failure mode — into
-healthy and every change ships on a quiet week, into unhealthy and every change
-is rolled back on one. A low-traffic entity sits in `canary` for weeks, and
-that is a state rather than a delay.
-
-The **stable cohort**: the same triggering signal must always land the same
-side, or a retried signal contaminates both arms of the comparison with one
-event.
+The first test records a **correction**: T3's traffic split was removed in T7,
+because an entity has one row and the split would have compared a version
+against itself.
 
 Design: docs/product-road-map/increment-6/02_sega.md §6.
 """
@@ -27,7 +25,6 @@ from src.ai.evolution.entity_canary import (
     CanaryThresholds,
     VersionHealth,
     assess,
-    in_canary_cohort,
     suites_for_entity,
 )
 
@@ -37,37 +34,28 @@ def _health(runs=50, failures=0, decided=0, rejected=0, cost=0.0) -> VersionHeal
                          approvals_rejected=rejected, total_cost_usd=cost)
 
 
-# ── the cohort split ─────────────────────────────────────────────────────────
+# ── what replaced the cohort split ──────────────────────────────────────────
 
-def test_the_split_is_stable_for_the_same_key():
-    """A retried signal must land where it landed the first time."""
-    key = str(uuid.uuid4())
-    assert in_canary_cohort(key, 0.25) == in_canary_cohort(key, 0.25)
+def test_there_is_no_traffic_split_to_get_wrong():
+    """A correction to the T3 design, pinned so it is not re-introduced casually.
 
+    T3 shipped a stable hash that attributed a fraction of runs to the
+    candidate and the rest to the incumbent. An entity has exactly **one** row,
+    so applying a change makes it live for everyone — labelling 75% of those
+    runs "incumbent" would have compared the new version against itself and
+    reported a clean result. Not mutating until GA is worse: then the candidate
+    cohort behaves identically and every canary passes.
 
-def test_the_split_is_stable_across_processes():
-    """Hashed, not ``hash()`` — Python salts that per process, so a worker
-    restart would silently re-draw every cohort."""
-    assert in_canary_cohort("a-fixed-key", 0.5) is in_canary_cohort("a-fixed-key", 0.5)
-    # A pinned expectation: if the hash function changes, every in-flight
-    # canary re-assigns, and this test is where that is noticed.
-    assert in_canary_cohort("a-fixed-key", 1.0) is True
+    A true A/B needs the loop to compose from a version *snapshot* rather than
+    the entity row, which is a change to `core/agent_loop.py` (at its line cap)
+    and is not built. What ships is a staged rollout with a watched window —
+    honest, and a real regression check; simply not an A/B.
+    """
+    import src.ai.evolution.entity_canary as module
 
-
-def test_a_zero_fraction_serves_nobody():
-    assert not any(in_canary_cohort(str(i), 0.0) for i in range(50))
-
-
-def test_a_full_fraction_serves_everybody():
-    assert all(in_canary_cohort(str(i), 1.0) for i in range(50))
-
-
-def test_the_split_is_roughly_the_requested_fraction():
-    """Not an exact count — a hash is not a quota. Close enough that a 25%
-    canary does not quietly become 60%."""
-    keys = [str(uuid.uuid4()) for _ in range(2000)]
-    share = sum(in_canary_cohort(k, 0.25) for k in keys) / len(keys)
-    assert 0.20 < share < 0.30
+    assert not hasattr(module, "in_canary_cohort")
+    assert "fraction" not in module.stamp_run_version.__doc__.split("Returns")[0].lower() \
+        or "split" in module.stamp_run_version.__doc__.lower()
 
 
 # ── the three-way verdict ────────────────────────────────────────────────────
