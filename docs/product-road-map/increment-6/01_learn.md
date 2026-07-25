@@ -1,6 +1,6 @@
 # Increment 6 / LEARN — The Learning Store, and the History That Makes It Measurable (closes B10)
 
-> **Status:** v1.4 — design locked (§3). **T1–T8 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T9 (bounded scoring correction) and T10 (disclosure) pending.
+> **Status:** ✅ **v2.0 — COMPLETE.** All of T1–T10 built (2026-07-25, branch `inc6/learn`). Build notes §14. **Closes register B10** and gap-analysis **VG-12**.
 > **Closes:** register **B10** (learning-system risk blindspots) + gap-analysis **VG-12** (no KPI history store).
 > **Depends on:** the shipped signal bus (`ai/signals/`), CORTEX Intelligence trees (`ai/memory/intelligence_tree_service.py` + `rule_lifecycle.py`), the C6 KPI registry (`ai/kpi/`), RTR's `routing_decisions` (`ai/intelligence/models.py`), EVX's admission gate (`ai/intelligence/admission.py`).
 > **Feeds:** SEGA ([02](./02_sega.md)) — LEARN proposes, SEGA admits · TWIN ([03](./03_twin.md)) — the forecast engine reads `kpi_snapshots` · STRAT ([04](./04_strat.md)) — mandate reviews read the same series · Vihara G1/G2 (Increment 7) — plinth trends and the Seasons timeline.
@@ -200,8 +200,8 @@ One migration off `fleet001`, four tables, no tenant-schema changes. New package
 | **T6** ✅ | Charter-tuning proposals + the §7 refusals + the LEARN⇸SEGA import boundary test **+ the harvest runner** (§14.7) | unit, **mutation-tested** |
 | **T7** ✅ | `learning/drift.py` — the weekly behaviour series + `learning.drift_detected`, wired as a C4 trigger | unit + `*_db` |
 | **T8** ✅ | `user_preferences` + get/set API + `learning.density_observed` | router + `*_db` |
-| **T9** | Bounded observation correction in `intelligence/scoring.py`; **parity/eval must stay 16 green** | parity/eval + unit |
-| **T10** | Extend [03a_data_flow_disclosure.md](../increment-5/03a_data_flow_disclosure.md) to name the pooled columns (decision 3's obligation) | doc |
+| **T9** ✅ | Bounded observation correction in `intelligence/scoring.py`; **parity/eval must stay 16 green** | parity/eval + unit |
+| **T10** ✅ | Extend [03a_data_flow_disclosure.md](../increment-5/03a_data_flow_disclosure.md) to name the pooled columns (decision 3's obligation) | doc |
 
 T9 is where the billing canary bites: it touches the routing path, and the HANDOFF §5 rule is that unit tests stay green while every agent run fails. Run `pytest tests/parity tests/eval` before believing it.
 
@@ -331,11 +331,42 @@ A test also asserts that **no statement this loop can produce is governance-shap
 * **Keys are namespaced** (`density`, `notify`, `surface`) and anything else is refused — without that this table becomes a per-user JSON dump, which is what every preference store becomes if nothing stops it.
 * **Not a certified action**, on purpose: choosing how dense your own dashboard is confers no capability and moves no money, and gating it would be the kind of ceremony that teaches people to click through ceremonies.
 
-### 14.9 Verification (T1–T8)
+### 14.9 T9 — observation correcting a declaration, within limits
 
-typecheck **271 files** strict · layout lint · **1637 unit** (+83) · **16 parity/eval** · **326 integration** (+38) · migration head `learn001`, applies/downgrades/re-applies.
+`learning/observation_prior.py` reads the pooled store; `intelligence/scoring.py` blends it into the declared profile; `IntelligenceRouter._observation_prior` is the **single import edge** from routing into learning — deliberately at the composition point, so the scoring functions stay pure and DB-free and there is one place to look for *"does routing read learning"*.
 
-**Honest limits.** Four crons are wired into the arq schedule and **none has run on a live schedule** — every test calls them directly. Charter-tuning proposals reach the bus but **nothing consumes them**: SEGA is not built, so a proposal sits as a signal, which is the correct state and not a working feature. `consent_refusal_rate` is unmeasurable until GATE (§14.7). And the KPI series starts the day this deploys — there is no backfill, by construction.
+**Non-inferiority is the property, and it is structural.** Both new parameters default to "no correction", so every pre-existing caller and the whole un-routed path compute the identical number. A test asserts `capability_fit(...)` and `utility(...)` are unchanged when nothing is supplied; **parity/eval stayed 16 green** throughout, which is the canary the HANDOFF §5 rule demands for anything touching this path.
+
+Four limits, each stopping a different failure:
+
+* **±0.2** — a model observed at 0.0 lands at declared−0.2, not at 0.0. Without the clamp a bad fortnight would *remove* a model from routing: a removal decision, made silently, by an instrument meant only to express a preference. Removal is EVX's job.
+* **A sample floor** (20) — below it a model is *absent* from the mapping rather than present with a default, so an empty store corrects nothing. That is the state of every deployment on day one.
+* **Tool axis only** — a fallback rate says whether a call had to be re-routed; it says nothing about reasoning quality, and correcting `reasoning_strength` from it would be inventing evidence.
+* **Never status-changing** — `RegistryService.activate` is still the only path to `active`.
+
+A test expresses the bound as a routing outcome rather than as arithmetic: *a weak model observed perfectly must not out-score a strong model observed poorly*, or a fortnight of luck would be enough to route hard work to a model that cannot do it. The reading is cached for 300s, because the pooled store is written once a day and re-querying it per routed call would be a round trip for data that cannot have changed.
+
+### 14.10 T10 — the disclosure obligation
+
+[03a_data_flow_disclosure.md](../increment-5/03a_data_flow_disclosure.md) gains **§6, "What the platform learns across tenants"**, and `CURRENT_DISCLOSURE_VERSION` bumps to `2026-07-25`.
+
+§6 names the pooled table's **complete column set** in tenant-facing language, states that there is no `company_id`, no free text and no JSON — *"it is not that we choose not to put your business content there; there is nowhere to put it"* — and names the three-contributor k-anonymity floor and the ±0.2 bound. It then states the dependency plainly: the no-opt-out posture rests on the schema guarantee and **falls with it**.
+
+**Bumping the version is safe and was checked, not assumed.** `effective_allow` reads the opt-in row and never its version; only `opt_in` compares against `CURRENT_DISCLOSURE_VERSION`. So existing opt-ins keep working and only a *new* opt-in requires the current text — which is exactly the behaviour wanted from a disclosure that has materially changed.
+
+### 14.11 Verification (T1–T10 — LEARN complete)
+
+typecheck **272 files** strict · layout lint · **1652 unit** (+98) · **16 parity/eval** · **329 integration** (+41) · migration head `learn001`, applies/downgrades/re-applies.
+
+**Register B10 is closed**, all three of its halves: cross-tenant policy (§4, structural), reward hacking (§7, KPIs cannot reach an objective and governance fields cannot be proposed), drift (§8, measured here and acted on by C4 alone). **VG-12 is closed** — `kpi_snapshots` exists and the daily job writes to it.
+
+**Honest limits, carried forward.**
+
+* **Five crons are wired into the arq schedule and none has run on a live schedule.** Every test calls them directly. First live run is a deploy-time observation, not a test result.
+* **Charter-tuning proposals reach the bus and nothing consumes them.** SEGA is not built; a proposal sits as a signal. Correct, and not a working feature.
+* **`consent_refusal_rate` is unmeasurable** until GATE gives consent a per-send decision record (§14.7).
+* **The pooled store is empty**, so T9 corrects nothing yet — by design, and it will stay that way until enough tenants clear the k-anonymity floor.
+* **The KPI series starts the day this deploys.** There is no backfill, by construction, which is the whole argument for LEARN going first.
 
 ---
 
@@ -343,6 +374,7 @@ typecheck **271 files** strict · layout lint · **1637 unit** (+83) · **16 par
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | ✅ **v2.0 — LEARN COMPLETE.** T9 + T10 built (§14.9–§14.11). Observation corrects a declared capability profile within ±0.2, through a single import edge at the router, with non-inferiority asserted and parity/eval green. The data-flow disclosure gains §6 naming the pooled columns, the k-anonymity floor and the bound, with the version bumped after checking that existing opt-ins survive it. **Register B10 closed** (all three halves) and **VG-12 closed**. |
 | 2026-07-25 | v1.4 — **T6 + T7 + T8 built** (§14.6–§14.9). The §7 refusals made structural and the LEARN⇸SEGA boundary made an import test; **the runner corrected from a completion hook to a sweep** because CSAT arrives after a run ends. Drift wired into C4 as one more trigger rather than a second demotion authority, with `consent_refusal_rate` left honestly absent until GATE. Preferences ship with stated-beats-learned and a `learned` flag the surface must show. |
 | 2026-07-25 | v1.3 — **T4 + T5 built** (§14.4–§14.6). The history read path returns absences with `first_measurable_on`; outcomes ride the signal bus and distil into the shipped CORTEX candidate lifecycle with provenance. One scoping guard added and mutation-tested — `write_candidate` reads its entity id from a payload, and the tree service creates a tree for any id it is handed. |
 | 2026-07-25 | v1.2 — **T2 + T3 built** (§14.2–§14.4). Pooling replaces the day rather than upserting it; the floor is mutation-tested and counts distinct companies, not rows. The snapshot job's scope corrected to `type='TENANT'` (`companies` has no `deleted_at`), and the "a new tenant is all absences" claim corrected — `agent_hitl_load` is genuinely measurable at zero on day one. |

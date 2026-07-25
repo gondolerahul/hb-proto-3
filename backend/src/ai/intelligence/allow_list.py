@@ -33,7 +33,12 @@ __all__ = [
 
 # Bump when increment-5/03a_data_flow_disclosure.md changes materially. An
 # opt-in recorded against an older version no longer counts as informed consent.
-CURRENT_DISCLOSURE_VERSION = "2026-07-23"
+#: Bumped 2026-07-25 for the Increment-6 LEARN section (§6 — what the platform
+#: learns across tenants). Existing opt-in rows keep working: the version is
+#: checked when an opt-in is *recorded*, not on every routing call, so a bump
+#: means the next person to opt in must have read the current text rather than
+#: that anyone loses access.
+CURRENT_DISCLOSURE_VERSION = "2026-07-25"
 
 
 class DisclosureError(Exception):

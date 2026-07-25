@@ -938,3 +938,74 @@ async def test_an_unknown_namespace_is_refused(companies):
     async with AsyncSessionLocal() as db:
         await db.execute(text("DELETE FROM users WHERE id = :u"), {"u": str(uid)})
         await db.commit()
+
+
+# ── T9 · the pooled store correcting the router ──────────────────────────────
+
+async def test_observed_reliability_ignores_thin_evidence(companies):
+    """Below the sample floor a model gets no correction at all.
+
+    This is the state of every deployment on day one, and the reason routing
+    must be unchanged by an empty store: a handful of observations is not
+    grounds to disagree with a declared capability profile.
+    """
+    from src.ai.learning.observation_prior import observed_reliability, reset_cache
+    from src.common.database import AsyncSessionLocal
+
+    reset_cache()
+    async with AsyncSessionLocal() as db:
+        await db.execute(text(
+            "INSERT INTO platform_observations (id, metric, task_type, reason, "
+            "bucket_day, observations, successes) VALUES "
+            "(:i, 'route_outcome', :t, 'auto', :d, 5, 1)"),
+            {"i": str(uuid.uuid4()), "t": f"thin_{uuid.uuid4().hex[:6]}", "d": DAY})
+        await db.commit()
+
+        assert await observed_reliability(
+            db, today=DAY, min_samples=20, use_cache=False) == {}
+
+
+async def test_observed_reliability_reads_the_pooled_store(companies):
+    """The one consumer of the pooled table, reading it the way it will in
+    production — by catalog model, over a window, success = did not fall back."""
+    from src.ai.learning.observation_prior import observed_reliability, reset_cache
+    from src.common.database import AsyncSessionLocal
+
+    reset_cache()
+    model_id = uuid.uuid4()
+    async with AsyncSessionLocal() as db:
+        await db.execute(text(
+            "INSERT INTO model_registry (id, model_key, provider, model_name, "
+            "version, region, capability_profile, data_flow, status, created_at, "
+            "updated_at) VALUES (:i, :k, 'test', 'test-model', '1', 'us', "
+            "'{}'::jsonb, '{}'::jsonb, 'preview', now(), now())"),
+            {"i": str(model_id), "k": f"test-{model_id.hex[:8]}"})
+        await db.execute(text(
+            "INSERT INTO platform_observations (id, metric, model_registry_id, "
+            "task_type, reason, bucket_day, observations, successes) VALUES "
+            "(:i, 'route_outcome', :m, 'chat', 'auto', :d, 100, 60)"),
+            {"i": str(uuid.uuid4()), "m": str(model_id), "d": DAY})
+        await db.commit()
+
+        reliability = await observed_reliability(
+            db, today=DAY, min_samples=20, use_cache=False)
+
+    assert reliability[model_id] == pytest.approx(0.6)
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("DELETE FROM platform_observations WHERE model_registry_id = :m"),
+                         {"m": str(model_id)})
+        await db.execute(text("DELETE FROM model_registry WHERE id = :i"),
+                         {"i": str(model_id)})
+        await db.commit()
+
+
+async def test_an_empty_pooled_store_yields_no_corrections(companies):
+    """Non-inferiority at the data layer: nothing pooled, nothing corrected."""
+    from src.ai.learning.observation_prior import observed_reliability, reset_cache
+    from src.common.database import AsyncSessionLocal
+
+    reset_cache()
+    async with AsyncSessionLocal() as db:
+        assert await observed_reliability(
+            db, today=DAY - timedelta(days=900), use_cache=False) == {}

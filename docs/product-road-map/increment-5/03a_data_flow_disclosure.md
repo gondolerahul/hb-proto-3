@@ -1,7 +1,7 @@
 # Data-Flow Disclosure — Model Subprocessors, Regions & Training Policy
 
 > **Document Class:** Standing tenant-facing disclosure (the subprocessor/DPA-shaped artifact register finding **D5** asks for)
-> **Version:** `2026-07-23` — this string is `allow_list.CURRENT_DISCLOSURE_VERSION`. An opt-in recorded against an older version is **refused**; bump both together whenever a material fact below changes.
+> **Version:** `2026-07-25` — this string is `allow_list.CURRENT_DISCLOSURE_VERSION`. An opt-in recorded against an older version is **refused**; bump both together whenever a material fact below changes. *(Existing opt-ins keep working — the version is checked when an opt-in is **recorded**, not on every routing call. A bump means the next person to opt in must have read the current text, not that anyone loses access.)*
 > **Author:** Buddha Cognitive Lab · **Parent:** [03_fleet_expansion.md](./03_fleet_expansion.md) §5
 > **Scope:** where a tenant's prompt/context goes when the platform calls a model, and on what terms.
 
@@ -65,7 +65,35 @@ This is a deliberate reversal of the state D5 flagged, where *every* provider �
 
 **Opting in is an explicit, recorded, revocable act.** `company_provider_optin` stores which provider, which disclosure version was acknowledged, by which user, and when. Revocation takes effect on the very next routing call (the allow-list is read live, never cached).
 
-## 6. Platform certification posture
+## 6. What the platform learns across tenants
+
+*(Added 2026-07-25 — Increment 6 / LEARN. Increment-6 charter decision 8 requires this to be stated exactly, and it is the reason the pooled path carries **no opt-out**: there is nothing here to opt out of that is yours.)*
+
+The platform improves its own model routing by watching how models behave across the whole fleet. **Learning is split at the schema level**, and the split is structural rather than a query convention:
+
+**Pooled across tenants — platform telemetry only.** One table, `platform_observations`, whose entire column set is:
+
+| Column | What it holds |
+|---|---|
+| `metric` | one of four fixed words (`route_outcome`, `model_failure`, `fallback_used`, `admission_score`) |
+| `model_registry_id` | which model in the platform's own catalog |
+| `task_type` | the kind of step, from a fixed vocabulary (`chat`, `extract`, …) |
+| `reason` | why the router chose as it did (`pinned` / `rule` / `auto` / `fallback` / `downshift`) |
+| `bucket_day` | the calendar day |
+| `observations`, `successes`, `latency_ms_sum`, `cost_usd_sum` | counters |
+
+**That is the whole table.** It has **no `company_id` column**, no free-text column, and no JSON column — so it is not that we choose not to put your business content there; there is nowhere to put it. A prompt, a customer name, a record or a document could not be written to this table without changing its schema, and a test asserts the column list exactly so that change cannot happen quietly.
+
+Two further protections:
+
+* **A k-anonymity floor.** Buckets are built by a daily job that reads per-tenant routing records and drops any group contributed to by fewer than **three** distinct companies. Below the floor the data is **discarded**, not held. This stops a bucket being attributable to you by inference — for example, if you were the only tenant using a particular model.
+* **A bounded effect.** Pooled observations may adjust a model's *ranking* by at most ±0.2 on a 0–1 scale. They can never activate, deactivate or remove a model; that requires the separate EVX admission gate.
+
+**Private to your tenant — never pooled.** Everything derived from what your business actually does stays inside your tenant and is scoped by a non-nullable company id: your KPI history, your agents' learned rules and charter tuning, per-agent behavioural series, and per-user interface preferences. None of it is aggregated across tenants, and none of it is used to serve any other tenant — the commitment in §4 above, applied to learning as well as to model calls.
+
+**Why pooled telemetry has no opt-out.** It contains no tenant data, by the schema guarantee above, and an opt-out would degrade routing quality for everyone with no privacy gain to anyone. This is deliberately asymmetric with the opt-in for foreign providers (§5): that governs *where your data physically goes*; this governs aggregate telemetry that by construction contains none of it. **If the guarantee above ever fails, this justification fails with it** — the two are a single commitment, not two independent ones.
+
+## 7. Platform certification posture
 
 Stated honestly, current state first:
 
@@ -79,4 +107,5 @@ Stated honestly, current state first:
 
 | Version | Change |
 |---|---|
+| `2026-07-25` | **§6 added — what the platform learns across tenants** (Increment 6 / LEARN, charter decision 8). Names the pooled table's complete column set, the absence of a company column, the three-contributor k-anonymity floor, the ±0.2 bound on its effect, and what stays private per tenant. States plainly that the no-opt-out posture rests on the schema guarantee and falls with it. Certification posture renumbered to §7. |
 | `2026-07-23` | Initial publication (Increment 5 / FLEET). Six providers listed; conservative default = Anthropic/Google/Azure-OpenAI; GLM (Zhipu), Qwen (Alibaba) and Kimi (Moonshot) registered as `preview` + opt-in only. Closes register **D5**'s publication half. |
