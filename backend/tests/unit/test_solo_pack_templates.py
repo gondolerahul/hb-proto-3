@@ -104,16 +104,17 @@ class TestPackRoster:
     def test_each_is_clean(self, tpl):
         assert validate_template(tpl) == []
 
-    def test_roster_is_eighteen(self):
-        # 3 gateways (email + WhatsApp + voice) + 6 processes + 9 agents.
-        assert len(SOLO_PACK_TEMPLATES) == 18
+    def test_roster_is_nineteen(self):
+        # 4 gateways (email + WhatsApp + voice + broadcast) + 6 processes
+        # + 9 agents. KAR-05 joined in Inc-6 GATE.
+        assert len(SOLO_PACK_TEMPLATES) == 19
 
-    def test_three_gateways(self):
+    def test_four_gateways(self):
         codes = {
             tag.split(":", 1)[1]
             for g in GATEWAYS for tag in g["tags"] if tag.startswith("agent_code:")
         }
-        assert codes == {"KAR-01", "KAR-02", "KAR-03"}
+        assert codes == {"KAR-01", "KAR-02", "KAR-03", "KAR-05"}
 
     def test_names_unique(self):
         names = [t["name"] for t in SOLO_PACK_TEMPLATES]

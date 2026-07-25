@@ -21,7 +21,8 @@ class TestListBundles:
     def test_solo_pack_activates_all_six_processes(self):
         solo = list_bundles()[0]
         assert solo["process_codes"] == ["P03", "P06", "P08", "P10", "P14", "P19"]
-        assert solo["agent_count"] == 12  # the "12 agents": 3 gateways + 9 workforce
+        # 4 gateways (KAR-05 joined in Inc-6 GATE) + 9 workforce agents.
+        assert solo["agent_count"] == 13
 
     def test_unpopulated_bundles_flagged_unavailable(self):
         by_key = {b["key"]: b for b in list_bundles()}

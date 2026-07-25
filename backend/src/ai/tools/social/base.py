@@ -116,6 +116,7 @@ class SocialMediaTool(Tool):
 
         try:
             result = await self._execute(params, credentials, context)
+            await self._audit_publish(company_id, params, result, guard.suppressed_count)
             return json.dumps(result)
         except httpx.HTTPStatusError as e:
             logger.error(f"[{self.name}] HTTP error: {e.response.status_code} {e.response.text}")
@@ -129,6 +130,56 @@ class SocialMediaTool(Tool):
         except Exception as e:
             logger.error(f"[{self.name}] Execution error: {e}", exc_info=True)
             return json.dumps({"error": f"{self.name} failed: {str(e)}"})
+
+    async def _audit_publish(
+        self,
+        company_id: Any,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+        suppressed_count: int,
+    ) -> None:
+        """Emit ``broadcast.published`` after a successful publish (GATE T6).
+
+        Until GATE, a public post left no trace on the signal bus at all, so
+        "what did our agents say in public last week" had no answer. This gives
+        it one — including on the platforms nothing polls yet, which is why the
+        outbound audit does not wait for the inbound half.
+
+        Never allowed to break a send. The post has already happened by the
+        time this runs; raising here would report a failure for something that
+        succeeded, and the caller would reasonably retry it — publishing twice.
+        A missing audit row is the lesser harm, and it is logged.
+        """
+        from src.ai.governance.authority import category_for_tool
+
+        if category_for_tool(self.name) != "broadcast":
+            return
+        if not isinstance(result, dict) or result.get("error"):
+            return
+        try:
+            import uuid as _uuid
+
+            from src.ai.signals.broadcast_inbound import emit_broadcast_published
+            from src.common.database import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                await emit_broadcast_published(
+                    db,
+                    _uuid.UUID(str(company_id)),
+                    platform=self.platform,
+                    tool_name=self.name,
+                    item_id=str(
+                        result.get("post_id") or result.get("id")
+                        or result.get("video_id") or ""
+                    ) or None,
+                    permalink=result.get("permalink") or result.get("url"),
+                    suppressed_count=suppressed_count,
+                )
+        except Exception as exc:  # noqa: BLE001 — see the docstring
+            logger.warning(
+                f"[{self.name}] broadcast.published audit failed for company "
+                f"{company_id}: {exc}"
+            )
 
     @abstractmethod
     async def _execute(
