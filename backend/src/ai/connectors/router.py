@@ -99,7 +99,10 @@ async def bind(
     what the connector may write back. Handing an external system the right to
     act for the tenant is a certified surface, per Vihara §15.2.
     """
-    await enforce_kind(db, current_user, IntentKind.CONNECTOR_BINDING)
+    await enforce_kind(
+        db, current_user, IntentKind.CONNECTOR_BINDING,
+        command_ref=f"connector-bind:{connector_id}",
+        command_summary=f"connecting {connector_id} and giving it write access")
     try:
         binding = await ConnectorService(db).activate(
             cast(uuid.UUID, current_user.company_id), connector_id,
@@ -168,7 +171,10 @@ async def apply_master_migration(
     HBS object — Vihara §15.2 calls the mastering declaration a certified tray.
     Step 1 (``/propose``) stays ungated: a plan is a read.
     """
-    await enforce_kind(db, current_user, IntentKind.CONNECTOR_BINDING)
+    await enforce_kind(
+        db, current_user, IntentKind.CONNECTOR_BINDING,
+        command_ref=f"master-apply:{def_name}",
+        command_summary=f"changing which system masters {def_name}")
     try:
         result = await apply_migration(
             cast(uuid.UUID, current_user.company_id), def_name, body.to_master,

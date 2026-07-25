@@ -3,12 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { GlassCard, JellyButton } from '@/components/ui';
 import { CheckCircle, XCircle, Clock, Shield } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import { StepUpModal } from '@/components/StepUpModal';
+import { useCertifiedAction } from '@/hooks/useCertifiedAction';
 import { HumanApproval } from '@/types';
 import './HITLPanel.css';
 
 export const HITLPanel: React.FC = () => {
     const [approvals, setApprovals] = useState<HumanApproval[]>([]);
     const [loading, setLoading] = useState(true);
+    // Responding to a categorised approval is a certified act (VG-05): the same
+    // ceremony Pragya asks for when the request arrives as conversation.
+    const stepUp = useCertifiedAction();
 
     useEffect(() => {
         fetchPendingApprovals();
@@ -29,11 +34,13 @@ export const HITLPanel: React.FC = () => {
 
     const handleRespond = async (approvalId: string, status: 'APPROVED' | 'REJECTED') => {
         try {
-            await apiClient.post(`/ai/approvals/${approvalId}/respond`, {
-                status,
-                notes: `Responded via HITL Dashboard`
+            await stepUp.run(async () => {
+                await apiClient.post(`/ai/approvals/${approvalId}/respond`, {
+                    status,
+                    notes: `Responded via HITL Dashboard`
+                });
+                setApprovals(prev => prev.filter(a => a.id !== approvalId));
             });
-            setApprovals(prev => prev.filter(a => a.id !== approvalId));
         } catch (error) {
             console.error('Failed to respond to approval:', error);
         }
@@ -65,6 +72,10 @@ export const HITLPanel: React.FC = () => {
                     {approvals.length} PENDING BLOCKS
                 </div>
             </header>
+
+            {stepUp.error && (
+                <div className="alert alert-error">{stepUp.error}</div>
+            )}
 
             <div className="standard-grid">
                 {approvals.length === 0 ? (
@@ -147,6 +158,8 @@ export const HITLPanel: React.FC = () => {
                     ))
                 )}
             </div>
+
+            <StepUpModal {...stepUp.modalProps} />
         </div>
     );
 };

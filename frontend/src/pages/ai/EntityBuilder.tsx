@@ -4,6 +4,8 @@ import { JellyButton } from '@/components/ui';
 import { X, Layers } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { useAuth } from '@/hooks/useAuth';
+import { StepUpModal } from '@/components/StepUpModal';
+import { useCertifiedAction } from '@/hooks/useCertifiedAction';
 import { HierarchicalEntity } from '@/types';
 import { EntityConfigurationTabs } from './EntityConfigurationTabs';
 import './EntityBuilder.css';
@@ -16,6 +18,9 @@ export const EntityBuilder: React.FC = () => {
     const [error, setError] = useState('');
     const [entity, setEntity] = useState<HierarchicalEntity | undefined>(undefined);
     const [targetCompanyId, setTargetCompanyId] = useState<string | null>(null);
+    // Only an autonomy *raise* is certified (VG-05) — every other edit saves
+    // straight through, and the server is what decides which this was.
+    const stepUp = useCertifiedAction();
 
     useEffect(() => {
         if (id) {
@@ -41,14 +46,16 @@ export const EntityBuilder: React.FC = () => {
         setError('');
 
         try {
-            if (id) {
-                await apiClient.put(`/ai/entities/${id}`, entityData);
-            } else {
-                // Pass target_company_id as query parameter for new entities
-                const params = targetCompanyId ? `?target_company_id=${targetCompanyId}` : '';
-                await apiClient.post(`/ai/entities${params}`, entityData);
-            }
-            navigate('/ai/entities');
+            await stepUp.run(async () => {
+                if (id) {
+                    await apiClient.put(`/ai/entities/${id}`, entityData);
+                } else {
+                    // Pass target_company_id as query parameter for new entities
+                    const params = targetCompanyId ? `?target_company_id=${targetCompanyId}` : '';
+                    await apiClient.post(`/ai/entities${params}`, entityData);
+                }
+                navigate('/ai/entities');
+            });
         } catch (err: any) {
             const detail = err.response?.data?.detail;
             // Handle Pydantic validation errors which are arrays of {type, loc, msg, input}
@@ -113,6 +120,9 @@ export const EntityBuilder: React.FC = () => {
             </div>
 
             {error && <div className="error-toast glass">{error}</div>}
+            {stepUp.error && <div className="error-toast glass">{stepUp.error}</div>}
+
+            <StepUpModal {...stepUp.modalProps} />
         </div>
     );
 };
