@@ -31,6 +31,23 @@ app_admin_only = RoleChecker(["app_admin"])
 # Read endpoints — all authenticated users
 # ---------------------------------------------------------------------------
 
+def _viewer_scope(user: User) -> UUID | None:
+    """Which company's tools this reader may see (SEGA T0).
+
+    ``None`` — unrestricted — only for the platform admin, whose job is the
+    fleet. Every other role, including a tenant admin, is scoped to its own
+    company plus the platform's own (``company_id IS NULL``) rows.
+
+    Before Increment 6 both read endpoints were unscoped, so any authenticated
+    user could list and read **every tenant's** custom and synthesized tool
+    entries, ``configuration`` blob included — the spec, source and audit of how
+    another business does something. Writes were already `app_admin_only`, so
+    this was disclosure rather than mutation, which is why it is a scoping fix
+    and not a permissions rewrite.
+    """
+    return None if user.role == "app_admin" else user.company_id
+
+
 @router.get("", response_model=List[dict])
 async def list_all_tools(
     db: AsyncSession = Depends(get_db),
@@ -38,7 +55,7 @@ async def list_all_tools(
 ):
     """List all tools (built-in + custom), enriched with metadata."""
     service = ToolManagementService(db)
-    return await service.list_all_tools()
+    return await service.list_all_tools(_viewer_scope(current_user))
 
 
 @router.get("/{tool_id}", response_model=ToolRegistryEntryResponse)
@@ -47,9 +64,9 @@ async def get_tool(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get a single tool by ID."""
+    """Get a single tool by ID. 404 on another tenant's entry, never 403."""
     service = ToolManagementService(db)
-    return await service.get_tool(tool_id)
+    return await service.get_tool(tool_id, _viewer_scope(current_user))
 
 
 # ---------------------------------------------------------------------------

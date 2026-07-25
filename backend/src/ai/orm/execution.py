@@ -68,6 +68,13 @@ class ExecutionRun(Base):
     csat_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     csat_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # D3 (Inc-6 SEGA) — the run's context trust level, which only ever descends
+    # as untrusted content enters (`evolution/taint_firewall.py`). A column
+    # rather than a `context_state` key because context_state is rewritten
+    # wholesale and an audit trail has to survive that. NULL means a run that
+    # predates the tracking — unknown, which is deliberately not "trusted".
+    taint_level: Mapped[str | None] = mapped_column(String(24), nullable=True)
+
     company: Mapped["Company"] = relationship("Company")
     entity: Mapped["HierarchicalEntity"] = relationship("HierarchicalEntity", back_populates="execution_runs")
     parent_run: Mapped["ExecutionRun | None"] = relationship("ExecutionRun", remote_side=[id], backref="child_runs")

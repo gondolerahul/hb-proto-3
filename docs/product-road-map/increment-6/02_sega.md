@@ -1,6 +1,6 @@
 # Increment 6 / SEGA — Self-Evolution, Bounded (closes B11, D3)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Status:** v1.1 — design locked (§3). **T0–T2 BUILT** (2026-07-25, branch `inc6/sega`) — build notes §13. T3–T8 pending.
 > **Closes:** register **B11** (self-evolving code blast radius) + **D3** (context taint / tool-call firewall) + gap-analysis **VG-10** (no canary for agent/process changes) and **VG-17** (no entity version ledger).
 > **Depends on:** LEARN ([01](./01_learn.md)) — SEGA consumes `learning.charter_tuning_proposed` · the shipped Meta-Agent surface (`ai/meta/`) · EVX's `require_independent_suites` + `intelligence/canary.py` (Inc 5) · the PolicyGate (`governance/policy_gate.py`).
 > **Feeds:** TWIN ([03](./03_twin.md)) — the promotion pipeline **calls** this canary; the Glasshouse diff reads the version ledger · Vihara's Gallery (Inc 7).
@@ -38,8 +38,10 @@ So B11's specific claim needs restating against the code: the `tool_versions` ta
 
 `ToolRegistryEntry.name` is declared `unique=True` **globally**, and both read paths ignore company:
 
-* `ToolManagementService.list_all_tools()` — `select(ToolRegistryEntry)` with no filter, reached by `GET /ai/tools` behind plain `get_current_user`;
-* `ToolManagementService.get_tool(tool_id)` — selects by id alone, reached by `GET /ai/tools/{id}`, also plain `get_current_user`.
+* `ToolManagementService.list_all_tools()` — `select(ToolRegistryEntry)` with no filter, reached by `GET /api/v1/ai/tool-registry` behind plain `get_current_user`;
+* `ToolManagementService.get_tool(tool_id)` — selects by id alone, reached by `GET /api/v1/ai/tool-registry/{tool_id}`, also plain `get_current_user`.
+
+> **Route paths corrected 2026-07-25** (v1.1): v1.0 of this doc wrote these as `/ai/tools` and `/ai/tools/{id}`. The router's prefix is `/api/v1/ai/tool-registry` — a wrong path in a security finding is a defect in the record, so it is fixed here rather than quietly.
 
 So any authenticated user of any tenant can list and read **every other tenant's** custom and synthesized tool entries, including the `configuration` blob that carries the tool's `spec`, `source` and `audit`. Writes are `app_admin_only`, so this is disclosure rather than cross-tenant mutation — but a synthesized tool's spec describes how a competitor's business does something, which is exactly the material a tenant expects to be private.
 
@@ -181,9 +183,9 @@ New signal types: `governance.entity_versioned`, `governance.entity_rolled_back`
 
 | # | Task | Gate |
 |---|---|---|
-| **T0** | **Scope the tool registry reads** (§2.1) — company join on list + get, 404 on cross-tenant miss, platform (`company_id IS NULL`) rows stay visible to all | `*_db`, **mutation-tested** |
-| **T1** | `evolution/blast_radius.py` — the five limits, pure | unit, **each limit mutation-tested** |
-| **T2** | `entity_versions` + `sega001`; every `update_entity` writes a ledger row | `*_db` |
+| **T0** ✅ | **Scope the tool registry reads** (§2.1) — company join on list + get, 404 on cross-tenant miss, platform (`company_id IS NULL`) rows stay visible to all | `*_db`, **mutation-tested** |
+| **T1** ✅ | `evolution/blast_radius.py` — the five limits, pure | unit, **each limit mutation-tested** |
+| **T2** ✅ | `entity_versions` + `sega001`; every `update_entity` writes a ledger row | `*_db` |
 | **T3** | `evolution/entity_canary.py` — cohort split, health from shipped telemetry, roll_back/promote | unit + `*_db` |
 | **T4** | Promotion calls `require_independent_suites`; PACK goldens registered as the incumbent suite | unit |
 | **T5** | The 01:50 UTC sweep + `governance.entity_*` signals | `*_db` |
@@ -215,8 +217,47 @@ T0 first on purpose: it is a live disclosure in shipped code, and adding capabil
 
 ---
 
+## 13. Build notes (2026-07-25, branch `inc6/sega`)
+
+### 13.1 T0 — the leak, closed
+
+`_viewer_scope(user)` in the router decides what a reader may see: **`None` (unrestricted) only for `app_admin`**, every other role scoped to its own company plus the platform's own `company_id IS NULL` rows. The service's `list_all_tools` and `get_tool` take that scope; a cross-tenant `get_tool` is a **404, not a 403**, because a probe must not learn the id exists elsewhere.
+
+**The admin write paths were deliberately left unscoped.** `update_tool` / `delete_tool` / `toggle_tool` load through the unrestricted read and are already `app_admin_only`. Scoping them would break platform administration to fix a hole that is not on that path — this is a disclosure fix, not a permissions rewrite.
+
+**Two layers, mutation-tested separately.** Removing the router's scoping failed both leak tests; removing only the service's detail-read scoping failed only the detail test. A positive test also pins that a tenant still sees its own tools, the platform's, and the whole built-in catalogue — over-tightening is the failure mode a scoping fix most easily introduces.
+
+### 13.2 T1 — five limits, five refusals watched
+
+`evolution/blast_radius.py` is pure and total: `admit_change(ChangeRequest, Limits)` raises `BlastRadiusError` or returns. The facts it judges (changes today, subscription status, canary fraction) are gathered by the caller and carried on the request, which is what keeps the whole of B11's answer a function.
+
+**One delta: rollback is exempt from the rate cap and the kill switch.** Undoing an automated change is the safe direction, and the safe direction must never be harder than the unsafe one — the asymmetry VG-05 established for consent revocation and autonomy lowering. A tenant at the daily cap, or read-only, must still be able to get back. **Rollback stays subject to scope**, because a rollback of another tenant's entity is not a safe direction; it is a cross-tenant write.
+
+Each limit was mutation-tested on its own and failed **only** its own tests: the global-artifact check (3 tests), the rate cap (1), the cohort cap (2), the kill switch (2), and the rollback exemption (2). B11 says *nothing forbids* — the answer is only real if the suite has watched it forbid.
+
+### 13.3 T2 — the ledger
+
+`evolution/models.EntityVersion` + `evolution/ledger.py` + migration **`sega001`** (new head, off `learn001`; also adds `execution_runs.taint_level` for T6). `AIService.update_entity` now records a version **in the same transaction as the edit**, so there is no state where an entity has moved and its history has not.
+
+**Three deltas.**
+
+1. **`proposal_signal_id` carries no FK.** The ORM is import-light (the `intelligence/models.py` precedent) and an FK to `signals` made the mapper fail to configure in any context that had not imported the signal bus — caught immediately by the `*_db` suite. Dropped in both the model and the migration, following the shipped `CallLog.voice_session_id` precedent. There is a second, better reason: a signal can be reaped or replayed, and a version must outlive the proposal that caused it.
+2. **`record_version` never raises.** A deliberate asymmetry with the rest of SEGA, where refusals are loud: a missing ledger row is a gap in an audit trail, while a failed save is a person's work lost. Recording history must never be the reason an edit fails.
+3. **`next_version` is a patch bump, and says it is not semver.** Nothing here can tell a breaking charter change from a typo fix, and a scheme implying it could would be lying in a field people read. A malformed existing version starts a fresh `1.0.1` series rather than raising — a bad version string is not a reason to refuse to record history, which is the moment history matters most.
+
+`SNAPSHOT_BLOCKS` fixes what a version *is*, so a block added to `HierarchicalEntity` later is a deliberate addition to history rather than a silent omission — and secrets or transient attributes cannot drift in. Note the ledger snapshots `governance` and `capabilities` **even though they are never self-modified**: the ledger records what happened, `blast_radius` decides what may happen, and conflating them would leave the most consequential human edits unrecorded.
+
+### 13.4 Verification (T0–T2)
+
+typecheck **276 files** strict · layout lint · **1691 unit** (+39) · **16 parity/eval** · **341 integration** (+12) · migration head **`sega001`**, applies/downgrades/re-applies.
+
+**Honest limits.** `blast_radius.admit_change` is written and tested but has **no call sites yet** — nothing automated goes through it until T7 wires the LEARN proposal path, so today it is a guarantee waiting for a caller. The ledger is written by `update_entity` only; entity *creation* and soft-delete do not yet record versions.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.1 — **T0–T2 built** (§13). Route paths in §2.1 corrected (`/api/v1/ai/tool-registry`, not `/ai/tools`). Rollback made exempt from the rate cap and kill switch but never from scope; `proposal_signal_id`'s FK dropped for import-lightness; `record_version` made non-raising. |
 | 2026-07-25 | v1.0 — design written. B11 restated against the code (the named `tool_versions` table does not exist; the risk does); **a live cross-tenant read of every tenant's tool entries found and scheduled as T0**; blast radius reduced to five checkable limits; the version ledger chosen as full snapshots; the entity canary kept separate from the model canary with the reason; D3 given a four-level ladder, a monotonic descent map and a pure firewall table that reproduces today's behaviour at `counterparty`. |
