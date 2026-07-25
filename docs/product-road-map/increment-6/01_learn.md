@@ -1,6 +1,6 @@
 # Increment 6 / LEARN — The Learning Store, and the History That Makes It Measurable (closes B10)
 
-> **Status:** v1.1 — design locked (§3). **T1 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T2–T10 pending.
+> **Status:** v1.2 — design locked (§3). **T1–T3 BUILT** (2026-07-25, branch `inc6/learn`) — build notes §14. T4–T10 pending.
 > **Closes:** register **B10** (learning-system risk blindspots) + gap-analysis **VG-12** (no KPI history store).
 > **Depends on:** the shipped signal bus (`ai/signals/`), CORTEX Intelligence trees (`ai/memory/intelligence_tree_service.py` + `rule_lifecycle.py`), the C6 KPI registry (`ai/kpi/`), RTR's `routing_decisions` (`ai/intelligence/models.py`), EVX's admission gate (`ai/intelligence/admission.py`).
 > **Feeds:** SEGA ([02](./02_sega.md)) — LEARN proposes, SEGA admits · TWIN ([03](./03_twin.md)) — the forecast engine reads `kpi_snapshots` · STRAT ([04](./04_strat.md)) — mandate reviews read the same series · Vihara G1/G2 (Increment 7) — plinth trends and the Seasons timeline.
@@ -193,8 +193,8 @@ One migration off `fleet001`, four tables, no tenant-schema changes. New package
 | # | Task | Gate |
 |---|---|---|
 | **T1** ✅ | **The B10 guarantee, first.** `learning/models.py` + `learn001`. Assert the `platform_observations` column set is exactly §4.2; assert no FK to `companies`. **If this cannot hold, stop and reopen decision 3** (§4.4) | unit + `*_db` |
-| **T2** | `learning/pooling.py` — the daily aggregation job with the k-anonymity floor; upsert semantics; drop (never defer) below-floor groups | unit (pure grouping) + `*_db` |
-| **T3** | `learning/kpi_snapshot.py` + the reaper + the arq 01:25 cron; unmeasurable KPIs snapshot as absence | `*_db`, incl. a re-run idempotency test |
+| **T2** ✅ | `learning/pooling.py` — the daily aggregation job with the k-anonymity floor; ~~upsert semantics~~ **replace-the-day** (§14.2); drop (never defer) below-floor groups | unit (pure grouping) + `*_db` |
+| **T3** ✅ | `learning/kpi_snapshot.py` + the reaper + the arq 01:25 cron; unmeasurable KPIs snapshot as absence | `*_db`, incl. a re-run idempotency test |
 | **T4** | `GET /ai/kpi/history` | router test |
 | **T5** | The four `learning.*` signal types + `learning/outcomes.py` (observation → candidate rule via the shipped lifecycle) | unit + `*_db` |
 | **T6** | Charter-tuning proposals + the §7 refusals + the LEARN⇸SEGA import boundary test | unit, **mutation-tested** |
@@ -228,7 +228,9 @@ T9 is where the billing canary bites: it touches the routing path, and the HANDO
 
 ---
 
-## 14. Build notes — T1 (2026-07-25, branch `inc6/learn`)
+## 14. Build notes (2026-07-25, branch `inc6/learn`)
+
+### 14.1 T1 — the schema guarantee
 
 **The guarantee holds.** §4.4's stop-or-go passed: the pooled path can be made structurally incapable of carrying tenant content without contorting anything, so charter decisions 2 and 8 both stand and the increment proceeds as designed.
 
@@ -244,7 +246,38 @@ T9 is where the billing canary bites: it touches the routing path, and the HANDO
 
 **Verification.** typecheck **262 files** strict · layout lint · **1570 unit** (+16) · **16 parity/eval** · **296 integration** (+8) · `learn001` applies, downgrades and re-applies; head is `learn001`.
 
-**Honest limit:** these are stores with no writers yet. Nothing populates `platform_observations` until T2 and nothing populates `kpi_snapshots` until T3 — so the KPI series still starts on the day T3 lands, not today.
+~~**Honest limit:** these are stores with no writers yet.~~ — closed by T2 and T3 below.
+
+### 14.2 T2 — the pooling job and its floor
+
+`learning/pooling.py`: a pure `bucket_decisions(rows, min_contributors=)` doing the grouping and the floor, and a thin `pool_day(db, day)` around it. `LEARN_POOL_MIN_CONTRIBUTORS` defaults to **3**. Cron `platform_pooling_sweep` at **02:10 UTC**, over *yesterday* — a day cannot be aggregated until it is over.
+
+**Three deltas.**
+
+1. **Replace the day, don't upsert it.** The design said upsert; the job recomputes the whole day from source, so deleting the day's rows and re-inserting is both simpler and more obviously idempotent. It also avoids depending on `ON CONFLICT` inference against the grain's *expression* index (`coalesce(model_registry_id, …)`), which is a fragile thing for a cron to rest on.
+2. **`contributors` is computed and deliberately not stored.** The `Bucket` dataclass carries it so a caller can assert the floor was applied, but the table records only `contributor_floor_met` — a distinct-company count is itself a small fact about tenants, and the point of this table is that it holds none.
+3. **The success proxy is inherited, limitations included.** `successes` = decisions that did not fall back, the same SLO proxy `intelligence/canary.py` uses, and it carries the same weakness: shipped telemetry does not attribute a *generate* failure to a model, so a model that fails loudly and one that fails silently look alike here. Named in the module docstring rather than discovered later.
+
+**The floor is mutation-tested.** Removing the `contributors < min_contributors` check failed exactly six tests — all of them floor tests, including `test_one_tenant_with_many_rows_never_clears_the_floor` — and left the grouping and counting tests green. That test is the load-bearing one: the floor counts **distinct companies, not rows**, because a floor a single chatty tenant can clear protects nobody while looking like it protects everybody.
+
+### 14.3 T3 — the job that starts the clock
+
+`learning/kpi_snapshot.py` (`snapshot_company` / `snapshot_all` / `reap_old_snapshots`), cron `kpi_snapshot_sweep` at **01:25 UTC** — after C5's dunning sweep (01:10), so a reading reflects the billing state just entered, and before C4's demotion sweep (01:40), so a demotion decided at 01:40 belongs to tomorrow's series.
+
+**Four deltas.**
+
+1. **Scope is `type = 'TENANT'`, not "all non-deleted companies".** `companies` has **no `deleted_at` column** — the design's phrase assumed one. APP and PARTNER rows are not businesses with an open pipeline or an invoice ledger. Suspended and read-only tenants *are* included, as designed: a KPI series should not acquire a hole because of a billing state.
+2. **"A new tenant is ten absences" was too strong, and the test caught it.** `agent_hitl_load` has no record prerequisites — it counts pending approvals — so **zero waiting approvals is a genuine measurement on day one**, not an absence. §6.2's rule is unchanged (a row is written for every KPI every day, measurable or not); what changed is the assertion, which now pins the *correspondence* — `value IS NULL` exactly when `measurable` is false, and every absence names what is missing — plus a guard that no other KPI quietly becomes "measurable at zero" for an empty tenant.
+3. **One tenant's failure must not cost every tenant a day.** `snapshot_all` catches per-company, rolls back, logs and continues, returning the failed ids. Days of history are the one thing this workstream cannot get back, so a single tenant mid-provision must not take the rest of the estate down with it.
+4. **The reaper runs inside the same cron.** A reaper on its own schedule is a reaper that eventually stops being deployed. `LEARN_KPI_RETENTION_DAYS` defaults to 400.
+
+**One typing note:** SQLAlchemy's async `Result` is typed without `rowcount`, so the reaper counts via `DELETE … RETURNING id`. Worth knowing before the next `DELETE`-shaped job — it type-checks fine through `func`-style access and fails under `--strict` here.
+
+### 14.4 Verification (T1–T3)
+
+typecheck **265 files** strict · layout lint · **1584 unit** (+30) · **16 parity/eval** · **305 integration** (+17) · migration head `learn001`, applies/downgrades/re-applies.
+
+**Honest limit:** both jobs are wired to arq crons but have **never run on a live schedule** — they are exercised by tests that call them directly. And the KPI series genuinely starts the day this deploys; there is no backfill, by construction.
 
 ---
 
@@ -252,5 +285,6 @@ T9 is where the billing canary bites: it touches the routing path, and the HANDO
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.2 — **T2 + T3 built** (§14.2–§14.4). Pooling replaces the day rather than upserting it; the floor is mutation-tested and counts distinct companies, not rows. The snapshot job's scope corrected to `type='TENANT'` (`companies` has no `deleted_at`), and the "a new tenant is all absences" claim corrected — `agent_hitl_load` is genuinely measurable at zero on day one. |
 | 2026-07-25 | v1.1 — **T1 built** (§14). The B10 stop-or-go passed. One real defect found by the DB-level test: the pooled grain needed a `coalesce` expression index because Postgres treats NULLs as distinct in a unique constraint. |
 | 2026-07-25 | v1.0 — design written. B10 split into its three real questions; the pooled record shaped so tenant content cannot fit; k-anonymity applied in the job rather than the table; `kpi_snapshots` with the honest-absence rule persisted; the LEARN⇸SEGA seam confirmed (propose vs dispose); reward hacking answered structurally; drift feeding C4 rather than duplicating it. |

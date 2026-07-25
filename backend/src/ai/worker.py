@@ -60,6 +60,7 @@ from src.ai.loop.watchdog import loop_watchdog
 from src.ai.memory.rechunk_cron import chunk_upgrade_sweep
 from src.ai.trust.crons import dunning_sweep
 from src.ai.governance.crons import demotion_sweep
+from src.ai.learning.crons import kpi_snapshot_sweep, platform_pooling_sweep
 from src.ai.voice_loop.crons import voice_deferred_reap, voice_deferred_sweep
 from src.ai.lead_queue_worker import poll_lead_queue_task
 
@@ -169,7 +170,16 @@ try:
         # days, so a trend cannot change between two minutes; running it on
         # the 60s sweeper would repeat per-agent aggregates 1,440× for the
         # same answer. Sits after the dunning sweep.
+        # LEARN (Inc 6) — the KPI history this increment exists to measure
+        # against. 01:25 sits after C5's dunning sweep (a reading should reflect
+        # the billing state just entered) and before C4's demotion sweep (a
+        # demotion decided at 01:40 belongs to tomorrow's series). Unmeasurable
+        # KPIs are recorded as absences, never skipped.
+        cron(kpi_snapshot_sweep, hour=1, minute=25),
         cron(demotion_sweep, hour=1, minute=40),
+        # B10 — pool yesterday's routing decisions, k-anonymity floor applied in
+        # the job. Yesterday because a day cannot be aggregated until it is over.
+        cron(platform_pooling_sweep, hour=2, minute=10),
         # Inc-4 T6 — drain the post-call queue Inc-3 left filling. Small batch,
         # no deadline: a call reflected on an hour late is worth what one
         # reflected on immediately is worth, and the provider rate limit
