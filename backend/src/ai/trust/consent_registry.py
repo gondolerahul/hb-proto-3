@@ -37,9 +37,24 @@ __all__ = [
     "ConsentProvider",
     "TenantManagedProvider",
     "install_consent_registry",
+    "CHANNEL_POSTURE_IDENTITY",
+    "evaluate_channel_posture",
+    "set_channel_posture",
 ]
 
 _PHONE_CHANNELS = frozenset({"whatsapp", "voice", "sms"})
+
+#: The ``channel_identity`` a *channel-wide* posture row is stored under
+#: (Inc-6 GATE T3). A broadcast addresses no one in particular, so the posture
+#: needs a key where a counterparty identity would sit.
+#:
+#: Collision with a real counterparty would be serious in the wrong direction —
+#: one unlucky address could silently mute a tenant's whole channel — so two
+#: things keep them apart: this value is not a well-formed address on any
+#: supported channel (no ``@``, no digits), and the posture lookups below query
+#: it literally rather than through ``normalise_identity``, which is the only
+#: function that could map some other string onto it. A test pins both.
+CHANNEL_POSTURE_IDENTITY = "__channel__"
 
 
 def normalise_identity(channel: str, identity: str) -> str:
@@ -150,12 +165,85 @@ async def set_consent(
     return record
 
 
+async def evaluate_channel_posture(
+    db: AsyncSession, company_id: uuid.UUID, channel: str,
+    purpose: str = ConsentPurpose.MARKETING,
+) -> ConsentDecision:
+    """May this tenant publish to this channel for this purpose? (GATE T3)
+
+    Permissive until set — Increment 2 decision 8. Two ways a tenant tightens:
+
+    * a **DNC entry** on the posture identity switches the channel off wholly,
+      for every purpose — the "we do not post on LinkedIn" switch;
+    * a **denied consent record** switches off one purpose, so a tenant can
+      keep transactional replies while refusing marketing.
+
+    Ordered so the broader refusal is checked first, which makes the reason
+    string the tenant reads the accurate one.
+    """
+    dnc = (await db.execute(
+        select(DncEntry).where(
+            DncEntry.company_id == company_id,
+            DncEntry.channel == channel,
+            DncEntry.channel_identity == CHANNEL_POSTURE_IDENTITY,
+        )
+    )).scalar_one_or_none()
+    if dnc is not None:
+        return ConsentDecision(
+            allowed=False,
+            reason=f"this tenant does not broadcast on {channel}")
+
+    record = (await db.execute(
+        select(ConsentRecord).where(
+            ConsentRecord.company_id == company_id,
+            ConsentRecord.channel == channel,
+            ConsentRecord.channel_identity == CHANNEL_POSTURE_IDENTITY,
+            ConsentRecord.purpose == purpose,
+        )
+    )).scalar_one_or_none()
+    if record is not None and record.status == ConsentStatus.DENIED:
+        return ConsentDecision(
+            allowed=False,
+            reason=f"this tenant does not broadcast on {channel} for {purpose}")
+
+    return ConsentDecision(
+        allowed=True, reason=f"no {channel} posture set — governed by band alone")
+
+
+async def set_channel_posture(
+    db: AsyncSession, company_id: uuid.UUID, channel: str, purpose: str, status: str,
+) -> ConsentRecord:
+    """Set the tenant's per-purpose posture for a broadcast channel."""
+    record = (await db.execute(
+        select(ConsentRecord).where(
+            ConsentRecord.company_id == company_id,
+            ConsentRecord.channel == channel,
+            ConsentRecord.channel_identity == CHANNEL_POSTURE_IDENTITY,
+            ConsentRecord.purpose == purpose,
+        )
+    )).scalar_one_or_none()
+    if record is None:
+        record = ConsentRecord(
+            company_id=company_id, channel=channel,
+            channel_identity=CHANNEL_POSTURE_IDENTITY, purpose=purpose,
+            status=status, source="tenant")
+        db.add(record)
+    else:
+        record.status = status
+    await db.flush()
+    return record
+
+
 class ConsentProvider(Protocol):
     """Pluggable consent adapter (the KAR seam contract). Jurisdiction packs
     implement this to tighten the tenant's posture."""
 
     async def check(
         self, company_id: uuid.UUID, channel: str, to_address: str, purpose: str,
+    ) -> ConsentDecision: ...
+
+    async def check_channel(
+        self, company_id: uuid.UUID, channel: str, purpose: str,
     ) -> ConsentDecision: ...
 
 
@@ -170,9 +258,28 @@ class TenantManagedProvider:
         async with AsyncSessionLocal() as db:
             return await evaluate_consent(db, company_id, channel, to_address, purpose)
 
+    async def check_channel(
+        self, company_id: uuid.UUID, channel: str, purpose: str,
+    ) -> ConsentDecision:
+        from src.common.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            return await evaluate_channel_posture(db, company_id, channel, purpose)
+
 
 def install_consent_registry(provider: Optional[ConsentProvider] = None) -> None:
-    """Wire a consent provider into the KAR outbound seam (default: tenant-managed)."""
-    from src.ai.solo_pack.consent import set_consent_checker
+    """Wire a consent provider into the KAR outbound seams (default: tenant-managed).
 
-    set_consent_checker((provider or TenantManagedProvider()).check)
+    Both seams, in one call: the person-addressed one KAR shipped and the
+    channel-posture one GATE adds. Installing them separately would let a
+    deployment end up with outbound consent enforced and broadcast posture
+    silently permissive, which is the failure this workstream is fixing.
+    """
+    from src.ai.solo_pack.consent import (
+        set_channel_posture_checker,
+        set_consent_checker,
+    )
+
+    resolved = provider or TenantManagedProvider()
+    set_consent_checker(resolved.check)
+    set_channel_posture_checker(resolved.check_channel)

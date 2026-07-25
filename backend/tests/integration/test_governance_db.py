@@ -10,7 +10,7 @@ import uuid
 import pytest
 from sqlalchemy import func, select
 
-from src.ai.governance.checkpoints import CHECKPOINT_KEYS, MANDATORY_KEYS
+from src.ai.governance.checkpoints import CHECKPOINT_KEYS, CHECKPOINT_SEED, MANDATORY_KEYS
 from src.ai.governance.models import HITLCheckpointDef
 
 pytestmark = [pytest.mark.needs_db, pytest.mark.asyncio]
@@ -18,11 +18,19 @@ pytestmark = [pytest.mark.needs_db, pytest.mark.asyncio]
 
 class TestCheckpointRegistry:
     async def test_all_checkpoints_seeded(self, db):
-        # 18 Blueprint §9.7 + the 19th (before_external_system_write) from Inc-4 CONN/SOR.
+        """Every checkpoint in the fixture reached the database.
+
+        Counted against ``CHECKPOINT_SEED`` rather than a literal: the literal
+        was 19 and went stale the moment Increment 6 / GATE added the 20th and
+        21st, which made this fail for a reason that had nothing to do with
+        what it is testing. The fixture's own length assertion (in
+        ``checkpoints.py``) is what pins the expected number, and it is stated
+        in exactly one place.
+        """
         total = (await db.execute(
             select(func.count()).select_from(HITLCheckpointDef)
         )).scalar_one()
-        assert total == 19
+        assert total == len(CHECKPOINT_SEED)
 
     async def test_seed_keys_match_fixture(self, db):
         keys = set((await db.execute(select(HITLCheckpointDef.key))).scalars().all())

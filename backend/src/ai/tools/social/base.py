@@ -86,6 +86,34 @@ class SocialMediaTool(Tool):
                 )
             })
 
+        # Inc-6 GATE T3+T4 — the tenant's own consent posture, checked here
+        # because every one of the 64 social tools funnels through this method:
+        # a platform module added later inherits the check rather than needing
+        # to remember it. Separate from the PolicyGate, which has already
+        # decided whether the *agent* may act at its band; this decides whether
+        # the *tenant* broadcasts on this channel at all.
+        from src.ai.trust.broadcast_guard import guard_social_call
+
+        guard = await guard_social_call(self.name, self.platform, company_id, params)
+        if not guard.allowed:
+            logger.info(
+                f"[{self.name}] refused by channel posture for company "
+                f"{company_id}: {guard.reason}"
+            )
+            return json.dumps({
+                "error": f"Refused by this tenant's {self.platform} broadcast posture.",
+                "reason": guard.reason,
+                "refused_by": "channel_posture",
+            })
+        # Audience filtering rewrites the params rather than refusing the call
+        # (decision 5), so execute with the cleaned list, never the original.
+        params = dict(guard.params)
+        if guard.suppressed_count:
+            logger.info(
+                f"[{self.name}] {guard.suppressed_count} audience identifier(s) "
+                f"suppressed by DNC for company {company_id}"
+            )
+
         try:
             result = await self._execute(params, credentials, context)
             return json.dumps(result)
