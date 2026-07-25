@@ -1,6 +1,6 @@
 # Increment 6 / TWIN — The Glasshouse (closes VG-09)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started.
+> **Status:** v1.1 — design locked (§3). **T1 BUILT 2026-07-25** (branch `inc6/twin`) — the plane prototype holds; see §14. T2–T11 open.
 > **Closes:** gap-analysis **VG-09** (the Glasshouse has no backend — the largest single gap). Consumes **VG-10**'s canary from SEGA rather than building a second one.
 > **Depends on:** LEARN ([01](./01_learn.md)) — the forecast engine reads `kpi_snapshots` · SEGA ([02](./02_sega.md)) — the promotion pipeline **calls** SEGA's entity canary and version ledger · `tenant_schema/data_plane.py` · the PolicyGate · `inward_auth/guard.py` (certified approval).
 > **Feeds:** STRAT ([04](./04_strat.md)) — mandate reviews read honesty grades · Vihara G5 (Increment 7).
@@ -190,8 +190,37 @@ T1 before everything: if the sibling-schema approach does not hold, every later 
 
 ---
 
+## 14. Build notes — T1 (2026-07-25, branch `inc6/twin`)
+
+**T1 is built. T2–T11 are not.** §11 says T1 goes first because "if the sibling-schema approach does not hold, every later task changes shape, and that is worth knowing in week one." **It holds**, and the risk row in [00_overview](./00_overview.md) §7 can be closed on that basis.
+
+### 14.1 What shipped
+
+`tenant_schema/data_plane.py`: a `Plane` enum threaded through `schema_name_for`, `ensure_ready`, `session` and `get_tenant_session`, defaulting to `LIVE` so all 46 existing call sites mean exactly what they always meant. Schema backend → `t_<hex>_tw`; container backend → a named `twin` schema inside the tenant's own database (the live plane there is the database's default schema and has no name to suffix). Plus `drop_twin` for §4.3's reaper. Tests: `tests/integration/test_twin_plane_db.py` (13).
+
+**No migration, as designed** — tenant tables bootstrap per tenant.
+
+### 14.2 Three build findings
+
+1. **Readiness must be memoised per *plane*, not per tenant.** The shipped `_ready` set keyed on `company_id.hex`; leaving it that way would let a readied live plane make the twin *look* ready, handing back a session pointed at a schema with no tables in it. Keyed `"{hex}:{plane}"` now.
+
+2. **The reaper drops the schema rather than truncating tables.** §4.3 says "rows dropped, schema kept and truncated for reuse". Truncating keeps `tenant_entity_defs` — so a scenario that varied the *schema* (which is exactly what a `charter` or `roster` scenario does) would leave that variation behind for the next run to inherit, silently. Dropping is the honest reset, and re-bootstrapping is cheap because the spine is small (§4.2 already says so).
+
+3. **`schema_translate_map` does not touch textual SQL.** It rewrites SQLAlchemy constructs only, so a raw `SELECT ... FROM tenant.tenant_records` resolves against a literal schema named `tenant` and fails outright. Everything reaching the twin plane must go through the ORM models. This is a constraint on **every later TWIN task** — T2's materialisation in particular, which §4.2 specifies as `INSERT … SELECT` between two schemas and will therefore have to build those statements with real schema names rather than the symbolic token.
+
+### 14.3 What the isolation test actually asserts
+
+Both directions (a twin write is invisible to live; a live write is invisible to the twin), the translate map carries exactly one mapping and it is the twin's, a reaped twin carries nothing over — and, the one that matters, **the real `RecordService` writes only where it was handed**. Isolated plumbing underneath a service that resolves its own schema would be no guarantee at all, so the guarantee is tested through the thing that will actually do the writing.
+
+### 14.4 Gates
+
+typecheck **289** files strict · layout lint · **1847 unit** · **404 integration** (+13).
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-25 | v1.1 — **T1 BUILT.** §14 added: the sibling-schema prototype holds on both backends, so the overview's "no precedent in the codebase" risk is answered. Three build findings — readiness memoised per plane; the reaper drops rather than truncates (a schema-varying scenario would otherwise be inherited); and `schema_translate_map` not applying to textual SQL, which constrains T2's materialisation. |
 | 2026-07-25 | v1.0 — design written. The twin plane resolved as a sibling schema rather than a third data-plane backend, so both shipped backends host it unchanged; materialisation bounded and explicitly excluding embeddings; honesty grading made computed-only and monotone, with `replay ≠ determinism` stated where it cannot be missed; certified-action safety by tool substitution rather than a dry-run flag; the promotion pipeline delegated to SEGA's canary; six concrete answers to decision 7's cost consequence. |
