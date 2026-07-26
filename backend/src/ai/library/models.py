@@ -14,13 +14,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
+from datetime import date as _date
+
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.common.database import Base
 
-__all__ = ["RetrievalUsage"]
+__all__ = ["RetrievalUsage", "DocumentInfluenceDaily"]
 
 
 class RetrievalUsage(Base):
@@ -55,4 +57,50 @@ class RetrievalUsage(Base):
         # age. Both scans want this, and without it the reaper degrades into a
         # sequential scan over the largest table LIB creates.
         Index("ix_retrieval_usages_doc_day", "document_id", "used_at"),
+    )
+
+
+class DocumentInfluenceDaily(Base):
+    """One document's influence on one day — what survives the reaper.
+
+    The raw log is reaped at 30 days; this is kept indefinitely because it is
+    tiny, and it is what answers §5.3's question without scanning the log.
+
+    **Three counters, not one, and the distinction is the whole point.**
+    ``retrievals`` counts rows, and a single question can return three chunks
+    of the same document — so a document that answered *one* question can show
+    three retrievals. The design's own headline claim ("this pricing sheet
+    answered 40 customer questions this month") is a count of *questions*, and
+    only ``distinct_queries`` measures it. Reporting ``retrievals`` under that
+    sentence would overstate a chunky document's influence in proportion to how
+    finely it happens to be chunked, which is a property of the chunker rather
+    than of the document.
+    """
+
+    __tablename__ = "document_influence_daily"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    #: Present although ``document_id`` already implies it. Reading a tenant's
+    #: influence panel without this column means joining `documents` to scope
+    #: every read, and a scoping rule that depends on remembering a join is the
+    #: exact shape of the VG-05 IDOR and SEGA T0's tool-registry disclosure.
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False, index=True)
+    day: Mapped[_date] = mapped_column(Date, nullable=False, index=True)
+    #: Chunks returned — rows in the raw log.
+    retrievals: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Distinct questions this document took part in answering.
+    distinct_queries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Distinct colleagues that received it. A NULL entity (a Pragya turn) is
+    #: not a colleague and is not counted here — it still counts as a query.
+    distinct_entities: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        # No nullable column in the grain, so ordinary conflict inference works
+        # and a day can be re-rolled in place — the LEARN `coalesce` expression
+        # index is not needed here, and it is worth knowing why.
+        UniqueConstraint("document_id", "day", name="uq_doc_influence_doc_day"),
     )

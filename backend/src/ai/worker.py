@@ -67,6 +67,11 @@ from src.ai.learning.crons import (
     learning_harvest_sweep,
     platform_pooling_sweep,
 )
+from src.ai.library.crons import (
+    credential_expiry_sweep,
+    influence_rollup_sweep,
+    staleness_sweep,
+)
 from src.ai.voice_loop.crons import voice_deferred_reap, voice_deferred_sweep
 from src.ai.lead_queue_worker import poll_lead_queue_task
 
@@ -207,6 +212,21 @@ try:
         # ...and reap finished rows, or draining just converts an unbounded
         # queue into an unbounded archive.
         cron(voice_deferred_reap, hour=2, minute=50),
+        # LIB T3 — roll the retrieval-usage log up, then reap what the rollup
+        # covered. One job, and the order inside it is the guarantee: the
+        # reaper's cutoff is clamped to the last rolled-up day, so a worker
+        # that missed a fortnight keeps the raw rows rather than deleting a
+        # fortnight of influence history nothing ever aggregated.
+        cron(influence_rollup_sweep, hour=2, minute=40),
+        # LIB T4 — re-derive every document's staleness *and its reason*. Runs
+        # after the rollup because a document flagged stale today should have
+        # today's influence already counted against it: "high influence, old
+        # content" is the pair worth surfacing first.
+        cron(staleness_sweep, hour=2, minute=50),
+        # LIB T8 (VG-16) — warn before a connector's credentials expire, not
+        # after. `status` already records that a binding broke; nothing
+        # recorded that one was about to.
+        cron(credential_expiry_sweep, hour=3, minute=10),
         # Lead queue poller: every minute — pick pending leads and place
         # outbound calls via Tata Tele (CRM lead.created pipeline).
         cron(poll_lead_queue_task, minute=set(range(60))),

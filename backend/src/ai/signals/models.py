@@ -143,6 +143,12 @@ class SignalTypes:
     # than only in `twin_runs`.
     TWIN_SCENARIO_RUN = "twin.scenario_run"
     TWIN_PROMOTION_PROPOSED = "twin.promotion_proposed"
+    # LIB (Inc 6, VG-14/VG-16): a connected drive mirrored a file, and a
+    # binding's credentials are about to expire. The second is a *tray* signal
+    # — §15.2's "bridge under repair" — and it fires before the break rather
+    # than after, which is the only version of that notice worth sending.
+    DOCUMENT_SYNCED = "document.synced"
+    CONNECTOR_CREDENTIALS_EXPIRING = "connector.credentials_expiring"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
 

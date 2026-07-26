@@ -168,6 +168,20 @@ CONNECTOR_CATALOG: tuple[ConnectorDef, ...] = (
         ConnectorBackend.MCP_SERVER, server_ref="notion",
         auth=AuthKind.OAUTH2, cost_sku="mcp-notion",
     ),
+    # LIB T7 (Inc 6) — connected drives, VG-14. Both declare **no masters**:
+    # a drive masters no HBS object. It is a source of documents, not of
+    # records, so the Inc-4 mastering machinery deliberately does not engage
+    # and `connectors/document_sync.py` handles it instead of `sync.py`.
+    ConnectorDef(
+        "sharepoint_drive", "knowledge", "Knowledge Source Connectors",
+        ConnectorBackend.MCP_SERVER, server_ref="sharepoint",
+        auth=AuthKind.OAUTH2, cost_sku="mcp-sharepoint",
+    ),
+    ConnectorDef(
+        "google_drive", "knowledge", "Knowledge Source Connectors",
+        ConnectorBackend.MCP_SERVER, server_ref="gdrive",
+        auth=AuthKind.OAUTH2, cost_sku="mcp-gdrive",
+    ),
     # --- Business Systems (generic enterprise SoR bridges) --------------- #
     ConnectorDef(
         "crm_generic", "business_systems", "Enterprise CRM Connector",

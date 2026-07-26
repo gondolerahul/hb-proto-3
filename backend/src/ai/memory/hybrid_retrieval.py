@@ -142,7 +142,8 @@ async def _lexical_candidates(
     stmt = text(f"""
         SELECT dc.id::text, dc.content, d.memory_domain, d.id::text,
                ts_rank_cd(to_tsvector('english', dc.content),
-                          plainto_tsquery('english', :q)) AS rank
+                          plainto_tsquery('english', :q)) AS rank,
+               d.staleness_state, dc.chunk_index, d.filename, dc.heading_path
         FROM   document_chunks dc
         JOIN   documents d ON d.id = dc.document_id
         WHERE  {scope}
@@ -160,7 +161,20 @@ async def _lexical_candidates(
     return [
         RetrievedChunk(chunk_id=r[0], content=r[1],
                        metadata={"memory_domain": r[2], "document_id": r[3],
-                                 "lexical_rank": float(r[4])})
+                                 "lexical_rank": float(r[4]),
+                                 # LIB T4: staleness travels *with* the chunk
+                                 # rather than filtering it out, so the answer
+                                 # path can say "this is from a document
+                                 # flagged stale" instead of silently
+                                 # returning less.
+                                 "staleness_state": r[5],
+                                 # LIB T6: without chunk_index a citation has
+                                 # nothing to open at — `read_passage` takes
+                                 # it — and without filename it has nothing to
+                                 # display. Both columns come off the join
+                                 # that was already there.
+                                 "chunk_index": r[6], "filename": r[7],
+                                 "heading_path": r[8]})
         for r in rows
     ]
 
@@ -174,7 +188,8 @@ async def _semantic_candidates(
     scope = _scope_clause(entity_id, company_id)
     stmt = text(f"""
         SELECT dc.id::text, dc.content, d.memory_domain, d.id::text,
-               1 - (dc.embedding <=> CAST(:vec AS vector)) AS score
+               1 - (dc.embedding <=> CAST(:vec AS vector)) AS score,
+               d.staleness_state, dc.chunk_index, d.filename, dc.heading_path
         FROM   document_chunks dc
         JOIN   documents d ON d.id = dc.document_id
         WHERE  {scope}
@@ -192,7 +207,10 @@ async def _semantic_candidates(
     return [
         RetrievedChunk(chunk_id=r[0], content=r[1],
                        metadata={"memory_domain": r[2], "document_id": r[3],
-                                 "cosine": float(r[4])})
+                                 "cosine": float(r[4]),
+                                 "staleness_state": r[5],
+                                 "chunk_index": r[6], "filename": r[7],
+                                 "heading_path": r[8]})
         for r in rows
     ]
 
