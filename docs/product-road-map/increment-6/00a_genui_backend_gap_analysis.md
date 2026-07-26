@@ -2,7 +2,7 @@
 
 > **Document class:** pre-design analysis — what the ratified Vihara spec asks the *backend* for that does not exist, and what the *road map* never scoped.
 > **Author:** Buddha Cognitive Lab (analysis by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.0 — analysis complete, awaiting the Inc-6 clarifying round
+> **Created:** 2026-07-24 · **Status:** v1.3 — analysis complete; **nine of the 23 VG findings are closed** by Increment 6 (marked ✅ in §2). Remaining Inc-6 finding: **VG-11** (STRAT, blocked on its T2 owner review). The rest (VG-01…04, 06, 07, 18…23) are Increment 7's substrate work, and **VG-08** — voice go-live — is a G3 prerequisite that still has no owner.
 > **Inputs:** [genui_design_gate_spec.md](../genui_design_gate_spec.md) v1.2 (Vihara, ratified) · [genui_design_gate_concepts.md](../genui_design_gate_concepts.md) §6 (owner selection) · [build_roadmap.md](../build_roadmap.md) §4 Inc-6 · [00_charter.md](./00_charter.md) · the shipped code on `master` @ `a403cda`
 > **Method:** every Vihara law (§2), depth level (§3), ontology row (§4), surface (§5), contract (§7–§9) and journey (§15) was walked against the code and each was marked *built* / *partial* / *absent*, with the file that proves it.
 
@@ -57,19 +57,19 @@ Severity: **B** = blocks the named gate · **M** = major, gate degrades without 
 | VG-02 | No estate read model | G1 | **B** | §4 ontology has ~10 scattered sources and several with none |
 | VG-03 | No company-scoped live event stream | G1 | **B** | only per-object SSE exists |
 | VG-04 | The tray is not a composed object | G2 | **B** | `router.py:422` returns raw approval rows |
-| VG-05 | Certified actions ungated outside Pragya | G2/G3 | **B** | `require_tier` has no REST call sites |
+| VG-05 ✅ | Certified actions ungated outside Pragya | G2/G3 | **B** | `require_tier` has no REST call sites |
 | VG-06 | Echo bus (L10) absent | G0 | **M** | no `action_echo` endpoint or store |
 | VG-07 | Pragya channel is chat-shaped, not event-shaped | G3 | **B** | `pragya/api.py` has no §7 events |
 | VG-08 | Voice is a tested seam, not a live call | G3 | **B** | Inc-4 §12.5, already known |
-| VG-09 | Glasshouse has no backend at all | G5 | **B** | nothing simulation-related in `src/ai/` |
-| VG-10 | No canary for agent/process changes | G5 | **M** | `intelligence/canary.py` is model-only |
+| VG-09 ✅ | Glasshouse has no backend at all | G5 | **B** | nothing simulation-related in `src/ai/` |
+| VG-10 ✅ | No canary for agent/process changes | G5 | **M** | `intelligence/canary.py` is model-only |
 | VG-11 | Strategy pipeline has no domain model | G2 | **M** | HBS Planning module has one object |
-| VG-12 | No KPI history store | G1/G2 | **M** | `ai/kpi/` has no `models.py` |
-| VG-13 | Library provenance / influence / staleness absent | G2 | **M** | `orm/document.py` has 8 columns |
-| VG-14 | Connected drives cataloged only generically | G2 | m | one `notion_knowledge` row |
-| VG-15 | Broadcast gates have no KAR family | G1/G2 | **M** | roster is 18, KAR-01/02/03 only |
-| VG-16 | Bridge credential expiry has no tray path | G2 | m | no expiry field or sweep |
-| VG-17 | No entity version ledger | G2 | **M** | `version` is one `String` column |
+| VG-12 ✅ | No KPI history store | G1/G2 | **M** | `ai/kpi/` has no `models.py` |
+| VG-13 ✅ | Library provenance / influence / staleness absent | G2 | **M** | `orm/document.py` has 8 columns |
+| VG-14 ✅ | Connected drives cataloged only generically | G2 | m | one `notion_knowledge` row |
+| VG-15 ✅ | Broadcast gates have no KAR family | G1/G2 | **M** | roster is 18, KAR-01/02/03 only |
+| VG-16 ✅ | Bridge credential expiry has no tray path | G2 | m | no expiry field or sweep |
+| VG-17 ✅ | No entity version ledger | G2 | **M** | `version` is one `String` column |
 | VG-18 | No termination workflow | G2 | m | soft-delete only |
 | VG-19 | No notification / push infrastructure | G4 | **B** | no device tokens, no broker |
 | VG-20 | Private Line has no backend | G4 | **B** | Morning Story, Pocket Desk, read-mirror |
@@ -260,12 +260,12 @@ Gaps in the *plan*, not the code. These are the ones that need an owner decision
 | VR-01 | **G5 depends on SEGA, not only LEARN/EVX.** Spec §12 says "G5 consumes Inc-6 LEARN/EVX". The promotion pipeline (diff → certified approval → Board build → canary → GA) *is* SEGA's machinery with B11 blast-radius limits (VG-10). | Amend spec §12 sequencing to LEARN + SEGA + EVX; keeps the charter's LEARN → SEGA → GENUI order valid |
 | VR-02 ✅ | **The Glasshouse is not in the road map at all.** build_roadmap §4 Inc-6 lists LEARN → SEGA → GENUI → schema evolution. The Twin is a simulation subsystem (twin plane, replay, forecast, honesty grading, scenario store) comparable in size to LEARN — introduced by the Design Gate, never scoped. | Add **TWIN** as a named Inc-6 workstream, or defer the Glasshouse past the flagship launch and drop G5 |
 | VR-03 ✅ | **The strategy pipeline is not in the road map.** §15.3's Minutes→Propositions→Resolutions→Mandates→Reviews plus HBS Planning depth (VG-11). Inc-4's "HBS module depth" line named Accounting/HRMS/ERP/Legal — **not Planning**. | Add **STRAT** as an Inc-6 workstream (or an Inc-4 carry-over), sized separately from GENUI |
-| VR-04 | **The Library's influence machinery needs a retrieval-usage log** (VG-13) — a new store on the hot path, in neither RETR's five tasks nor the road map. | Fold into the GENUI Library workstream; design it at the caller, per the RETR three-stage rule |
-| VR-05 | **Connected drives are not in the §6.6 catalog** (VG-14) yet §15.1 stage 3 depends on them for the onboarding theatre. | Add catalog rows + a document-sync path; small, but it gates the onboarding journey |
+| VR-04 ✅ | **The Library's influence machinery needs a retrieval-usage log** (VG-13) — a new store on the hot path, in neither RETR's five tasks nor the road map. | Fold into the GENUI Library workstream; design it at the caller, per the RETR three-stage rule |
+| VR-05 ✅ | **Connected drives are not in the §6.6 catalog** (VG-14) yet §15.1 stage 3 depends on them for the onboarding theatre. | Add catalog rows + a document-sync path; small, but it gates the onboarding journey |
 | VR-06 ✅ | **Broadcast gates need a KAR-05 family** (VG-15) — the spec names it, the roster is 18, the shipped social path is ungoverned. | Add to Inc-6 scope, or explicitly cut social from the flagship |
 | VR-07 | **Push infrastructure is in no increment** (VG-19) and G4 blocks on it. | Scope with the Private Line; the single-writer constraint is architectural |
-| VR-08 | **No KPI history store** (VG-12) — the increment whose goal is "Week 12 > Week 1, *measured*" has nothing that records week 1. | Make it an early **LEARN** deliverable; four surfaces unblock at once |
-| VR-09 | **Entity version ledger is unowned** (VG-17). The Gallery needs it, the Glasshouse diff needs it, SEGA needs it for rollback. | Build once in SEGA; GENUI consumes |
+| VR-08 ✅ | **No KPI history store** (VG-12) — the increment whose goal is "Week 12 > Week 1, *measured*" has nothing that records week 1. | Make it an early **LEARN** deliverable; four surfaces unblock at once |
+| VR-09 ✅ | **Entity version ledger is unowned** (VG-17). The Gallery needs it, the Glasshouse diff needs it, SEGA needs it for rollback. | Build once in SEGA; GENUI consumes |
 | VR-10 | **"GenUI replaces the React app" is now false by ratification.** Spec §5 scope call + §14.2: partner and platform-admin consoles stay on legacy React and are rebuilt later. | Amend the cutover criteria to "replaces the **tenant** React surface"; the 59-screen parity checklist should mark which screens are out of scope rather than retired |
 | VR-11 | **Voice go-live is a G3 prerequisite, not an ops remainder** (VG-08). | Promote it into Inc-6's critical path |
 | VR-12 ✅ | **Certified-action step-up is a gap in the shipped product today** (VG-05), not only in Vihara. | Pull forward as an independent hardening task, ahead of the Inc-6 build |
@@ -362,6 +362,7 @@ The three security controls were **mutation-tested**, per the repo convention th
 
 | Date | Change |
 |---|---|
+| 2026-07-26 | v1.3 — findings marked closed as Increment 6 shut them: **VG-09** (TWIN), **VG-10**/**VG-17** (SEGA), **VG-12** (LEARN), **VG-13**/**VG-14**/**VG-16** (LIB), **VG-15** (GATE), plus **VR-04**/**VR-05**/**VR-08**/**VR-09**. This file is the register for the Design-Gate findings (the road-map gap register predates them and is not retro-fitted), so the marks belong here. |
 | 2026-07-24 | v1.2 — all six §6 questions **answered**; VR-02/03/06/12 resolved. GENUI split into **Increment 7** (Vihara), Scale & Enterprise → Increment 8; twin spend ruled **tenant-initiated**, correcting ratified spec §12.1. |
 | 2026-07-24 | v1.1 — **VG-05 / VR-12 closed** (§7): `ai/inward_auth/guard.py`, five certified endpoints gated, the PolicyGate now carries the amount, `IntentKind.CONNECTOR_BINDING` added — plus a **cross-tenant IDOR fix** on `respond_to_approval` found while mapping the work. Four design deltas; three controls mutation-tested. One honest limit: the React app does not yet render the step-up refusal. |
 | 2026-07-24 | v1.0 — first full gap analysis of the ratified Vihara spec against `master` @ `a403cda`: 23 backend gaps (VG-01…VG-23) and 12 road-map gaps (VR-01…VR-12); state re-verified (all gates green, push landed, integration 281); proposed Inc-6 workstream shape with TWIN and STRAT added. |
