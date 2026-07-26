@@ -1,6 +1,6 @@
 # Increment 6 / STRAT — The Strategy Pipeline (closes VG-11)
 
-> **Status:** v1.0 — design, decisions locked (§3). Build not started. **§5's object sheets need Rahul's review before T3** — this is domain modelling a tenant will see, not plumbing.
+> **Status:** v1.1 — design, decisions locked (§3). **T1 + T2 done: the object sheets are drafted and ✅ APPROVED (Rahul, 2026-07-26) — [04a_planning_object_sheets.md](./04a_planning_object_sheets.md) is the authoritative field list, and §5 below is corrected to it.** Build (T3 onward) unblocked.
 > **Closes:** gap-analysis **VG-11** (the strategy pipeline has no domain model) + the HBS **Planning module** depth Increment 4's "module depth" line omitted.
 > **Depends on:** LEARN ([01](./01_learn.md)) — reviews read `kpi_snapshots` · TWIN ([03](./03_twin.md)) — a proposition may carry an honesty grade · the shipped record service, HBS spine and signal bus.
 > **Feeds:** Vihara's Boardroom, the Seasons timeline and district monuments (Increment 7).
@@ -56,24 +56,26 @@ The two joins that make the loop a loop:
 
 Both are `ref` fields on the records. No new join machinery.
 
-## 5. The Planning objects (for review)
+## 5. The Planning objects (approved)
 
-Seven new HBS objects, module **Planning**, owner process **11** (stored numerically — the de-canary layout lint bans the literal token in `ai/` source, which is why the spine stores `"owner": 11` and renders `P{n:02d}` at seed). Domain tag **`strategy`**, a new member of the closed `DOMAIN_TAGS` set — new because the memory-domain viewport is exactly the thing that should keep board minutes out of a collections agent's retrieval.
+**Eight** new HBS objects, module **Planning**, owner process **11** (stored numerically — the de-canary layout lint bans the literal token in `ai/` source, which is why the spine stores `"owner": 11` and renders `P{n:02d}` at seed). Domain tag **`strategy`**, a new member of the closed `DOMAIN_TAGS` set — new because the memory-domain viewport is exactly the thing that should keep board minutes out of a collections agent's retrieval.
 
-> **These sheets are the review artifact.** They get the treatment the HBS spine got and the Pragya stage scripts got: drafted here, reviewed by Rahul, then built. Field names a tenant will read are not an engineer's guess.
+> **The review is closed.** The sheets got the treatment the HBS spine got and the Pragya stage scripts got: drafted, reviewed by Rahul, then built. Eleven questions answered 2026-07-26 — see [04a §8](./04a_planning_object_sheets.md#8-review-questions--answered-rahul-2026-07-26), which records the reasoning behind each field name because the schema alone cannot carry it.
+>
+> **Three fields were renamed in review**, all for the same reason — they are labels a business owner reads: `owner_ref` → **`owner`** (no other ref in the spine carries an `_ref` suffix), `case` → **`rationale`** ("case" reads as a support case in a product that also ships Tickets), and `district` → **`concerns_module`** ("district" is Vihara/Atlas *map* vocabulary; the record should carry business vocabulary and let the surface render the metaphor).
 
 | Object | Core fields |
 |---|---|
-| **Objective** | `title` (req) · `narrative` text · `horizon` enum(quarter, year, multi_year) · `status` enum(draft, active, achieved, abandoned) · `owner_ref` → Employee |
+| **Objective** | `title` (req) · `narrative` text · `horizon` enum(quarter, year, multi_year) · `status` enum(draft, active, achieved, abandoned) · `owner` ref → Employee |
 | **Target** | `name` (req) · `kpi_key` string *(a C6 registry key)* · `direction` enum(increase, decrease, hold) · `target_value` decimal · `by_date` date · `objective` ref → Objective · `status` enum(open, met, missed, withdrawn) |
-| **Forecast** | `name` (req) · `kpi_key` · `method` enum(manual, twin_forecast, external) · `value` decimal · `interval_low`/`interval_high` decimal · `for_period_start`/`for_period_end` date · `twin_run_id` string (nullable) |
+| **Forecast** | `name` (req) · `kpi_key` · `method` enum(manual, twin_forecast, external) · `value` decimal · `interval_low`/`interval_high` decimal · `for_period_start`/`for_period_end` date · `twin_run_id` string (nullable) · `target` ref → Target *(added in review — without it §7.3's predicted-value rule is unimplementable)* |
 | **Minutes** | `title` (req) · `held_on` datetime (req) · `attendees` text · `body` text · `decisions_summary` text · `objective` ref (optional) |
-| **Proposition** | `title` (req) · `case` text · `expected_effect` text · `cost_estimate` money · `honesty_grade` enum(replay, forecast, unknown, untested) default `untested` · `twin_run_id` string (nullable) · `minutes` ref → Minutes · `status` enum(draft, tabled, adopted, rejected, withdrawn) |
-| **Resolution** | `title` (req) · `decision` text (req) · `adopted_on` date (req) · `adopted_by` ref → Employee · `proposition` ref → Proposition · `district` string *(the HBS module it concerns)* · `engraved_at` datetime · `status` enum(active, superseded, revoked) |
+| **Proposition** | `title` (req) · `rationale` text · `expected_effect` text · `cost_estimate` money · `honesty_grade` enum(replay, forecast, unknown, untested) default `untested` *(a non-`untested` grade is **refused without a `twin_run_id`** — a grade must have a run behind it)* · `twin_run_id` string (nullable) · `minutes` ref → Minutes · `status` enum(draft, tabled, adopted, rejected, withdrawn) |
+| **Resolution** | `title` (req) · `decision` text (req) · `adopted_on` date (req) · `adopted_by` ref → Employee · `proposition` ref → Proposition · `concerns_module` string *(the HBS module it concerns)* · `engraved_at` datetime · `status` enum(active, superseded, revoked) |
 | **Mandate** | `title` (req) · `resolution` ref → Resolution (req) · `owning_process` string *(process code)* · `target` ref → Target · `review_due` date (req) · `status` enum(issued, in_flight, reviewed, closed) |
 | **Review** | `mandate` ref → Mandate (req) · `reviewed_on` date · `predicted_value` decimal · `realized_value` decimal (nullable) · `measurable` boolean · `missing` text · `verdict` enum(on_track, off_track, met, missed, not_measurable) · `notes` text |
 
-**Spine bookkeeping:** `HBS_SPINE` goes **27 → 34** objects, so the `assert len(HBS_SPINE) == 27` in `hbs_seed/__init__.py` and the [`increment-1/03a_hbs_spine.md`](../increment-1/03a_hbs_spine.md) appendix are updated in the same commit as the sheets. The assert exists to make exactly this change deliberate.
+**Spine bookkeeping:** `HBS_SPINE` goes **27 → 35** objects (this doc previously said seven objects and 34 while listing eight; 27 + 8 = 35 — resolved as review question 8.1). **Three** assert sites update in the same commit, not two: `assert len(HBS_SPINE) == 27` in `hbs_seed/__init__.py`, the same assert in `tests/unit/test_tenant_validation.py:109`, and `assert len(bundle["tenant_db"]["entity_defs"]) == 27` in `tests/integration/test_tenant_records_db.py:229` — the export-bundle test the original bookkeeping missed, which would have failed T3. Plus the [`increment-1/03a_hbs_spine.md`](../increment-1/03a_hbs_spine.md) appendix. The asserts exist to make exactly this change deliberate, and they worked.
 
 **Existing tenants get the new objects for free.** `seed_hbs_spine` is additive and idempotent — it inserts only the defs a tenant is missing, and `ensure_ready` calls it on the next provisioning touch after deploy. (The private helper is named `_seed_if_empty`, which is a misnomer worth knowing about: it is a sync, not a first-run seed.) No migration, no backfill job.
 
@@ -118,11 +120,11 @@ Rule 4 is the one that matters. The C6 honest-absence rule (`kpi/compute.py`) ex
 
 | # | Task | Gate |
 |---|---|---|
-| **T1** | Draft the seven object sheets as a reviewable doc (`04a_planning_object_sheets.md`) | doc |
-| **T2** | **Rahul reviews the sheets.** Build does not start until this closes | — |
-| **T3** | Spine additions + `DOMAIN_TAGS` + the 27→34 assert + the 03a appendix update | unit + `*_db` |
+| **T1** ✅ | Draft the object sheets as a reviewable doc ([04a](./04a_planning_object_sheets.md)) | doc |
+| **T2** ✅ | **Rahul reviews the sheets** — closed 2026-07-26, eleven questions answered | — |
+| **T3** | Spine additions + `DOMAIN_TAGS` + the **three** 27→35 asserts + the 03a appendix update | unit + `*_db` |
 | **T4** | `strategy/pipeline.py` — the five-step transitions as pure functions (a Proposition may only be adopted from `tabled`, a Mandate only issued from an `active` Resolution, …) | unit |
-| **T5** | Governance: `STRATEGY_RESOLUTION` T2 + the agents-may-not-adopt rule | unit + `*_db`, **mutation-tested** |
+| **T5** | Governance: `STRATEGY_RESOLUTION` T2 + the agents-may-not-adopt rule + the `honesty_grade`-needs-a-run rule (8.5) | unit + `*_db`, **mutation-tested** |
 | **T6** | `strategy/review_sweep.py` + the 02:20 cron + `strategy.review_due` | `*_db` |
 | **T7** | `strategy/realized.py` — predicted-vs-realized incl. `not_measurable` | unit + `*_db` |
 | **T8** | `strategy/api.py` — the pipeline read/write surface over the record service | router + `*_db` |
@@ -155,4 +157,5 @@ Rule 4 is the one that matters. The C6 honest-absence rule (`kpi/compute.py`) ex
 
 | Date | Change |
 |---|---|
+| 2026-07-26 | v1.1 — **T1 + T2 done.** §5 corrected to the approved sheets: **eight** objects and spine **27 → 35** (not seven/34), `owner_ref`→`owner`, `case`→`rationale`, `district`→`concerns_module`, `Forecast.target` added, `honesty_grade` refused without a `twin_run_id`, and a **third** spine-assert site recorded that the original bookkeeping missed. §10's T1/T2 marked done. |
 | 2026-07-25 | v1.0 — design written. Strategy placed in the tenant data plane as HBS Planning objects (inheriting record service, governance, evolution, SoR and the Vihara sheet renderer); seven object sheets drafted for owner review as an explicit blocking task; no tenant KPI object and no separate monument store; predicted-vs-realized built on the C6 honest-absence rule with `not_measurable` as a real verdict; review scheduling as a signal; adoption made a T2 certified act following the VG-05 handler-body pattern. |
