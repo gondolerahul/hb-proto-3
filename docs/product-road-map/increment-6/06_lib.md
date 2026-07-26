@@ -207,9 +207,64 @@ typecheck **289** files strict · layout lint · **1847 unit** · **16 parity/ev
 
 ---
 
+## 14. Build notes — T3–T8 (2026-07-26, branch `inc6/lib-rest`)
+
+**LIB is complete.** T3 (rollup + reaper), T4 (staleness), T5 (artifact filing), T6 (citations + the passage read), T7 (connected drives, VG-14) and T8 (credential expiry, VG-16 — kept rather than cut) all built. Migration **`lib002`**, off `twin001`.
+
+### 14.1 What shipped
+
+| Task | Where |
+|---|---|
+| T3 | `library/influence.py` (`roll_up_day`/`roll_up_pending`/`reap_usage_log`/`influence_for_document`), `DocumentInfluenceDaily`, the 02:40 cron, `LIB_USAGE_RETENTION_DAYS` |
+| T4 | `library/staleness.py` (the pure `assess` ladder, `sweep_company`/`sweep_all`, `raise_contradiction`/`clear_contradiction`), the 02:50 cron; `staleness_state` added to both retrieval projections |
+| T5 | `library/filing.py`, `artifacts.document_id` + `artifacts.record_ref` |
+| T6 | `library/citations.py` (`Citation`, `citations_from_hits`, `read_passage`), `library/api.py` → `GET /ai/documents/{id}/{passage,influence}`; `chunk_index`/`filename`/`heading_path` added to both retrieval projections |
+| T7 | `connectors/document_sync.py`, the `sharepoint_drive` + `google_drive` catalog rows, `document.synced` |
+| T8 | `connectors/credential_expiry.py`, `connector_bindings.credentials_expire_at`, `connector.credentials_expiring`, the 03:10 cron |
+
+### 14.2 Six design deltas
+
+**1. The rollup needed a third counter, because the design's own headline sentence is not what its two counters measure.** §5.2 specifies `(document_id, day, retrievals, distinct_entities)` and §5.3 says the rollup answers *"this pricing sheet answered 40 customer questions this month"*. It cannot. `retrievals` counts **rows**, and one question routinely returns three chunks of the same document — so a document that answered one question reports three retrievals. Worse, the overstatement is proportional to how finely the *chunker* happened to split that document, which is a property of RETR's configuration rather than of the document's usefulness. `distinct_queries` (a `COUNT(DISTINCT query_hash)`) is the counter the sentence describes, and it ships alongside the other two rather than replacing them — "chunks returned" and "questions helped with" are both real, and conflating them is the whole defect.
+
+**2. The reaper cannot outrun the rollup, and that clamp is the load-bearing line in T3.** A reaper and a rollup on independent clocks eventually meet in the wrong order: the worker is down a fortnight, the rollup covers only yesterday, and the reaper then deletes a fortnight of raw rows nothing ever aggregated. Both jobs did exactly what they were told and the influence history has a hole in it that nothing reports. So `reap_usage_log` clamps its cutoff to the day *after* the last rolled-up day, and **refuses entirely** when nothing has ever been rolled up. The consequence is deliberate and stated: if the rollup stops, the log grows. That is a visible, recoverable failure; silent data loss is neither. Three tests pin it — no rollup → nothing deleted, rollup behind → clamped, rollup current → normal.
+
+Two smaller pieces of the same reasoning: the rollup processes a **7-day lookback window**, not just yesterday (a missed night is recovered rather than lost forever), and **today is excluded** (a day cannot be aggregated until it is over — LEARN's pooling rule).
+
+**3. `document_influence_daily` carries `company_id` although `document_id` implies it.** Without it, every influence read must join `documents` to scope itself, and a scoping rule that depends on remembering a join is the exact shape of both cross-tenant disclosures Increment 6 has already fixed — the VG-05 approval IDOR and SEGA T0's tool registry. The column is redundant in normal form and load-bearing in practice.
+
+**4. Contradiction had to become *sticky*, and the design does not say where it lives.** §6.1 is clear that LIB owns the store and the state while the critics own the detection — but the ordered rules then ask, on every nightly sweep, "was a contradiction raised?", and there is nowhere to read that from. If the age rules can overwrite `contradicted`, then every sweep silently resolves every contradiction nobody has got to yet. So the ladder reads the *current* state: `contradicted` persists until a human clears it or a supersession settles it, and `raise_contradiction`/`clear_contradiction` are the store API the critics call. It needs no new column, and stickiness is asserted directly (`assess` at +400 days still returns `contradicted`).
+
+**5. Retrieval had to start carrying three more columns** — `staleness_state`, `chunk_index`, `filename`/`heading_path` — for the same reason T2 had to add `document_id`. Staleness that does not travel with the chunk is a sweep whose output is invisible at the only moment it matters; and without `chunk_index` a citation has nothing to open at, because `read_passage` takes one. Both retrieval statements already `JOIN documents`, so this is projection width, not new queries. The retrieval goldens are unregressed.
+
+**6. `AGE_THRESHOLD_DAYS` needed a fourth entry the design omitted.** §6 gives thresholds for uploads (365d), connected drives (180d) and conversation-derived (90d) but not for `generated_artifact` — which T5 then creates. A generated report describes the business at the moment it was produced, so it ages like a mirrored drive file: 180 days. A **totality test** over `SOURCE_KINDS` now fails if a new kind arrives without one (the discipline GATE's 64 tools taught), and an unknown kind falls back to the *most generous* threshold rather than the strictest — a gap in our configuration must not accuse a tenant's document of being out of date.
+
+### 14.3 The defect the tests found
+
+**A file that vanished from a connected drive and came back stayed flagged `superseded` forever.** §8 rule 4 says a deleted file is marked, never deleted — which the sync did. But the next pass compared content hashes, found the returning file unchanged, and *skipped* it: present in the drive, invisible in the Library, with nothing anywhere reporting the inconsistency. Every other drive-sync test passed.
+
+The fix revives the document **in place** rather than creating a replacement, and that choice matters more than it looks: the document keeps its id, and with it every `retrieval_usages` row and every rolled-up day of influence history pointing at it. Re-creating would have orphaned the entire influence record of a document whose only offence was being briefly invisible — which is precisely the history this workstream exists to accumulate.
+
+Worth recording as a species: it is the third time in Increment 6 that a **"nothing happened" path** turned out to be the broken one. LIB T2's mutation test found retrieval silently returning `[]`; GATE found the taint firewall silently permitting; this one silently keeps a live file hidden. All three read as *working* from every other angle.
+
+### 14.4 Honest limits
+
+* **No live SharePoint or Google Drive call.** `DriveSource` is a Protocol and every test injects a fake — the Inc-4/Inc-5 precedent. Live binding is activation-time ops, the same discipline voice go-live and the Zoho flagship carry.
+* **`document_sync` has no scheduled poller.** Exactly GATE's `emit_broadcast_inbound` limit: the machinery works when something calls it, and nothing yet calls it on a timer. A poller needs a per-binding scope and cadence that belongs with the live adapter, not ahead of it.
+* **Nothing calls `raise_contradiction` yet.** The store and the state are built and tested; the critics that should call it are unchanged. LIB deliberately does not own the detector (§6.1), so this stays open until someone wires the dreaming engine's contradiction finding into it.
+* **Nothing calls `file_artifact` automatically.** T5 ships the filing path and `file_pending` for a bounded backlog pass, but no producer files on creation — an artifact still has to be filed deliberately. Wiring it into artifact creation would put an embedding call inside every tool that writes a file, which is a decision about cost, not about plumbing.
+* **`credentials_expire_at` is never populated by anything.** T8 builds the column, the sweep and the tray signal; the OAuth flows that would know an expiry do not write it. So the sweep is correct and, today, always empty — the honest state, and the reason the sweep skips NULLs rather than treating them as expired.
+* **Influence is only as deep as the log.** `retrieval_usages` started 2026-07-25 and the rollup starts the day this deploys. No backfill, by construction — the same property LEARN's KPI history has.
+
+### 14.5 Gates
+
+typecheck **308** files strict · layout lint · **1958 unit + parity/eval** (16 parity/eval green — retrieval goldens unregressed) · **464 integration** (+43: 13 influence, 16 documents, 14 connectors) · `lib002` applies, rolls back and re-applies · migration head **`lib002`**.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-26 | v1.2 — **T3–T8 BUILT; LIB complete.** §14 added: build notes, six design deltas (the third rollup counter the headline claim actually needs; the reaper's clamp to the rollup; `company_id` on the rollup; sticky contradictions; three more retrieval projection columns; the fourth staleness threshold + a totality test), the returning-drive-file defect the tests found, and six honest limits. T8 (VG-16) kept rather than cut, at the owner's direction. |
 | 2026-07-25 | v1.1 — **T1 + T2 BUILT** (pulled forward: both are time series that cannot be backfilled). §13 added: build notes, four design deltas (`lib001` scoped to what is used; retrieval now carries `document_id`; the call-site guard a **failing mutation test** forced; case-normalised `query_hash`), and the honest limits — chiefly that T3's rollup and reaper are the next thing LIB must build. |
 | 2026-07-25 | v1.0 — design written. The retrieval-usage log placed at `memory_service.py`'s single `hybrid_search` call site per the RETR three-stage rule, made non-blocking and bounded by a rollup plus a reaper; provenance given an `effective_from` distinct from `created_at`; staleness made a stated flag with its reason, never a silent withholding; artifacts filed as Documents; a passage endpoint so citations open where the answer came from; SharePoint/Google Drive catalog rows plus a document-sync path separate from the record sweep; VG-16 picked up as an optional task since no workstream owned it. |

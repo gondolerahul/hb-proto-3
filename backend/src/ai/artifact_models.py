@@ -56,6 +56,19 @@ class Artifact(Base):
 
     artifact_metadata = Column(JSON, nullable=True)    # Extra info (dimensions, call SID, model used, etc.)
 
+    # ── LIB T5 (Inc 6): the artifact store joins the Library ────────────
+    # `artifacts` predates `documents` and had no link to it, so a generated
+    # report was a file on disk that retrieval could never reach — two stores
+    # for one idea. Filing creates a Document with source_kind
+    # 'generated_artifact' and points this column at it. One Library, not two.
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True)
+    # Which tenant record this artifact is *about*: {"object": ..., "record_id": ...}.
+    # Deliberately JSON with **no FK** — records live in the tenant data plane
+    # and this row lives in the control plane. There is no cross-plane foreign
+    # key in this architecture and inventing one here would be the wrong
+    # precedent (the same reasoning TWIN's `twin_run_id` string follows).
+    record_ref = Column(JSON, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships

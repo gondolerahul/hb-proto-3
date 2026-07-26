@@ -102,6 +102,16 @@ class Settings(BaseSettings):
     # which is what keeps an empty store from making every model look bad.
     LEARN_OBSERVATION_MIN_SAMPLES: int = 20
 
+    # ── VG-13/VG-14 — LIB (Inc-6). The raw retrieval-usage log is the only
+    # unbounded table LIB creates: one row per chunk per retrieval, on every
+    # agent answer. 30 days is short because the *rollup* is what is kept —
+    # the raw rows exist to be aggregated, not to be an archive.
+    #
+    # The reaper cannot outrun the rollup whatever this is set to
+    # (`library/influence.reap_usage_log` clamps its cutoff), so lowering it
+    # cannot cause data loss; it can only fail to free space.
+    LIB_USAGE_RETENTION_DAYS: int = 30
+
     # ── B11 — SEGA (Inc-6). Blast-radius limits on automated self-evolution.
     # A self-heal loop that has found a way to keep proposing is contained by
     # arithmetic rather than by judgement.

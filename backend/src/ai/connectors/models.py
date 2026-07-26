@@ -62,6 +62,14 @@ class ConnectorBinding(Base):
 
     status: Mapped[str] = mapped_column(String(12), nullable=False, default=BindingStatus.ACTIVE)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # LIB T8 (Inc 6, VG-16). `status` records that a binding *has* broken;
+    # nothing recorded that one is *about to*. An OAuth token expiring at 3am
+    # on a Sunday becomes a silent, total outage of that connector until
+    # somebody notices the work stopped. NULL means "no expiry known" — which
+    # is honest for an API key that genuinely has none, and is why the sweep
+    # skips NULLs rather than treating them as expired.
+    credentials_expire_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
