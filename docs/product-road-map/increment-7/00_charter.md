@@ -43,7 +43,7 @@ None of its own. Vihara *consumes* the closures of Increment 6 and carries **D3*
 ## Prerequisites
 
 * **Increment 6 complete** (LEARN · SEGA · TWIN · STRAT · GATE · LIB).
-* **Voice go-live** — G3 ("the steward is present") cannot pass on a tested seam. Ops-coupled: registry rows for `pragya-asr-whisper-vertex` + `pragya-tts-gemini`, concrete Vertex/Gemini adapters, carrier-media wiring into `drive_call`. Schedule against a credentialed environment (VG-08/VR-11).
+* **Voice go-live** — G3 ("the steward is present") cannot pass on a tested seam. 🅿️ **PLANNED AND PARKED 2026-07-26: [00a_voice_go_live_plan.md](./00a_voice_go_live_plan.md)** — six phases, two decisions locked, a **fourth gap** found beyond the three Inc-4 §12.5 named (`route_for_number` computes the face and discards it). Note the scope correction recorded there: **business voice is already live**; VG-08 is *Pragya's inward face* alone. Most of the work needs no credentials (VG-08/VR-11).
 * **The step-up refusal rendered in the frontend** — `ai/inward_auth/guard.py` shipped 2026-07-24 and returns a machine-readable 403; the React app does not yet open a ceremony on it. Small task, needed before Vihara inherits the same contract.
 
 ## Known open questions (for the Phase-A design round)

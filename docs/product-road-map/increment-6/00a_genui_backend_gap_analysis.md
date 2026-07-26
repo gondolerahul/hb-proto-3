@@ -2,7 +2,7 @@
 
 > **Document class:** pre-design analysis — what the ratified Vihara spec asks the *backend* for that does not exist, and what the *road map* never scoped.
 > **Author:** Buddha Cognitive Lab (analysis by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.3 — analysis complete; **nine of the 23 VG findings are closed** by Increment 6 (marked ✅ in §2). Remaining Inc-6 finding: **VG-11** (STRAT, blocked on its T2 owner review). The rest (VG-01…04, 06, 07, 18…23) are Increment 7's substrate work, and **VG-08** — voice go-live — is a G3 prerequisite that still has no owner.
+> **Created:** 2026-07-24 · **Status:** v1.4 — analysis complete; **ten of the 23 VG findings are closed** by Increment 6 (marked ✅ in §2), which is now complete. The rest (VG-01…04, 06, 07, 18…23) are Increment 7's substrate work, and **VG-08** — voice go-live — is a G3 prerequisite, now **planned and parked** as [increment-7/00a](../increment-7/00a_voice_go_live_plan.md).
 > **Inputs:** [genui_design_gate_spec.md](../genui_design_gate_spec.md) v1.2 (Vihara, ratified) · [genui_design_gate_concepts.md](../genui_design_gate_concepts.md) §6 (owner selection) · [build_roadmap.md](../build_roadmap.md) §4 Inc-6 · [00_charter.md](./00_charter.md) · the shipped code on `master` @ `a403cda`
 > **Method:** every Vihara law (§2), depth level (§3), ontology row (§4), surface (§5), contract (§7–§9) and journey (§15) was walked against the code and each was marked *built* / *partial* / *absent*, with the file that proves it.
 
@@ -60,10 +60,10 @@ Severity: **B** = blocks the named gate · **M** = major, gate degrades without 
 | VG-05 ✅ | Certified actions ungated outside Pragya | G2/G3 | **B** | `require_tier` has no REST call sites |
 | VG-06 | Echo bus (L10) absent | G0 | **M** | no `action_echo` endpoint or store |
 | VG-07 | Pragya channel is chat-shaped, not event-shaped | G3 | **B** | `pragya/api.py` has no §7 events |
-| VG-08 | Voice is a tested seam, not a live call | G3 | **B** | Inc-4 §12.5, already known |
+| VG-08 🅿️ | Voice is a tested seam, not a live call | G3 | **B** | Inc-4 §12.5, already known. **Planned & parked:** [increment-7/00a](../increment-7/00a_voice_go_live_plan.md) |
 | VG-09 ✅ | Glasshouse has no backend at all | G5 | **B** | nothing simulation-related in `src/ai/` |
 | VG-10 ✅ | No canary for agent/process changes | G5 | **M** | `intelligence/canary.py` is model-only |
-| VG-11 | Strategy pipeline has no domain model | G2 | **M** | HBS Planning module has one object |
+| VG-11 ✅ | Strategy pipeline has no domain model | G2 | **M** | HBS Planning module has one object |
 | VG-12 ✅ | No KPI history store | G1/G2 | **M** | `ai/kpi/` has no `models.py` |
 | VG-13 ✅ | Library provenance / influence / staleness absent | G2 | **M** | `orm/document.py` has 8 columns |
 | VG-14 ✅ | Connected drives cataloged only generically | G2 | m | one `notion_knowledge` row |
@@ -267,7 +267,7 @@ Gaps in the *plan*, not the code. These are the ones that need an owner decision
 | VR-08 ✅ | **No KPI history store** (VG-12) — the increment whose goal is "Week 12 > Week 1, *measured*" has nothing that records week 1. | Make it an early **LEARN** deliverable; four surfaces unblock at once |
 | VR-09 ✅ | **Entity version ledger is unowned** (VG-17). The Gallery needs it, the Glasshouse diff needs it, SEGA needs it for rollback. | Build once in SEGA; GENUI consumes |
 | VR-10 | **"GenUI replaces the React app" is now false by ratification.** Spec §5 scope call + §14.2: partner and platform-admin consoles stay on legacy React and are rebuilt later. | Amend the cutover criteria to "replaces the **tenant** React surface"; the 59-screen parity checklist should mark which screens are out of scope rather than retired |
-| VR-11 | **Voice go-live is a G3 prerequisite, not an ops remainder** (VG-08). | Promote it into Inc-6's critical path |
+| VR-11 🅿️ | **Voice go-live is a G3 prerequisite, not an ops remainder** (VG-08). | Promoted; **planned and parked** as [increment-7/00a](../increment-7/00a_voice_go_live_plan.md). Note the scope correction there: business voice is already live — VG-08 is Pragya's inward face alone |
 | VR-12 ✅ | **Certified-action step-up is a gap in the shipped product today** (VG-05), not only in Vihara. | Pull forward as an independent hardening task, ahead of the Inc-6 build |
 
 ---
@@ -362,6 +362,7 @@ The three security controls were **mutation-tested**, per the repo convention th
 
 | Date | Change |
 |---|---|
+| 2026-07-26 | v1.4 — **VG-11 closed** (STRAT built; Increment 6 complete). **VG-08 / VR-11 planned and parked** as [increment-7/00a](../increment-7/00a_voice_go_live_plan.md), with the scope correction that matters recorded there: business voice is already live, so VG-08 is *Pragya's inward face* alone. |
 | 2026-07-26 | v1.3 — findings marked closed as Increment 6 shut them: **VG-09** (TWIN), **VG-10**/**VG-17** (SEGA), **VG-12** (LEARN), **VG-13**/**VG-14**/**VG-16** (LIB), **VG-15** (GATE), plus **VR-04**/**VR-05**/**VR-08**/**VR-09**. This file is the register for the Design-Gate findings (the road-map gap register predates them and is not retro-fitted), so the marks belong here. |
 | 2026-07-24 | v1.2 — all six §6 questions **answered**; VR-02/03/06/12 resolved. GENUI split into **Increment 7** (Vihara), Scale & Enterprise → Increment 8; twin spend ruled **tenant-initiated**, correcting ratified spec §12.1. |
 | 2026-07-24 | v1.1 — **VG-05 / VR-12 closed** (§7): `ai/inward_auth/guard.py`, five certified endpoints gated, the PolicyGate now carries the amount, `IntentKind.CONNECTOR_BINDING` added — plus a **cross-tenant IDOR fix** on `respond_to_approval` found while mapping the work. Four design deltas; three controls mutation-tested. One honest limit: the React app does not yet render the step-up refusal. |
