@@ -85,6 +85,7 @@ INTENT_SCHEMA: dict[str, Any] = {
                     IntentKind.PROCESS_PAUSE, IntentKind.PROCESS_RESUME,
                     IntentKind.AUTONOMY_RAISE, IntentKind.BINDING_CHANGE,
                     IntentKind.CONNECTOR_BINDING,
+                    IntentKind.STRATEGY_RESOLUTION,
                     IntentKind.BULK_DATA_OPERATION, IntentKind.CATEGORISED_ACTION,
                     IntentKind.LOOP_KILL_SWITCH, IntentKind.UNKNOWN,
                 ],
@@ -129,6 +130,12 @@ COMMAND_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b(connect|link|integrate)\b.*\b(account|books|crm|"
                 r"drive|system|zoho|quickbooks|xero|tally)\b", re.I),
      IntentKind.CONNECTOR_BINDING),
+    # Inc-6 STRAT. Only the *adopting* verbs — "draft a proposition" and "what
+    # did we resolve last quarter" are not certified acts, and screening them
+    # up to T2 would make reading your own board minutes a step-up ceremony.
+    (re.compile(r"\b(adopt|ratify|resolve|carry)\b.*\b(resolution|proposition|"
+                r"motion)\b|\badopt\b.*\bthe\b.*\bproposal\b", re.I),
+     IntentKind.STRATEGY_RESOLUTION),
 )
 
 #: Floors imposed by a screen hit, as tiers. Used to check the model did not
@@ -142,6 +149,7 @@ _SCREEN_FLOOR: dict[str, Tier] = {
     IntentKind.CATEGORISED_ACTION: Tier.T2,
     IntentKind.BINDING_CHANGE: Tier.T2,
     IntentKind.CONNECTOR_BINDING: Tier.T2,
+    IntentKind.STRATEGY_RESOLUTION: Tier.T2,
 }
 
 

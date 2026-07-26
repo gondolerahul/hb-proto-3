@@ -26,6 +26,7 @@ from src.ai.tenant_schema.models import (
     TenantRecord,
     TenantRecordLink,
 )
+from src.ai.tenant_schema.write_policy import check_write_policy
 from src.ai.tenant_schema.sor import SorDecl, get_writeback_provider, sor_of
 from src.ai.tenant_schema.validation import (
     RefAssignment,
@@ -46,6 +47,11 @@ HITL_REQUIRED = "hitl_required"
 # the connector write-back failed and nothing was written locally.
 SYNC_CONFLICT = "sync_conflict"
 WRITEBACK_FAILED = "writeback_failed"
+# Inc-6 STRAT: an object-level rule said no (an illegal state transition, a
+# grade with no run behind it). Distinct from CONFLICT, which is a race, and
+# from PROPOSED, which is an ownership answer — this one says the change
+# itself is not a legal move regardless of who asked.
+REFUSED = "refused"
 
 
 class OwnershipError(PermissionError):
@@ -139,6 +145,10 @@ class RecordService:
         if gate is not None:
             return gate
 
+        refusal = check_write_policy(d.name, data, None, actor_process_code)
+        if refusal is not None:
+            return RecordResult(REFUSED, reason=refusal)
+
         validated = validate_record_data(d.fields or [], data, partial=False)
         await self._verify_ref_targets(validated.refs)
 
@@ -175,6 +185,11 @@ class RecordService:
                                           record_id=record_id)
         if gate is not None:
             return gate
+
+        refusal = check_write_policy(d.name, data, dict(record.data or {}),
+                                     actor_process_code)
+        if refusal is not None:
+            return RecordResult(REFUSED, reason=refusal)
 
         # SoR (§21.2): a mirror record uses **master-wins**, not local CAS — the
         # external etag is the authority, so route to the write-back path before

@@ -104,11 +104,15 @@ class TestRefs:
 
 
 class TestHBSSpine:
-    def test_spine_is_27_objects(self):
+    def test_spine_is_35_objects(self):
+        # 27 through Inc 1; 35 from Inc 6 / STRAT's eight Planning objects.
         from src.ai.tenant_schema.hbs_seed import HBS_SPINE, hbs_object_names
-        assert len(HBS_SPINE) == 27
+        assert len(HBS_SPINE) == 35
         names = hbs_object_names()
         assert "Invoice" in names and "Vendor" in names and "Product/SKU" in names
+        for planning in ("Objective", "Target", "Forecast", "Minutes",
+                         "Proposition", "Resolution", "Mandate", "Review"):
+            assert planning in names, planning
 
     def test_every_ref_targets_a_real_object(self):
         from src.ai.tenant_schema.hbs_seed import HBS_SPINE, hbs_object_names

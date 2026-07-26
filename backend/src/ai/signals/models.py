@@ -149,6 +149,11 @@ class SignalTypes:
     # than after, which is the only version of that notice worth sending.
     DOCUMENT_SYNCED = "document.synced"
     CONNECTOR_CREDENTIALS_EXPIRING = "connector.credentials_expiring"
+    # STRAT (Inc 6, VG-11): a mandate's review date arrived. The sweep *asks*
+    # for a Review; it never writes one, because a review the platform filled
+    # in by itself is a review nobody read. Obeys L8 (silence): a mandate
+    # returns to its owner only at review time or on exception.
+    STRATEGY_REVIEW_DUE = "strategy.review_due"
     SCHEDULE_PREFIX = "schedule."
     COMPLETED_SUFFIX = ".completed"
 

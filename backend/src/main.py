@@ -91,6 +91,10 @@ register_solo_pack_tools()
 # Install the TRUST consent registry into the KAR outbound seam (Inc 2 / D6).
 from src.ai.trust.consent_registry import install_consent_registry
 install_consent_registry()
+# Inc-6 STRAT: fills the record service's write-policy seam so Planning state
+# transitions are enforced on every write path, agent and human alike.
+from src.ai.strategy.governance import install_strategy_write_policy
+install_strategy_write_policy()
 # Install the CONN+SOR connector-backed write-back provider into the SOR seam (Inc 4).
 from src.ai.connectors.writeback import install_connector_writeback
 install_connector_writeback()
@@ -128,6 +132,9 @@ app.include_router(twin_router, prefix="/api/v1")
 # Inc-6 LIB T6 — open a citation at the passage, and read a document's influence.
 from src.ai.library.api import router as library_router
 app.include_router(library_router, prefix="/api/v1")
+# Inc-6 STRAT — adopt (T2 certified), predicted-vs-realized, the reviews tray.
+from src.ai.strategy.api import router as strategy_router
+app.include_router(strategy_router, prefix="/api/v1")
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

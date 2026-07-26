@@ -225,8 +225,9 @@ class TestExport:
             await ts.commit()
         bundle = await export_tenant(tenant_company)
         assert bundle["manifest"]["company_id"] == str(tenant_company)
-        # Tenant DB: 27 seeded defs + our 1 record.
-        assert len(bundle["tenant_db"]["entity_defs"]) == 27
+        # Tenant DB: 35 seeded defs + our 1 record (27 through Inc 1, plus
+        # Inc-6 STRAT's eight Planning objects).
+        assert len(bundle["tenant_db"]["entity_defs"]) == 35
         assert len(bundle["tenant_db"]["records"]) == 1
         # v3.0.6 rider: the control-plane KB/memory travels in the bundle.
         assert "kb_documents" in bundle["control_plane"]
