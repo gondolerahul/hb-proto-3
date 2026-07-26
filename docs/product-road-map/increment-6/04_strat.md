@@ -153,6 +153,58 @@ Rule 4 is the one that matters. The C6 honest-absence rule (`kpi/compute.py`) ex
 
 ---
 
+## 13. Build notes — T1–T9 (2026-07-26, branch `inc6/strat`)
+
+**STRAT is complete, and with it Increment 6.** All of T1–T9. New package `ai/strategy/`; **no Alembic migration** — the largest domain-model change to the tenant schema since Increment 1 adds none, because new HBS objects are seed data.
+
+### 13.1 What shipped
+
+| Task | Where |
+|---|---|
+| T1 + T2 | [04a](./04a_planning_object_sheets.md) — eight sheets, eleven questions, ✅ approved |
+| T3 | Eight objects in `hbs_seed/__init__.py`, `DOMAIN_TAGS += strategy`, the **three** 27→35 asserts, the [03a](../increment-1/03a_hbs_spine.md) appendix |
+| T4 | `strategy/pipeline.py` — the transition tables, `check_honesty_grade`, `may_adopt`, `may_issue_mandate`, `validate_write` |
+| T5 | `strategy/governance.py` + the new `tenant_schema/write_policy.py` seam; `IntentKind.STRATEGY_RESOLUTION` across tiers + Pragya's schema + the keyword screen + the screen floor |
+| T6 | `strategy/review_sweep.py`, `strategy.review_due`, `strategy/crons.py`, the 02:20 cron |
+| T7 | `strategy/realized.py` — predicted-vs-realized on C6's honest-absence rule |
+| T8 | `strategy/api.py` — `POST /ai/strategy/adopt`, `GET /ai/strategy/mandates/{id}/realized`, `GET /ai/strategy/reviews-due` |
+| T9 | `strategy/twin_link.py` — a Glasshouse run's grade, copied never composed |
+
+### 13.2 Five design deltas
+
+**1. Enforcement needed a seam the record service did not have.** The design says the agents-may-not-adopt rule is enforced by "the record service's existing owner-writes/others-propose rule plus a check". There was nowhere to put the check: `RecordService` answers *who may write* and *is the shape valid*, and neither answers *is this change a legal move*. So `tenant_schema/write_policy.py` is a new pluggable seam in exactly the shape KAR used for consent and Inc-4 used for SoR write-back — **policy in `ai/strategy/`, enforcement at the existing call site**, the record service left ignorant of Planning. It also gave the pipeline rules (T4) a caller, which they otherwise would not have had: a transition table nothing routes through is a table, not a guarantee.
+
+The seam **fails open** on an unexpected error, and the asymmetry is deliberate: an object rule is a correctness guard over a tenant's own records, not a security control. Every security control in this codebase fails *closed* and none routes through here.
+
+**2. `RecordResult` needed a `REFUSED` status.** `PROPOSED` is an ownership answer and `CONFLICT` is a race; neither says "the change itself is not a legal move regardless of who asked". Adding the fourth kept the three existing meanings intact rather than overloading one.
+
+**3. The review sweep had to be ORM, not `text()`.** The first draft wrote raw SQL against `tenant.tenant_records`. Tenant routing is a SQLAlchemy `schema_translate_map` (symbolic `tenant` → `t_<hex>`), so a raw statement names a schema that does not exist — there was no precedent for raw tenant-plane SQL anywhere in `src/ai/` and this is why. Recorded in the module docstring so the next person does not rediscover it.
+
+**4. `Mandate.resolution` being required is the sheet working, and it bit the tests first.** The fixture had to build a Resolution before it could build a Mandate. That is the constraint doing its job: a mandate that names no resolution cannot answer *"why does this process exist?"*, and that backward walk is half the point of the loop.
+
+**5. `decide_verdict` has no `met` for a `hold` target.** Holding a number is a state you are still in, not one you reach, so the honest answers are `on_track` and `off_track`. Reporting `met` would claim a finish line that does not exist. The design's §7 did not consider the third direction.
+
+### 13.3 What the gates caught
+
+**LEARN's reward-hacking guarantee fired on STRAT, and it was right to.** `test_no_kpi_key_appears_outside_the_registry_and_learning` greps all of `src/ai` for any C6 key: KPIs are *reported*, never *targeted*, because a key in a prompt or a goal gives an agent an incentive to move the number rather than do the work it measures. Two files tripped it — and in both the key was in an **explanatory comment**, not in code. The code only ever reads `target["kpi_key"]` at runtime, which is exactly right: a tenant's chosen key is a *value flowing through*, never a literal in platform source.
+
+The comments were rewritten. Widening the test to allow `strategy/` was the wrong fix and worth saying why: STRAT is precisely the place where a KPI legitimately becomes a target, so an exemption here would be the one exemption most likely to hide a real violation later.
+
+### 13.4 Honest limits
+
+* **Nothing produces Planning records yet.** The objects seed, the rules hold and the API works, but no agent, no Pragya stage and no wizard step creates a Minutes or a Proposition. STRAT ships the domain and the governance; the surfaces that fill it are Vihara's Boardroom (Increment 7).
+* **`GET /ai/strategy/reviews-due` is the only tray.** The sweep emits `strategy.review_due` and nothing consumes it — no Pragya surface renders the signal, so today the tray is a poll rather than a notification.
+* **Reviews will mostly say `not_measurable` for a quarter**, because `kpi_snapshots` started 2026-07-25 with no backfill by construction. That is honest, it will still look like a broken feature, and it is why `missing` says *why* rather than only *that*.
+* **The TWIN hookup is a reader, not a runner.** `twin_link` copies a grade off an existing run; nothing yet takes a Proposition *to* the Glasshouse. TWIN's own limit is the reason — no scenario runner is wired end-to-end ([03](./03_twin.md) §14.7) — so the two gaps close together or not at all.
+* **`concerns_module` is a free string.** It should hold an HBS module name and nothing validates that it does. An enum would have frozen the module list into the tenant schema, which is the mistake decision 3.2 avoided for `kpi_key`; a validator against the live module list is the better fix and belongs with the surface that offers the choice.
+* **The agents-may-not-adopt rule is currently unreachable in production** — the ownership gate turns every agent write to a Planning object into a proposal first, because the Planning owner process has no seeded agent. It is tested by simulating the future where one exists, which is the only way to test it honestly today, and it is why the rule is written against `actor_process_code` rather than leaning on the ownership gate.
+
+### 13.5 Gates
+
+typecheck **317** files strict · layout lint (the de-canary lint caught a literal owner code in a docstring — it works) · **1996 unit + parity/eval** (16 parity/eval green) · **490 integration** (+26) · **no migration**; head stays **`lib002`**.
+
+---
+
 ## Change Log
 
 | Date | Change |

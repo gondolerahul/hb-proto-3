@@ -2,8 +2,10 @@
 
 This is the approved 03a appendix
 (docs/product-road-map/increment-1/03a_hbs_spine.md) as loadable seed data:
-the 27 canonical objects with core fields, ref fields (materialised into
+the canonical objects with core fields, ref fields (materialised into
 tenant_record_links), owning Process code, HBS module, and memory-domain tag.
+**27 through Increment 1; 35 from Increment 6 / STRAT**, whose eight Planning
+objects are reviewed in increment-6/04a_planning_object_sheets.md.
 Loaded verbatim by the HBS initializer at tenant provision. Per-tenant
 evolution (§10.2) extends this baseline; it never starts blank.
 
@@ -19,6 +21,14 @@ __all__ = ["HBS_SPINE", "hbs_object_names", "DOMAIN_TAGS"]
 DOMAIN_TAGS: frozenset[str] = frozenset({
     "general", "crm", "marketing", "operations",
     "financial", "hr", "payroll", "legal", "trust",
+    # Inc-6 STRAT. New rather than reusing `financial` because the domain
+    # viewport is exactly the mechanism that should keep board minutes out of a
+    # collections agent's retrieval. **No entity is granted it by default** —
+    # every one of the 18 seeded Solo Pack agents declares an explicit
+    # `memory_domains` list and none includes this, so Planning records are
+    # invisible to all of them until someone grants it deliberately. That is
+    # the feature, not an oversight (04a §8.9).
+    "strategy",
 })
 
 
@@ -352,6 +362,174 @@ _BUDGET = {
     ],
 }
 
+# ── Planning / STRAT (Inc 6) ────────────────────────────────────────────────
+# The five-step business loop as records — Notice (Minutes) → Strategize
+# (Proposition) → Decide (Resolution) → Act (Mandate) → Close (Review) — plus
+# the three "frame" objects the loop aims at (Objective / Target / Forecast).
+# Approved 2026-07-26; the reviewed sheets are
+# docs/product-road-map/increment-6/04a_planning_object_sheets.md.
+#
+# Every ref below uses an existing SEED_REL_TYPES value — STRAT extends the
+# link vocabulary by nothing, which is a small sign these objects sit naturally
+# in the spine rather than beside it.
+_OBJECTIVE = {
+    "name": "Objective", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("title", "string", required=True),
+        _f("narrative", "text"),
+        _f("horizon", "enum", values=["quarter", "year", "multi_year"]),
+        # `abandoned` sits beside `achieved` deliberately: an objective quietly
+        # dropped is the most common real outcome in a small business, and a
+        # vocabulary that cannot say so produces a permanently "active" list
+        # nobody trusts.
+        _f("status", "enum", values=["draft", "active", "achieved", "abandoned"],
+           default="draft"),
+        _ref("owner", "Employee", "attached_to", optional=True),
+    ],
+}
+_TARGET = {
+    "name": "Target", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("name", "string", required=True),
+        # A plain string, not an enum: the C6 registry (ai/kpi/definitions.py)
+        # is the single source of truth, and freezing an enum copy of it here
+        # would create the second store decision 3.2 forbids — "two stores for
+        # one number is how a review ends up arguing with the dashboard".
+        _f("kpi_key", "string"),
+        # Not decoration. For a days-outstanding or time-to-respond style
+        # metric, improving means going *down*, and a review that does not know
+        # that reports a genuine success as a miss. (No KPI key is named here:
+        # LEARN's §7 guarantee is that a key never appears in platform source,
+        # and a tenant's chosen key is a value, not a literal.)
+        _f("direction", "enum", values=["increase", "decrease", "hold"]),
+        _f("target_value", "decimal"), _f("by_date", "date"),
+        _f("status", "enum", values=["open", "met", "missed", "withdrawn"],
+           default="open"),
+        _ref("objective", "Objective", "belongs_to", optional=True),
+    ],
+}
+_FORECAST = {
+    "name": "Forecast", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("name", "string", required=True),
+        _f("kpi_key", "string"),
+        _f("method", "enum", values=["manual", "twin_forecast", "external"]),
+        _f("value", "decimal"),
+        _f("interval_low", "decimal"), _f("interval_high", "decimal"),
+        _f("for_period_start", "date"), _f("for_period_end", "date"),
+        # A string, not a ref or an FK: TWIN's `twin_runs` is control-plane and
+        # this record is tenant-plane. There is no cross-plane foreign key in
+        # this architecture and inventing one here would be the wrong precedent.
+        _f("twin_run_id", "string", optional=True),
+        # Added in review (04a §8.3). Without it, §7.3's "the Forecast's value
+        # if one is attached" has nothing to attach to and is unimplementable.
+        _ref("target", "Target", "attached_to", optional=True),
+    ],
+}
+_MINUTES = {
+    "name": "Minutes", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("title", "string", required=True),
+        _f("held_on", "datetime", required=True),
+        # Text rather than a multi-ref: the most common Solo Pack meeting has
+        # one attendee who is not an Employee record, and the second most
+        # common includes a customer who is a Contact. A ref list would make
+        # the honest answer unrepresentable.
+        _f("attendees", "text"),
+        _f("body", "text"),
+        # Not a duplicate of `Resolution.decision`: this is what a meeting felt
+        # like it concluded, that is what was formally adopted. Meetings
+        # routinely conclude things nobody ever adopts, and the gap is
+        # information.
+        _f("decisions_summary", "text"),
+        _ref("objective", "Objective", "attached_to", optional=True),
+    ],
+}
+_PROPOSITION = {
+    "name": "Proposition", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("title", "string", required=True),
+        _f("rationale", "text"),
+        _f("expected_effect", "text"),
+        _f("cost_estimate", "money"),
+        # Four values where TWIN's Grade has three, and the fourth is
+        # load-bearing: `untested` means never taken to the Glasshouse, while
+        # `unknown` means a run happened and could not be graded. Rendering
+        # "we never checked" and "we checked and could not tell" identically is
+        # precisely the softening TWIN's grading exists to prevent.
+        _f("honesty_grade", "enum",
+           values=["replay", "forecast", "unknown", "untested"], default="untested"),
+        _f("twin_run_id", "string", optional=True),
+        _f("status", "enum",
+           values=["draft", "tabled", "adopted", "rejected", "withdrawn"],
+           default="draft"),
+        _ref("minutes", "Minutes", "derived_from", optional=True),
+    ],
+}
+_RESOLUTION = {
+    "name": "Resolution", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("title", "string", required=True),
+        _f("decision", "text", required=True),
+        _f("adopted_on", "date", required=True),
+        # The HBS module this concerns. Named `concerns_module` rather than the
+        # design's `district`, which is Vihara/Atlas *map* vocabulary: the
+        # record carries business words and the surface renders the metaphor.
+        _f("concerns_module", "string"),
+        _f("engraved_at", "datetime"),
+        _f("status", "enum", values=["active", "superseded", "revoked"],
+           default="active"),
+        _ref("adopted_by", "Employee", "attached_to", optional=True),
+        # `← converted_to` — the shipped Quote.opportunity pattern. Optional
+        # because an owner may resolve something no agent ever proposed, and
+        # requiring a Proposition first would make the honest path the slow one.
+        _ref("proposition", "Proposition", "converted_to", direction="in",
+             optional=True),
+    ],
+}
+_MANDATE = {
+    "name": "Mandate", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("title", "string", required=True),
+        # A process *code*, not a ref: Processes are tenant-plane entities
+        # (hierarchical_entities), not HBS records, so there is nothing to ref
+        # at. Mirrors how owner_process_code is stored on every entity def.
+        _f("owning_process", "string"),
+        # The only required date in the eight sheets. A mandate without a
+        # review date is a wish, and the whole point of the fifth step is that
+        # the loop closes.
+        _f("review_due", "date", required=True),
+        _f("status", "enum", values=["issued", "in_flight", "reviewed", "closed"],
+           default="issued"),
+        _ref("resolution", "Resolution", "belongs_to", required=True),
+        _ref("target", "Target", "attached_to", optional=True),
+    ],
+}
+_REVIEW = {
+    "name": "Review", "module": "Planning", "domain": "strategy", "owner": 11,
+    "fields": [
+        _f("reviewed_on", "date"),
+        _f("predicted_value", "decimal"),
+        # Nullable, and **None means not measurable — never zero**. Mirrors
+        # KpiResult's shape deliberately rather than inventing a parallel
+        # vocabulary: a fabricated KPI prompts a decision while a missing one
+        # prompts a question, and a strategy review is where a fabricated
+        # number would do the most damage.
+        _f("realized_value", "decimal", optional=True),
+        _f("measurable", "boolean", default=False),
+        # Text, not json: a Review is read by a human, and "no invoices were
+        # issued in this window" beats ["no_invoices"]. The structured list
+        # stays on KpiResult for anything that needs to branch on it.
+        _f("missing", "text"),
+        # `not_measurable` is a first-class verdict, not an error state — and
+        # it will be the most common one until kpi_snapshots has depth.
+        _f("verdict", "enum",
+           values=["on_track", "off_track", "met", "missed", "not_measurable"]),
+        _f("notes", "text"),
+        _ref("mandate", "Mandate", "belongs_to", required=True),
+    ],
+}
+
 HBS_SPINE: list[dict[str, Any]] = [
     _SIGNAL, _CAMPAIGN,
     _LEAD, _ACCOUNT, _CONTACT, _OPPORTUNITY, _QUOTE, _TICKET,
@@ -360,9 +538,17 @@ HBS_SPINE: list[dict[str, Any]] = [
     _ORDER, _PROJECT, _DELIVERABLE, _VENDOR, _PO, _ASSET, _PRODUCT,
     _CANDIDATE, _EMPLOYEE,
     _BUDGET,
+    _OBJECTIVE, _TARGET, _FORECAST, _MINUTES,
+    _PROPOSITION, _RESOLUTION, _MANDATE, _REVIEW,
 ]
 
-assert len(HBS_SPINE) == 27, "the HBS spine has exactly 27 canonical objects"
+# 27 through Increment 1; **35** from Increment 6 / STRAT, which added the
+# eight Planning objects above. The assert exists to make exactly this kind of
+# change deliberate, and it did its job — the design doc said "seven objects,
+# 27 → 34" while listing eight, and this line is where the arithmetic had to
+# be settled. Two sibling asserts move with it: tests/unit/test_tenant_validation
+# and the export-bundle count in tests/integration/test_tenant_records_db.
+assert len(HBS_SPINE) == 35, "the HBS spine has exactly 35 canonical objects"
 
 
 def hbs_object_names() -> list[str]:

@@ -1,6 +1,7 @@
-# Increment 1 / SCH — Appendix 03a: The HBS Spine (27-Object Seed Schema)
+# Increment 1 / SCH — Appendix 03a: The HBS Spine (35-Object Seed Schema)
 
 > **Status:** ✅ **Approved (Rahul, 2026-07-19)** — frozen as the seed fixture (`ai/tenant_schema/hbs_seed/`); field names, enums, refs, owners, and tags below are what the initializer loads. R1–R7 accepted as drafted. Future changes go through the §19.4 evolution rules, not edits here.
+> **Amended 2026-07-26 (Increment 6 / STRAT):** **27 → 35 objects.** Eight Planning objects added — reviewed and approved on their own sheets ([increment-6/04a](../increment-6/04a_planning_object_sheets.md)), which is the authoritative record of *why* each field is named what it is. A ninth domain tag, `strategy`, joins the vocabulary. Nothing above changed; this is additive, and `seed_hbs_spine` picks the new defs up on an existing tenant's next provisioning touch.
 > **Parent:** [03_sch_tenant_schema.md](./03_sch_tenant_schema.md) §1.2 · **Sources:** Blueprint §3.2 (the 27 objects) + §5 (P01–P19 process map) · technical doc §10.3 (modules), §19 (links/refs), §23.1 (ownership), §24.3 (domain tags)
 > **Scope:** the **spine** — core fields per object, enough to run the Solo Pack's flows. Module field-depth (full chart of accounts, payroll inputs, leave/attendance, inventory movements, …) is Increment 4.
 
@@ -22,7 +23,7 @@
 
 **Owner processes.** `owner_process_id` stores the canonical process **code** (P01–P19) at seed time, resolved to the PROCESS entity id when Increment 2 seeds it (decision 2026-07-19). Codes whose process is **not** in Wave 0 (everything except P03/P06/P08/P10/P14/P19) are unresolvable until their increment — those objects are "platform-owned, HITL on write" until then.
 
-**Memory domain tags (§24.3).** Seed vocabulary: `general` · `crm` · `marketing` · `operations` · `financial` · `hr` · `payroll` · `legal` · `trust`. A node ingested from an object carries its object's tag; agent viewports filter by the governance block's `memory_domains` allow-list.
+**Memory domain tags (§24.3).** Seed vocabulary: `general` · `crm` · `marketing` · `operations` · `financial` · `hr` · `payroll` · `legal` · `trust` · **`strategy`** *(Inc-6 STRAT — deliberately not folded into `financial`, so board minutes stay out of a collections agent's retrieval; **no seeded agent is granted it**)*. A node ingested from an object carries its object's tag; agent viewports filter by the governance block's `memory_domains` allow-list.
 
 ---
 
@@ -47,6 +48,14 @@
 | 15 | Bill | Money | Accounting | `financial` | P09 | platform-owned |
 | 16 | Ledger Entry | Money | Accounting | `financial` | P10 | ✅ |
 | 17 | Budget | Money | Planning | `financial` | P11 | platform-owned |
+| 28 | Objective | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
+| 29 | Target | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
+| 30 | Forecast | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
+| 31 | Minutes | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
+| 32 | Proposition | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
+| 33 | Resolution | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
+| 34 | Mandate | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
+| 35 | Review | Strategy | Planning | `strategy` | P11 | platform-owned *(Inc 6)* |
 | 18 | Vendor | Supply | ERP / Operations | `operations` | P09 | platform-owned |
 | 19 | Purchase Order | Supply | ERP / Operations | `operations` | P09 | platform-owned |
 | 20 | Asset/Inventory Item | Supply | ERP / Operations | `operations` | P15 | platform-owned |
@@ -420,6 +429,106 @@ The lifecycle chain (`Signal → Lead → Opportunity → Quote → Contract →
 | planned | money | |
 | actual | money | rolled up (Inc-4 depth automates the rollup) |
 | status | enum(draft, active, closed) | default `draft` |
+
+#### The strategy pipeline (Increment 6 / STRAT)
+
+Notice → Strategize → Decide → Act → Close, as records. **The reviewed sheets with the reasoning behind every field name are [increment-6/04a](../increment-6/04a_planning_object_sheets.md); this is the summary.** All eight are module `Planning`, domain `strategy`, owner P11, and every ref uses the existing §19.1 vocabulary — STRAT extends it by nothing.
+
+**Objective** — what the business is trying to achieve over a horizon.
+
+| Field | Type | Notes |
+|---|---|---|
+| title | string | required |
+| narrative | text | why this matters, in the owner's words |
+| horizon | enum(quarter, year, multi_year) | |
+| status | enum(draft, active, achieved, abandoned) | default `draft`. `abandoned` is deliberate — a quietly dropped objective is the most common real outcome |
+| owner | ref(Employee) | `→ attached_to`, optional |
+
+**Target** — a number, a direction and a date.
+
+| Field | Type | Notes |
+|---|---|---|
+| name | string | required |
+| kpi_key | string | a key from the C6 registry. **String, not enum** — the registry is the single source of truth and an enum copy would be the second store decision 3.2 forbids |
+| direction | enum(increase, decrease, hold) | load-bearing: for a days-outstanding metric, improving means going *down* |
+| target_value | decimal | |
+| by_date | date | |
+| status | enum(open, met, missed, withdrawn) | default `open` |
+| objective | ref(Objective) | `→ belongs_to`, optional |
+
+**Forecast** — a committed number the business plans against (distinct from TWIN's ephemeral run result).
+
+| Field | Type | Notes |
+|---|---|---|
+| name | string | required |
+| kpi_key | string | as Target |
+| method | enum(manual, twin_forecast, external) | |
+| value | decimal | |
+| interval_low / interval_high | decimal | the honest band, not a point |
+| for_period_start / for_period_end | date | |
+| twin_run_id | string | optional. **String, not a ref** — `twin_runs` is control-plane and this record is tenant-plane |
+| target | ref(Target) | `→ attached_to`, optional |
+
+**Minutes** — what was said and noticed in a session.
+
+| Field | Type | Notes |
+|---|---|---|
+| title | string | required |
+| held_on | datetime | required |
+| attendees | text | free text — a sole trader's "me" is a legitimate value, and a ref list would make it unrepresentable |
+| body | text | |
+| decisions_summary | text | what the room concluded, before any of it becomes a Resolution |
+| objective | ref(Objective) | `→ attached_to`, optional |
+
+**Proposition** — a candidate course of action, with its rationale and its cost.
+
+| Field | Type | Notes |
+|---|---|---|
+| title | string | required |
+| rationale | text | |
+| expected_effect | text | |
+| cost_estimate | money | |
+| honesty_grade | enum(replay, forecast, unknown, untested) | default `untested`. **A non-`untested` grade is refused without a `twin_run_id`** — a grade must have a run behind it |
+| twin_run_id | string | optional |
+| status | enum(draft, tabled, adopted, rejected, withdrawn) | default `draft`. Adoption is legal **only from `tabled`** |
+| minutes | ref(Minutes) | `→ derived_from`, optional |
+
+**Resolution** — a decision the business formally adopted. **Adopting is a T2 certified human act.**
+
+| Field | Type | Notes |
+|---|---|---|
+| title | string | required |
+| decision | text | required |
+| adopted_on | date | required |
+| concerns_module | string | the HBS module it concerns |
+| engraved_at | datetime | when it was pinned to the Seasons timeline |
+| status | enum(active, superseded, revoked) | default `active`; `revoked` is terminal |
+| adopted_by | ref(Employee) | `→ attached_to`, optional |
+| proposition | ref(Proposition) | `← converted_to`, optional |
+
+**Mandate** — what a Resolution actually obliges. Issues **only from an `active` Resolution**.
+
+| Field | Type | Notes |
+|---|---|---|
+| title | string | required |
+| owning_process | string | a process code — Processes are entities, not records, so there is nothing to ref at |
+| review_due | date | **required** — the only required date in the eight, because the loop has to close |
+| status | enum(issued, in_flight, reviewed, closed) | default `issued` |
+| resolution | ref(Resolution) | `→ belongs_to`, **required** |
+| target | ref(Target) | `→ attached_to`, optional |
+
+**Review** — predicted versus realized, honestly.
+
+| Field | Type | Notes |
+|---|---|---|
+| reviewed_on | date | |
+| predicted_value | decimal | the Target's value, or the Forecast's where one is attached |
+| realized_value | decimal | **nullable — None means not measurable, never zero** |
+| measurable | boolean | default `false` |
+| missing | text | what was absent, in words |
+| verdict | enum(on_track, off_track, met, missed, not_measurable) | `not_measurable` is a first-class outcome |
+| notes | text | |
+| mandate | ref(Mandate) | `→ belongs_to`, **required** |
 
 ---
 

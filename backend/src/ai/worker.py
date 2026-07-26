@@ -67,6 +67,7 @@ from src.ai.learning.crons import (
     learning_harvest_sweep,
     platform_pooling_sweep,
 )
+from src.ai.strategy.crons import review_due_sweep
 from src.ai.library.crons import (
     credential_expiry_sweep,
     influence_rollup_sweep,
@@ -81,6 +82,10 @@ register_solo_pack_tools()
 # Install the TRUST consent registry into the KAR outbound seam (Inc 2 / D6).
 from src.ai.trust.consent_registry import install_consent_registry
 install_consent_registry()
+# Inc-6 STRAT: fills the record service's write-policy seam so Planning state
+# transitions are enforced on every write path, agent and human alike.
+from src.ai.strategy.governance import install_strategy_write_policy
+install_strategy_write_policy()
 # Install the CONN+SOR connector-backed write-back provider into the SOR seam (Inc 4).
 from src.ai.connectors.writeback import install_connector_writeback
 install_connector_writeback()
@@ -217,6 +222,9 @@ try:
         # reaper's cutoff is clamped to the last rolled-up day, so a worker
         # that missed a fortnight keeps the raw rows rather than deleting a
         # fortnight of influence history nothing ever aggregated.
+        # STRAT T6 — mandates whose review date has arrived. At 02:20, inside
+        # the quiet hour and before LIB's sweeps; it emits and never writes.
+        cron(review_due_sweep, hour=2, minute=20),
         cron(influence_rollup_sweep, hour=2, minute=40),
         # LIB T4 — re-derive every document's staleness *and its reason*. Runs
         # after the rollup because a document flagged stale today should have
