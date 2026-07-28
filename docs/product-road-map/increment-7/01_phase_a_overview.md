@@ -1,6 +1,6 @@
 # Increment 7 / Phase A — The Design Phase: Overview & Plan
 
-> **Status:** 🚧 in progress — opened 2026-07-28 after the eight-decision clarifying round ([00_charter.md](./00_charter.md) §Decisions).
+> **Status:** 🔍 **ALL EIGHT DELIVERABLES WRITTEN 2026-07-28** — awaiting the two blocking owner reviews, **R1** (the art bible) and **R2** (the wireframes). §8 records what the phase found.
 > **Goal:** produce what the ratified spec deliberately defers, so that G0 starts against contracts rather than against prose.
 > **Gate:** no G0 code until every deliverable below is complete (charter sequencing decision).
 > **Read next:** [00_charter.md](./00_charter.md) §Decisions · the ratified [genui_design_gate_spec.md](../genui_design_gate_spec.md) · the gap inventory [increment-6/00a](../increment-6/00a_genui_backend_gap_analysis.md).
@@ -83,8 +83,53 @@ Phase A is complete when all eight deliverables exist, **R1 and R2 have passed**
 
 ---
 
+## 8. What the phase found
+
+Eight deliverables, written 2026-07-28. Each carries its own reasoning; these are the findings that outlive it.
+
+### 8.1 New findings raised
+
+| # | Finding | Raised in | State |
+|---|---|---|---|
+| **VP-01** | `localStorage` tokens are a materially worse trade in an app that renders generated UI and drives T2/T3 step-up than in the app that shipped them | D1 §5 | **Resolved** in D5 §9 — access token in memory, refresh token in an `HttpOnly` cookie, legacy path untouched (~half a day of backend work) |
+| **VP-02** | The procedural seal portrait direction has no production cost, needs no ADC and cannot drift from a colleague's versions — it may be the floor rather than the fallback | D2 §7.1 | **Owner call at R1**. Genuinely a taste question |
+| **VP-03** | Three tenant functions have **no Vihara surface at all** — pre-session, account & security, billing & wallet. Passkey enrolment sits inside that gap and is the prerequisite for every T2 act | D8 §4 | **Open.** Proposal: one depth-2 surface (working name *The Study*), reachable from the shell rather than the territory |
+
+### 8.2 Corrections to shipped documents
+
+| What | Where it was wrong |
+|---|---|
+| **The certified endpoint count is six, not five** | STRAT added resolution adoption on 2026-07-26 with `IntentKind.STRATEGY_RESOLUTION`; the HANDOFF, the gap analysis and the VG-05 build note all still say five. D3 §3.3 — and rule R5 now keeps the count honest by CI rather than by memory |
+| **VG-21 is already closed** | LEARN's preference store shipped 2026-07-25 with the `density` namespace, an observation threshold and both endpoints. The gap analysis still lists it open at severity **M**. D5 §8 |
+| **"59 screens" is a file count** | Five of the 59 `.tsx` files are not screens. The honest denominator is 54, and cutover parity is **28 of 30 in-scope tenant screens**. D8 §1, §3 |
+| **Spec §11 is superseded** | Marked in place, with what is retired *and* what is carried forward both named. D2 §1 |
+
+### 8.3 Decisions the phase made that the spec did not
+
+* **The gold budget** (D2 §2.1) — gold means *this needs you* or *this is certified*, and nothing else. Under a single-accent brand this is what makes a still estate visibly still.
+* **The certified set is derived from the tier gate, not chosen** (D3 §3.1). It survived the wireframe pass unchanged at ten, which is its correctness proof.
+* **There is no `ui_manifests` table** (D4 §5.1), despite technical §8 and VG-01 both sketching one.
+* **Weather is projected on read, never stored** (D5 §2.1).
+* **The shell is app-owned, not manifest-composed** (D6 §1) — a hostile manifest cannot remove the user's way out.
+* **A tier-C device never downloads three.js** (D7 §3.3), enforced as a hard build gate.
+
+### 8.4 Exit criteria — status
+
+| # | Criterion | State |
+|---|---|---|
+| 1 | Every §5 surface drawn with a density variant and a sheet equivalent | ✅ D6, all seventeen |
+| 2 | Every component D6 composes exists in D3; every certified component has a named golden | ✅ D3 §8's delta pass, 35 → 45 |
+| 3 | Every binding D6 draws exists in D5 or is named there as absent with the finding that owns it | ✅ — the named absences are `paths[].cost` (D5 §4.1), VG-18, VG-20 |
+| — | **R1** — the art bible | 🔍 awaiting owner |
+| — | **R2** — the wireframes | 🔍 awaiting owner |
+
+**Phase A exits when R1 and R2 pass.** The next artifact after that is the Increment-7 workstream decomposition (§5) — deliberately not written yet, because it should be sized against contracts rather than against a spec.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | v1.1 — all eight deliverables written; §8 added. Three new findings (**VP-01** resolved, **VP-02** for R1, **VP-03** open and the most consequential), four corrections to shipped documents, and six decisions the spec did not make. Exit criteria 1–3 met; the phase now waits on R1 and R2. |
 | 2026-07-28 | v1.0 — Phase A opened. Seven deliverables (the charter's six plus VR-10's parity register), the dependency order with its one deliberate cycle, two blocking owner review checkpoints chosen by the repo's own precedent, and exit criteria written as the three properties whose absence would only surface at G2. |
