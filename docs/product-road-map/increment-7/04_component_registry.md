@@ -1,7 +1,7 @@
 # Increment 7 / Phase A — D3: The Component Registry
 
 > **Deliverable D3** of [01_phase_a_overview.md](./01_phase_a_overview.md). Spec §9.2 made into a schema; half of VG-01.
-> **Status:** 🚧 **complete but not final** — §8 is the delta section D6 (the wireframes) writes back into. A registry declared final before anything was drawn against it is a registry that is wrong and says it isn't.
+> **Status:** ✅ **final 2026-07-28** — D6's delta pass landed in §8 (ten components added, 35 → 45; the certified set unchanged, which is §3.1's correctness proof). A registry declared final before anything was drawn against it is a registry that is wrong and says it isn't.
 > **Consumed by:** [05_manifest_contract.md](./05_manifest_contract.md) (a manifest references entries here) · D6 · G0.
 
 ---
@@ -116,7 +116,7 @@ Written as tests, because a rule nobody can observe failing is a rule that retur
 
 ## 6. The inventory
 
-Thirty-five entries at Phase A. D6 will change this list (§8).
+Thirty-five entries as first drafted; **forty-five after D6's delta pass** (§8), which is the authoritative list.
 
 ### 6.1 `primitive` (13)
 
@@ -148,11 +148,30 @@ Two copies, one source. The registry JSON is authored in `vihara/src/manifest/re
 
 The build step that copies the authored JSON into the backend's static registry is checked by CI the same way `gen:api` is (D1 §5): regenerate, fail on diff.
 
-## 8. § Delta — written by D6
+## 8. § Delta — written by D6 (2026-07-28)
 
-*This section is deliberately empty. The wireframes will need components this inventory does not have, and each addition is recorded here with the surface that demanded it, so the registry's growth is traceable to a drawn surface rather than to a hunch.*
+Drawing the seventeen surfaces needed **ten components this inventory did not have**. Full table with the demanding surface and the reason each is not an existing component: [07_surface_wireframes.md §20](./07_surface_wireframes.md#20--delta--written-back-into-d3-8).
 
-*D3 is not final until D6 is complete (overview §3).*
+| Added | Class | Demanded by |
+|---|---|---|
+| `still-line` | narrative | The Still Surface |
+| `pulse` | primitive | The Still Surface · The Terrace |
+| `sla-countdown` | primitive | The Tray |
+| `tracked-change` | primitive | Registry Halls |
+| `citation` | primitive | The Library · Pragya's answers |
+| `provenance` | primitive | The Library |
+| `scenario-lever` | primitive | The Glasshouse |
+| `time-scrubber` | **world** | The Terrace |
+| `ghost` | **world** | The Terrace · onboarding |
+| `divergence-ribbon` | **world** | The Glasshouse |
+
+**Inventory: 35 → 45.** By class: primitive 13 → 19, certified 10 (unchanged — the set is derived from the gate, so drawing surfaces cannot add to it, which is the correctness proof of §3.1), world 10 → 13, narrative 5 → 6.
+
+**That certified stayed at ten is the useful result.** If drawing the product had discovered a certified component, §3.1's rule would have been wrong — there would have been an act worth a ceremony that the backend does not gate. It did not, which means the tier gate and the product agree.
+
+Two of the ten (`time-scrubber`, `divergence-ribbon`) are named in the spec's own prose and simply absent from its §9.2 list. The other eight are discoveries.
+
+**D3 is now final** — D6 is complete (overview §3).
 
 ---
 

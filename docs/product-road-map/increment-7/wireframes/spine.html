@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vihara — the spine loop (R2 wireframe)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold-300:#fdc871; --gold-500:#edab48; --gold-700:#a8722a;
+  --accent:#edab48; --on-accent:#2a1d08;
+  --bg:#0a0908; --surface:#141210; --surface-2:#1c1916; --surface-3:#241f1b;
+  --fg:#f6f1e9; --fg-muted:#b3aaa0; --fg-subtle:#7c746b; --fg-faint:#544d46;
+  --border:rgba(255,240,220,.08); --border-strong:rgba(255,240,220,.16); --border-gold:rgba(237,171,72,.40);
+  --positive:#7bb487; --negative:#d4664f;
+  --gradient-gold:linear-gradient(105deg,#fdc871 0%,#edab48 32%,#ffefd8 58%,#fdc871 100%);
+  --shadow-md:0 12px 34px -14px rgba(0,0,0,.66);
+  --shadow-lg:0 30px 72px -22px rgba(0,0,0,.74);
+  --focus-ring:0 0 0 3px rgba(237,171,72,.32);
+  --glass-tint:rgba(26,23,20,.55); --glass-blur:blur(20px) saturate(175%);
+  --glass-border:rgba(255,248,238,.16);
+  --glass-edge:0 10px 34px -10px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,252,247,.40),inset 0 -1px 1px rgba(0,0,0,.35);
+  --r-sm:7px; --r-md:11px; --r-lg:16px; --r-pill:999px;
+  --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px; --s-7:48px;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --world-mass:rgba(246,241,233,.06); --world-mass-lit:rgba(246,241,233,.14);
+  --world-line:rgba(246,241,233,.22); --world-traffic:rgba(246,241,233,.34);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#060505;color:var(--fg);font-family:var(--font-body);font-weight:300;
+     line-height:1.7;-webkit-font-smoothing:antialiased}
+.page{max-width:1180px;margin:0 auto;padding:var(--s-6) var(--s-5) 96px}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+         color:var(--fg-subtle);margin:0 0 var(--s-2)}
+h1{font-family:var(--font-display);font-weight:600;font-size:30px;letter-spacing:-.02em;margin:0 0 var(--s-3)}
+p.lead{color:var(--fg-muted);max-width:70ch;margin:0 0 var(--s-5)}
+
+/* ── controls ─────────────────────────────────────────────── */
+.controls{display:flex;gap:var(--s-5);flex-wrap:wrap;align-items:center;
+          padding:var(--s-3) var(--s-4);background:var(--surface);border:1px solid var(--border);
+          border-radius:var(--r-lg);margin-bottom:var(--s-5)}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--r-pill);overflow:hidden}
+.seg button{font-family:var(--font-body);font-size:13px;font-weight:500;border:0;padding:7px 15px;
+            background:transparent;color:var(--fg-muted);cursor:pointer;transition:all .18s var(--ease-out)}
+.seg button[aria-pressed="true"]{background:var(--surface-3);color:var(--fg)}
+.seg button:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.ctl-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+           color:var(--fg-faint);margin-right:var(--s-2)}
+
+/* ── the device frame ─────────────────────────────────────── */
+.frame{position:relative;border:1px solid var(--border-strong);border-radius:var(--r-lg);
+       background:var(--bg);overflow:hidden;box-shadow:var(--shadow-lg);min-height:520px;
+       display:flex;flex-direction:column}
+.shell-top{display:flex;align-items:center;gap:var(--s-3);padding:10px var(--s-4);
+           border-bottom:1px solid var(--border);font-size:14px;color:var(--fg-muted);flex:none}
+.shell-top .mark{width:9px;height:9px;border-radius:50%;background:var(--gradient-gold);opacity:.85;flex:none}
+.shell-top .co{color:var(--fg);font-family:var(--font-display);font-weight:500}
+.shell-top .line{margin-left:var(--s-4)}
+.shell-top .right{margin-left:auto;display:flex;align-items:center;gap:var(--s-4);
+                  font-family:var(--font-mono);font-size:11px;color:var(--fg-faint)}
+.presence{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--fg-subtle);position:relative}
+.presence::after{content:"";position:absolute;inset:1.5px 50% 1.5px 1.5px;border-radius:9px 0 0 9px;
+                 background:var(--fg-subtle)}
+.body{flex:1;position:relative;padding:var(--s-5);display:flex;flex-direction:column}
+.shell-bot{flex:none;padding:8px var(--s-4);border-top:1px solid var(--border);
+           font-size:13px;color:var(--fg-subtle);display:flex;gap:var(--s-4);align-items:center;
+           min-height:38px}
+.shell-bot .undo{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--fg-muted);
+                 text-decoration:underline;cursor:pointer}
+.dial{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;
+      gap:6px;z-index:5;opacity:.25;transition:opacity .2s var(--ease-out)}
+.frame:hover .dial{opacity:1}
+.dial button{width:22px;height:22px;border-radius:50%;border:1px solid var(--border-strong);
+             background:var(--surface-2);color:var(--fg-muted);font-size:11px;cursor:pointer;padding:0}
+.dial .rung{width:22px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--fg-faint)}
+.dial .rung[data-on="1"]{color:var(--accent)}
+
+/* ── depth 0 ──────────────────────────────────────────────── */
+.still{flex:1;display:flex;flex-direction:column;justify-content:center;padding-left:var(--s-7)}
+.still p{margin:0 0 6px;font-size:21px;color:var(--fg);max-width:34ch}
+.still p.sub{color:var(--fg-muted)}
+.still p.need{color:var(--accent)}
+.pulse{position:absolute;right:var(--s-7);bottom:var(--s-7);width:10px;height:10px;border-radius:50%;
+       background:var(--fg-subtle)}
+@media (prefers-reduced-motion:no-preference){
+  .pulse{animation:beat 3.4s var(--ease-out) infinite}
+  @keyframes beat{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:.7;transform:scale(1.35)}}
+  .breathe{animation:breathe 4s var(--ease-out) infinite}
+  @keyframes breathe{0%,100%{opacity:.5}50%{opacity:1}}
+}
+
+/* ── generic panels ───────────────────────────────────────── */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--s-4)}
+.panel h3{font-family:var(--font-display);font-weight:500;font-size:15px;margin:0 0 var(--s-3)}
+.klabel{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+        color:var(--fg-faint);margin:0 0 6px}
+.bar{height:8px;border-radius:var(--r-pill);background:var(--surface-3);overflow:hidden;display:flex}
+.bar i{display:block;height:100%;background:rgba(246,241,233,.42)}
+.bar i.reserve{background:var(--gradient-gold)}
+.rowlist{display:flex;flex-direction:column;gap:2px}
+.row{display:flex;align-items:center;gap:var(--s-3);padding:7px var(--s-2);border-radius:var(--r-sm);
+     font-size:14px;cursor:pointer;transition:background .16s var(--ease-out)}
+.row:hover{background:var(--surface-2)}
+.row .nm{color:var(--fg);min-width:74px}
+.row .meta{font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle)}
+.row .flag{margin-left:auto;font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;
+           text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:6px}
+.row .flag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gradient-gold)}
+.grid2{display:grid;grid-template-columns:1fr 1.15fr;gap:var(--s-4);flex:1}
+.traffic{display:flex;gap:var(--s-6);margin-top:var(--s-4);font-family:var(--font-mono);font-size:11px;
+         color:var(--fg-subtle)}
+.traffic b{color:var(--fg-muted);font-weight:500}
+.prose-head{font-size:17px;color:var(--fg);margin:0 0 var(--s-4);max-width:52ch}
+
+/* ── tray ─────────────────────────────────────────────────── */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:20;
+       display:flex;align-items:center;justify-content:center;padding:var(--s-5)}
+.tray{width:min(520px,100%);background:var(--glass-tint);backdrop-filter:var(--glass-blur);
+      border:1px solid var(--glass-border);border-radius:var(--r-lg);box-shadow:var(--glass-edge);
+      overflow:hidden}
+.tray .thead{display:flex;align-items:center;padding:10px var(--s-4);border-bottom:1px solid var(--border);
+             font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+             color:var(--fg-subtle)}
+.tray .thead .sla{margin-left:auto;color:var(--fg-faint)}
+.tray .tbody{padding:var(--s-4)}
+.tray .what{color:var(--fg);font-size:16px;margin:0 0 var(--s-3)}
+.tray .rec{color:var(--fg-muted);margin:0 0 var(--s-3)}
+.tray details{margin:0 0 var(--s-4)}
+.tray summary{font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle);cursor:pointer;
+              list-style:none}
+.tray summary::before{content:"▸ ";}
+.tray details[open] summary::before{content:"▾ ";}
+.tray details p{font-size:14px;color:var(--fg-subtle);margin:var(--s-2) 0 0;padding-left:14px;
+                border-left:1px solid var(--border)}
+.grade{border:1px solid var(--border);border-radius:var(--r-sm);padding:var(--s-3);margin:0 0 var(--s-4)}
+.grade .gl{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+           color:var(--fg-subtle);margin:0 0 4px}
+.grade p{margin:0;font-size:14px;color:var(--fg-muted)}
+.certified{border-top:1px solid var(--border-gold);background:rgba(237,171,72,.045);padding:var(--s-4)}
+.certified .cl{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+               color:var(--accent);margin:0 0 var(--s-3);display:flex;align-items:center;gap:7px}
+.certified .cl::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gradient-gold)}
+.certified .act{color:var(--fg);font-size:17px;margin:0 0 var(--s-4)}
+.acts{display:flex;gap:var(--s-2);flex-wrap:wrap}
+.btn{font-family:var(--font-body);font-weight:600;font-size:13px;border:0;border-radius:var(--r-pill);
+     padding:9px 16px;background:var(--gradient-gold);color:var(--on-accent);cursor:pointer;
+     transition:transform .14s var(--ease-out)}
+.btn:active{transform:translateY(1px) scale(.99)}
+.btn.ghost{background:transparent;color:var(--fg-muted);border:1px solid var(--border-strong)}
+.btn:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.talk{padding:var(--s-3) var(--s-4);border-top:1px solid var(--border);font-size:14px;
+      color:var(--fg-muted);cursor:pointer}
+.paths{display:flex;flex-direction:column;gap:var(--s-2);margin:0 0 var(--s-4)}
+.path{display:flex;gap:var(--s-3);align-items:baseline;font-size:14px;color:var(--fg-muted);
+      padding:8px var(--s-3);border:1px solid var(--border);border-radius:var(--r-sm)}
+.path b{color:var(--fg);font-weight:500;min-width:66px}
+.path .cost{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle)}
+
+/* ── notes ────────────────────────────────────────────────── */
+.notes{margin-top:var(--s-5);display:grid;gap:var(--s-3);grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.note{border-left:2px solid var(--border-gold);padding:2px 0 2px var(--s-4);font-size:14px;color:var(--fg-muted)}
+.note b{color:var(--fg);font-weight:600}
+.mono{font-family:var(--font-mono);font-size:11px;color:var(--fg-faint)}
+.tag{display:inline-block;font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;
+     text-transform:uppercase;color:var(--fg-faint);border:1px solid var(--border);border-radius:var(--r-pill);
+     padding:2px 9px}
+</style>
+</head>
+<body>
+<div class="page">
+
+<p class="eyebrow">Vihara · Increment 7 Phase A · D6 · review checkpoint R2</p>
+<h1>The spine loop</h1>
+<p class="lead">Still surface → territory → district → tray → approved. The path spec §13 named as the
+gate's quality proof, and the one the zero-training test turns on. Change density and the flip between
+world and sheet — <b style="color:var(--fg)">L9 is not a fallback, it is a first-class surface</b>, and
+this is where that either holds or does not.</p>
+
+<div class="controls">
+  <span><span class="ctl-label">Density</span>
+    <span class="seg" id="density">
+      <button data-v="novice" aria-pressed="true">Novice</button>
+      <button data-v="operator" aria-pressed="false">Operator</button>
+    </span></span>
+  <span><span class="ctl-label">Renderer</span>
+    <span class="seg" id="renderer">
+      <button data-v="W" aria-pressed="true">World</button>
+      <button data-v="S" aria-pressed="false">Sheet (L9)</button>
+    </span></span>
+  <span><span class="ctl-label">Hour</span>
+    <span class="seg" id="hour">
+      <button data-v="day" aria-pressed="false">Day</button>
+      <button data-v="night" aria-pressed="true">Night</button>
+    </span></span>
+  <span class="mono" id="where" style="margin-left:auto"></span>
+</div>
+
+<div class="frame" id="frame">
+  <div class="dial">
+    <button id="up" title="Rise (⌘↑)">↑</button>
+    <div class="rung" data-d="0">0</div>
+    <div class="rung" data-d="1">1</div>
+    <div class="rung" data-d="2">2</div>
+    <div class="rung" data-d="3">3</div>
+    <button id="down" title="Go deeper (⌘↓)">↓</button>
+  </div>
+  <div class="shell-top" id="shellTop">
+    <span class="mark"></span><span class="co">Northwind Co.</span>
+    <span class="line" id="shellLine">all is well · 2 waiting</span>
+    <span class="right"><span>⌘K</span><span class="presence" title="Pragya — listening"></span></span>
+  </div>
+  <div class="body" id="stage"></div>
+  <div class="shell-bot" id="echoBar"><span style="color:var(--fg-faint)">—</span></div>
+</div>
+
+<div class="notes">
+  <div class="note"><b>Depth 0 has no chrome</b> because it <i>is</i> the chrome. At zero hands raised there
+  is no gold anywhere on the screen — that is the whole design (art bible §2.1).</div>
+  <div class="note"><b>The shell is app-owned</b>, not manifest-composed. A malformed or hostile manifest
+  cannot remove the still line, the depth dial or the way out of a surface.</div>
+  <div class="note"><b>The countdown never alarms.</b> It ticks, and that is all it does. An SLA that shouts
+  turns a considered decision into a rushed one.</div>
+  <div class="note"><b>The certified block is byte-identical</b> in the tray, on the Line and in a sheet (L5).
+  Everything above the gold rule may differ by density; nothing below it may.</div>
+</div>
+
+<p class="mono" style="margin-top:var(--s-6)">
+Wireframe, not production. Data is illustrative. The other twelve surfaces are drawn as layouts in
+07_surface_wireframes.md — drawing all seventeen in HTML would be building the app, not designing it.
+</p>
+</div>
+
+<script>
+const S = { depth: 0, density: 'novice', renderer: 'W', hour: 'night', tray: false, approved: false };
+
+const stage   = document.getElementById('stage');
+const echoBar = document.getElementById('echoBar');
+const shellTop= document.getElementById('shellTop');
+const shellLine=document.getElementById('shellLine');
+const where   = document.getElementById('where');
+
+function echo(sentence){
+  echoBar.innerHTML = `<span style="color:var(--fg-muted)">${sentence}</span>
+    <span class="undo">undo</span>`;
+  clearTimeout(echo._t);
+  echo._t = setTimeout(() => { echoBar.innerHTML = '<span style="color:var(--fg-faint)">—</span>'; }, 4000);
+}
+
+/* ── depth 0 ───────────────────────────────────────────────── */
+function still(){
+  const waiting = S.approved
+    ? `<p class="sub">Nothing needs you.</p>`
+    : `<p class="need">${S.density === 'novice' ? 'Two colleagues are waiting for you.' : '2 waiting'}</p>`;
+  return `<div class="still">
+      <p>All is well.</p>
+      <p class="sub">₹2.4L collected this week.</p>
+      ${waiting}
+      ${S.density === 'novice'
+        ? '<p class="mono" style="margin-top:24px;color:var(--fg-faint)">go deeper ⌘↓</p>' : ''}
+    </div><span class="pulse"></span>`;
+}
+
+/* ── depth 1 · world ───────────────────────────────────────── */
+function terraceWorld(){
+  const day = S.hour === 'day';
+  const mass = day ? 'var(--world-mass-lit)' : 'var(--world-mass)';
+  const names = S.density === 'novice'
+    ? ['Growth','Money','Care','Trust'] : ['Growth · P03','Money · P08','Care · P06','Trust · P14'];
+  const beacon = S.approved ? '' : `
+    <circle class="breathe" cx="300" cy="112" r="40" fill="url(#bg1)"/>
+    <path d="M300 122 L300 150" stroke="#edab48" stroke-width="1.1" opacity=".75"/>
+    <circle cx="300" cy="114" r="5" fill="#edab48" style="cursor:pointer" id="beaconHit"/>`;
+  return `
+  <svg viewBox="0 0 640 340" style="width:100%;height:100%;flex:1" role="img"
+       aria-label="The estate at ${S.hour}: four quarters, signal traffic, ${S.approved?'no':'one'} hand raised">
+    <defs>
+      <radialGradient id="bg1"><stop offset="0%" stop-color="#edab48" stop-opacity=".40"/>
+        <stop offset="55%" stop-color="#edab48" stop-opacity=".07"/>
+        <stop offset="100%" stop-color="#edab48" stop-opacity="0"/></radialGradient>
+      <radialGradient id="lamp"><stop offset="0%" stop-color="#a8722a" stop-opacity=".45"/>
+        <stop offset="100%" stop-color="#a8722a" stop-opacity="0"/></radialGradient>
+      <linearGradient id="dayKey" x1="0" y1="0" x2=".35" y2="1">
+        <stop offset="0%" stop-color="#fff6e6" stop-opacity=".12"/>
+        <stop offset="100%" stop-color="#fff6e6" stop-opacity="0"/></linearGradient>
+      <filter id="fog"><feGaussianBlur stdDeviation="7"/></filter>
+    </defs>
+    ${day ? '<rect width="640" height="340" fill="url(#dayKey)"/>'
+          : '<circle cx="120" cy="230" r="70" fill="url(#lamp)"/><circle cx="520" cy="230" r="70" fill="url(#lamp)"/>'}
+
+    <!-- time scrubber on the rim -->
+    <g font-family="JetBrains Mono" font-size="9" fill="var(--fg-faint)" letter-spacing="1.4">
+      <line x1="60" y1="34" x2="580" y2="34" stroke="var(--world-line)" stroke-width=".75"/>
+      <text x="60" y="26">06:00</text><text x="300" y="26" fill="var(--fg-subtle)">NOW</text>
+      <text x="548" y="26">+7d</text>
+      <circle cx="300" cy="34" r="3" fill="var(--fg-subtle)"/>
+      ${S.density === 'operator'
+        ? '<circle cx="430" cy="34" r="2" fill="rgba(246,241,233,.18)"/><circle cx="470" cy="34" r="2" fill="rgba(246,241,233,.18)"/><text x="410" y="50" fill="var(--fg-faint)">ahead</text>'
+        : ''}
+    </g>
+
+    <!-- roads + traffic -->
+    <g stroke="var(--world-line)" stroke-width="1" fill="none" opacity="${day?'.85':'.5'}">
+      <path d="M170 232 L250 216"/><path d="M370 216 L450 232"/><path d="M300 244 L300 276"/>
+    </g>
+    <g fill="var(--world-traffic)">
+      <circle cx="205" cy="224" r="2"/><circle cx="412" cy="224" r="2"/><circle cx="300" cy="262" r="2"/>
+    </g>
+
+    <!-- quarters -->
+    <g fill="${mass}" stroke="var(--world-line)" stroke-width=".75">
+      <path d="M 90 210 L150 186 L210 210 L210 254 L150 278 L 90 254 Z" style="cursor:pointer" data-q="0"/>
+      <path d="M250 196 L310 172 L370 196 L370 240 L310 264 L250 240 Z" style="cursor:pointer" data-q="1"/>
+      <path d="M410 210 L470 186 L530 210 L530 254 L470 278 L410 254 Z" style="cursor:pointer" data-q="2"/>
+      <path d="M250 286 L310 262 L370 286 L370 316 L310 340 L250 316 Z" style="cursor:pointer" data-q="3"/>
+    </g>
+    <!-- fog over Money -->
+    <ellipse cx="310" cy="228" rx="66" ry="26" fill="rgba(246,241,233,.09)" filter="url(#fog)"/>
+
+    <g font-family="Space Grotesk" font-size="12" fill="var(--fg-muted)" text-anchor="middle">
+      <text x="150" y="236">${names[0]}</text><text x="310" y="222">${names[1]}</text>
+      <text x="470" y="236">${names[2]}</text><text x="310" y="308">${names[3]}</text>
+    </g>
+
+    <!-- gatehouses -->
+    <g font-family="JetBrains Mono" font-size="9" fill="var(--fg-faint)" text-anchor="middle">
+      <text x="60" y="300">⌂ email</text><text x="580" y="300">⌂ whatsapp</text>
+    </g>
+
+    ${beacon}
+  </svg>
+  ${S.density === 'novice'
+    ? `<p class="mono" style="margin:0;color:var(--fg-faint)">Money is foggy — below target for 9 days.
+       ${S.approved ? '' : 'Tap the gold light to see what needs you.'}</p>` : ''}`;
+}
+
+/* ── depth 1 · sheet (L9) ──────────────────────────────────── */
+function terraceSheet(){
+  const rows = [
+    ['Money','P08','DSO 38d ↓4','₹18k / ₹30k', S.approved ? '' : 'hand raised', 'Below target for 9 days.'],
+    ['Growth','P03','Leads 42 ↑9','₹6k / ₹20k','',''],
+    ['Care','P06','CSAT 4.6 →','₹9k / ₹15k','',''],
+    ['Trust','P14','Audits 0 open','₹1k / ₹12k','',''],
+  ];
+  return `<div class="panel" style="flex:1">
+    <h3>The estate — ${S.hour === 'day' ? 'daylight' : 'tonight'}</h3>
+    <div class="rowlist">
+      ${rows.map(([n,c,k,t,f,w]) => `
+        <div class="row" data-q="${n==='Money'?1:0}">
+          <span class="nm">${n}</span>
+          ${S.density==='operator' ? `<span class="meta">${c}</span>` : ''}
+          <span class="meta">${k}</span>
+          <span class="meta">${t}</span>
+          ${w ? `<span class="meta" style="color:var(--fg-muted)">${w}</span>` : ''}
+          ${f ? `<span class="flag">${f}</span>` : ''}
+        </div>`).join('')}
+    </div>
+    <p class="mono" style="margin-top:16px">Same <span style="color:var(--fg-subtle)">/genui/estate</span>
+    payload. Beacons sort to the top. No camera, no WebGL, nothing missing.</p>
+  </div>`;
+}
+
+/* ── depth 2 · district ────────────────────────────────────── */
+function district(){
+  const head = S.density === 'novice'
+    ? `<p class="prose-head">Collections is behind — nine days below target.
+       ${S.approved ? 'Nothing needs you here now.' : 'Meera needs a decision from you.'}</p>` : '';
+  const title = S.density === 'operator' ? 'Collections · P08' : 'Collections';
+  const sheetNote = S.renderer === 'S'
+    ? `<p class="mono" style="margin:12px 0 0">Sheet equivalent — same payload, vertical stack, no camera.</p>` : '';
+  return `${head}
+  <div style="font-family:var(--font-display);font-size:17px;color:var(--fg);margin-bottom:16px">${title}</div>
+  <div class="grid2">
+    <div style="display:flex;flex-direction:column;gap:var(--s-4)">
+      <div class="panel">
+        <p class="klabel">KPI plinth</p>
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-family:var(--font-display);font-size:26px;color:var(--fg)">38d</span>
+          <span class="meta" style="color:var(--negative)">DSO ↑ 9</span>
+        </div>
+        <div class="bar" style="margin-top:10px"><i style="width:62%"></i></div>
+      </div>
+      <div class="panel">
+        <p class="klabel">Treasury · this period</p>
+        <div class="bar"><i style="width:52%"></i><i class="reserve" style="width:12%"></i></div>
+        <p class="mono" style="margin:8px 0 0">₹18k of ₹30k · the gold seam is the protected reserve,
+        and it never drains</p>
+      </div>
+      <div class="panel">
+        <p class="klabel">Weather</p>
+        <p style="margin:0;color:var(--fg-muted);font-size:14px">Fog — below target for 9 days.</p>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:var(--s-4)">
+      <div class="panel" style="flex:none">
+        <p class="klabel">Colleagues</p>
+        <div class="rowlist">
+          <div class="row" ${S.approved?'':'id="meeraRow"'}>
+            <span class="nm">Meera</span><span class="meta">A2</span>
+            ${S.approved ? '<span class="meta">running</span>' : '<span class="flag">hand raised</span>'}
+          </div>
+          <div class="row"><span class="nm">Ravi</span><span class="meta">A1</span><span class="meta">running</span></div>
+          <div class="row"><span class="nm">Anjali</span><span class="meta">A1</span><span class="meta">idle</span></div>
+        </div>
+      </div>
+      <div class="panel" style="flex:1">
+        <p class="klabel">Live runs</p>
+        <div class="rowlist">
+          <div class="row"><span class="meta">▸</span><span>chase KT-2291</span><span class="meta" style="margin-left:auto">00:04</span></div>
+          <div class="row"><span class="meta">▸</span><span>reconcile 14 invoices</span><span class="meta" style="margin-left:auto">00:31</span></div>
+        </div>
+        ${S.density === 'operator' ? `<div class="traffic">
+          <span>in <b>42</b>/h</span><span>out <b>37</b>/h</span><span>parked <b>3</b></span></div>` : ''}
+      </div>
+    </div>
+  </div>${sheetNote}`;
+}
+
+/* ── the tray ──────────────────────────────────────────────── */
+function tray(){
+  const paths = S.density === 'operator' ? `
+    <div class="paths">
+      <div class="path"><b>Approve</b><span>Reminder goes today; legal language held a cycle.</span>
+        <span class="cost">₹84,200</span></div>
+      <div class="path"><b>Adjust</b><span>Edit the amount or the wording first.</span>
+        <span class="cost">—</span></div>
+      <div class="path"><b>Decline</b><span>Nothing sent; Meera re-raises in 7 days.</span>
+        <span class="cost">no cost line — none is computed</span></div>
+    </div>` : '';
+  return `<div class="scrim" id="scrim">
+    <div class="tray" role="dialog" aria-label="Decision prepared by Meera">
+      <div class="thead"><span>Prepared by Meera · Collections</span>
+        <span class="sla" id="sla">⏱ 3h 26m left</span></div>
+      <div class="tbody">
+        <p class="what">Kulkarni Traders crossed 60 days overdue on
+          <span style="border-bottom:1px solid var(--border-strong)">KT-2291</span>.</p>
+        <p class="rec">I'd send the firm reminder we agreed after their last call, and hold the legal
+          language back a cycle.</p>
+        <details ${S.density === 'novice' ? 'open' : ''}><summary>why</summary>
+          <p>They have paid every invoice eventually, twice after a firm reminder and never after a legal
+          notice. Their last call was cooperative. Escalating now costs the relationship more than the
+          eleven days it would save.</p></details>
+        <div class="grade">
+          <p class="gl">Forecast · twin run S-14</p>
+          <p>Recovers about ₹1.4L a month on eleven weeks of history. A projection, not a replay — this
+          has never happened.</p>
+        </div>
+        ${paths}
+      </div>
+      <div class="certified">
+        <p class="cl">Certified · payment · T2</p>
+        <p class="act">Pay ₹84,200 to Kulkarni Traders against KT-2291.</p>
+        <div class="acts">
+          <button class="btn" id="approve">Approve with passkey</button>
+          <button class="btn ghost" id="adjust">Adjust</button>
+          <button class="btn ghost" id="decline">Decline</button>
+        </div>
+      </div>
+      <div class="talk" id="talk">Talk to me about it</div>
+    </div></div>`;
+}
+
+/* ── render ────────────────────────────────────────────────── */
+function render(){
+  shellTop.style.display = S.depth === 0 ? 'none' : '';
+  shellLine.textContent  = S.approved ? 'all is well' : 'all is well · 2 waiting';
+  document.querySelectorAll('.rung').forEach(r => r.dataset.on = (+r.dataset.d === S.depth) ? '1' : '0');
+  where.textContent = `depth ${S.depth} · ${S.renderer} · ${S.density}${S.tray ? ' · tray open' : ''}`;
+
+  let html = '';
+  if (S.depth === 0) html = still();
+  else if (S.depth === 1) html = S.renderer === 'W' ? terraceWorld() : terraceSheet();
+  else if (S.depth === 2) html = district();
+  else html = `<div class="panel" style="flex:1"><p class="klabel">Undercroft · depth 3</p>
+      <p class="mono" style="color:var(--fg-subtle);line-height:2">
+      signals · triggers · envelopes · traces · schema · routing · consent · <b style="color:var(--accent)">manifest inspector</b><br>
+      mono throughout · density pinned to operator regardless of the learned value<br>
+      desktop only — depth 3 is not on the Line</p></div>`;
+
+  if (S.tray) html += tray();
+  stage.innerHTML = html;
+  wire();
+}
+
+function wire(){
+  const b = document.getElementById('beaconHit');
+  if (b) b.onclick = () => { S.tray = true; render(); };
+  const m = document.getElementById('meeraRow');
+  if (m) m.onclick = () => { S.tray = true; render(); };
+  stage.querySelectorAll('[data-q]').forEach(el => el.onclick = e => {
+    if (e.target.id === 'beaconHit') return;
+    S.depth = 2; echo('opened Collections'); render();
+  });
+  const ap = document.getElementById('approve');
+  if (ap) ap.onclick = () => {
+    S.tray = false; S.approved = true;
+    echo('approved the KT-2291 payout · certified.payment@1 · T2 passkey');
+    render();
+  };
+  const dc = document.getElementById('decline');
+  if (dc) dc.onclick = () => { S.tray = false; S.approved = true; echo('declined the KT-2291 payout'); render(); };
+  const aj = document.getElementById('adjust');
+  if (aj) aj.onclick = () => echo('opened KT-2291 to adjust the amount');
+  const tk = document.getElementById('talk');
+  if (tk) tk.onclick = () => echo('asked Pragya about the Kulkarni reminder');
+  const sc = document.getElementById('scrim');
+  if (sc) sc.onclick = e => { if (e.target === sc) { S.tray = false; render(); } };
+}
+
+document.getElementById('up').onclick   = () => { S.depth = Math.max(0, S.depth - 1); render(); };
+document.getElementById('down').onclick = () => { S.depth = Math.min(3, S.depth + 1); render(); };
+document.addEventListener('keydown', e => {
+  if (!e.metaKey && !e.ctrlKey) return;
+  if (e.key === 'ArrowUp')   { e.preventDefault(); S.depth = Math.max(0, S.depth - 1); render(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); S.depth = Math.min(3, S.depth + 1); render(); }
+});
+['density','renderer','hour'].forEach(id => {
+  document.getElementById(id).querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => {
+      document.getElementById(id).querySelectorAll('button')
+        .forEach(o => o.setAttribute('aria-pressed', String(o === btn)));
+      S[id] = btn.dataset.v;
+      if (id === 'density') echo(`switched to ${btn.dataset.v} density`);
+      render();
+    };
+  });
+});
+
+render();
+</script>
+</body>
+</html>
