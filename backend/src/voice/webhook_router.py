@@ -5,10 +5,11 @@ Handles incoming call webhooks and generates appropriate TwiML/JSON responses.
 """
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Request, Response, Depends
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update as sa_update
 from uuid import UUID
+from typing import Any
 import os
 
 from src.common.database import get_db
@@ -114,7 +115,15 @@ async def twilio_incoming_call(
         if _route.face is VoiceFace.PRAGYA:
             logger.info(
                 f"call {call_sid} to {to_number} routes to Pragya (inward face)")
+            return await _connect_pragya(
+                session_manager, route=_route, call_sid=call_sid,
+                from_number=from_number, to_number=to_number)
+    except HTTPException:
+        raise
     except Exception as route_exc:
+        # Fail-safe to the gateway path: a routing bug must not drop a ringing
+        # phone. The cost is that a Pragya call would be answered by the
+        # business face, which is wrong but audible — unlike a dead line.
         logger.warning(f"voice face routing failed (defaulting to gateway): {route_exc}")
 
     # SIG cutover (Inc-3 VOICE): a tenant with the Solo Pack / a bundle
@@ -168,6 +177,59 @@ async def twilio_incoming_call(
     </Connect>
 </Response>"""
     
+    return Response(content=twiml, media_type="application/xml")
+
+
+async def _connect_pragya(
+    session_manager: "SessionManager", *, route: Any, call_sid: str,
+    from_number: str, to_number: str,
+) -> Response:
+    """TwiML that streams an inward call to the account-manager pipeline.
+
+    **This is the branch Increment 4 left unbuilt.** `route_for_number` was
+    computed and then discarded — the call fell through to the gateway path
+    regardless, so the three other voice-go-live gaps could all have been
+    closed and a call to Pragya's number would still have been answered by the
+    business face, with nothing obviously wrong in the logs.
+
+    Deliberately does **not** call `find_customer_by_number`: the shared line
+    belongs to the platform and points at no agent, so that lookup finds
+    nothing. The tenant is resolved from the caller once the media stream
+    opens (`PragyaStreamHandler`), which is the whole point of the shared-line
+    decision.
+    """
+    session = await session_manager.create_voice_session(
+        company_id=route.company_id,
+        customer_id=None,
+        agent_id=route.entity_id,
+        phone_number=to_number,
+        provider="twilio",
+        call_sid=call_sid,
+        direction="inbound",
+        metadata={
+            "from": from_number, "to": to_number,
+            "face": "pragya", "shared_line": route.company_id is None,
+        },
+    )
+
+    streaming_host = settings.STREAMING_HOST or "localhost:8002"
+    ws_protocol = settings.STREAMING_PROTOCOL or (
+        "wss" if "https" in streaming_host or not streaming_host.startswith("localhost")
+        else "ws")
+    ws_url = f"{ws_protocol}://{streaming_host}/stream/pragya/{session.id}"
+    logger.info(f"pragya session {session.id}, streaming to {ws_url}")
+
+    # `from` is passed as a stream parameter because the tenant is resolved
+    # from the caller and the media stream is where that resolution happens —
+    # the websocket has no other way to learn who called.
+    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="{ws_url}">
+            <Parameter name="from" value="{from_number}" />
+        </Stream>
+    </Connect>
+</Response>"""
     return Response(content=twiml, media_type="application/xml")
 
 

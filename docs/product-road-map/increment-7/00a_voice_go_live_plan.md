@@ -1,6 +1,6 @@
 # Increment 7 — Prerequisite Plan: Voice Go-Live (VG-08 / VR-11)
 
-> **Status:** 🅿️ **PARKED — planned 2026-07-26, execution deferred.** Two decisions locked (§4); nothing built. Resume at §5 Phase 1.
+> **Status:** 🚧 **IN PROGRESS — gaps 1–5 closed 2026-07-28; the live transports remain.** Everything that does not need credentials is built and tested. **Resume at Phase 1** (§5): confirm the two products, then implement the two `NotImplementedError` transports in `channels/adapters.py`. Nothing else stands between here and a call.
 > **Closes:** gap-analysis **VG-08** (voice is a tested seam, not a live call) + **VR-11** (voice go-live is a G3 prerequisite, not an ops remainder), and the Increment-4 remainder recorded in [01_pragya_runtime.md](../increment-4/01_pragya_runtime.md) §12.5.
 > **Gates:** Vihara **G3** — *"the steward is present"*, which cannot pass on a tested seam.
 > **Parent:** [00_charter.md](./00_charter.md) §Prerequisites.
@@ -34,14 +34,25 @@ Measured against the running dev database and `master` @ the Increment-6 merge, 
 
 Increment 4 §12.5 named three. Tracing the code for this plan found a fourth, and it is the one that would waste a session if nobody knew:
 
-| # | Gap | Evidence |
-|---|---|---|
-| 1 | **No registry rows** for the two speech SKUs | Confirmed against the live table (§2). The SKU strings exist only at [`speech.py:51`](../../../backend/src/ai/pragya/channels/speech.py) |
-| 2 | **No concrete `Transcriber` / `Speaker`** | The Protocols have no implementors |
-| 3 | **`drive_call` is not connected to carrier media** | Frame plumbing exists in `websocket_handler.py` for the speech-to-speech path; `drive_call` is a second consumer that was never attached |
-| 4 | **`route_for_number` has no effect** | `webhook_router.py` ~line 112 resolves the face, **logs `routes to Pragya`, and falls through to the gateway path anyway**. The routing decision is computed and discarded |
+| # | Gap | Evidence | State |
+|---|---|---|---|
+| 1 | **No registry rows** for the two speech SKUs | The SKU strings existed only in `speech.py` | ✅ **closed 2026-07-28** — rows seeded by the owner; the code's SKUs were wrong and were corrected to them (§3.1) |
+| 2 | **No concrete `Transcriber` / `Speaker`** | The Protocols had no implementors | ✅ **closed** — `channels/adapters.py`, transport injected |
+| 3 | **`drive_call` is not connected to carrier media** | `drive_call` was a second consumer of the media stream that was never attached | ✅ **closed** — `voice/pragya_stream_handler.py` + `/stream/pragya/{id}` |
+| 4 | **`route_for_number` has no effect** | `webhook_router.py` resolved the face, **logged it, and fell through to the gateway path anyway** | ✅ **closed** — `_connect_pragya` |
+| 5 | **No Pragya entity exists, and nothing creates one** | Found 2026-07-28. `PRAGYA_ENTITY_NAMES` was only ever *read*; `assign_pragya_number` refuses without her | ✅ **closed** — `ai/pragya/seed.py` |
+| — | **The live ASR/TTS transports** | Both raise `NotImplementedError` pointing here | ⏳ **open — the only remaining work.** Needs Phase 1's answer |
 
-**Gap 4 is the one to fix first.** Until it does, gaps 1–3 can all be complete and a call to Pragya's number still lands on the legacy speech-to-speech stack, with nothing obviously wrong in the logs.
+**Gap 5 was not in the original four** and sat ahead of all of them: every resolver was written as *"the tenant's Pragya entity, **if one is seeded**"* and nothing ever seeded one. It went unnoticed from Increment 3 until a phone number needed somewhere to point.
+
+**Gap 4 was the one to fix first**, and the reason is worth keeping: until that branch diverged, gaps 1–3 could all be complete and a call to Pragya's number would still land on the legacy speech-to-speech stack, with nothing obviously wrong in the logs.
+
+### 3.1 What building it changed
+
+* **The SKUs in code were wrong, not the owner's rows.** `speech.py` hardcoded `pragya-asr-whisper-vertex` and a single `pragya-tts-gemini`; the rows created were `pragya-asr-chirp-vertex` and the `pragya-tts-gemini-in`/`-out` **pair**. The pair is this registry's convention for every token-billed service (`gemini-2.5-flash-in`/`-out`, `gpt-5.5-in`/`-out`) and Gemini TTS bills per token both ways — the single-SKU assumption was simply wrong about the product. ASR stays one row because Chirp bills per minute, and that asymmetry is the billing model rather than an inconsistency.
+* **Chirp, not Whisper** (owner decision) — for the §5 Phase 1 reason: Whisper on Model Garden is a self-deployed endpoint billed per node-hour, a standing charge for a line idle most of the day.
+* **One shared line, inverting decision 5** (owner decision) — see §4.3.
+* **A test was passing for the wrong reason.** `test_voice_is_refused_when_the_speech_skus_are_unconfigured` asserted the *absence of global configuration* rather than a property of the tenant: it passed only while no speech rows existed anywhere, because `_resolve` deliberately falls back to the platform row. It broke the day voice was configured — the day the feature started working, which is the worst possible moment for a test to fail. It now injects the missing SKU.
 
 ## 4. Decisions (locked 2026-07-26 — do not re-litigate)
 
@@ -57,6 +68,14 @@ The split is not stylistic. Pragya's turn loop is where `require_tier`, the nine
 The rejected option is worth recording because it will look attractive again: running her on the existing live stack would take days rather than weeks, but her turn loop would be bypassed, so on voice she could only *promise* actions through the Inc-3 live gate and never execute them. An account manager who cannot action *"pause the invoice chaser"* is a demo, not a steward — and it would reopen D1 on the voice channel, which is closed end-to-end today.
 
 **2. GCP is already in use** — project `hirebuddha-production`, service account and billing live. The two speech rows go against that project; no procurement needed.
+
+**3. One shared number for every tenant** (owner decision, 2026-07-26). Pragya answers on a single line rather than one number per tenant.
+
+This **inverts decision 5** — *"the number is the routing discriminator … deciding by destination rather than by caller matters because the caller is the untrusted half"* — and the inversion is recorded rather than drifted into. With one number the destination says only which *face*; the caller's own verified binding says which *business*, and a caller can spoof their own address.
+
+What keeps it acceptable is unchanged and enforced elsewhere: an **unbound caller is capped at T0** and reads nothing, **T2+ never runs on voice**, and **T3 is refused outright** as "the most spoofable" channel. The residual exposure is a spoofed caller ID reading tenant data at T1 — which existed already with per-tenant numbers; what a shared line removes is one weak factor, since an attacker no longer needs to know which number belongs to which tenant.
+
+**4. An address belongs to at most one tenant** (owner decision, 2026-07-26), enforced by a **partial unique index** (`iauth002`) rather than resolved at call time. The alternatives were asking the caller "which business?" or picking their most recently active tenant, and a wrong pick there is a cross-tenant disclosure read aloud over the phone. Same reasoning as LEARN's B10 guarantee: make it impossible to represent rather than merely impolite to do. Partial on `revoked_at IS NULL`, so somebody who genuinely leaves one business for another can register the same phone at the new one.
 
 ## 5. The plan
 
@@ -92,7 +111,7 @@ Shape fixed by `channels/speech.py`:
 
 *(If Phase 1 changes the products, the SKU **strings** stay as they are — they are identifiers, not descriptions, and renaming them means touching code for no behavioural gain. Record the actual product in `provider_name` / `model_name`.)*
 
-### Phase 3 — the two adapters *(no credentials needed)*
+### Phase 3 — the two adapters ✅ *(built 2026-07-28; live transports open)*
 
 Concrete `Transcriber` and `Speaker` behind an injected transport. Two properties the Protocols already demand:
 
@@ -101,7 +120,7 @@ Concrete `Transcriber` and `Speaker` behind an injected transport. Two propertie
 
 Tested against a fake transport, exactly as FLEET's GLM/Qwen/Kimi adapter is. Only the final auth call needs Phase 1's answer.
 
-### Phase 4 — media wiring, and making the route actually route
+### Phase 4 — media wiring, and making the route actually route ✅ *(built 2026-07-28)*
 
 1. **Gap 4 first** — ten lines, and everything downstream is invisible without it. The `VoiceFace.PRAGYA` branch has to actually diverge instead of logging.
 2. **Gap 3** — attach `drive_call`'s frame in/out to the websocket media stream. This is a *second consumer* of plumbing that already exists, not new infrastructure.
@@ -148,4 +167,5 @@ Build notes, **VG-08 and VR-11 marked closed** in [00a_genui_backend_gap_analysi
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | v2.0 — **gaps 1–5 closed; only the live transports remain.** Adapters (`channels/adapters.py`, transport injected), media wiring (`voice/pragya_stream_handler.py` + `/stream/pragya/{id}`), the webhook branch that finally diverges (`_connect_pragya`), and **gap 5** — the Pragya seeder, a blocker that was not in the original four. Two further owner decisions recorded in §4: one shared number (inverting decision 5, with the security consequence stated) and one-address-one-tenant enforced by a partial unique index. §3.1 records what building it changed, including a test that was passing only because voice had never been configured. |
 | 2026-07-26 | v1.0 — planned and **parked**. Scope corrected (VG-08 is Pragya's inward face, not voice generally — business voice is already live); current state verified against the running registry; a **fourth gap found** (`route_for_number` computes the face and discards it); two decisions locked (ASR-LLM-TTS as designed; GCP already in use); six phases with the credential-independent work identified so Phases 3–4 need not wait on Phase 1. |

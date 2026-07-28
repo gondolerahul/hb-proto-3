@@ -191,6 +191,40 @@ async def twilio_websocket(websocket: WebSocket, session_id: str):
             pass
 
 
+@app.websocket("/stream/pragya/{session_id}")
+async def pragya_websocket(websocket: WebSocket, session_id: str):
+    """Media stream for the **inward** face — the owner calling their steward.
+
+    A separate endpoint from `/stream/twilio/...` because the pipelines differ
+    in kind: that one drives a realtime model that hears, thinks and speaks
+    inside one session, while this one runs ASR → *her turn loop* → TTS. The
+    turn loop is where `require_tier`, the stage machine and tool execution
+    live, and a speech-to-speech session has no seam to put them in.
+    """
+    from uuid import UUID
+    from src.common.database import get_db
+    from src.voice.pragya_stream_handler import PragyaStreamHandler
+
+    await websocket.accept()
+    logger.info(f"Pragya WebSocket connected: session_id={session_id}")
+
+    try:
+        session_uuid = UUID(session_id)
+        async for db in get_db():
+            await PragyaStreamHandler(
+                websocket=websocket, session_id=session_uuid, db=db).handle()
+            break
+    except ValueError:
+        logger.error(f"Invalid session ID: {session_id}")
+        await websocket.close()
+    except Exception as e:
+        logger.error(f"Pragya WebSocket error: {e}", exc_info=True)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
 @app.websocket("/webhooks/voice/tata/incoming")
 async def tata_main_websocket(websocket: WebSocket):
     """Main endpoint for Tata Tele WebSocket connection."""
