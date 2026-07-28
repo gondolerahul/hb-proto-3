@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vihara — Art Bible Specimens (R1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* ---- Buddha Cognitive Lab tokens (verbatim from colors_and_type.css) ---- */
+  --gold-300:#fdc871; --gold-500:#edab48; --gold-700:#a8722a;
+  --accent:#edab48; --accent-quiet:rgba(237,171,72,.12); --on-accent:#2a1d08;
+  --ink-950:#0a0908; --ink-900:#100e0c; --ink-800:#1a1714;
+  --bg:var(--ink-950); --surface:#141210; --surface-2:#1c1916; --surface-3:#241f1b;
+  --fg:#f6f1e9; --fg-muted:#b3aaa0; --fg-subtle:#7c746b; --fg-faint:#544d46;
+  --border:rgba(255,240,220,.08); --border-strong:rgba(255,240,220,.16); --border-gold:rgba(237,171,72,.40);
+  --positive:#7bb487; --negative:#d4664f;
+  --gradient-gold:linear-gradient(105deg,#fdc871 0%,#edab48 32%,#ffefd8 58%,#fdc871 100%);
+  --glow-gold:radial-gradient(circle at center,rgba(237,171,72,.30) 0%,rgba(237,171,72,.08) 42%,transparent 70%);
+  --shadow-md:0 12px 34px -14px rgba(0,0,0,.66);
+  --focus-ring:0 0 0 3px rgba(237,171,72,.32);
+  --glass-tint:rgba(26,23,20,.55); --glass-blur:blur(20px) saturate(175%);
+  --glass-border:rgba(255,248,238,.16);
+  --glass-edge:0 10px 34px -10px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,252,247,.40),inset 0 -1px 1px rgba(0,0,0,.35);
+  --r-sm:7px; --r-md:11px; --r-lg:16px; --r-pill:999px;
+  --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px; --s-7:48px; --s-8:64px;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --track-eyebrow:0.16em;
+
+  /* ---- Vihara world additions (art bible §3) ---- */
+  --world-ground:var(--ink-950);
+  --world-mass:rgba(246,241,233,.06);
+  --world-mass-lit:rgba(246,241,233,.14);
+  --world-line:rgba(246,241,233,.22);
+  --world-traffic:rgba(246,241,233,.34);
+  --world-key-day:rgba(255,246,230,.90);
+  --world-key-night:rgba(168,114,42,.50);
+  --twin-line:rgba(228,232,236,.28);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);
+     font-weight:300;line-height:1.7;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:var(--s-8) var(--s-5) 128px}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:var(--track-eyebrow);
+         text-transform:uppercase;color:var(--fg-subtle);margin:0 0 var(--s-2)}
+.eyebrow.gold{color:var(--accent)}
+h1{font-family:var(--font-display);font-weight:600;font-size:38px;letter-spacing:-.02em;
+   line-height:1.1;margin:0 0 var(--s-3)}
+h2{font-family:var(--font-display);font-weight:600;font-size:24px;letter-spacing:-.02em;
+   margin:0 0 var(--s-2)}
+h3{font-family:var(--font-display);font-weight:500;font-size:16px;margin:0 0 var(--s-2)}
+p{margin:0 0 var(--s-4);max-width:68ch;color:var(--fg-muted)}
+p.lead{color:var(--fg);font-size:18px}
+section{padding:var(--s-8) 0;border-top:1px solid var(--border)}
+section:first-of-type{border-top:0}
+.grid{display:grid;gap:var(--s-4)}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.g5{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+      padding:var(--s-4);box-shadow:var(--shadow-md)}
+.card .cap{font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle);
+           letter-spacing:.04em;margin-top:var(--s-3)}
+.note{border-left:2px solid var(--border-gold);padding:var(--s-2) 0 var(--s-2) var(--s-4);
+      margin:var(--s-5) 0;color:var(--fg-muted);max-width:72ch}
+.note b{color:var(--fg);font-weight:600}
+figure{margin:0}
+svg{display:block;width:100%;height:auto;border-radius:var(--r-md)}
+.swatch{height:56px;border-radius:var(--r-sm);border:1px solid var(--border)}
+.mono{font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle)}
+table{width:100%;border-collapse:collapse;font-size:14px;color:var(--fg-muted)}
+td,th{text-align:left;padding:var(--s-2) var(--s-3);border-bottom:1px solid var(--border);vertical-align:top}
+th{font-family:var(--font-mono);font-size:11px;letter-spacing:var(--track-eyebrow);
+   text-transform:uppercase;color:var(--fg-subtle);font-weight:400}
+.seal{display:inline-flex;align-items:center;gap:var(--s-2);font-family:var(--font-mono);
+      font-size:11px;letter-spacing:var(--track-eyebrow);text-transform:uppercase;color:var(--accent)}
+.seal::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gradient-gold)}
+.certified{background:var(--surface-2);border:1px solid var(--border-gold);border-radius:var(--r-md);
+           padding:var(--s-4);box-shadow:0 0 0 1px rgba(237,171,72,.06)}
+.btn{font-family:var(--font-body);font-weight:600;font-size:14px;border:0;border-radius:var(--r-pill);
+     padding:10px 18px;background:var(--gradient-gold);color:var(--on-accent);cursor:default}
+.btn.ghost{background:transparent;color:var(--fg-muted);border:1px solid var(--border-strong)}
+.glass{background:var(--glass-tint);backdrop-filter:var(--glass-blur);
+       border:1px solid var(--glass-border);border-radius:var(--r-lg);box-shadow:var(--glass-edge)}
+.twin{filter:saturate(.15) brightness(.92)}
+.rule{height:1px;background:var(--gradient-gold);opacity:.5;margin:var(--s-5) 0}
+@media (prefers-reduced-motion:no-preference){
+  .breathe{animation:breathe 4s var(--ease-out) infinite}
+  @keyframes breathe{0%,100%{opacity:.55}50%{opacity:1}}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow gold">Vihara · art bible · review checkpoint R1</p>
+<h1>Specimens</h1>
+<p class="lead">Four things need an owner eye: the gold budget, the portrait direction, the absence of a serif,
+and day–night rendered as luminance. Everything on this page is built from the Buddha Cognitive Lab tokens
+verbatim — the only additions are the nine world tokens listed in §3 of the art bible.</p>
+
+<!-- ══════════════════════════════════════════ 1 — THE GOLD BUDGET -->
+<section>
+<p class="eyebrow">§2.1</p>
+<h2>The gold budget</h2>
+<p>Gold means one of exactly two things: <b style="color:var(--fg)">this needs you</b>, or
+<b style="color:var(--fg)">this is certified</b>. On a still estate with nothing to do, there is
+almost no gold on screen — which is what makes the first beacon unmissable.</p>
+
+<div class="grid g2">
+  <figure class="card">
+    <svg viewBox="0 0 480 240" role="img" aria-label="A still territory at rest, with no gold anywhere">
+      <rect width="480" height="240" fill="var(--world-ground)"/>
+      <!-- ground contour -->
+      <path d="M0 186 Q120 172 240 182 T480 174" fill="none" stroke="var(--world-line)" stroke-width="1" opacity=".5"/>
+      <!-- districts -->
+      <g fill="var(--world-mass)" stroke="var(--world-line)" stroke-width=".75">
+        <path d="M60 150 L110 132 L160 150 L160 186 L110 204 L60 186 Z"/>
+        <path d="M186 138 L236 120 L286 138 L286 174 L236 192 L186 174 Z"/>
+        <path d="M312 152 L362 134 L412 152 L412 188 L362 206 L312 188 Z"/>
+      </g>
+      <!-- roads -->
+      <g stroke="var(--world-line)" stroke-width="1" fill="none" opacity=".7">
+        <path d="M160 168 L186 156"/><path d="M286 156 L312 170"/>
+      </g>
+      <!-- traffic -->
+      <circle cx="172" cy="162" r="1.6" fill="var(--world-traffic)"/>
+      <circle cx="299" cy="163" r="1.6" fill="var(--world-traffic)"/>
+      <text x="24" y="40" font-family="Hanken Grotesk" font-size="15" fill="var(--fg)">All is well.</text>
+      <text x="24" y="62" font-family="Hanken Grotesk" font-size="15" fill="var(--fg-subtle)">₹2.4L collected this week.</text>
+    </svg>
+    <p class="cap">AT REST — zero gold pixels. Silence is visible.</p>
+  </figure>
+
+  <figure class="card">
+    <svg viewBox="0 0 480 240" role="img" aria-label="The same territory with one gold hand-raised beacon">
+      <rect width="480" height="240" fill="var(--world-ground)"/>
+      <path d="M0 186 Q120 172 240 182 T480 174" fill="none" stroke="var(--world-line)" stroke-width="1" opacity=".5"/>
+      <g fill="var(--world-mass)" stroke="var(--world-line)" stroke-width=".75">
+        <path d="M60 150 L110 132 L160 150 L160 186 L110 204 L60 186 Z"/>
+        <path d="M186 138 L236 120 L286 138 L286 174 L236 192 L186 174 Z"/>
+        <path d="M312 152 L362 134 L412 152 L412 188 L362 206 L312 188 Z"/>
+      </g>
+      <g stroke="var(--world-line)" stroke-width="1" fill="none" opacity=".7">
+        <path d="M160 168 L186 156"/><path d="M286 156 L312 170"/>
+      </g>
+      <circle cx="172" cy="162" r="1.6" fill="var(--world-traffic)"/>
+      <circle cx="299" cy="163" r="1.6" fill="var(--world-traffic)"/>
+      <!-- the one beacon -->
+      <defs>
+        <radialGradient id="beaconGlow"><stop offset="0%" stop-color="#edab48" stop-opacity=".42"/>
+        <stop offset="55%" stop-color="#edab48" stop-opacity=".08"/><stop offset="100%" stop-color="#edab48" stop-opacity="0"/></radialGradient>
+      </defs>
+      <circle class="breathe" cx="236" cy="96" r="46" fill="url(#beaconGlow)"/>
+      <path d="M236 106 L236 128" stroke="#edab48" stroke-width="1.25" opacity=".8"/>
+      <circle cx="236" cy="98" r="5" fill="#edab48"/>
+      <text x="24" y="40" font-family="Hanken Grotesk" font-size="15" fill="var(--fg)">One colleague is waiting for you.</text>
+      <text x="24" y="62" font-family="Hanken Grotesk" font-size="15" fill="var(--fg-subtle)">Meera, in Collections.</text>
+    </svg>
+    <p class="cap">ONE HAND RAISED — the only gold in the frame.</p>
+  </figure>
+</div>
+
+<div class="note"><b>What the budget forbids.</b> Active states, healthy KPIs, ordinary headings, links,
+chart series and colleague portraits at rest are all built from the warm-white ramp
+(<span class="mono">--fg → --fg-muted → --fg-subtle → --fg-faint</span>), never gold. Five ambient steps,
+no meaning of their own — which is exactly what a world needs for its mass.</div>
+
+<div class="grid g5" style="margin-top:var(--s-5)">
+  <div><div class="swatch" style="background:var(--fg)"></div><p class="mono">--fg · mass, primary text</p></div>
+  <div><div class="swatch" style="background:var(--fg-muted)"></div><p class="mono">--fg-muted · secondary</p></div>
+  <div><div class="swatch" style="background:var(--fg-subtle)"></div><p class="mono">--fg-subtle · captions ≥18px only</p></div>
+  <div><div class="swatch" style="background:var(--fg-faint)"></div><p class="mono">--fg-faint · disabled, decorative</p></div>
+  <div><div class="swatch" style="background:var(--gradient-gold)"></div><p class="mono">gold · needs you / certified</p></div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════ 2 — DAY / NIGHT -->
+<section>
+<p class="eyebrow">§4 · charter decision 3</p>
+<h2>Day–night, as luminance</h2>
+<p>The territory follows the tenant's local time. Under the brand palette that is a change of
+<b style="color:var(--fg)">light</b>, not of colour — the frame is near-black at every hour, and the
+beacons read identically in both, as spec §4 requires.</p>
+
+<div class="grid g2">
+  <figure class="card">
+    <svg viewBox="0 0 480 260" role="img" aria-label="The territory under daylight key">
+      <defs>
+        <linearGradient id="dayKey" x1="0" y1="0" x2=".4" y2="1">
+          <stop offset="0%" stop-color="#fff6e6" stop-opacity=".13"/>
+          <stop offset="100%" stop-color="#fff6e6" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <rect width="480" height="260" fill="var(--world-ground)"/>
+      <rect width="480" height="260" fill="url(#dayKey)"/>
+      <g fill="var(--world-mass-lit)" stroke="var(--world-line)" stroke-width=".75">
+        <path d="M56 156 L112 136 L168 156 L168 196 L112 216 L56 196 Z"/>
+        <path d="M196 142 L252 122 L308 142 L308 182 L252 202 L196 182 Z"/>
+        <path d="M330 158 L386 138 L442 158 L442 198 L386 218 L330 198 Z"/>
+      </g>
+      <!-- long soft shadows -->
+      <g fill="#000" opacity=".45">
+        <path d="M168 196 L206 208 L150 228 L112 216 Z"/>
+        <path d="M308 182 L346 194 L290 214 L252 202 Z"/>
+      </g>
+      <g stroke="var(--world-line)" stroke-width="1.25" fill="none">
+        <path d="M168 176 L196 162"/><path d="M308 162 L330 176"/>
+      </g>
+      <circle cx="180" cy="169" r="2" fill="var(--world-traffic)"/>
+      <circle cx="318" cy="169" r="2" fill="var(--world-traffic)"/>
+      <circle cx="252" cy="86" r="3.5" fill="#edab48"/>
+      <text x="20" y="34" font-family="JetBrains Mono" font-size="10" letter-spacing="1.6" fill="var(--fg-subtle)">14:20 LOCAL</text>
+    </svg>
+    <p class="cap">DAY — one high warm-white key, long shadows, lifted mass.</p>
+  </figure>
+
+  <figure class="card">
+    <svg viewBox="0 0 480 260" role="img" aria-label="The same territory at night, lamplit">
+      <defs>
+        <radialGradient id="lamp"><stop offset="0%" stop-color="#a8722a" stop-opacity=".55"/>
+        <stop offset="70%" stop-color="#a8722a" stop-opacity=".07"/><stop offset="100%" stop-color="#a8722a" stop-opacity="0"/></radialGradient>
+      </defs>
+      <rect width="480" height="260" fill="var(--world-ground)"/>
+      <circle cx="112" cy="176" r="62" fill="url(#lamp)"/>
+      <circle cx="386" cy="178" r="62" fill="url(#lamp)"/>
+      <g fill="var(--world-mass)" stroke="var(--world-line)" stroke-width=".75" stroke-opacity=".55">
+        <path d="M56 156 L112 136 L168 156 L168 196 L112 216 L56 196 Z"/>
+        <path d="M196 142 L252 122 L308 142 L308 182 L252 202 L196 182 Z"/>
+        <path d="M330 158 L386 138 L442 158 L442 198 L386 218 L330 198 Z"/>
+      </g>
+      <g stroke="var(--world-line)" stroke-width="1.25" fill="none" opacity=".5">
+        <path d="M168 176 L196 162"/><path d="M308 162 L330 176"/>
+      </g>
+      <circle cx="180" cy="169" r="2" fill="var(--world-traffic)"/>
+      <circle cx="318" cy="169" r="2" fill="var(--world-traffic)"/>
+      <circle cx="252" cy="86" r="3.5" fill="#edab48"/>
+      <text x="20" y="34" font-family="JetBrains Mono" font-size="10" letter-spacing="1.6" fill="var(--fg-subtle)">23:40 LOCAL</text>
+    </svg>
+    <p class="cap">NIGHT — no key, few lamplight pools, identical beacon.</p>
+  </figure>
+</div>
+<div class="note">Night is the brand's default look, so night is also the cheaper render — the low-power
+device tier and the on-brand tier are the same tier.</div>
+</section>
+
+<!-- ══════════════════════════════════════════ 3 — THE GLASSHOUSE -->
+<section>
+<p class="eyebrow">§5 · law L6</p>
+<h2>The Glasshouse: silvered without a second hue</h2>
+<p>The twin is the real, <b style="color:var(--fg)">desaturated</b> — not recoloured. It introduces no hue,
+it is the correct metaphor (a simulation is the world with the life taken out), and because the renderer
+applies it at the plane boundary, a twin-derived component <b style="color:var(--fg)">cannot be styled to
+look real</b>. Gold survives inside the Glasshouse for exactly two things: the divergence ribbon, and
+certified seals on the promotion pipeline.</p>
+
+<div class="grid g2">
+  <figure class="card">
+    <svg viewBox="0 0 480 200" role="img" aria-label="The real plane, warm">
+      <rect width="480" height="200" fill="var(--world-ground)"/>
+      <g fill="var(--world-mass-lit)" stroke="var(--world-line)" stroke-width=".75">
+        <path d="M80 118 L140 96 L200 118 L200 158 L140 180 L80 158 Z"/>
+        <path d="M240 112 L300 90 L360 112 L360 152 L300 174 L240 152 Z"/>
+      </g>
+      <circle cx="140" cy="66" r="4" fill="#edab48"/>
+      <text x="20" y="32" font-family="JetBrains Mono" font-size="10" letter-spacing="1.6" fill="var(--fg-subtle)">REAL</text>
+      <text x="20" y="192" font-family="Hanken Grotesk" font-size="13" fill="var(--fg-muted)">Collections · 41 open · ₹8.2L</text>
+    </svg>
+    <p class="cap">THE REAL — warm, gold live.</p>
+  </figure>
+
+  <figure class="card">
+    <svg class="twin" viewBox="0 0 480 200" role="img" aria-label="The twin plane, desaturated">
+      <rect width="480" height="200" fill="var(--world-ground)"/>
+      <g fill="var(--world-mass-lit)" stroke="var(--twin-line)" stroke-width=".75">
+        <path d="M80 118 L140 96 L200 118 L200 158 L140 180 L80 158 Z"/>
+        <path d="M240 112 L300 90 L360 112 L360 152 L300 174 L240 152 Z"/>
+      </g>
+      <circle cx="140" cy="66" r="4" fill="#edab48"/>
+      <text x="20" y="32" font-family="JetBrains Mono" font-size="10" letter-spacing="1.6" fill="#c9c6c0">TWIN</text>
+      <text x="20" y="192" font-family="Hanken Grotesk" font-size="13" fill="#a9a6a1">Collections · 38 open · ₹9.6L</text>
+    </svg>
+    <p class="cap">THE TWIN — same layout, life drained. The gold circle above is the identical element,
+    desaturated by the plane, not by choice.</p>
+  </figure>
+</div>
+
+<div class="certified" style="margin-top:var(--s-5)">
+  <p class="seal" style="margin:0 0 var(--s-3)">Honesty grade · forecast</p>
+  <p style="margin:0 0 var(--s-3);color:var(--fg)">Raising the follow-up cadence to every 4 days is projected
+  to recover ₹1.4L a month.</p>
+  <p style="margin:0;color:var(--fg-subtle);font-size:14px">Forecast — seasonal-naive with drift over 11 weeks
+  of history. Not a replay; the projection has never happened.</p>
+</div>
+<div class="note"><b>Every Glasshouse-derived component carries its grade</b>, and the schema makes
+<span class="mono">honesty_grade</span> mandatory — the manifest layer refuses one without it (L6, D4 §Certified rules).
+Planning adds a fourth value TWIN does not have: <span class="mono">untested</span> — never tried — which must
+never render like <span class="mono">unknown</span> — tried, ungradable.</div>
+</section>
+
+<!-- ══════════════════════════════════════════ 4 — PORTRAITS -->
+<section>
+<p class="eyebrow">§7 · law L7 · spec §14.5</p>
+<h2>Portraits — four directions</h2>
+<p>The brand's one ornament is a halftone of gold dots. Making that the <b style="color:var(--fg)">portrait
+medium</b> means the artwork itself carries L7's disclosure: a dot-screen bust is unmistakably synthetic at a
+glance, in every context, with no badge that a card layout could crop away.</p>
+
+<div class="grid g4" id="portraits"></div>
+
+<div class="note"><b>Recommendation: A as the house style, C as the automatic fallback</b> — a colleague with a
+defined persona gets a bust; a gateway, a Meta-Agent role, a newly seeded agent or a colleague in the Gallery
+gets a seal generated from its id. Nothing is ever portrait-less and nothing waits on an art pipeline.
+<br><br><b>VP-02, for R1:</b> direction C has <em>no production cost at all</em> — no ADC, no illustrator,
+no raster assets, and it cannot drift from a colleague's versions. That may make it the floor rather than the
+fallback. The honest counter is that a room of seals is a filing cabinet, and the dossier surfaces are built
+on the premise that you <em>meet</em> someone.</div>
+
+<h3 style="margin-top:var(--s-7)">At card size, where it actually has to work</h3>
+<div class="grid g2" style="margin-top:var(--s-3)">
+  <div class="card" style="display:flex;gap:var(--s-4);align-items:center">
+    <div id="mini-a" style="width:56px;height:56px;flex:none"></div>
+    <div>
+      <p style="margin:0;color:var(--fg);font-family:var(--font-display);font-weight:500">Meera</p>
+      <p style="margin:0;font-size:14px">Collections · associate (A2)</p>
+      <p class="mono" style="margin-top:2px">AGT-046 · 41 open · hand raised</p>
+    </div>
+    <div style="margin-left:auto"><span class="seal">needs you</span></div>
+  </div>
+  <div class="card" style="display:flex;gap:var(--s-4);align-items:center">
+    <div id="mini-c" style="width:56px;height:56px;flex:none"></div>
+    <div>
+      <p style="margin:0;color:var(--fg);font-family:var(--font-display);font-weight:500">WhatsApp gate</p>
+      <p style="margin:0;font-size:14px">Karuna · KAR-03</p>
+      <p class="mono" style="margin-top:2px">gateway · 212 inbound today</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════ 5 — WEATHER -->
+<section>
+<p class="eyebrow">§8 · WCAG 2.2 AA</p>
+<h2>Weather — texture, motion, icon, sentence</h2>
+<p>Weather carries health information and under a one-hue palette it cannot lean on colour at all.
+Each state is texture + motion + an icon + a sentence, and the last two are what the sheet equivalent (L9)
+and the screen reader receive.</p>
+
+<div class="grid g5" id="weather"></div>
+
+<div class="note"><b>In a storm the real signal is that the traffic stops</b>, not that there is a cloud.
+Which is exactly why every row also has an icon and a sentence: the reduced-motion path removes the channel
+doing most of the work, and it must lose atmosphere without losing information.</div>
+</section>
+
+<!-- ══════════════════════════════════════════ 6 — TYPE -->
+<section>
+<p class="eyebrow">§6</p>
+<h2>Type — and the missing serif</h2>
+<p>Spec §11 asked for "one serif of real character" for narrative surfaces. It is retired with the rest of
+§11. The narrative register is <b style="color:var(--fg)">Hanken Grotesk at 1.7 line-height on a 60–72ch
+measure</b> — the brand achieves "calm, confident, quietly profound" with a neutral humanist sans plus air,
+and a serif would have been a fifth face and a second personality.</p>
+
+<div class="grid g2">
+  <div class="card">
+    <p class="eyebrow gold">Pragya · narration</p>
+    <p style="font-size:18px;color:var(--fg);max-width:62ch">Two invoices crossed sixty days overdue this
+    morning. I have drafted the reminders in the tone we agreed after the Kulkarni call — firm, no legal
+    language yet. Shall I send them, or would you rather read them first?</p>
+    <p class="cap">HANKEN GROTESK 300 · 18px · 1.7 · 62ch</p>
+  </div>
+  <div class="card">
+    <p class="eyebrow">Undercroft · depth 3</p>
+    <table>
+      <tr><th>signal</th><th>type</th><th>age</th></tr>
+      <tr><td class="mono">sig_9f2a…</td><td class="mono">object.synced</td><td class="mono">2m</td></tr>
+      <tr><td class="mono">sig_71c4…</td><td class="mono">message.inbound</td><td class="mono">6m</td></tr>
+      <tr><td class="mono">sig_0ba8…</td><td class="mono">sync.conflict</td><td class="mono">18m</td></tr>
+    </table>
+    <p class="cap">JETBRAINS MONO THROUGHOUT · DENSITY PINNED TO OPERATOR AT DEPTH 3</p>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<div class="certified">
+  <p class="seal" style="margin:0 0 var(--s-3)">Certified · approval · T2</p>
+  <p style="margin:0 0 var(--s-4);color:var(--fg);font-size:17px">Pay ₹84,200 to Kulkarni Traders against
+  invoice KT-2291.</p>
+  <div style="display:flex;gap:var(--s-3);flex-wrap:wrap">
+    <button class="btn">Approve with passkey</button>
+    <button class="btn ghost">Adjust</button>
+    <button class="btn ghost">Decline</button>
+    <button class="btn ghost">Talk to me about it</button>
+  </div>
+  <p style="margin:var(--s-4) 0 0;font-size:13px;color:var(--fg-subtle)">Prose in <span class="mono">--fg</span>,
+  gold spent only on the seal, the rule and the eyebrow — which is both the contrast rule (§11) and the
+  gold budget (§2.1) landing on the same answer.</p>
+</div>
+</section>
+
+<p class="mono" style="margin-top:var(--s-8);color:var(--fg-faint)">
+Vihara · Increment 7 Phase A · deliverable D2 · specimens for review checkpoint R1 · 2026-07-28
+</p>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────── portrait directions
+const NS = 'http://www.w3.org/2000/svg';
+
+// Deterministic 32-bit hash — the same id must always give the same seal.
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function rng(seed){let x=seed||1;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;x>>>=0;return x/4294967296}}
+
+// A shoulder-up bust outline, shared by directions A, B and D.
+const BUST = 'M100 172 C100 138 122 126 148 120 C132 112 124 96 124 78 '
+           + 'C124 54 140 38 164 38 C188 38 204 54 204 78 C204 96 196 112 180 120 '
+           + 'C206 126 228 138 228 172 Z';
+
+function halftoneBust(size, opts){
+  const o = Object.assign({dot:'#edab48', step:7, rMax:2.5, glow:true}, opts||{});
+  const svg = document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 328 200');
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','Halftone dot portrait — an illustration, not a photograph');
+  svg.innerHTML =
+    `<rect width="328" height="200" fill="var(--surface-2)"/>` +
+    (o.glow ? `<circle cx="164" cy="104" r="86" fill="url(#pg)"/>` : '') +
+    `<defs>
+       <radialGradient id="pg"><stop offset="0%" stop-color="#edab48" stop-opacity=".10"/>
+       <stop offset="100%" stop-color="#edab48" stop-opacity="0"/></radialGradient>
+       <clipPath id="bust"><path d="${BUST}"/></clipPath>
+     </defs>`;
+  const g = document.createElementNS(NS,'g');
+  g.setAttribute('clip-path','url(#bust)');
+  // Dot density falls off from a light source at upper-left — form without drawn features.
+  for(let y=30;y<190;y+=o.step){
+    for(let x=90;x<240;x+=o.step){
+      const d = Math.hypot(x-140, y-80) / 150;
+      const r = Math.max(0, o.rMax * (1 - d*1.05));
+      if(r < .18) continue;
+      const c = document.createElementNS(NS,'circle');
+      c.setAttribute('cx', x + (y % (o.step*2) ? o.step/2 : 0));
+      c.setAttribute('cy', y); c.setAttribute('r', r.toFixed(2));
+      c.setAttribute('fill', o.dot);
+      g.appendChild(c);
+    }
+  }
+  svg.appendChild(g);
+  return svg;
+}
+
+function engravedBust(){
+  const svg = document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 328 200');
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','Engraved hairline portrait — an illustration, not a photograph');
+  let hatch = '';
+  for(let y=40;y<180;y+=5){
+    const inset = Math.max(0, 40 - Math.abs(y-104)*.28);
+    hatch += `<path d="M${104+inset} ${y} L${224-inset} ${y}" stroke="#edab48" stroke-width=".5" opacity="${(0.10+0.22*(1-Math.abs(y-96)/120)).toFixed(2)}"/>`;
+  }
+  svg.innerHTML = `<rect width="328" height="200" fill="var(--surface-2)"/>
+    <defs><clipPath id="bustE"><path d="${BUST}"/></clipPath></defs>
+    <g clip-path="url(#bustE)">${hatch}</g>
+    <path d="${BUST}" fill="none" stroke="#edab48" stroke-width="1.1" opacity=".85"/>`;
+  return svg;
+}
+
+function seal(id){
+  const svg = document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 328 200');
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','Generated seal — an identifier, not a likeness');
+  const r = rng(hash(id));
+  let dots = '';
+  // Concentric rings; count, phase and gaps all derived from the id — never from chance.
+  for(let ring=1; ring<=5; ring++){
+    const rad = 12 + ring*11;
+    const n = 6 + ring*5;
+    const phase = r()*Math.PI*2;
+    const gap = Math.floor(r()*n);
+    for(let i=0;i<n;i++){
+      if(i===gap || i===(gap+1)%n) continue;
+      const a = phase + (i/n)*Math.PI*2;
+      const size = (ring===3 ? 2.4 : 1.5) * (0.7 + r()*0.6);
+      dots += `<circle cx="${(164+Math.cos(a)*rad).toFixed(1)}" cy="${(104+Math.sin(a)*rad).toFixed(1)}" r="${size.toFixed(2)}" fill="#edab48" opacity="${(0.35+0.5*(ring/5)).toFixed(2)}"/>`;
+    }
+  }
+  svg.innerHTML = `<rect width="328" height="200" fill="var(--surface-2)"/>${dots}
+    <circle cx="164" cy="104" r="4" fill="#edab48"/>`;
+  return svg;
+}
+
+function silhouette(){
+  const svg = document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 328 200');
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','Silhouette on a halftone field — an illustration, not a photograph');
+  let field = '';
+  for(let y=18;y<196;y+=6){
+    for(let x=64;x<268;x+=6){
+      const d = Math.hypot(x-164,y-104)/108;
+      if(d>1) continue;
+      field += `<circle cx="${x+(y%12?3:0)}" cy="${y}" r="${(2.1*(1-d)).toFixed(2)}" fill="#edab48" opacity=".8"/>`;
+    }
+  }
+  svg.innerHTML = `<rect width="328" height="200" fill="var(--surface-2)"/>${field}
+    <path d="${BUST}" fill="#0a0908"/>`;
+  return svg;
+}
+
+const DIRECTIONS = [
+  ['A · Halftone bust',   'Warm, greetable, unmistakably synthetic. Recommended house style.', () => halftoneBust()],
+  ['B · Engraved hairline','Spec §11’s original register, re-keyed to gold. Formal; hardest to keep consistent.', engravedBust],
+  ['C · Seal',            'Procedural from the entity id. No production cost, cannot drift. Coldest. (VP-02)', () => seal('AGT-046')],
+  ['D · Silhouette',      'Strong at card size; anonymous at roster scale.', silhouette],
+];
+
+const pg = document.getElementById('portraits');
+DIRECTIONS.forEach(([title, note, make]) => {
+  const fig = document.createElement('figure');
+  fig.className = 'card';
+  fig.appendChild(make());
+  const h = document.createElement('h3'); h.textContent = title; h.style.marginTop = 'var(--s-3)';
+  const p = document.createElement('p'); p.textContent = note;
+  p.style.cssText = 'font-size:14px;margin:0';
+  fig.appendChild(h); fig.appendChild(p);
+  pg.appendChild(fig);
+});
+
+// card-size proofs
+(function(){
+  const a = halftoneBust(null,{step:5,rMax:1.8,glow:false});
+  a.setAttribute('viewBox','88 30 152 152'); a.style.borderRadius='50%';
+  document.getElementById('mini-a').appendChild(a);
+  const c = seal('KAR-03');
+  c.setAttribute('viewBox','88 28 152 152'); c.style.borderRadius='50%';
+  document.getElementById('mini-c').appendChild(c);
+})();
+
+// ─────────────────────────────────────────────────────────── weather states
+const WEATHER = [
+  ['Clear','—','Nothing wrong. Silence is the resting state.', w => ''],
+  ['Fog','cloud-fog','Sales has been below target for 9 days.', () =>
+    `<rect x="0" y="52" width="200" height="46" fill="rgba(246,241,233,.10)" filter="url(#blurF)"/>`],
+  ['Heat-shimmer','flame','Support has used 80% of its envelope with 11 days left.', () =>
+    `<g stroke="rgba(246,241,233,.22)" fill="none" stroke-width="1">
+       <path d="M40 96 q10 -12 20 0 t20 0"/><path d="M60 84 q10 -12 20 0 t20 0"/>
+       <path d="M100 96 q10 -12 20 0 t20 0"/><path d="M80 72 q10 -12 20 0 t20 0"/></g>`],
+  ['Storm cell','cloud-lightning','Collections is stopped — the breaker tripped at 14:02.', () =>
+    `<ellipse cx="100" cy="44" rx="66" ry="18" fill="#000" opacity=".72"/>
+     <path d="M96 52 L88 70 L100 70 L92 88" stroke="rgba(246,241,233,.5)" stroke-width="1.2" fill="none"/>`],
+  ['Moonlit stillness','moon','Marketing is hibernating; nothing is scheduled.', () =>
+    `<circle cx="150" cy="40" r="9" fill="rgba(246,241,233,.22)"/>`],
+];
+
+const wg = document.getElementById('weather');
+WEATHER.forEach(([name, icon, sentence, texture]) => {
+  const fig = document.createElement('figure');
+  fig.className = 'card';
+  const stopped = name === 'Storm cell';
+  fig.innerHTML = `
+    <svg viewBox="0 0 200 130" role="img" aria-label="${name}: ${sentence}">
+      <defs><filter id="blurF"><feGaussianBlur stdDeviation="6"/></filter></defs>
+      <rect width="200" height="130" fill="var(--world-ground)"/>
+      <g fill="var(--world-mass)" stroke="var(--world-line)" stroke-width=".7">
+        <path d="M56 78 L100 62 L144 78 L144 104 L100 120 L56 104 Z"/>
+      </g>
+      <g stroke="var(--world-line)" stroke-width="1" fill="none" opacity=".6">
+        <path d="M0 92 L56 92"/><path d="M144 92 L200 92"/>
+      </g>
+      ${stopped ? '' : '<circle cx="28" cy="92" r="1.8" fill="var(--world-traffic)"/><circle cx="176" cy="92" r="1.8" fill="var(--world-traffic)"/>'}
+      ${texture()}
+    </svg>
+    <h3 style="margin-top:var(--s-3)">${name}</h3>
+    <p class="mono" style="margin:0 0 6px">${icon === '—' ? 'no icon' : 'lucide · ' + icon}</p>
+    <p style="font-size:13px;margin:0">${sentence}</p>`;
+  wg.appendChild(fig);
+});
+</script>
+</body>
+</html>
