@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vihara — the Undercroft (visual concept)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Hanken+Grotesk:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════ tokens (Buddha Cognitive Lab, verbatim) ═══ */
+:root{
+  --gold-500:#edab48; --gold-700:#a8722a;
+  --bg:#0a0908; --surface:#141210; --surface-2:#1c1916; --surface-3:#241f1b;
+  --fg:#f6f1e9; --fg-muted:#b3aaa0; --fg-subtle:#7c746b; --fg-faint:#544d46;
+  --positive:#7bb487; --negative:#d4664f;
+  --border:rgba(255,240,220,.08); --border-strong:rgba(255,240,220,.16);
+  --gradient-gold:linear-gradient(105deg,#fdc871 0%,#edab48 32%,#ffefd8 58%,#fdc871 100%);
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --focus-ring:0 0 0 3px rgba(237,171,72,.32);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#080706;color:var(--fg);font-family:var(--font-mono);
+  font-size:12px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh}
+
+/* ── the machine floor: this room sits directly ON the energy floor ── */
+.floorwrap{position:fixed;left:50%;bottom:-14vh;width:210vw;height:120vh;z-index:0;
+  transform:translateX(-50%) perspective(900px) rotateX(62deg);transform-origin:50% 100%;
+  pointer-events:none;opacity:.6}
+.floorwrap::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top, transparent 0%, rgba(8,7,6,.5) 45%, #080706 92%)}
+#floor{width:100%;height:100%;display:block}
+.watermark{position:fixed;right:-4vw;top:-6vh;height:100vh;z-index:0;
+  opacity:.04;pointer-events:none}
+.watermark svg{height:100%;width:auto}
+
+/* ── glass topbar (the brand's liquid glass, over the floor's glow) ── */
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;
+  padding:11px 22px;
+  background:rgba(26,23,20,.55);backdrop-filter:blur(20px) saturate(175%);
+  border-bottom:1px solid rgba(255,248,238,.16);
+  box-shadow:0 10px 34px -10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,252,247,.4)}
+.topbar .mark{width:10px;height:10px;border-radius:50%;background:var(--gradient-gold);flex:none}
+.topbar .co{font-family:var(--font-display);font-weight:500;font-size:14px}
+.crumbs{font-family:var(--font-body);font-size:13px;color:var(--fg-subtle)}
+.crumbs a{color:var(--fg-muted);text-decoration:none;border-bottom:1px solid rgba(246,241,233,.25);
+  font-family:var(--font-display);font-weight:500}
+.crumbs a:hover{color:var(--fg)}
+.crumbs .here{color:var(--fg);font-family:var(--font-display);font-weight:500}
+.cmdk{margin-left:auto;display:flex;align-items:center;gap:8px;
+  background:rgba(12,10,9,.6);border:1px solid var(--border-strong);border-radius:999px;
+  padding:5px 14px;min-width:280px}
+.cmdk input{background:transparent;border:0;outline:0;color:var(--fg);
+  font-family:var(--font-body);font-size:13px;width:100%}
+.cmdk input::placeholder{color:var(--fg-subtle)}
+.cmdk:focus-within{box-shadow:var(--focus-ring)}
+.rail a:focus-visible,.crumbs a:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.cmdk kbd{font-family:var(--font-mono);font-size:10px;color:var(--fg-subtle);
+  border:1px solid var(--border);border-radius:5px;padding:1px 6px;flex:none}
+.beat{display:flex;align-items:center;gap:7px;color:var(--fg-subtle);font-size:11px;
+  letter-spacing:.08em;flex:none}
+.beat i{width:7px;height:7px;border-radius:50%;background:var(--positive);display:inline-block}
+@media (prefers-reduced-motion:no-preference){
+  .beat i{animation:beat 3.4s var(--ease-out) infinite}
+  @keyframes beat{0%,100%{opacity:.45}50%{opacity:1}}
+}
+
+/* ── layout ── */
+.wrap{position:relative;z-index:1;display:grid;grid-template-columns:172px 1fr;
+  gap:18px;max-width:1440px;margin:0 auto;padding:18px 22px 120px}
+.rail{position:sticky;top:64px;align-self:start;display:flex;flex-direction:column;gap:2px}
+.rail a{color:var(--fg-subtle);text-decoration:none;padding:6px 10px;border-radius:7px;
+  letter-spacing:.08em;transition:all .18s var(--ease-out);border-left:1px solid transparent}
+.rail a:hover{color:var(--fg);background:rgba(246,241,233,.05)}
+.rail .railcap{font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--fg-subtle);padding:10px 10px 4px}
+.main{display:grid;grid-template-columns:1fr 1fr;gap:18px;min-width:0}
+.panel{background:rgba(17,14,12,.82);border:1px solid var(--border);border-radius:11px;
+  padding:14px 16px;min-width:0}
+.panel.wide{grid-column:1 / -1}
+.panel h2{font-family:var(--font-display);font-weight:500;font-size:15px;color:var(--fg);
+  margin:0 0 3px}
+.panel .sub{font-family:var(--font-body);font-size:12.5px;color:var(--fg-muted);margin:0 0 12px}
+
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th{text-align:left;font-weight:400;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--fg-subtle);padding:4px 10px 8px 0;border-bottom:1px solid var(--border)}
+td{padding:6px 10px 6px 0;border-bottom:1px solid var(--border);color:var(--fg-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+tr:hover td{background:rgba(246,241,233,.03);color:var(--fg)}
+td.id{color:var(--fg-subtle)}
+td .ok{color:var(--positive)}
+td .warn{color:var(--negative)}
+td .hold{color:var(--fg);font-weight:500}
+td .hold::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--gradient-gold);margin-right:7px;vertical-align:0}
+tr.arrived td{animation:arrive .8s var(--ease-out)}
+@keyframes arrive{from{background:rgba(246,241,233,.07)}}
+
+.filters{display:inline-flex;border:1px solid var(--border-strong);border-radius:999px;
+  overflow:hidden;margin-bottom:12px}
+.filters button{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;border:0;
+  padding:4px 12px;background:transparent;color:var(--fg-muted);cursor:pointer;
+  text-transform:uppercase;transition:all .18s var(--ease-out)}
+.filters button[aria-pressed="true"]{background:var(--surface-3);color:var(--fg)}
+.filters button:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+
+/* envelopes */
+.env{margin:0 0 14px}
+.env .el{display:flex;justify-content:space-between;font-size:11px;color:var(--fg-muted);
+  margin-bottom:6px;letter-spacing:.06em}
+.env .bar{height:6px;border-radius:99px;background:rgba(246,241,233,.07);overflow:hidden;display:flex}
+.env .bar b{display:block;height:100%;background:rgba(246,241,233,.4)}
+.env .bar b.reserve{background:var(--gradient-gold)}
+
+/* trace tree */
+.trace{list-style:none;margin:0;padding:0}
+.trace li{padding:5px 0 5px 18px;border-left:1px solid var(--border);margin-left:6px;
+  color:var(--fg-muted);position:relative}
+.trace li::before{content:"";position:absolute;left:-3px;top:12px;width:5px;height:5px;
+  border-radius:50%;background:var(--fg-subtle)}
+.trace li .st{float:right;font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+.trace li .st.pass{color:var(--positive)}
+.trace li .st.skip{color:var(--fg-faint)}
+.trace li .st.hold{color:var(--fg)}
+.trace li .st.hold::before{content:"";display:inline-block;width:6px;height:6px;
+  border-radius:50%;background:var(--gradient-gold);margin-right:7px;vertical-align:0}
+.trace li .st.queued{color:var(--fg-subtle)}
+
+/* manifest inspector */
+.kv{display:grid;grid-template-columns:130px 1fr;gap:3px 14px;font-size:11.5px}
+.kv dt{color:var(--fg-subtle);letter-spacing:.08em}
+.kv dd{margin:0;color:var(--fg-muted)}
+.kv dd b{color:var(--fg);font-weight:500}
+
+/* flags */
+.flag{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--border)}
+.flag:last-child{border-bottom:0}
+.flag .fn{color:var(--fg-muted);flex:1}
+.toggle{width:34px;height:18px;border-radius:99px;background:var(--surface-3);
+  border:1px solid var(--border-strong);position:relative;cursor:pointer;flex:none;
+  transition:background .2s var(--ease-out)}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;
+  border-radius:50%;background:var(--fg-subtle);transition:all .2s var(--ease-out)}
+.toggle[aria-checked="true"]{background:var(--surface-2)}
+.toggle[aria-checked="true"]::after{left:18px;background:var(--fg)}
+.toggle:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+
+.echo{position:fixed;bottom:14px;left:22px;font-family:var(--font-body);font-size:13px;
+  color:var(--fg-muted);z-index:30;opacity:0;transition:opacity .3s var(--ease-out);
+  pointer-events:none}
+.echo.show{opacity:1}
+.hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  font-family:var(--font-body);font-size:12px;color:var(--fg-subtle);z-index:30;pointer-events:none}
+.credit{position:fixed;bottom:14px;right:22px;font-size:9.5px;letter-spacing:.12em;
+  color:var(--fg-faint);z-index:30;pointer-events:none;text-transform:uppercase}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.16s!important}
+}
+@media (prefers-reduced-transparency:reduce){
+  .topbar{background:var(--surface);backdrop-filter:none}
+  .panel{background:var(--surface)}
+}
+</style>
+</head>
+<body>
+<div class="floorwrap"><canvas id="floor"></canvas></div>
+<div class="watermark"><svg fill="#edab48" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 215.37 541.8"><defs><linearGradient id="linear-gradient" x1="13.72" y1="283.13" x2="227.29" y2="255.31" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fdc871"></stop><stop offset="0.26" stop-color="#edab48"></stop><stop offset="0.54" stop-color="#ffefd8"></stop><stop offset="1" stop-color="#fdc871"></stop></linearGradient></defs><g id="Layer_2" data-name="Layer 2"><g id="Layer_1-2" data-name="Layer 1"><path class="cls-1" d="M33.72,21.68a7.16,7.16,0,1,1,8.55-5.42A7.16,7.16,0,0,1,33.72,21.68ZM66.84,32.57a7.16,7.16,0,1,0-9.66,3A7.16,7.16,0,0,0,66.84,32.57ZM86.35,54.68a7.16,7.16,0,1,0-10.12.43A7.17,7.17,0,0,0,86.35,54.68ZM99.47,81.09a7.16,7.16,0,1,0-9.88-2.2A7.16,7.16,0,0,0,99.47,81.09ZM105.31,110a7.16,7.16,0,1,0-9-4.69A7.16,7.16,0,0,0,105.31,110Zm-1.84,29.43A7.16,7.16,0,1,0,96,132.58,7.15,7.15,0,0,0,103.47,139.43Zm-9.4,28a7.16,7.16,0,1,0-5.42-8.55A7.16,7.16,0,0,0,94.07,167.39ZM77.76,192a7.16,7.16,0,1,0-3-9.66A7.16,7.16,0,0,0,77.76,192ZM55.65,211.47a7.16,7.16,0,1,0-.43-10.12A7.16,7.16,0,0,0,55.65,211.47ZM29.23,224.59a7.16,7.16,0,1,0,2.21-9.88A7.17,7.17,0,0,0,29.23,224.59ZM.33,230.43a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.33,230.43ZM205,415.45a7.16,7.16,0,1,0,9.13,4.37A7.16,7.16,0,0,0,205,415.45ZM199.54,390a7.16,7.16,0,1,0,9.65,3.06A7.17,7.17,0,0,0,199.54,390Zm-5.78-26.35a7.16,7.16,0,1,0,10,1.69A7.15,7.15,0,0,0,193.76,363.69Zm-15.43-21a7.16,7.16,0,1,0,10.12.28A7.16,7.16,0,0,0,178.33,342.73Zm-15.32-21a7.16,7.16,0,1,0,10.06-1.13A7.16,7.16,0,0,0,163,321.75Zm-18.1-18.65a7.16,7.16,0,1,0,9.8-2.52A7.14,7.14,0,0,0,144.91,303.1Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.39,287.15Zm-22.54-12.94a7.16,7.16,0,1,0,8.73-5.12A7.15,7.15,0,0,0,101.85,274.21Zm-24.12-9.67a7.16,7.16,0,1,0,7.94-6.29A7.16,7.16,0,0,0,77.73,264.54ZM52.5,258.31a7.16,7.16,0,1,0,7-7.33A7.16,7.16,0,0,0,52.5,258.31Zm-25.85-2.65a7.16,7.16,0,1,0,5.89-8.23A7.15,7.15,0,0,0,26.65,255.66Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.68,256.63ZM206.8,469.52a7.16,7.16,0,1,0,8.43,5.6A7.16,7.16,0,0,0,206.8,469.52Zm-28.55-98a7.16,7.16,0,1,0,10.12.28A7.16,7.16,0,0,0,178.25,371.48Zm-15.33-21A7.16,7.16,0,1,0,173,349.37,7.16,7.16,0,0,0,162.92,350.5Zm-18.1-18.65a7.16,7.16,0,1,0,9.81-2.52A7.16,7.16,0,0,0,144.82,331.85Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.3,315.9ZM101.76,303a7.16,7.16,0,1,0,8.74-5.12A7.16,7.16,0,0,0,101.76,303Zm-24.12-9.67A7.16,7.16,0,1,0,85.58,287,7.17,7.17,0,0,0,77.64,293.29Zm-25.23-6.23a7.16,7.16,0,1,0,7-7.33A7.16,7.16,0,0,0,52.41,287.06Zm-25.85-2.65a7.16,7.16,0,1,0,5.89-8.23A7.15,7.15,0,0,0,26.56,284.41Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.59,285.38ZM199.36,447.55a7.16,7.16,0,1,0,9.66,3.06A7.16,7.16,0,0,0,199.36,447.55Zm-18.69-49.19a7.16,7.16,0,1,0,10.12.28A7.15,7.15,0,0,0,180.67,398.36Zm-17.84-19.11a7.16,7.16,0,1,0,10.06-1.13A7.16,7.16,0,0,0,162.83,379.25Zm-18.1-18.65a7.16,7.16,0,1,0,9.81-2.52A7.17,7.17,0,0,0,144.73,360.6Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.21,344.65Zm-22.53-12.94a7.16,7.16,0,1,0,8.73-5.12A7.16,7.16,0,0,0,101.68,331.71ZM77.56,322a7.16,7.16,0,1,0,7.93-6.29A7.15,7.15,0,0,0,77.56,322Zm-25.23-6.23a7.16,7.16,0,1,0,7-7.33A7.15,7.15,0,0,0,52.33,315.81Zm-25.86-2.65a7.16,7.16,0,1,0,5.9-8.23A7.16,7.16,0,0,0,26.47,313.16Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.5,314.13ZM206.62,527.62a7.16,7.16,0,1,0,8.44,5.61A7.17,7.17,0,0,0,206.62,527.62Zm-26-99.57a7.16,7.16,0,1,0,10.12.28A7.15,7.15,0,0,0,180.67,428.05ZM162.74,408a7.16,7.16,0,1,0,10.07-1.13A7.16,7.16,0,0,0,162.74,408Zm-18.1-18.65a7.16,7.16,0,1,0,9.81-2.52A7.17,7.17,0,0,0,144.64,389.35Zm-20.51-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.13,373.4Zm-22.54-12.94a7.16,7.16,0,1,0,8.73-5.12A7.17,7.17,0,0,0,101.59,360.46Zm-24.12-9.67a7.16,7.16,0,1,0,7.93-6.29A7.15,7.15,0,0,0,77.47,350.79Zm-25.23-6.23a7.16,7.16,0,1,0,7-7.33A7.17,7.17,0,0,0,52.24,344.56Zm-25.85-2.65a7.16,7.16,0,1,0,5.89-8.23A7.16,7.16,0,0,0,26.39,341.91Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.14,7.14,0,0,0,.42,342.88ZM199.19,505.05a7.16,7.16,0,1,0,9.65,3.06A7.16,7.16,0,0,0,199.19,505.05Zm-8.95-24.4a7.16,7.16,0,1,0,10,1.69A7.16,7.16,0,0,0,190.24,480.65ZM178,457.74a7.16,7.16,0,1,0,10.13.28A7.17,7.17,0,0,0,178,457.74Zm-15.32-21a7.16,7.16,0,1,0,10.06-1.13A7.15,7.15,0,0,0,162.66,436.75Zm-18.1-18.65a7.16,7.16,0,1,0,9.8-2.52A7.16,7.16,0,0,0,144.56,418.1Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124,402.15ZM101.5,389.21a7.16,7.16,0,1,0,8.73-5.12A7.17,7.17,0,0,0,101.5,389.21Zm-24.12-9.67a7.16,7.16,0,1,0,7.94-6.29A7.15,7.15,0,0,0,77.38,379.54Zm-25.23-6.22a7.16,7.16,0,1,0,7-7.34A7.17,7.17,0,0,0,52.15,373.32ZM26.3,370.66a7.16,7.16,0,1,0,5.89-8.23A7.17,7.17,0,0,0,26.3,370.66Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.15,7.15,0,0,0,.33,371.64ZM14,198.74a7.13,7.13,0,1,0-5,8.78A7.12,7.12,0,0,0,14,198.74Zm.08-54.83a7.1,7.1,0,1,0-5.5,8.41A7.1,7.1,0,0,0,14.11,143.91Zm0-27.41a7.1,7.1,0,1,0-5.77,8.22A7.1,7.1,0,0,0,14.15,116.5Zm25.48-1.92a7.1,7.1,0,1,0-5.77,8.22A7.1,7.1,0,0,0,39.63,114.58ZM12.55,85.46a7.1,7.1,0,1,0-.76,10A7.1,7.1,0,0,0,12.55,85.46Zm26.33-5.58a7.11,7.11,0,1,0-9.39,3.62A7.12,7.12,0,0,0,38.88,79.88ZM51.12,108a7.11,7.11,0,1,0-9.94-1.54A7.1,7.1,0,0,0,51.12,108Zm-3.43,30.44a7.11,7.11,0,1,0-7.84-6.31A7.11,7.11,0,0,0,47.69,138.39ZM29.49,163a7.11,7.11,0,1,0-3.62-9.38A7.12,7.12,0,0,0,29.49,163ZM1.42,177.2A7.11,7.11,0,1,0,3,167.26,7.1,7.1,0,0,0,1.42,177.2ZM14.23,61.68a7.11,7.11,0,1,0-6.31,7.83A7.1,7.1,0,0,0,14.23,61.68Zm27.15-15a7.13,7.13,0,1,0-8.8,4.93A7.13,7.13,0,0,0,41.38,46.69Zm21.23,21a7.13,7.13,0,1,0-10,1.62A7.14,7.14,0,0,0,62.61,67.64ZM75.39,94.58a7.13,7.13,0,1,0-9.91-1.88A7.14,7.14,0,0,0,75.39,94.58Zm2.8,29.69a7.14,7.14,0,1,0-8.67-5.16A7.15,7.15,0,0,0,78.19,124.27Zm-7.53,28.85a7.14,7.14,0,1,0-6.38-7.81A7.14,7.14,0,0,0,70.66,153.12ZM53.72,177.66a7.13,7.13,0,1,0-3.33-9.52A7.13,7.13,0,0,0,53.72,177.66ZM29.41,194.93a7.13,7.13,0,1,0,.13-10.09A7.13,7.13,0,0,0,29.41,194.93ZM14.27,34.27a7.13,7.13,0,1,0-6.58,7.64A7.12,7.12,0,0,0,14.27,34.27Zm0-27.41a7.16,7.16,0,1,0-6.85,7.45A7.15,7.15,0,0,0,14.31,6.86Z"></path></g></g></svg></div>
+
+<div class="topbar">
+  <span class="mark"></span><span class="co">Northwind Co.</span>
+  <span class="crumbs"><a href="estate-visual.html">Terrace</a>
+    <span>▸</span> <span class="here">The Undercroft</span></span>
+  <label class="cmdk"><kbd>⌘K</kbd>
+    <input id="cmd" placeholder="Ask, or command — same language as Pragya" aria-label="Command"></label>
+  <span class="beat"><i></i>sheel · 42s ago</span>
+</div>
+
+<div class="wrap">
+  <nav class="rail" aria-label="Undercroft sections">
+    <span class="railcap">the engine room</span>
+    <a href="#signals">signals</a>
+    <a href="#triggers">triggers</a>
+    <a href="#envelopes">envelopes</a>
+    <a href="#trace">runs &amp; traces</a>
+    <a href="#routing">routing</a>
+    <a href="#manifest">manifests</a>
+    <a href="#consent">consent · dnc</a>
+    <a href="#flags">flags</a>
+  </nav>
+
+  <div class="main">
+    <section class="panel wide" id="signals">
+      <h2>Signals</h2>
+      <p class="sub">The bus, live. Everything that moves on the estate moves through here first.</p>
+      <div class="filters" id="sigfilter">
+        <button data-k="all" aria-pressed="true">all</button>
+        <button data-k="inbound" aria-pressed="false">inbound</button>
+        <button data-k="governance" aria-pressed="false">governance</button>
+        <button data-k="learning" aria-pressed="false">learning</button>
+      </div>
+      <table id="sigtable">
+        <thead><tr><th>signal</th><th>type</th><th>subject</th><th>age</th><th>state</th></tr></thead>
+        <tbody>
+        <tr data-k="inbound"><td class="id">sig_9f2a…</td><td>message.inbound</td><td>trust:counterparty</td><td>2m</td><td><span class="ok">dispatched</span></td></tr>
+        <tr data-k="inbound"><td class="id">sig_71c4…</td><td>object.synced</td><td>zoho · Invoice</td><td>6m</td><td><span class="ok">dispatched</span></td></tr>
+        <tr data-k="inbound"><td class="id">sig_0ba8…</td><td>sync.conflict</td><td>KT-2291 · both edited</td><td>18m</td><td><span class="hold">parked · sla 7h 42m</span></td></tr>
+        <tr data-k="inbound"><td class="id">sig_c231…</td><td>voice.inbound</td><td>+91 98… · bound caller</td><td>24m</td><td><span class="ok">dispatched</span></td></tr>
+        <tr data-k="governance"><td class="id">sig_88d1…</td><td>broadcast.published</td><td>linkedin · post 118</td><td>31m</td><td><span class="ok">audited</span></td></tr>
+        <tr data-k="learning"><td class="id">sig_4e02…</td><td>learning.kpi_snapshot</td><td>daily · 19 districts</td><td>1h</td><td><span class="ok">done</span></td></tr>
+        <tr data-k="governance"><td class="id">sig_b3aa…</td><td>governance.autonomy_demoted</td><td>AGT-092 · a2 → a1</td><td>2h</td><td><span class="ok">done</span></td></tr>
+        <tr data-k="governance"><td class="id">sig_e771…</td><td>strategy.review_due</td><td>mandate M-9 · Q3</td><td>3h</td><td><span class="ok">emitted</span></td></tr>
+        <tr data-k="inbound"><td class="id">sig_da44…</td><td>authn.channel_otp</td><td>sms · binding enrol</td><td>3h</td><td><span class="ok">done</span></td></tr>
+        <tr data-k="learning"><td class="id">sig_15c9…</td><td>learning.outcome_observed</td><td>csat 4.8 · run 3c11</td><td>5h</td><td><span class="ok">done</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="triggers">
+      <h2>Trigger registry</h2>
+      <p class="sub">What wakes whom.</p>
+      <table>
+        <thead><tr><th>on signal</th><th>wakes</th><th>state</th></tr></thead>
+        <tbody>
+        <tr><td>message.inbound</td><td>P06 · care intake</td><td><span class="ok">on</span></td></tr>
+        <tr><td>object.synced</td><td>mirror sweep</td><td><span class="ok">on</span></td></tr>
+        <tr><td>voice.inbound</td><td>KAR-01 · voice gate</td><td><span class="ok">on</span></td></tr>
+        <tr><td>invoice.overdue</td><td>P08 · chase</td><td><span class="ok">on</span></td></tr>
+        <tr><td>strategy.review_due</td><td>— nothing consumes it</td><td><span class="warn">poll</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="envelopes">
+      <h2>Envelope ledgers</h2>
+      <p class="sub">Per-district budget. The gold seam is the protected reserve.</p>
+      <div class="env"><div class="el"><span>money · P08</span><span>₹18k / ₹30k</span></div>
+        <div class="bar"><b style="width:52%"></b><b class="reserve" style="width:11%"></b></div></div>
+      <div class="env"><div class="el"><span>care · P06</span><span>₹9k / ₹15k</span></div>
+        <div class="bar"><b style="width:60%"></b></div></div>
+      <div class="env"><div class="el"><span>growth · P03</span><span>₹6k / ₹20k</span></div>
+        <div class="bar"><b style="width:30%"></b></div></div>
+    </section>
+
+    <section class="panel" id="trace">
+      <h2>Run trace · 4f2a — chase KT-2291</h2>
+      <p class="sub">Meera · A2 · started 00:04 ago. The same trace her dossier tells as a story.</p>
+      <ul class="trace">
+        <li>plan — 3 steps, est ₹4 <span class="st pass">ok · 0.4s</span></li>
+        <li>policy gate — email_dispatch @ a2 <span class="st pass">pass</span></li>
+        <li>act — send_email · firm reminder <span class="st hold">held · card raised</span></li>
+        <li>post-critic <span class="st queued">waiting on act</span></li>
+        <li>reflect <span class="st queued">queued</span></li>
+      </ul>
+    </section>
+
+    <section class="panel" id="routing">
+      <h2>Routing attribution</h2>
+      <p class="sub">Which mind did the work, and what it cost.</p>
+      <table>
+        <thead><tr><th>task</th><th>model</th><th>tokens</th><th>cost</th></tr></thead>
+        <tbody>
+        <tr><td>chat · pragya</td><td>gpt-5.5 · router v2</td><td>12.4k</td><td>₹3.10</td></tr>
+        <tr><td>speech_to_speech</td><td>gemini-3.1-flash-live</td><td>8m 12s</td><td>₹5.85</td></tr>
+        <tr><td>rerank · retrieval</td><td>gemini-2.5-flash</td><td>2.1k</td><td>₹0.22</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="manifest">
+      <h2>Manifest inspector</h2>
+      <p class="sub">What the renderer was told to draw — "why did she show me that" has an answer here.</p>
+      <dl class="kv">
+        <dt>surface_id</dt><dd><b>undercroft.main</b> · v3</dd>
+        <dt>renderer</dt><dd>S · plane <b>live</b> · depth 3</dd>
+        <dt>intent_shape</dt><dd>sha256:9f2a…c41</dd>
+        <dt>cache</dt><dd><b>hit</b> · age 84s · ttl 120s</dd>
+        <dt>registry</dt><dd>v1 · 45 components · <b>10 certified</b></dd>
+        <dt>entity_defs</dt><dd>v12 — Invoice +2 fields (sega T8), re-derives on next ask</dd>
+      </dl>
+    </section>
+
+    <section class="panel" id="consent">
+      <h2>Consent · DNC</h2>
+      <p class="sub">The registry KAR consults before anything leaves the estate.</p>
+      <table>
+        <thead><tr><th>ledger</th><th>count</th><th>30d</th></tr></thead>
+        <tbody>
+        <tr><td>consent granted</td><td>1,204</td><td>+38</td></tr>
+        <tr><td>do-not-contact</td><td>87</td><td>+3</td></tr>
+        <tr><td>unsubscribed</td><td>112</td><td>+12</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel wide" id="flags">
+      <h2>Feature flags</h2>
+      <p class="sub">Read-only here; changing one is a certified act.</p>
+      <div class="flag"><span class="fn" id="fn-routing">routing.v2 — cost-aware model routing</span>
+        <span class="toggle" role="switch" aria-checked="true" aria-labelledby="fn-routing" tabindex="0"></span></div>
+      <div class="flag"><span class="fn" id="fn-glass">glasshouse.scenarios — the twin is open</span>
+        <span class="toggle" role="switch" aria-checked="true" aria-labelledby="fn-glass" tabindex="0"></span></div>
+      <div class="flag"><span class="fn" id="fn-parallel">vihara.parallel_run — legacy console mirror</span>
+        <span class="toggle" role="switch" aria-checked="false" aria-labelledby="fn-parallel" tabindex="0"></span></div>
+    </section>
+  </div>
+</div>
+
+<div class="echo" id="echo"></div>
+<div class="hint">Depth 3 · mono throughout · density pinned to operator · ⌘↑ rises to the Terrace</div>
+<div class="credit">vihara · the undercroft · visual concept</div>
+
+<script>
+'use strict';
+let echoTimer = 0;
+function echo(t){
+  const e = document.getElementById('echo');
+  e.textContent = t; e.classList.add('show');
+  clearTimeout(echoTimer); echoTimer = setTimeout(() => e.classList.remove('show'), 3200);
+}
+
+/* signal filter */
+document.querySelectorAll('#sigfilter button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#sigfilter button')
+      .forEach(o => o.setAttribute('aria-pressed', String(o === btn)));
+    const k = btn.dataset.k;
+    document.querySelectorAll('#sigtable tbody tr').forEach(tr => {
+      tr.style.display = (k === 'all' || tr.dataset.k === k) ? '' : 'none';
+    });
+    echo('filtered signals to ' + k);
+  });
+});
+
+/* a new signal arrives now and then — the bus is alive. This runs regardless of
+   reduced motion: the reduced path loses the arrival flash (CSS kills it), never
+   the information itself */
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+{
+  const FRESH = [
+    ['sig_a1f0…','message.inbound','trust:counterparty','now','ok','dispatched','inbound'],
+    ['sig_7bd3…','object.synced','zoho · Payment','now','ok','dispatched','inbound'],
+    ['sig_30e8…','learning.observation','routing · pooled','now','ok','done','learning'],
+  ];
+  let fi = 0;
+  setInterval(() => {
+    const f = FRESH[fi++ % FRESH.length];
+    const tb = document.querySelector('#sigtable tbody');
+    const tr = document.createElement('tr');
+    tr.dataset.k = f[6]; tr.className = 'arrived';
+    tr.innerHTML = `<td class="id">${f[0]}</td><td>${f[1]}</td><td>${f[2]}</td>
+      <td>${f[3]}</td><td><span class="${f[4]}">${f[5]}</span></td>`;
+    const active = document.querySelector('#sigfilter button[aria-pressed="true"]').dataset.k;
+    if (!(active === 'all' || active === f[6])) tr.style.display = 'none';
+    tb.prepend(tr);
+    // trim hidden rows first — trimming visible ones drains a filtered view forever
+    if (tb.children.length > 12)
+      ([...tb.children].reverse().find(r => r.style.display === 'none')
+        || tb.lastElementChild).remove();
+  }, 7000);
+}
+
+/* flags — visual only; the echo says what would really happen */
+document.querySelectorAll('.toggle').forEach(t => {
+  const flip = () => {
+    const on = t.getAttribute('aria-checked') === 'true';
+    t.setAttribute('aria-checked', String(!on));
+    echo('changing a flag is a certified act — this would raise a step-up');
+  };
+  t.addEventListener('click', flip);
+  t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flip(); } });
+});
+
+/* ⌘K */
+const cmd = document.getElementById('cmd');
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'){ e.preventDefault(); cmd.focus(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp'){ e.preventDefault(); location.href = 'estate-visual.html'; }
+});
+cmd.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && cmd.value.trim()){
+    echo('asked: "' + cmd.value.trim() + '" — same parser as Pragya, echoed as a sentence');
+    cmd.value = '';
+  }
+});
+document.querySelectorAll('.rail a').forEach(a =>
+  a.addEventListener('click', () => echo('opened ' + a.textContent)));
+
+/* ── the energy floor — the Undercroft sits directly on the machine floor ── */
+(function(){
+  const cv = document.getElementById('floor');
+  const ctx = cv.getContext('2d');
+  const W = 1200, H = 700; cv.width = W; cv.height = H;
+  const R = 26, gap = 2.4, SQ3 = Math.sqrt(3);
+  const hex = new Path2D();
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 3 * i;
+    const x = (R - gap) * Math.cos(a), y = (R - gap) * Math.sin(a);
+    i ? hex.lineTo(x, y) : hex.moveTo(x, y);
+  }
+  hex.closePath();
+  const cols = Math.ceil(W / (R * 1.5)) + 2, rows = Math.ceil(H / (R * SQ3)) + 2;
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const blobs = [];
+  for (let i = 0; i < 7; i++) blobs.push({
+    x: rnd() * W, y: rnd() * H, r: 130 + rnd() * 180,
+    dx: .3 + rnd() * .7, dy: .25 + rnd() * .6, p: rnd() * 6.28, white: i === 6 });
+  let t = 0;
+  function frame(){
+    t += .016;
+    ctx.fillStyle = '#060505'; ctx.fillRect(0, 0, W, H);
+    for (const b of blobs){
+      const x = b.x + Math.sin(t * b.dx + b.p) * 150;
+      const y = b.y + Math.cos(t * b.dy + b.p) * 95;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, b.r);
+      const c = '246,241,233';   /* light, not signal — the floor spends no gold */
+      g.addColorStop(0, `rgba(${c},${b.white ? .26 : .24})`);
+      g.addColorStop(1, `rgba(${c},0)`);
+      ctx.fillStyle = g; ctx.fillRect(x - b.r, y - b.r, b.r * 2, b.r * 2);
+    }
+    ctx.fillStyle = '#0b0a09';
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+      const x = c * R * 1.5, y = r * R * SQ3 + (c % 2 ? R * SQ3 / 2 : 0);
+      ctx.save(); ctx.translate(x, y); ctx.fill(hex); ctx.restore();
+    }
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  frame();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vihara — the Still Surface (visual concept)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold-500:#edab48; --gold-700:#a8722a;
+  --bg:#0a0908; --surface:#141210; --surface-2:#1c1916;
+  --fg:#f6f1e9; --fg-muted:#b3aaa0; --fg-subtle:#7c746b; --fg-faint:#544d46;
+  --border-strong:rgba(255,240,220,.16);
+  --gradient-gold:linear-gradient(105deg,#fdc871 0%,#edab48 32%,#ffefd8 58%,#fdc871 100%);
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --focus-ring:0 0 0 3px rgba(237,171,72,.32);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(120% 90% at 50% 30%, #0e0c0a 0%, #060505 70%);
+     color:var(--fg);font-family:var(--font-body);font-weight:300;overflow:hidden;
+     -webkit-font-smoothing:antialiased;cursor:default}
+
+/* ── the energy floor, carried over from the legacy app's background system ──
+   matte hex tiles over a slow gold glow — light through the gaps, fog at the
+   horizon. Re-keyed to the brand's single hue; the legacy blue is retired.  */
+.floorwrap{position:fixed;left:50%;bottom:-14vh;width:210vw;height:120vh;z-index:0;
+  transform:translateX(-50%) perspective(900px) rotateX(62deg);transform-origin:50% 100%;
+  pointer-events:none;opacity:.5}
+.floorwrap::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top, transparent 0%, rgba(6,5,5,.4) 40%, #060505 90%)}
+#floor{width:100%;height:100%;display:block}
+
+/* the dotted-B, the brand's one ornament — watermark, never redrawn */
+.watermark{position:fixed;right:-3vw;bottom:-10vh;height:92vh;z-index:0;
+  opacity:.05;pointer-events:none}
+.watermark svg{height:100%;width:auto}
+
+/* ── depth 0 ── */
+.still{position:fixed;inset:0;z-index:1;display:flex;flex-direction:column;
+  justify-content:center;padding-left:clamp(32px, 12vw, 220px)}
+.still p{margin:0 0 10px;font-size:clamp(19px, 2.2vw, 24px);line-height:1.55;
+  color:var(--fg);max-width:36ch}
+.still p.sub{color:var(--fg-muted)}
+.still p.need{color:var(--fg);font-weight:500}
+.still p.need::before{content:"";display:inline-block;width:8px;height:8px;
+  border-radius:50%;background:var(--gradient-gold);margin-right:12px;vertical-align:1px}
+.still p.quiet{color:var(--fg-subtle);display:none}
+body.allwell .still p.need{display:none}
+body.allwell .still p.quiet{display:block}
+.deeper{margin-top:44px;font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--fg-muted);opacity:0;animation:arrive 1.2s var(--ease-out) 3s forwards}
+@keyframes arrive{to{opacity:1}}
+
+.pulse{position:fixed;right:12vw;bottom:16vh;width:10px;height:10px;border-radius:50%;
+  background:var(--fg-subtle);opacity:.5;z-index:1}   /* .5 = the breathe midpoint, so
+  the reduced-motion rest state is the quiet register, not full brightness */
+@media (prefers-reduced-motion:no-preference){
+  .pulse{animation:beat 3.4s var(--ease-out) infinite}
+  @keyframes beat{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:.7;transform:scale(1.35)}}
+}
+
+/* ── HUD ── */
+.hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
+  padding:14px 22px;z-index:10;pointer-events:none}
+.hud .mark{width:10px;height:10px;border-radius:50%;background:var(--gradient-gold);flex:none}
+.hud .co{font-family:var(--font-display);font-weight:500;font-size:15px}
+.hud .right{margin-left:auto;pointer-events:auto}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:999px;overflow:hidden}
+.seg button{font-family:var(--font-body);font-size:12.5px;font-weight:500;border:0;
+  padding:6px 14px;background:transparent;color:var(--fg-muted);cursor:pointer;
+  transition:all .18s var(--ease-out)}
+.seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--fg)}
+.seg button:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  font-family:var(--font-body);font-size:12px;color:var(--fg-muted);z-index:10}
+.credit{position:fixed;bottom:14px;right:22px;font-family:var(--font-mono);font-size:9.5px;
+  letter-spacing:.12em;color:var(--fg-faint);z-index:10;text-transform:uppercase}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.16s!important}
+  .deeper{opacity:1}
+}
+</style>
+</head>
+<body>
+<div class="floorwrap"><canvas id="floor"></canvas></div>
+<div class="watermark"><svg fill="#edab48" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 215.37 541.8"><defs><linearGradient id="linear-gradient" x1="13.72" y1="283.13" x2="227.29" y2="255.31" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fdc871"></stop><stop offset="0.26" stop-color="#edab48"></stop><stop offset="0.54" stop-color="#ffefd8"></stop><stop offset="1" stop-color="#fdc871"></stop></linearGradient></defs><g id="Layer_2" data-name="Layer 2"><g id="Layer_1-2" data-name="Layer 1"><path class="cls-1" d="M33.72,21.68a7.16,7.16,0,1,1,8.55-5.42A7.16,7.16,0,0,1,33.72,21.68ZM66.84,32.57a7.16,7.16,0,1,0-9.66,3A7.16,7.16,0,0,0,66.84,32.57ZM86.35,54.68a7.16,7.16,0,1,0-10.12.43A7.17,7.17,0,0,0,86.35,54.68ZM99.47,81.09a7.16,7.16,0,1,0-9.88-2.2A7.16,7.16,0,0,0,99.47,81.09ZM105.31,110a7.16,7.16,0,1,0-9-4.69A7.16,7.16,0,0,0,105.31,110Zm-1.84,29.43A7.16,7.16,0,1,0,96,132.58,7.15,7.15,0,0,0,103.47,139.43Zm-9.4,28a7.16,7.16,0,1,0-5.42-8.55A7.16,7.16,0,0,0,94.07,167.39ZM77.76,192a7.16,7.16,0,1,0-3-9.66A7.16,7.16,0,0,0,77.76,192ZM55.65,211.47a7.16,7.16,0,1,0-.43-10.12A7.16,7.16,0,0,0,55.65,211.47ZM29.23,224.59a7.16,7.16,0,1,0,2.21-9.88A7.17,7.17,0,0,0,29.23,224.59ZM.33,230.43a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.33,230.43ZM205,415.45a7.16,7.16,0,1,0,9.13,4.37A7.16,7.16,0,0,0,205,415.45ZM199.54,390a7.16,7.16,0,1,0,9.65,3.06A7.17,7.17,0,0,0,199.54,390Zm-5.78-26.35a7.16,7.16,0,1,0,10,1.69A7.15,7.15,0,0,0,193.76,363.69Zm-15.43-21a7.16,7.16,0,1,0,10.12.28A7.16,7.16,0,0,0,178.33,342.73Zm-15.32-21a7.16,7.16,0,1,0,10.06-1.13A7.16,7.16,0,0,0,163,321.75Zm-18.1-18.65a7.16,7.16,0,1,0,9.8-2.52A7.14,7.14,0,0,0,144.91,303.1Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.39,287.15Zm-22.54-12.94a7.16,7.16,0,1,0,8.73-5.12A7.15,7.15,0,0,0,101.85,274.21Zm-24.12-9.67a7.16,7.16,0,1,0,7.94-6.29A7.16,7.16,0,0,0,77.73,264.54ZM52.5,258.31a7.16,7.16,0,1,0,7-7.33A7.16,7.16,0,0,0,52.5,258.31Zm-25.85-2.65a7.16,7.16,0,1,0,5.89-8.23A7.15,7.15,0,0,0,26.65,255.66Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.68,256.63ZM206.8,469.52a7.16,7.16,0,1,0,8.43,5.6A7.16,7.16,0,0,0,206.8,469.52Zm-28.55-98a7.16,7.16,0,1,0,10.12.28A7.16,7.16,0,0,0,178.25,371.48Zm-15.33-21A7.16,7.16,0,1,0,173,349.37,7.16,7.16,0,0,0,162.92,350.5Zm-18.1-18.65a7.16,7.16,0,1,0,9.81-2.52A7.16,7.16,0,0,0,144.82,331.85Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.3,315.9ZM101.76,303a7.16,7.16,0,1,0,8.74-5.12A7.16,7.16,0,0,0,101.76,303Zm-24.12-9.67A7.16,7.16,0,1,0,85.58,287,7.17,7.17,0,0,0,77.64,293.29Zm-25.23-6.23a7.16,7.16,0,1,0,7-7.33A7.16,7.16,0,0,0,52.41,287.06Zm-25.85-2.65a7.16,7.16,0,1,0,5.89-8.23A7.15,7.15,0,0,0,26.56,284.41Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.59,285.38ZM199.36,447.55a7.16,7.16,0,1,0,9.66,3.06A7.16,7.16,0,0,0,199.36,447.55Zm-18.69-49.19a7.16,7.16,0,1,0,10.12.28A7.15,7.15,0,0,0,180.67,398.36Zm-17.84-19.11a7.16,7.16,0,1,0,10.06-1.13A7.16,7.16,0,0,0,162.83,379.25Zm-18.1-18.65a7.16,7.16,0,1,0,9.81-2.52A7.17,7.17,0,0,0,144.73,360.6Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.21,344.65Zm-22.53-12.94a7.16,7.16,0,1,0,8.73-5.12A7.16,7.16,0,0,0,101.68,331.71ZM77.56,322a7.16,7.16,0,1,0,7.93-6.29A7.15,7.15,0,0,0,77.56,322Zm-25.23-6.23a7.16,7.16,0,1,0,7-7.33A7.15,7.15,0,0,0,52.33,315.81Zm-25.86-2.65a7.16,7.16,0,1,0,5.9-8.23A7.16,7.16,0,0,0,26.47,313.16Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.16,7.16,0,0,0,.5,314.13ZM206.62,527.62a7.16,7.16,0,1,0,8.44,5.61A7.17,7.17,0,0,0,206.62,527.62Zm-26-99.57a7.16,7.16,0,1,0,10.12.28A7.15,7.15,0,0,0,180.67,428.05ZM162.74,408a7.16,7.16,0,1,0,10.07-1.13A7.16,7.16,0,0,0,162.74,408Zm-18.1-18.65a7.16,7.16,0,1,0,9.81-2.52A7.17,7.17,0,0,0,144.64,389.35Zm-20.51-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124.13,373.4Zm-22.54-12.94a7.16,7.16,0,1,0,8.73-5.12A7.17,7.17,0,0,0,101.59,360.46Zm-24.12-9.67a7.16,7.16,0,1,0,7.93-6.29A7.15,7.15,0,0,0,77.47,350.79Zm-25.23-6.23a7.16,7.16,0,1,0,7-7.33A7.17,7.17,0,0,0,52.24,344.56Zm-25.85-2.65a7.16,7.16,0,1,0,5.89-8.23A7.16,7.16,0,0,0,26.39,341.91Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.14,7.14,0,0,0,.42,342.88ZM199.19,505.05a7.16,7.16,0,1,0,9.65,3.06A7.16,7.16,0,0,0,199.19,505.05Zm-8.95-24.4a7.16,7.16,0,1,0,10,1.69A7.16,7.16,0,0,0,190.24,480.65ZM178,457.74a7.16,7.16,0,1,0,10.13.28A7.17,7.17,0,0,0,178,457.74Zm-15.32-21a7.16,7.16,0,1,0,10.06-1.13A7.15,7.15,0,0,0,162.66,436.75Zm-18.1-18.65a7.16,7.16,0,1,0,9.8-2.52A7.16,7.16,0,0,0,144.56,418.1Zm-20.52-16a7.16,7.16,0,1,0,9.36-3.86A7.16,7.16,0,0,0,124,402.15ZM101.5,389.21a7.16,7.16,0,1,0,8.73-5.12A7.17,7.17,0,0,0,101.5,389.21Zm-24.12-9.67a7.16,7.16,0,1,0,7.94-6.29A7.15,7.15,0,0,0,77.38,379.54Zm-25.23-6.22a7.16,7.16,0,1,0,7-7.34A7.17,7.17,0,0,0,52.15,373.32ZM26.3,370.66a7.16,7.16,0,1,0,5.89-8.23A7.17,7.17,0,0,0,26.3,370.66Zm-26,1a7.16,7.16,0,1,0,4.69-9A7.15,7.15,0,0,0,.33,371.64ZM14,198.74a7.13,7.13,0,1,0-5,8.78A7.12,7.12,0,0,0,14,198.74Zm.08-54.83a7.1,7.1,0,1,0-5.5,8.41A7.1,7.1,0,0,0,14.11,143.91Zm0-27.41a7.1,7.1,0,1,0-5.77,8.22A7.1,7.1,0,0,0,14.15,116.5Zm25.48-1.92a7.1,7.1,0,1,0-5.77,8.22A7.1,7.1,0,0,0,39.63,114.58ZM12.55,85.46a7.1,7.1,0,1,0-.76,10A7.1,7.1,0,0,0,12.55,85.46Zm26.33-5.58a7.11,7.11,0,1,0-9.39,3.62A7.12,7.12,0,0,0,38.88,79.88ZM51.12,108a7.11,7.11,0,1,0-9.94-1.54A7.1,7.1,0,0,0,51.12,108Zm-3.43,30.44a7.11,7.11,0,1,0-7.84-6.31A7.11,7.11,0,0,0,47.69,138.39ZM29.49,163a7.11,7.11,0,1,0-3.62-9.38A7.12,7.12,0,0,0,29.49,163ZM1.42,177.2A7.11,7.11,0,1,0,3,167.26,7.1,7.1,0,0,0,1.42,177.2ZM14.23,61.68a7.11,7.11,0,1,0-6.31,7.83A7.1,7.1,0,0,0,14.23,61.68Zm27.15-15a7.13,7.13,0,1,0-8.8,4.93A7.13,7.13,0,0,0,41.38,46.69Zm21.23,21a7.13,7.13,0,1,0-10,1.62A7.14,7.14,0,0,0,62.61,67.64ZM75.39,94.58a7.13,7.13,0,1,0-9.91-1.88A7.14,7.14,0,0,0,75.39,94.58Zm2.8,29.69a7.14,7.14,0,1,0-8.67-5.16A7.15,7.15,0,0,0,78.19,124.27Zm-7.53,28.85a7.14,7.14,0,1,0-6.38-7.81A7.14,7.14,0,0,0,70.66,153.12ZM53.72,177.66a7.13,7.13,0,1,0-3.33-9.52A7.13,7.13,0,0,0,53.72,177.66ZM29.41,194.93a7.13,7.13,0,1,0,.13-10.09A7.13,7.13,0,0,0,29.41,194.93ZM14.27,34.27a7.13,7.13,0,1,0-6.58,7.64A7.12,7.12,0,0,0,14.27,34.27Zm0-27.41a7.16,7.16,0,1,0-6.85,7.45A7.15,7.15,0,0,0,14.31,6.86Z"></path></g></g></svg></div>
+
+<div class="hud">
+  <span class="mark"></span><span class="co">Northwind Co.</span>
+  <div class="right">
+    <span class="seg" id="mode">
+      <button data-v="waiting" aria-pressed="true">Two waiting</button>
+      <button data-v="allwell" aria-pressed="false">All is well</button>
+    </span>
+  </div>
+</div>
+
+<div class="still" id="still">
+  <p>All is well.</p>
+  <p class="sub">₹2.4L collected this week.</p>
+  <p class="need">Two colleagues are waiting for you.</p>
+  <p class="quiet">Nothing needs you.</p>
+  <p class="deeper">go deeper · click anywhere</p>
+</div>
+<span class="pulse" title="Sheel — the heartbeat"></span>
+
+<div class="hint">This is the home screen — of everything. Silence is the proof the workforce is working.</div>
+<div class="credit">vihara · still surface · depth 0 · visual concept</div>
+
+<script>
+'use strict';
+/* the estate is one level down — "click anywhere" means anywhere but the HUD */
+document.body.addEventListener('click', e => {
+  if (e.target.closest('.hud')) return;
+  location.href = 'estate-visual.html';
+});
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowDown'){
+    e.preventDefault(); location.href = 'estate-visual.html';
+  }
+});
+/* the demo toggle: at zero hands raised, no gold on this screen but the brand
+   mark (art bible §2.1 — "almost no gold"; the mark and wordmark are sanctioned) */
+document.querySelectorAll('#mode button').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('#mode button')
+      .forEach(o => o.setAttribute('aria-pressed', String(o === btn)));
+    document.body.classList.toggle('allwell', btn.dataset.v === 'allwell');
+  });
+});
+
+/* ── the energy floor ─────────────────────────────────────────────────── */
+(function(){
+  const cv = document.getElementById('floor');
+  const ctx = cv.getContext('2d');
+  const W = 1200, H = 700; cv.width = W; cv.height = H;
+  const R = 26, gap = 2.4, SQ3 = Math.sqrt(3);
+  const hex = new Path2D();
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 3 * i;
+    const x = (R - gap) * Math.cos(a), y = (R - gap) * Math.sin(a);
+    i ? hex.lineTo(x, y) : hex.moveTo(x, y);
+  }
+  hex.closePath();
+  const cols = Math.ceil(W / (R * 1.5)) + 2, rows = Math.ceil(H / (R * SQ3)) + 2;
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const blobs = [];
+  for (let i = 0; i < 7; i++) blobs.push({
+    x: rnd() * W, y: rnd() * H, r: 130 + rnd() * 180,
+    dx: .3 + rnd() * .7, dy: .25 + rnd() * .6, p: rnd() * 6.28, white: i === 6 });
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let t = 0;
+  function frame(){
+    t += .016;
+    ctx.fillStyle = '#060505'; ctx.fillRect(0, 0, W, H);
+    for (const b of blobs){
+      const x = b.x + Math.sin(t * b.dx + b.p) * 150;
+      const y = b.y + Math.cos(t * b.dy + b.p) * 95;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, b.r);
+      const c = '246,241,233';   /* light, not signal — the floor spends no gold */
+      g.addColorStop(0, `rgba(${c},${b.white ? .26 : .22})`);
+      g.addColorStop(1, `rgba(${c},0)`);
+      ctx.fillStyle = g; ctx.fillRect(x - b.r, y - b.r, b.r * 2, b.r * 2);
+    }
+    ctx.fillStyle = '#0b0a09';
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+      const x = c * R * 1.5, y = r * R * SQ3 + (c % 2 ? R * SQ3 / 2 : 0);
+      ctx.save(); ctx.translate(x, y); ctx.fill(hex); ctx.restore();
+    }
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  frame();
+})();
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 > **Deliverable D6** of [01_phase_a_overview.md](./01_phase_a_overview.md). Spec §5's inventory, drawn.
 > **Status:** 🔍 **AWAITING OWNER REVIEW (checkpoint R2).**
 > **Depends on:** [03_art_bible.md](./03_art_bible.md) · [04_component_registry.md](./04_component_registry.md). **Writes back into:** D3 §8 — see §20 here.
-> **Visual proof:** [wireframes/spine.html](./wireframes/spine.html) — the spine loop (still surface → terrace → district → tray → approve) at both densities. The other twelve surfaces are drawn here as layouts and compositions; drawing all seventeen in HTML would be building the app, not designing it.
+> **Visual proof:** [wireframes/spine.html](./wireframes/spine.html) — the spine loop (still surface → terrace → district → tray → approve) at both densities — plus **five high-fidelity visual boards built 2026-07-28, linked into the walkable depth ladder** (each links to the next; ⌘↑/⌘↓ move between levels): [still-visual](./wireframes/still-visual.html) (depth 0) → [estate-visual](./wireframes/estate-visual.html) (depth 1) → [district-visual](./wireframes/district-visual.html) (depth 2) → [glasshouse-visual](./wireframes/glasshouse-visual.html) (depth 2) → [undercroft-visual](./wireframes/undercroft-visual.html) (depth 3). The boards are the **end-state visual reference** — construction language per art bible §13, owner-approved on the first two. The remaining twelve surfaces stay as layouts below; drawing all seventeen in HTML would be building the app, not designing it.
 
 ---
 
@@ -45,6 +45,8 @@ Drawn once because it is the same everywhere, and because deciding it once is wh
 
 ## 2. The Still Surface · depth 0 · S
 
+> **Visual board: [wireframes/still-visual.html](./wireframes/still-visual.html)** — including the zero-gold-at-rest demo toggle.
+
 The default of every session on every device (L1). The only surface with no chrome, because it *is* the chrome.
 
 ```
@@ -70,11 +72,13 @@ The default of every session on every device (L1). The only surface with no chro
 
 **The lines are R7 templates.** `"₹{collected} collected this week."` — the figure is a binding, the sentence is a frame. This is the surface where a stale number would do the most damage, because it is the one the owner reads without questioning.
 
-**At zero hands raised there is no gold on the screen at all.** That is the entire design (art bible §2.1).
+**At zero hands raised, no gold on the screen but the brand mark.** That is the entire design (art bible §2.1 — "almost no gold"; the mark and wordmark are sanctioned, and the board's demo toggle proves the rest goes dark).
 
 ---
 
 ## 3. The Terrace · depth 1 · W (+S)
+
+> **Visual board: [wireframes/estate-visual.html](./wireframes/estate-visual.html)** — owner-approved 2026-07-28; orbit, zoom, hover, day–night live.
 
 The whole-estate horizon. The Three Questions are beacons *on the map*, not a menu beside it.
 
@@ -155,6 +159,8 @@ Four rules this surface must not break:
 ---
 
 ## 5. District room · depth 2 · W+S
+
+> **Visual board: [wireframes/district-visual.html](./wireframes/district-visual.html)** — owner-approved 2026-07-28.
 
 One Process, entered from its district on the Terrace.
 
@@ -344,6 +350,8 @@ The growth journey: Seasons timeline, monuments, mandates, colleagues past, and 
 
 ## 12. The Glasshouse · depth 2 · W+S, desaturated
 
+> **Visual board: [wireframes/glasshouse-visual.html](./wireframes/glasshouse-visual.html)** — real/twin panes, the gold ribbon, all four honesty grades, the promotion strip.
+
 ```
 ┌───────────────────────────────┬──────────────────────────────────────┐
 │  REAL                         │  TWIN                     (drained)  │
@@ -424,6 +432,8 @@ Two states have designed idioms because they are the ones that actually happen: 
 
 ## 15. The Undercroft · depth 3 · S, dense
 
+> **Visual board: [wireframes/undercroft-visual.html](./wireframes/undercroft-visual.html)** — including the manifest inspector and the live signal bus.
+
 Everything the platform already exposes, in one place, in mono, at operator density regardless of the learned value (art bible §6).
 
 | | |
@@ -500,4 +510,5 @@ Two of these — `time-scrubber` and `divergence-ribbon` — are named in the sp
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | v1.1 — **five visual boards linked in** (see the header and the per-surface pointers): the Still Surface, Terrace, District room, Glasshouse and Undercroft now have end-state interactive boards forming the walkable depth ladder, built to the owner's five inspiration references in the brand palette. The owner approved the territory language on the terrace and district boards 2026-07-28; the other three are built to it and reviewed by the same three-lens adversarial pass. The boards are R2's primary review material alongside the layouts below. |
 | 2026-07-28 | v1.0 — all seventeen §5 surfaces drawn at both densities with their L9 equivalents, plus the shell drawn once (and made **app-owned rather than manifest-composed**, so a hostile manifest cannot remove the user's way out). The delta pass added **ten components**, of which two were named in the spec's own prose and missing from its list. The most consequential discovery is `ghost`: the onboarding theatre and the "what's ahead" beacons are the same idea, and building them separately would have produced two visual languages for *not yet real* in a product whose central honesty law is that exact distinction. Three shipped limits are drawn as limits rather than hidden — the unwired scenario runner, the never-populated `credentials_expire_at`, and the KPI series with no backfill. |

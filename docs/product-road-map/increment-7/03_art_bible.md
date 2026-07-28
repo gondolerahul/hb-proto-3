@@ -1,8 +1,8 @@
 # Increment 7 / Phase A — D2: The Art Bible
 
 > **Deliverable D2** of [01_phase_a_overview.md](./01_phase_a_overview.md). Satisfies spec §13(b) and §14.5.
-> **Status:** 🔍 **AWAITING OWNER REVIEW (checkpoint R1)** — nothing aesthetic ships before this passes.
-> **Supersedes** ratified spec §11 by charter decision 2. Specimens: [art-bible/specimens.html](./art-bible/specimens.html).
+> **Status:** 🔍 **AWAITING OWNER REVIEW (checkpoint R1)** — nothing aesthetic ships before this passes. **The territory construction language (§13) is owner-approved as of 2026-07-28** on the terrace and district boards; R1 still owes rulings on §12's eight items.
+> **Supersedes** ratified spec §11 by charter decision 2. Specimens: [art-bible/specimens.html](./art-bible/specimens.html) · five interactive boards: [§13](#13-the-territory-construction-language--built-2026-07-28).
 > **Source of truth for tokens:** [buddha-cognitive-lab-design-system/project/colors_and_type.css](./buddha-cognitive-lab-design-system/project/colors_and_type.css). This document adds only what a *world* needs and the brand has never had to describe.
 
 ---
@@ -202,7 +202,42 @@ Depth 2 and 3 are dense, readable surfaces; glass over a flat surface is milky a
 3. **No serif (§6)** — confirmation that the narrative register is Hanken Grotesk with air rather than a fifth face.
 4. **Day–night as luminance (§4)** — that this preserves concepts §6.7 in substance, since it demonstrably does not preserve it in appearance.
 
-Specimens for all four are in [art-bible/specimens.html](./art-bible/specimens.html) — open it in a browser; it is self-contained.
+Four more, surfaced by building the boards (§13) and their adversarial reviews:
+
+5. **The real pane's reserve seam inside the Glasshouse.** §5 says gold in that room is the ribbon and certified seals only; but the real pane renders *the real*, and draining its reserve seam would break L6 in the opposite direction. Proposed ruling (implemented in the board pending sign-off): the seam stays, **subdued to flat gold-700**, ranked below ribbon and seal.
+6. **§9's repeating-animation scope.** As written, the beacon is "the only element permitted a repeating animation" — which the built product contradicts four ways (road traffic, dotted flows, Sheel's heartbeat, the energy floor). Proposed amendment: the beacon is the only repeating **attention** animation; the ambient families — traffic flow/drift at constant velocity, the heartbeat, the energy floor's slow light — are sanctioned as *world liveness*, not attention.
+7. **The focus ring inside the drained plane.** The brand ring is gold; a focused scenario card inside the Glasshouse wears it. Proposed: the ring is **chrome, not content** — it stays gold everywhere.
+8. **Depth-3 translucency.** The Undercroft's panels sit at .82 alpha over the machine floor, against §10's "flat surfaces" default. Proposed: sanctioned at depth 3 only — the engine room sits visibly *on* the machinery.
+
+Specimens are in [art-bible/specimens.html](./art-bible/specimens.html); the five interactive boards of §13 are the review material for everything above.
+
+## 13. The territory construction language — built (2026-07-28)
+
+The abstract rules above now have a walkable proof: **five interactive boards** in [wireframes/](./wireframes/), linked into the depth ladder — click through them in order:
+
+| Depth | Board | What it proves |
+|---|---|---|
+| 0 | [still-visual.html](./wireframes/still-visual.html) | The still line, the pulse, and §2.1's claim: at zero hands raised, no gold but the brand mark |
+| 1 | [estate-visual.html](./wireframes/estate-visual.html) | The territory: quarters, gatehouses, traffic, weather, the one beacon; day–night as luminance |
+| 2 | [district-visual.html](./wireframes/district-visual.html) | Inside a Process: colleagues as workstations, KPI plinth, treasury, live runs |
+| 2 | [glasshouse-visual.html](./wireframes/glasshouse-visual.html) | Real vs twin panes, the gold divergence ribbon, four honesty grades, the promotion pipeline |
+| 3 | [undercroft-visual.html](./wireframes/undercroft-visual.html) | The engine room: mono, dense, the manifest inspector, sitting on the machine floor |
+
+The **owner approved the territory language on the first two boards (2026-07-28)**; the rest are built to it. The construction vocabulary they establish, derived from the owner's five inspiration references re-keyed to this palette:
+
+* **Floating plinths** — every site rests 7px off the ground, rising to 18px on hover; light beneath sells the float.
+* **Holographic volumes** — translucent warm-white glass with floor-lines, a **ghost wireframe scaffold** above the solid mass; the Glasshouse's silver variant drains at the *site* boundary, never per component.
+* **Flat surface-printed UI** — nameplates, detail plates, halos, flows, scrubbers all lie on the ground at the world's own perspective. Paint order is deterministic by a sub-pixel lift: text at `translateZ(.5px)`, roads at `.25px`, ambient marks at 0.
+* **Concentric halos** under the focused object; the beacon's gold ripple never varies with lighting, hover, or reduced motion.
+* **The energy floor** — the legacy app's hex-tile-over-glow background, carried forward as the void beneath every surface and **re-keyed to warm-white**. Three independent reviews converged on the same ruling: the glow is *light, never gold* — a gold floor would spend the budget on decoration and dilute every real beacon above it.
+* **The dotted-B watermark** — the brand's actual SVG (never redrawn), at ≤.05 opacity, on the Still Surface and in the Undercroft.
+
+Rules the build round earned, now binding:
+
+* **Needs-you dots are flat `--gold-500`; `--gradient-gold` is reserved for the brand mark and certified seals** (a §2.1 refinement — the gradient is the most precious form of the most precious color).
+* **Reduced motion is 160ms crossfades, never hard snaps** — `animation: none` plus `transition-duration: .16s`, and the static beacon holds its breathe *peak*.
+* **`--fg-faint` never carries information** — enforced down to table headers.
+* An engineering lesson for the G1 renderers, recorded so it is not relearned: a bare `.flows path { fill:none }` also matches paths inside SVG `<marker>` defs and silently deletes every arrowhead — CSS beats presentation attributes.
 
 ---
 
@@ -210,4 +245,5 @@ Specimens for all four are in [art-bible/specimens.html](./art-bible/specimens.h
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | v1.1 — **§13 added: the territory construction language, built.** Five interactive boards (still → terrace → district → glasshouse → undercroft) linked into the walkable depth ladder; the owner approved the language on the first two. The construction vocabulary (floating plinths, holographic volumes + ghost scaffolds, flat surface-printed UI with deterministic paint order, concentric halos, the **energy floor** carried from the legacy app and re-keyed to warm-white) is now specified from working artifacts rather than prose. Three adversarial review rounds produced four new binding rules (needs-you dots are flat gold-500; reduced motion is 160ms crossfades; `--fg-faint` never informational; the marker-defs CSS lesson) and **four new R1 rulings** (§12 items 5–8: the real pane's reserve seam, §9's animation scope, the focus ring in the drained plane, depth-3 translucency). |
 | 2026-07-28 | v1.0 — the art bible, superseding spec §11 per charter decision 2. Its load-bearing content is not a palette but the **gold budget**: gold means *this needs you* or *this is certified*, and nothing else, which is what lets a still estate be visibly still. The Glasshouse is solved by **desaturation rather than a second hue** — no new colour, the right metaphor, and un-forgeable because the renderer applies it at the plane boundary. Portraits are proposed as **halftone dot fields**, making the brand's one ornament the medium and letting the artwork itself carry L7's disclosure. Raised **VP-02**: the procedural seal direction has no production cost and cannot drift, which may make it the floor rather than the fallback. |

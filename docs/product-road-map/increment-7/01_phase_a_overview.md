@@ -131,5 +131,6 @@ Eight deliverables, written 2026-07-28. Each carries its own reasoning; these ar
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | v1.2 — **the visual boards are built** (art bible §13, wireframes header): five interactive end-state boards forming the walkable depth ladder, in the brand palette with the legacy app's energy-floor background carried forward. The owner approved the territory construction language on the terrace and district boards, which materially advances **R1** (the language is approved; §12's eight rulings remain) and gives **R2** its primary review material. |
 | 2026-07-28 | v1.1 — all eight deliverables written; §8 added. Three new findings (**VP-01** resolved, **VP-02** for R1, **VP-03** open and the most consequential), four corrections to shipped documents, and six decisions the spec did not make. Exit criteria 1–3 met; the phase now waits on R1 and R2. |
 | 2026-07-28 | v1.0 — Phase A opened. Seven deliverables (the charter's six plus VR-10's parity register), the dependency order with its one deliberate cycle, two blocking owner review checkpoints chosen by the repo's own precedent, and exit criteria written as the three properties whose absence would only surface at G2. |

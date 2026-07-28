@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vihara — the Glasshouse (visual concept)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════ tokens (Buddha Cognitive Lab, verbatim) ═══ */
+:root{
+  --gold-300:#fdc871; --gold-500:#edab48; --gold-700:#a8722a;
+  --bg:#0a0908; --surface:#141210; --surface-2:#1c1916;
+  --fg:#f6f1e9; --fg-muted:#b3aaa0; --fg-subtle:#7c746b; --fg-faint:#544d46;
+  --positive:#7bb487; --negative:#d4664f;
+  --border:rgba(255,240,220,.08); --border-strong:rgba(255,240,220,.16);
+  --gradient-gold:linear-gradient(105deg,#fdc871 0%,#edab48 32%,#ffefd8 58%,#fdc871 100%);
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --focus-ring:0 0 0 3px rgba(237,171,72,.32);
+  --daymul:1; --glowmul:1; --shadow-o:0; --groundc:#0b0a09;
+}
+body.day{ --daymul:2.3; --glowmul:.5; --shadow-o:.42; --groundc:#131110; }
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(120% 90% at 50% 30%, #0e0c0a 0%, #060505 70%);
+     color:var(--fg);font-family:var(--font-body);font-weight:300;overflow:hidden;
+     -webkit-font-smoothing:antialiased}
+body.day{background:radial-gradient(120% 90% at 50% 20%, #191512 0%, #0a0908 75%)}
+
+/* ── the energy floor (legacy background system, re-keyed to the brand) ── */
+.floorwrap{position:fixed;left:50%;bottom:-14vh;width:210vw;height:120vh;z-index:0;
+  transform:translateX(-50%) perspective(900px) rotateX(62deg);transform-origin:50% 100%;
+  pointer-events:none;opacity:.4}
+.floorwrap::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top, transparent 0%, rgba(6,5,5,.4) 40%, #060505 90%)}
+#floor{width:100%;height:100%;display:block}
+.sky{position:fixed;inset:0;pointer-events:none;opacity:.8;z-index:0;
+  transition:opacity 1.2s var(--ease-out)}
+.sky i{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(246,241,233,.5)}
+body.day .sky{opacity:0}
+
+/* ═══════════════════════════════ stage / camera ═══ */
+.stage{position:fixed;inset:0;z-index:1;--rx:56deg;--rz:-32deg;cursor:grab;touch-action:none}
+.stage.dragging{cursor:grabbing}
+.fit{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%) scale(var(--s,1))}
+.persp{perspective:2000px}
+.ground{position:relative;width:1600px;height:1200px;
+  transform:rotateX(var(--rx)) rotateZ(var(--rz));transform-style:preserve-3d;
+  background-color:var(--groundc);
+  background-image:
+    radial-gradient(65% 55% at 50% 46%, rgba(246,241,233,.028) 0%, transparent 70%),
+    repeating-linear-gradient(0deg,  rgba(246,241,233,.04) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(246,241,233,.04) 0 1px, transparent 1px 44px);
+  border:1px solid rgba(246,241,233,.05);
+  transition:background-color 1.2s var(--ease-out)}
+.keylight{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(118deg, rgba(255,246,230,.13) 0%, rgba(255,246,230,.05) 34%, transparent 62%);
+  opacity:0;transition:opacity 1.2s var(--ease-out)}
+body.day .keylight{opacity:1}
+.bounds{position:absolute;left:60px;top:60px;right:60px;bottom:60px;
+  border:1px solid rgba(246,241,233,.09);border-radius:26px;pointer-events:none}
+.glyph{position:absolute;font-family:var(--font-mono);font-size:13px;color:rgba(246,241,233,.13);
+  pointer-events:none}
+
+/* ═══════════════════════════════ 3d faces ═══ */
+.b3,.site,.onplinth,.bpoint{transform-style:preserve-3d}
+.b3{position:absolute}
+.face{position:absolute;box-sizing:border-box;
+  background-color:rgba(246,241,233,calc(var(--fa,.06)*var(--boost,1)*var(--daymul)));
+  border:1px solid rgba(246,241,233,calc(var(--ba,.26)*var(--boost,1)));
+  transition:background-color .35s var(--ease-out), border-color .35s var(--ease-out)}
+.glass .face.f-top{--fa:.11;--ba:.38;
+  box-shadow:0 0 22px rgba(246,241,233,calc(.10*var(--glowmul)))}
+.glass .face.f-n,.glass .face.f-w{--fa:.045;--ba:.22}
+.glass .face.f-s,.glass .face.f-e{--fa:.08;--ba:.30}
+.glass .face.wall-y{background-image:repeating-linear-gradient(to bottom,
+  rgba(246,241,233,.07) 0 1px, transparent 1px 13px)}
+.glass .face.wall-x{background-image:repeating-linear-gradient(to right,
+  rgba(246,241,233,.07) 0 1px, transparent 1px 13px)}
+.silver .face{background-color:rgba(228,232,236,calc(var(--fa,.05)*var(--boost,1)*var(--daymul)));
+  border-color:rgba(228,232,236,calc(var(--ba,.24)*var(--boost,1)))}
+.silver .face.f-top{--fa:.09;--ba:.34;box-shadow:0 0 20px rgba(228,232,236,calc(.09*var(--glowmul)))}
+.silver .face.f-n,.silver .face.f-w{--fa:.04;--ba:.20}
+.silver .face.f-s,.silver .face.f-e{--fa:.07;--ba:.28}
+.silver .face.wall-y{background-image:
+  repeating-linear-gradient(to bottom, rgba(228,232,236,.08) 0 1px, transparent 1px 11px),
+  repeating-linear-gradient(to right,  rgba(228,232,236,.06) 0 1px, transparent 1px 15px)}
+.silver .face.wall-x{background-image:
+  repeating-linear-gradient(to right,  rgba(228,232,236,.08) 0 1px, transparent 1px 11px),
+  repeating-linear-gradient(to bottom, rgba(228,232,236,.06) 0 1px, transparent 1px 15px)}
+.ghost .face{background-color:transparent;
+  border:1px solid rgba(246,241,233,calc(.15*var(--boost,1)));
+  background-image:repeating-linear-gradient(to bottom, rgba(246,241,233,.045) 0 1px, transparent 1px 12px)}
+.ghost .face.f-top{background-image:none;border-style:solid}
+.ghost.silver .face{border-color:rgba(228,232,236,calc(.14*var(--boost,1)));
+  background-image:repeating-linear-gradient(to bottom, rgba(228,232,236,.04) 0 1px, transparent 1px 12px)}
+body.day .ghost .face{border-color:rgba(246,241,233,calc(.24*var(--boost,1)))}
+body.day .ghost.silver .face{border-color:rgba(228,232,236,.20)}
+.plinth .face{border-color:rgba(246,241,233,calc(.16*var(--boost,1)))}
+.plinth .face.f-top{background-color:#17140f;background-image:
+  linear-gradient(125deg, rgba(246,241,233,.05) 0%, transparent 45%);
+  border-color:rgba(246,241,233,calc(.34*var(--boost,1)));
+  box-shadow:0 0 26px rgba(246,241,233,calc(.13*var(--glowmul)))}
+.plinth .face.f-n,.plinth .face.f-w{background-color:#0c0a08}
+.plinth .face.f-s,.plinth .face.f-e{background-color:#110e0b}
+body.day .plinth .face.f-top{background-color:#1e1a15}
+/* the twin side drains WHOLE — desaturation at the plane boundary (art bible §5) */
+.silverS .plinth .face{border-color:rgba(228,232,236,calc(.15*var(--boost,1)))}
+.silverS .plinth .face.f-n,.silverS .plinth .face.f-w{background-color:#0b0c0d}
+.silverS .plinth .face.f-s,.silverS .plinth .face.f-e{background-color:#0f1113}
+.silverS .plinth .face.f-top{background-color:#121316;
+  background-image:linear-gradient(125deg, rgba(228,232,236,.05) 0%, transparent 45%);
+  border-color:rgba(228,232,236,calc(.30*var(--boost,1)));
+  box-shadow:0 0 26px rgba(228,232,236,calc(.11*var(--glowmul)))}
+body.day .silverS .plinth .face.f-top{background-color:#191b1e}
+.silverS .underglow{background:radial-gradient(50% 50% at 50% 50%,
+  rgba(228,232,236,calc(.12*var(--glowmul))) 0%, transparent 70%)}
+
+.underglow{position:absolute;border-radius:50%;pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%, rgba(246,241,233,calc(.16*var(--glowmul))) 0%, transparent 70%)}
+.dayshadow{position:absolute;pointer-events:none;opacity:var(--shadow-o);
+  background:linear-gradient(135deg, rgba(0,0,0,.55) 0%, transparent 72%);
+  transform:skewX(38deg);transform-origin:0 0;border-radius:8px;
+  transition:opacity 1.2s var(--ease-out)}
+
+.site{position:absolute;cursor:default}
+.site .lift{position:absolute;inset:0;transform-style:preserve-3d;
+  transform:translateZ(7px);transition:transform .45s var(--ease-out)}
+
+/* ═══════════════════════════════ flat furniture ═══ */
+.nameplate{position:absolute;pointer-events:none;white-space:nowrap;transform:translateZ(.5px)}
+.nameplate .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;
+  color:var(--fg-subtle);text-transform:uppercase;margin:0 0 2px}
+.nameplate .nm{font-family:var(--font-display);font-weight:500;font-size:20px;color:var(--fg);margin:0}
+.nameplate.silvern .eyebrow{color:#9aa0a8}.nameplate.silvern .nm{color:#dfe3e8}
+.qlabel{position:absolute;pointer-events:none;font-family:var(--font-display);font-weight:600;
+  font-size:40px;letter-spacing:.18em;color:rgba(246,241,233,.11);white-space:nowrap;
+  transform:translateZ(.5px)}
+.qlabel.silverq{color:rgba(228,232,236,.11)}
+body.day .qlabel{color:rgba(246,241,233,.15)}
+body.day .qlabel.silverq{color:rgba(228,232,236,.15)}
+.pathlabel{position:absolute;pointer-events:none;font-family:var(--font-mono);font-size:12px;
+  letter-spacing:.14em;color:rgba(246,241,233,.34);white-space:nowrap}
+.bigfig{position:absolute;font-family:var(--font-display);font-weight:600;font-size:40px;
+  letter-spacing:-.02em;color:var(--fg);transform:translateZ(.5px);pointer-events:none}
+.bigfig.silvert{color:#dfe3e8}
+.delta{position:absolute;font-family:var(--font-mono);font-size:13px;letter-spacing:.08em;
+  transform:translateZ(.5px);pointer-events:none}
+.minibar{position:absolute;transform:translateZ(.5px);pointer-events:none;width:150px}
+.minibar .bar{height:5px;border-radius:99px;background:rgba(246,241,233,.08);overflow:hidden;display:flex}
+.minibar .bar b{display:block;height:100%;background:rgba(246,241,233,.42)}
+/* flat gold-700 here, not the gradient: inside the Glasshouse frame the reserve
+   seam must rank below the ribbon and the certified seal (R1 ruling pending) */
+.minibar .bar b.reserve{background:var(--gold-700)}
+.minibar .bar b.silverr{background:rgba(228,232,236,.6)}
+.minibar .cap{font-family:var(--font-mono);font-size:10.5px;color:var(--fg-subtle);margin-top:5px;
+  letter-spacing:.06em}
+/* the twin drains WHOLE — its bar track, fill and caption go cool too */
+.silverS .minibar .bar{background:rgba(228,232,236,.08)}
+.silverS .minibar .bar b{background:rgba(228,232,236,.42)}
+.silverS .minibar .cap{color:#8b9198}
+.grade{position:absolute;display:inline-block;font-family:var(--font-mono);font-size:10.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:#b9bec6;
+  border:1px solid rgba(228,232,236,.3);border-radius:99px;padding:2px 10px;
+  transform:translateZ(.5px);pointer-events:none;white-space:nowrap}
+.grade.untested{border-style:dashed;color:var(--fg-subtle)}
+
+/* the scenario shelf — flat cards on the ground */
+.card{position:absolute;width:172px;padding:11px 13px;border-radius:9px;
+  background:rgba(12,10,9,.78);border:1px solid rgba(228,232,236,.16);
+  box-shadow:0 0 24px rgba(0,0,0,.45);transform:translateZ(.5px);cursor:pointer;
+  transition:border-color .25s var(--ease-out)}
+.card:hover{border-color:rgba(228,232,236,.34)}
+.card:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.card.active{border-color:rgba(228,232,236,.45);
+  box-shadow:0 0 24px rgba(0,0,0,.45), 0 0 18px rgba(228,232,236,.08)}
+.card .ct{font-family:var(--font-display);font-weight:500;font-size:14.5px;color:var(--fg);
+  margin:0 0 4px}
+.card .cl{font-size:12.5px;color:var(--fg-muted);margin:0 0 7px;line-height:1.4}
+.card .chip{display:inline-block;font-family:var(--font-mono);font-size:9.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:#b9bec6;
+  border:1px solid rgba(228,232,236,.3);border-radius:99px;padding:1.5px 8px}
+.card .chip.untested{border-style:dashed;color:var(--fg-subtle)}
+.shelf-label{position:absolute;font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--fg-subtle);transform:translateZ(.5px);pointer-events:none}
+
+/* the levers — inspiration 3's flat slider, grown up */
+.levers{position:absolute;width:330px;padding:14px 16px;border-radius:9px;
+  background:rgba(12,10,9,.78);border:1px solid rgba(228,232,236,.16);
+  transform:translateZ(.5px)}
+.levers .lt{font-family:var(--font-display);font-weight:500;font-size:14.5px;color:var(--fg);
+  margin:0 0 12px}
+.lever{margin:0 0 14px}
+.lever .ll{display:flex;justify-content:space-between;font-family:var(--font-mono);
+  font-size:11px;letter-spacing:.1em;color:var(--fg-muted);margin-bottom:7px}
+.lever .track{position:relative;height:1px;background:rgba(228,232,236,.25)}
+.lever .knob{position:absolute;top:-4px;width:9px;height:9px;border-radius:50%;
+  background:#dfe3e8;box-shadow:0 0 8px rgba(228,232,236,.5)}
+.levers .cost{font-family:var(--font-body);font-size:12px;color:var(--fg-muted);
+  margin:2px 0 0}
+
+/* the promotion pipeline — flat strip; only the certified step is gold */
+.pipeline{position:absolute;display:flex;gap:10px;align-items:center;
+  font-family:var(--font-mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--fg-subtle);transform:translateZ(.5px);white-space:nowrap}
+.pipeline .step{padding:5px 12px;border:1px solid rgba(246,241,233,.14);border-radius:99px}
+.pipeline .step.done{color:var(--fg-muted);border-color:rgba(246,241,233,.22)}
+.pipeline .step.cert{color:var(--fg);border-color:rgba(237,171,72,.4)}
+.pipeline .step.cert::before{content:"";display:inline-block;width:7px;height:7px;
+  border-radius:50%;background:var(--gradient-gold);margin-right:8px;vertical-align:0}
+.pipeline .sep{color:var(--fg-faint)}
+
+/* ═══════════════════════════════ svg flow layer ═══ */
+.flows{position:absolute;inset:0;pointer-events:none}
+.flows .dotf{fill:none;stroke-linecap:round;stroke:rgba(246,241,233,.4);stroke-width:2;
+  stroke-dasharray:.1 9;animation:flow 2.6s linear infinite}
+.flows .dotf.silverf{stroke:rgba(210,216,224,.45)}
+/* the divergence ribbon — one of exactly two gold things inside the Glasshouse */
+.flows .dotf.ribbon{stroke:rgba(237,171,72,.8);stroke-width:2.5;animation-duration:2s}
+@keyframes flow{to{stroke-dashoffset:-18.2}}
+
+/* ═══════════════════════════════ HUD ═══ */
+.hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
+  padding:12px 22px;z-index:10;pointer-events:none;
+  background:rgba(26,23,20,.55);backdrop-filter:blur(20px) saturate(175%);
+  border-bottom:1px solid rgba(255,248,238,.16);
+  box-shadow:0 10px 34px -10px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,252,247,.4)}
+.hud .mark{width:10px;height:10px;border-radius:50%;background:var(--gradient-gold);flex:none}
+.hud .co{font-family:var(--font-display);font-weight:500;font-size:15px}
+.hud .crumbs{font-size:14px;color:var(--fg-subtle)}
+.hud .crumbs a{color:var(--fg-muted);text-decoration:none;pointer-events:auto;
+  border-bottom:1px solid rgba(246,241,233,.25);font-family:var(--font-display);font-weight:500}
+.hud .crumbs a:hover{color:var(--fg);border-bottom-color:rgba(246,241,233,.5)}
+.hud .crumbs .here{color:var(--fg);font-family:var(--font-display);font-weight:500}
+.hud .line{font-size:14px;color:var(--fg-muted)}
+.hud .right{margin-left:auto;display:flex;gap:10px;pointer-events:auto}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:999px;overflow:hidden}
+.seg button{font-family:var(--font-body);font-size:12.5px;font-weight:500;border:0;
+  padding:6px 14px;background:transparent;color:var(--fg-muted);cursor:pointer;
+  transition:all .18s var(--ease-out)}
+.seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--fg)}
+.seg button:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  font-family:var(--font-body);font-size:12px;color:var(--fg-muted);z-index:10;pointer-events:none}
+.echo{position:fixed;bottom:14px;left:22px;font-size:13px;color:var(--fg-muted);z-index:10;
+  opacity:0;transition:opacity .3s var(--ease-out);pointer-events:none}
+.echo.show{opacity:1}
+.credit{position:fixed;bottom:14px;right:22px;font-family:var(--font-mono);font-size:9.5px;
+  letter-spacing:.12em;color:var(--fg-faint);z-index:10;pointer-events:none;text-transform:uppercase}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.16s!important}
+}
+</style>
+</head>
+<body>
+<div class="floorwrap"><canvas id="floor"></canvas></div>
+<div class="sky" id="sky"></div>
+
+<div class="stage" id="stage">
+  <div class="fit" id="fit"><div class="persp">
+    <div class="ground" id="ground">
+      <div class="keylight"></div>
+      <div class="bounds"></div>
+      <svg class="flows" viewBox="0 0 1600 1200" width="1600" height="1200">
+        <defs>
+          <marker id="arrg" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="7" markerHeight="7"
+                  orient="auto-start-reverse">
+            <path d="M0 0 L8 4 L0 8 Z" style="fill:rgba(237,171,72,.85)"/>
+          </marker>
+          <marker id="arrs" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="7" markerHeight="7"
+                  orient="auto-start-reverse">
+            <path d="M0 0 L8 4 L0 8 Z" style="fill:rgba(210,216,224,.5)"/>
+          </marker>
+        </defs>
+        <!-- the divergence ribbon: where the twin disagrees with the real.
+             It arcs NORTH of both slabs — the slabs float at z25 and would
+             occlude a ground path crossing their footprints -->
+        <path class="dotf ribbon" d="M 450 268 C 560 150, 1040 150, 1150 268" marker-end="url(#arrg)"/>
+        <!-- the mirroring: the real is copied into the twin, silver and quiet.
+             Endpoints sit at the slab edges, in the open corridor -->
+        <path class="dotf silverf" d="M 722 600 C 790 622, 850 622, 896 604" marker-end="url(#arrs)"/>
+      </svg>
+      <!-- everything else is built by the script -->
+    </div>
+  </div></div>
+</div>
+
+<div class="hud">
+  <span class="mark"></span><span class="co">Northwind Co.</span>
+  <span class="crumbs"><a href="estate-visual.html">Terrace</a>
+    <span>▸</span> <span class="here">The Glasshouse</span></span>
+  <span class="line">Try it here first. Nothing in this room can touch the real.</span>
+  <div class="right">
+    <span class="seg" id="tod">
+      <button data-v="day" aria-pressed="false">Day</button>
+      <button data-v="night" aria-pressed="true">Night</button>
+    </span>
+    <span class="seg"><button id="reset">Reset view</button></span>
+  </div>
+</div>
+<div class="hint">Drag to orbit · scroll to zoom · pick a scenario from the shelf · Terrace rises a level</div>
+<div class="echo" id="echo"></div>
+<div class="credit">vihara · the glasshouse · visual concept</div>
+
+<script>
+'use strict';
+const ground = document.getElementById('ground');
+const el = (cls, css, parent, tag) => {
+  const d = document.createElement(tag || 'div');
+  d.className = cls; Object.assign(d.style, css || {});
+  (parent || ground).appendChild(d); return d;
+};
+const px = n => n + 'px';
+
+function box(parent, x, y, w, d, h, mat){
+  const b = el('b3 ' + mat, { left:px(x), top:px(y), width:px(w), height:px(d) }, parent);
+  el('face f-top', { left:0, top:0, width:px(w), height:px(d),
+    transform:`translateZ(${h}px)` }, b);
+  el('face f-n wall-y', { left:0, top:0, width:px(w), height:px(h),
+    transformOrigin:'top', transform:'rotateX(90deg)' }, b);
+  el('face f-s wall-y', { left:0, top:px(d), width:px(w), height:px(h),
+    transformOrigin:'top', transform:'rotateX(90deg)' }, b);
+  el('face f-w wall-x', { left:0, top:0, width:px(h), height:px(d),
+    transformOrigin:'left', transform:'rotateY(-90deg)' }, b);
+  el('face f-e wall-x', { left:px(w), top:0, width:px(h), height:px(d),
+    transformOrigin:'left', transform:'rotateY(-90deg)' }, b);
+  return b;
+}
+
+let echoTimer = 0;
+function echo(t){
+  const e = document.getElementById('echo');
+  e.textContent = t; e.classList.add('show');
+  clearTimeout(echoTimer); echoTimer = setTimeout(() => e.classList.remove('show'), 3200);
+}
+
+/* ─────────────────────────────── the two panes ────────────────────────────
+   Same layout twice: the real, warm; the twin, drained. The whole twin SITE
+   is silver — plinth, glow, furniture — because desaturation applies at the
+   plane boundary, never per component.                                      */
+function pane(cfg){
+  const s = el('site' + (cfg.twin ? ' silverS' : ''), {
+    left:px(cfg.x), top:px(cfg.y), width:px(560), height:px(420) }, ground);
+  el('underglow', { left:px(-60), top:px(-46), width:px(680), height:px(512) }, s);
+  el('dayshadow', { left:px(310), top:px(320), width:px(400), height:px(240) }, s);
+  const lift = el('lift', {}, s);
+  box(lift, 0, 0, 560, 420, 18, 'plinth');
+  const on = el('onplinth b3', { left:0, top:0, width:px(560), height:px(420),
+    transform:'translateZ(18px)' }, lift);
+  const mat = cfg.twin ? 'silver' : 'glass';
+
+  // the mini-district: a tower, a low block, the readouts
+  box(on, 70, 90, 44, 44, 78, mat);
+  const g = el('b3', { left:px(70), top:px(90), width:px(44), height:px(44),
+    transform:'translateZ(78px)' }, on);
+  box(g, 0, 0, 44, 44, 24, cfg.twin ? 'ghost silver' : 'ghost');
+  box(on, 150, 120, 56, 40, 26, mat);
+
+  el('qlabel' + (cfg.twin ? ' silverq' : ''), { left:px(56), top:px(300) }, on)
+    .textContent = cfg.twin ? 'twin' : 'real';
+
+  el('bigfig' + (cfg.twin ? ' silvert' : ''), { left:px(300), top:px(78) }, on)
+    .textContent = cfg.dso;
+  const d = el('delta', { left:px(302), top:px(126) }, on);
+  d.textContent = cfg.delta.t;
+  d.style.color = cfg.delta.c;
+
+  const mb = el('minibar', { left:px(300), top:px(168) }, on);
+  mb.innerHTML = `<div class="bar"><b style="width:${cfg.bar}%"></b>
+      <b class="${cfg.twin ? 'silverr' : 'reserve'}" style="width:11%"></b></div>
+    <p class="cap">${cfg.barCap}</p>`;
+
+  if (cfg.grade)
+    el('grade', { left:px(300), top:px(34) }, on).textContent = cfg.grade;
+
+  const np = el('nameplate' + (cfg.twin ? ' silvern' : ''), { left:px(2), top:px(432) }, s);
+  np.innerHTML = `<p class="eyebrow">${cfg.code}</p><p class="nm">${cfg.name}</p>`;
+  s.addEventListener('mouseenter', () => echo('looking at ' + cfg.name.toLowerCase()));
+  return s;
+}
+
+pane({ x:140, y:300, name:'The real', code:'collections · p08 · live',
+  dso:'38d', delta:{ t:'↑ 9 days · target 30', c:'var(--negative)' },
+  bar:52, barCap:'₹18k / ₹30k · reserve held' });
+
+pane({ x:900, y:300, twin:true, name:'The twin', code:'collections · p08 · run s-14',
+  dso:'31d', delta:{ t:'↓ 7 days vs the real', c:'#8f9a92' },   // sage, drained by the plane
+  bar:52, barCap:'₹18k / ₹30k · simulated · 11 weeks history',
+  grade:'forecast · run s-14' });
+
+/* the divergence label — the ribbon is the gold; the words stay --fg,
+   in prose (Hanken), riding above the arc's apex in open ground */
+const dl = el('pathlabel', { left:px(632), top:px(130), fontSize:'13px',
+  color:'var(--fg-muted)', fontFamily:'var(--font-body)', letterSpacing:'0' });
+dl.textContent = 'Δ −7 days DSO · projected, never promised';
+
+/* ─────────────────────────────── the scenario shelf ───────────────────────
+   Four bets, four grades — and `untested` must never look like `unknown`.   */
+el('shelf-label', { left:px(140), top:px(842) }).textContent = 'the scenario shelf';
+const SCENARIOS = [
+  { t:'Chase cadence 4d', l:'+₹1.4L/mo projected', chip:'forecast', active:true },
+  { t:'+2 collectors', l:'Replayed over March', chip:'replay' },
+  { t:'Price +5%', l:'Result ungradable', chip:'unknown' },
+  { t:'Expand to Pune', l:'Never taken to glass', chip:'untested', un:true },
+];
+SCENARIOS.forEach((c, i) => {
+  const card = el('card' + (c.active ? ' active' : ''), {
+    left:px(140 + i * 190), top:px(880) });
+  card.setAttribute('role', 'button');
+  card.setAttribute('tabindex', '0');
+  card.innerHTML = `<p class="ct">${c.t}</p><p class="cl">${c.l}</p>
+    <span class="chip${c.un ? ' untested' : ''}">${c.chip}</span>`;
+  const act = () => echo(
+    c.un ? 'Expand to Pune has never been simulated — take it to glass first'
+         : 'loaded ' + c.t.toLowerCase() + ' into the twin');
+  card.addEventListener('click', act);
+  card.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); act(); }
+  });
+});
+
+/* ─────────────────────────────── the levers ───────────────────────────── */
+const lv = el('levers', { left:px(950), top:px(862) });
+lv.innerHTML = `<p class="lt">Levers</p>
+  <div class="lever"><div class="ll"><span>chase cadence</span><span>4d</span></div>
+    <div class="track"><span class="knob" style="left:46%"></span></div></div>
+  <div class="lever"><div class="ll"><span>collectors</span><span>2</span></div>
+    <div class="track"><span class="knob" style="left:24%"></span></div></div>
+  <p class="cost">this scenario cost ₹14 · tenant-initiated · bounded replay window</p>`;
+
+/* ─────────────────────────────── the promotion pipeline ────────────────── */
+const pp = el('pipeline', { left:px(140), top:px(1058) });
+pp.innerHTML = `
+  <span class="step done">diff</span><span class="sep">▸</span>
+  <span class="step cert">certified approval · t2</span><span class="sep">▸</span>
+  <span class="step">board build</span><span class="sep">▸</span>
+  <span class="step">canary</span><span class="sep">▸</span>
+  <span class="step">ga</span>`;
+el('pathlabel', { left:px(142), top:px(1030), fontFamily:'var(--font-body)',
+  letterSpacing:'0', fontSize:'13px', color:'var(--fg-muted)' })
+  .textContent = 'Promotion — the only door back to the real';
+
+/* glyphs + stars */
+(function(){
+  let seed = 42;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const g = ['·','+','∙','◦','⌁','·','·','+'];
+  for (let i = 0; i < 40; i++){
+    const d = el('glyph', { left:px(80 + rnd() * 1440), top:px(80 + rnd() * 1040) });
+    if (i % 6 === 0) d.style.fontSize = '16px';
+    d.textContent = g[Math.floor(rnd() * g.length)];
+  }
+})();
+(function(){
+  const sky = document.getElementById('sky');
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 90; i++){
+    const s = document.createElement('i');
+    s.style.left = (rnd() * 100) + '%';
+    s.style.top = (rnd() * 60) + '%';
+    s.style.opacity = (.12 + rnd() * .5).toFixed(2);
+    const sz = rnd() < .12 ? 2 : 1;
+    s.style.width = s.style.height = sz + 'px';
+    sky.appendChild(s);
+  }
+})();
+
+/* ─────────────────────────────── camera ─────────────────────────────────── */
+const stage = document.getElementById('stage');
+const fit = document.getElementById('fit');
+const BASE = { rx:56, rz:-32 };
+let rx = BASE.rx, rz = BASE.rz, zoom = 1, idleT = 0, dragging = false;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function applyCam(extraRz){
+  stage.style.setProperty('--rx', rx + 'deg');
+  stage.style.setProperty('--rz', (rz + (extraRz || 0)) + 'deg');
+}
+function applyFit(){
+  const s = Math.min(innerWidth / 1500, innerHeight / 980) * 1.02 * zoom;
+  fit.style.setProperty('--s', s.toFixed(3));
+}
+applyCam(); applyFit();
+addEventListener('resize', applyFit);
+
+let px0 = 0, py0 = 0, moved = 0;
+stage.addEventListener('pointerdown', e => {
+  if (e.target.closest('.hud')) return;
+  dragging = true; moved = 0; px0 = e.clientX; py0 = e.clientY;
+  stage.classList.add('dragging');
+});
+stage.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - px0, dy = e.clientY - py0;
+  moved += Math.abs(dx) + Math.abs(dy);
+  if (moved > 3 && !stage.hasPointerCapture(e.pointerId))
+    stage.setPointerCapture(e.pointerId);
+  rz += dx * .12; rx -= dy * .08;
+  rz = Math.max(-75, Math.min(6, rz)); rx = Math.max(45, Math.min(68, rx));
+  px0 = e.clientX; py0 = e.clientY; idleT = 0; applyCam();
+});
+stage.addEventListener('pointerup', () => { dragging = false; stage.classList.remove('dragging'); });
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom = Math.max(.5, Math.min(1.7, zoom * (e.deltaY < 0 ? 1.08 : .92)));
+  applyFit();
+}, { passive:false });
+stage.addEventListener('dblclick', resetView);
+document.getElementById('reset').addEventListener('click', resetView);
+function resetView(){ rx = BASE.rx; rz = BASE.rz; zoom = 1; applyCam(); applyFit(); echo('view reset'); }
+
+document.addEventListener('keydown', e => {
+  if (!e.metaKey && !e.ctrlKey) return;
+  if (e.key === 'ArrowUp'){ e.preventDefault(); location.href = 'estate-visual.html'; }
+});
+
+if (!reduce){
+  let t0 = performance.now();
+  (function loop(t){
+    const dt = (t - t0) / 1000; t0 = t;
+    idleT += dt;
+    if (!dragging && idleT > 4) applyCam(Math.sin(t / 9000) * 1.4);
+    requestAnimationFrame(loop);
+  })(t0);
+}
+
+document.querySelectorAll('#tod button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#tod button')
+      .forEach(o => o.setAttribute('aria-pressed', String(o === btn)));
+    document.body.classList.toggle('day', btn.dataset.v === 'day');
+    echo(btn.dataset.v === 'day'
+      ? 'daylight on the real — the twin stays drained'
+      : 'night falls — the twin is unchanged');
+  });
+});
+
+/* ── the energy floor (legacy background system) ─────────────────────────── */
+(function(){
+  const cv = document.getElementById('floor');
+  const ctx = cv.getContext('2d');
+  const W = 1200, H = 700; cv.width = W; cv.height = H;
+  const R = 26, gap = 2.4, SQ3 = Math.sqrt(3);
+  const hex = new Path2D();
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 3 * i;
+    const x = (R - gap) * Math.cos(a), y = (R - gap) * Math.sin(a);
+    i ? hex.lineTo(x, y) : hex.moveTo(x, y);
+  }
+  hex.closePath();
+  const cols = Math.ceil(W / (R * 1.5)) + 2, rows = Math.ceil(H / (R * SQ3)) + 2;
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const blobs = [];
+  for (let i = 0; i < 7; i++) blobs.push({
+    x: rnd() * W, y: rnd() * H, r: 130 + rnd() * 180,
+    dx: .3 + rnd() * .7, dy: .25 + rnd() * .6, p: rnd() * 6.28, white: i === 6 });
+  let t = 0;
+  function frame(){
+    t += .016;
+    ctx.fillStyle = '#060505'; ctx.fillRect(0, 0, W, H);
+    for (const b of blobs){
+      const x = b.x + Math.sin(t * b.dx + b.p) * 150;
+      const y = b.y + Math.cos(t * b.dy + b.p) * 95;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, b.r);
+      const c = '246,241,233';   /* light, not signal — the floor spends no gold */
+      g.addColorStop(0, `rgba(${c},${b.white ? .26 : .22})`);
+      g.addColorStop(1, `rgba(${c},0)`);
+      ctx.fillStyle = g; ctx.fillRect(x - b.r, y - b.r, b.r * 2, b.r * 2);
+    }
+    ctx.fillStyle = '#0b0a09';
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+      const x = c * R * 1.5, y = r * R * SQ3 + (c % 2 ? R * SQ3 / 2 : 0);
+      ctx.save(); ctx.translate(x, y); ctx.fill(hex); ctx.restore();
+    }
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  frame();
+})();
+</script>
+</body>
+</html>

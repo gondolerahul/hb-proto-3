@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vihara — Collections district (visual concept)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════ tokens (Buddha Cognitive Lab, verbatim) ═══ */
+:root{
+  --gold-300:#fdc871; --gold-500:#edab48; --gold-700:#a8722a;
+  --bg:#0a0908; --surface:#141210; --surface-2:#1c1916;
+  --fg:#f6f1e9; --fg-muted:#b3aaa0; --fg-subtle:#7c746b; --fg-faint:#544d46;
+  --positive:#7bb487; --negative:#d4664f;
+  --border:rgba(255,240,220,.08); --border-strong:rgba(255,240,220,.16);
+  --gradient-gold:linear-gradient(105deg,#fdc871 0%,#edab48 32%,#ffefd8 58%,#fdc871 100%);
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --focus-ring:0 0 0 3px rgba(237,171,72,.32);
+  /* day–night as luminance (charter decision 3) */
+  --daymul:1; --glowmul:1; --lamp:1; --shadow-o:0; --groundc:#0b0a09;
+}
+body.day{ --daymul:2.3; --glowmul:.5; --lamp:0; --shadow-o:.42; --groundc:#131110; }
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(120% 90% at 50% 30%, #0e0c0a 0%, #060505 70%);
+     color:var(--fg);font-family:var(--font-body);font-weight:300;overflow:hidden;
+     -webkit-font-smoothing:antialiased}
+body.day{background:radial-gradient(120% 90% at 50% 20%, #191512 0%, #0a0908 75%)}
+
+/* ── the energy floor (legacy background system, re-keyed to the brand) ── */
+.floorwrap{position:fixed;left:50%;bottom:-14vh;width:210vw;height:120vh;z-index:0;
+  transform:translateX(-50%) perspective(900px) rotateX(62deg);transform-origin:50% 100%;
+  pointer-events:none;opacity:.4}
+.floorwrap::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top, transparent 0%, rgba(6,5,5,.4) 40%, #060505 90%)}
+#floor{width:100%;height:100%;display:block}
+/* ═══════════════════════════════ sky ═══ */
+.sky{position:fixed;inset:0;pointer-events:none;opacity:.8;z-index:0;transition:opacity 1.2s var(--ease-out)}
+.sky i{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(246,241,233,.5)}
+body.day .sky{opacity:0}
+
+/* ═══════════════════════════════ stage / camera ═══ */
+.stage{position:fixed;inset:0;z-index:1;--rx:56deg;--rz:-32deg;cursor:grab;touch-action:none}
+.stage.dragging{cursor:grabbing}
+.fit{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%) scale(var(--s,1))}
+.persp{perspective:2000px}
+.ground{position:relative;width:1600px;height:1200px;
+  transform:rotateX(var(--rx)) rotateZ(var(--rz));transform-style:preserve-3d;
+  background-color:var(--groundc);
+  background-image:
+    radial-gradient(65% 55% at 50% 46%, rgba(246,241,233,.028) 0%, transparent 70%),
+    repeating-linear-gradient(0deg,  rgba(246,241,233,.04) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(246,241,233,.04) 0 1px, transparent 1px 44px);
+  border:1px solid rgba(246,241,233,.05);
+  transition:background-color 1.2s var(--ease-out)}
+.keylight{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(118deg, rgba(255,246,230,.13) 0%, rgba(255,246,230,.05) 34%, transparent 62%);
+  opacity:0;transition:opacity 1.2s var(--ease-out)}
+body.day .keylight{opacity:1}
+.bounds{position:absolute;left:60px;top:60px;right:60px;bottom:60px;
+  border:1px solid rgba(246,241,233,.09);border-radius:26px;pointer-events:none}
+.glyph{position:absolute;font-family:var(--font-mono);font-size:13px;color:rgba(246,241,233,.13);
+  pointer-events:none}
+
+/* ═══════════════════════════════ 3d faces ═══ */
+.b3,.site,.onplinth,.bpoint{transform-style:preserve-3d}
+.b3{position:absolute}
+.face{position:absolute;box-sizing:border-box;
+  background-color:rgba(246,241,233,calc(var(--fa,.06)*var(--boost,1)*var(--daymul)));
+  border:1px solid rgba(246,241,233,calc(var(--ba,.26)*var(--boost,1)));
+  transition:background-color .35s var(--ease-out), border-color .35s var(--ease-out)}
+.glass .face.f-top{--fa:.11;--ba:.38;
+  box-shadow:0 0 22px rgba(246,241,233,calc(.10*var(--glowmul)))}
+.glass .face.f-n,.glass .face.f-w{--fa:.045;--ba:.22}
+.glass .face.f-s,.glass .face.f-e{--fa:.08;--ba:.30}
+.glass .face.wall-y{background-image:repeating-linear-gradient(to bottom,
+  rgba(246,241,233,.07) 0 1px, transparent 1px 13px)}
+.glass .face.wall-x{background-image:repeating-linear-gradient(to right,
+  rgba(246,241,233,.07) 0 1px, transparent 1px 13px)}
+.ghost .face{background-color:transparent;
+  border:1px solid rgba(246,241,233,calc(.15*var(--boost,1)));
+  background-image:repeating-linear-gradient(to bottom, rgba(246,241,233,.045) 0 1px, transparent 1px 12px)}
+.ghost .face.f-top{background-image:none;border-style:solid}
+body.day .ghost .face{border-color:rgba(246,241,233,calc(.24*var(--boost,1)))}
+.plinth .face{border-color:rgba(246,241,233,calc(.16*var(--boost,1)))}
+.plinth .face.f-top{background-color:#17140f;background-image:
+  linear-gradient(125deg, rgba(246,241,233,.05) 0%, transparent 45%);
+  border-color:rgba(246,241,233,calc(.34*var(--boost,1)));
+  box-shadow:0 0 26px rgba(246,241,233,calc(.13*var(--glowmul)))}
+.plinth .face.f-n,.plinth .face.f-w{background-color:#0c0a08}
+.plinth .face.f-s,.plinth .face.f-e{background-color:#110e0b}
+body.day .plinth .face.f-top{background-color:#1e1a15}
+/* an idle colleague is dimmer — presence carried by light, not colour */
+.idle .face{opacity:.72}
+
+.underglow{position:absolute;border-radius:50%;pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%, rgba(246,241,233,calc(.16*var(--glowmul))) 0%, transparent 70%)}
+.dayshadow{position:absolute;pointer-events:none;opacity:var(--shadow-o);
+  background:linear-gradient(135deg, rgba(0,0,0,.55) 0%, transparent 72%);
+  transform:skewX(38deg);transform-origin:0 0;border-radius:8px;
+  transition:opacity 1.2s var(--ease-out)}
+
+/* ═══════════════════════════════ sites (hover groups) ═══ */
+.site{position:absolute;cursor:pointer}
+.site .lift{position:absolute;inset:0;transform-style:preserve-3d;
+  transform:translateZ(7px);transition:transform .45s var(--ease-out)}
+.site:hover .lift,.site.pinned .lift{transform:translateZ(18px)}
+/* workstations sit ON the slab — no resting float, a 6px acknowledge on hover */
+.ws .lift{transform:translateZ(0)}
+.ws:hover .lift,.ws.pinned .lift{transform:translateZ(6px)}
+.site:hover,.site.pinned{--boost:1.75}
+
+.halo{position:absolute;pointer-events:none}
+.halo i{position:absolute;inset:0;border:1px solid rgba(246,241,233,.4);border-radius:8px;
+  opacity:0;transform:scale(.86);transition:all .5s var(--ease-out)}
+.halo i:nth-child(2){inset:-16px;border-color:rgba(246,241,233,.22);border-radius:20px;
+  transition-delay:.05s}
+.halo i:nth-child(3){inset:-33px;border-color:rgba(246,241,233,.10);border-radius:25px;
+  transition-delay:.1s}
+.site:hover .halo i,.site.pinned .halo i{opacity:calc(.9*var(--glowmul));transform:scale(1)}
+.halo.gold i{border-color:rgba(237,171,72,.55);animation:ripple 3.2s var(--ease-out) infinite;
+  opacity:1;transform:none;transition:none}
+/* the hover rule above must never dim the gold ripple (§4: beacon identical always) */
+.site:hover .halo.gold i,.site.pinned .halo.gold i{opacity:1;transform:none}
+.halo.gold i:nth-child(2){border-color:rgba(237,171,72,.35);animation-delay:1.05s}
+.halo.gold i:nth-child(3){border-color:rgba(237,171,72,.2);animation-delay:2.1s}
+/* fixed opacity, NOT --glowmul: a raised hand reads identically at 3pm and 9pm (§4) */
+@keyframes ripple{0%{transform:scale(.82);opacity:0}18%{opacity:.9}
+  100%{transform:scale(1.18);opacity:0}}
+
+/* ═══════════════════════════════ flat labels ═══ */
+.nameplate{position:absolute;pointer-events:none;white-space:nowrap;transform:translateZ(.5px)}
+.nameplate .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;
+  color:var(--fg-subtle);text-transform:uppercase;margin:0 0 2px}
+.nameplate .nm{font-family:var(--font-display);font-weight:500;font-size:20px;color:var(--fg);margin:0}
+.qlabel{position:absolute;pointer-events:none;font-family:var(--font-display);font-weight:600;
+  font-size:40px;letter-spacing:.18em;color:rgba(246,241,233,.11);white-space:nowrap;
+  transform:translateZ(.5px)}
+body.day .qlabel{color:rgba(246,241,233,.15)}
+.pathlabel{position:absolute;pointer-events:none;font-family:var(--font-mono);font-size:12px;
+  letter-spacing:.14em;color:rgba(246,241,233,.34);white-space:nowrap}
+
+.plate{position:absolute;width:236px;padding:12px 14px;border-radius:9px;
+  background:rgba(12,10,9,.78);border:1px solid rgba(246,241,233,.15);
+  box-shadow:0 0 30px rgba(0,0,0,.5);
+  opacity:0;transform:translateZ(.5px) translateY(8px);
+  transition:all .4s var(--ease-out);pointer-events:none}
+.site:hover .plate,.site.pinned .plate{opacity:1;transform:translateZ(.5px)}
+.plate.fixed{opacity:1;transform:translateZ(.5px);pointer-events:auto}
+.plate .pt{font-family:var(--font-display);font-weight:500;font-size:17px;color:var(--fg);
+  margin:0 0 6px}
+.plate .pl{font-size:14.5px;color:var(--fg-muted);margin:0 0 3px;line-height:1.45}
+.plate .pl.need{color:var(--fg);font-weight:500}
+.plate .pl.need::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--gold-500);margin-right:7px;vertical-align:1px}
+.plate .pl.row{cursor:pointer;border-radius:5px;padding:2px 6px;margin-left:-6px}
+.plate .pl.row:hover{background:rgba(246,241,233,.07);color:var(--fg)}
+.plate .pl .tm{float:right;font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle)}
+.plate .bar{height:5px;border-radius:99px;background:rgba(246,241,233,.08);margin-top:7px;
+  overflow:hidden;display:flex}
+.plate .bar b{display:block;height:100%;background:rgba(246,241,233,.42)}
+.plate .bar b.reserve{background:var(--gradient-gold)}
+.plate .cap{font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle);margin-top:5px;
+  letter-spacing:.06em}
+
+.needtag{position:absolute;font-family:var(--font-mono);font-size:12.5px;letter-spacing:.18em;
+  color:var(--fg);font-weight:500;text-transform:uppercase;white-space:nowrap;
+  pointer-events:none;transform:translateZ(.5px)}
+.needtag::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:var(--gold-500);margin-right:9px;vertical-align:0}
+.leader{position:absolute;height:1px;width:40px;
+  background:linear-gradient(90deg, rgba(246,241,233,.4), rgba(246,241,233,.06));
+  transform-origin:0 50%;opacity:0;transition:opacity .4s var(--ease-out);pointer-events:none}
+.site:hover .leader,.site.pinned .leader{opacity:1}
+
+/* the KPI readout, flat on the slab */
+.bigfig{position:absolute;font-family:var(--font-display);font-weight:600;font-size:46px;
+  letter-spacing:-.02em;color:var(--fg);transform:translateZ(.5px);pointer-events:none}
+.delta{position:absolute;font-family:var(--font-mono);font-size:13px;letter-spacing:.08em;
+  color:var(--negative);transform:translateZ(.5px);pointer-events:none}
+.spark{position:absolute;transform:translateZ(.5px);pointer-events:none}
+
+/* ═══════════════════════════════ roads + traffic ═══ */
+.road{position:absolute;height:11px;transform-origin:0 50%;pointer-events:none;
+  background:linear-gradient(0deg, transparent 0%, rgba(246,241,233,.05) 22%,
+    rgba(246,241,233,.09) 50%, rgba(246,241,233,.05) 78%, transparent 100%);
+  border-top:1px solid rgba(246,241,233,.14);border-bottom:1px solid rgba(246,241,233,.14)}
+.road::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;
+  background:repeating-linear-gradient(90deg, rgba(246,241,233,.38) 0 3px, transparent 3px 18px);
+  animation:dashflow 1.6s linear infinite}
+.road.parked::before{animation:none;opacity:.4}
+@keyframes dashflow{to{background-position-x:18px}}
+.tdot{position:absolute;left:0;top:50%;width:4px;height:4px;border-radius:50%;
+  background:#fff6e6;box-shadow:0 0 7px 1px rgba(246,241,233,.55);
+  animation:ride var(--dur,6s) linear infinite;animation-delay:var(--del,0s)}
+@keyframes ride{from{transform:translate(-4px,-50%)}to{transform:translate(var(--L),-50%)}}
+.pdot{position:absolute;width:4px;height:4px;border-radius:50%;
+  background:rgba(246,241,233,.6);box-shadow:0 0 5px rgba(246,241,233,.35)}
+
+/* lamplight (night) */
+.lamppool{position:absolute;border-radius:50%;pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%, rgba(168,114,42,.45) 0%, transparent 70%);
+  opacity:var(--lamp);transition:opacity 1.2s var(--ease-out)}
+
+/* ═══════════════════════════════ billboards ═══ */
+.bpoint{position:absolute;width:0;height:0}
+.bill{position:absolute;left:0;top:0;
+  transform:translateZ(var(--z,0)) rotateZ(calc(var(--rz)*-1)) rotateX(calc(var(--rx)*-1))
+            translate(-50%,-100%)}
+.beam{width:3px;height:132px;background:linear-gradient(to top,
+  rgba(237,171,72,.85), rgba(237,171,72,.25) 60%, transparent);border-radius:2px;
+  box-shadow:0 0 14px rgba(237,171,72,.5)}
+.orb{position:absolute;left:50%;top:0;width:11px;height:11px;margin:-6px;border-radius:50%;
+  background:var(--gradient-gold);box-shadow:0 0 20px 5px rgba(237,171,72,.55);
+  animation:breathe 4s var(--ease-out) infinite}
+@keyframes breathe{0%,100%{box-shadow:0 0 14px 3px rgba(237,171,72,.4)}
+  50%{box-shadow:0 0 26px 8px rgba(237,171,72,.7)}}
+.lamppost{width:1px;height:26px;background:rgba(246,241,233,.35)}
+.lampbulb{position:absolute;left:50%;top:0;width:5px;height:5px;margin:-3px;border-radius:50%;
+  background:rgba(246,241,233,.75);
+  box-shadow:0 0 10px 3px rgba(168,114,42,calc(.55*var(--lamp)));
+  opacity:calc(.35 + .65*var(--lamp));transition:all 1.2s var(--ease-out)}
+
+/* ═══════════════════════════════ svg flow layers ═══ */
+.flows{position:absolute;pointer-events:none}
+/* scoped to .dotf — a bare `.flows path` also matches the paths INSIDE <marker>
+   defs and silently kills every arrowhead (CSS beats presentation attributes) */
+.flows .dotf{fill:none;stroke-linecap:round}
+.flows .dotf{stroke:rgba(246,241,233,.4);stroke-width:2;stroke-dasharray:.1 9;
+  animation:flow 2.6s linear infinite}
+.flows .dotf.faint{stroke:rgba(246,241,233,.22)}
+.flows .dotf.urgent{stroke:rgba(246,241,233,.6);animation-duration:1.7s}
+@keyframes flow{to{stroke-dashoffset:-18.2}}
+.flows .ring{fill:none;stroke:rgba(246,241,233,.2);stroke-width:1}
+
+/* ═══════════════════════════════ HUD (screen space) ═══ */
+.hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
+  padding:14px 22px;pointer-events:none;z-index:10}
+.hud .mark{width:10px;height:10px;border-radius:50%;background:var(--gradient-gold);flex:none}
+.hud .co{font-family:var(--font-display);font-weight:500;font-size:15px}
+.hud .crumbs{font-size:14px;color:var(--fg-subtle)}
+.hud .crumbs a{color:var(--fg-muted);text-decoration:none;pointer-events:auto;
+  border-bottom:1px solid rgba(246,241,233,.25)}
+.hud .crumbs a:hover{color:var(--fg);border-bottom-color:rgba(246,241,233,.5)}
+.hud .crumbs .here{color:var(--fg)}
+/* surface names keep the display face everywhere, chrome included (§6) */
+.hud .crumbs a,.hud .crumbs .here{font-family:var(--font-display);font-weight:500}
+.hud .line{font-size:14px;color:var(--fg-muted)}
+.hud .line b{color:var(--fg);font-weight:500}
+.hud .line b::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--gold-500);margin-right:6px;vertical-align:1px}
+.hud .right{margin-left:auto;display:flex;gap:10px;pointer-events:auto}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:999px;overflow:hidden}
+.seg button,.seg a{font-family:var(--font-body);font-size:12.5px;font-weight:500;border:0;
+  padding:6px 14px;background:transparent;color:var(--fg-muted);cursor:pointer;
+  text-decoration:none;transition:all .18s var(--ease-out)}
+.seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--fg)}
+.seg button:focus-visible,.seg a:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  font-family:var(--font-body);font-size:12px;color:var(--fg-muted);
+  z-index:10;pointer-events:none}
+.echo{position:fixed;bottom:14px;left:22px;font-size:13px;color:var(--fg-muted);z-index:10;
+  opacity:0;transition:opacity .3s var(--ease-out);pointer-events:none}
+.echo.show{opacity:1}
+.credit{position:fixed;bottom:14px;right:22px;font-family:var(--font-mono);font-size:9.5px;
+  letter-spacing:.12em;color:var(--fg-faint);z-index:10;pointer-events:none;
+  text-transform:uppercase}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.16s!important}
+  /* the static beacon holds the breathe PEAK — reduced motion is a path, not a dimmer */
+  .orb{box-shadow:0 0 26px 8px rgba(237,171,72,.7)}
+}
+</style>
+</head>
+<body>
+<div class="floorwrap"><canvas id="floor"></canvas></div>
+<div class="sky" id="sky"></div>
+
+<div class="stage" id="stage">
+  <div class="fit" id="fit"><div class="persp">
+    <div class="ground" id="ground">
+      <div class="keylight"></div>
+      <div class="bounds"></div>
+      <!-- ground-level flows: dock rings where the signal roads meet the slab -->
+      <svg class="flows" viewBox="0 0 1600 1200" width="1600" height="1200" style="inset:0">
+        <circle class="ring" cx="308" cy="612" r="14"/>
+        <circle class="ring" cx="308" cy="612" r="24" opacity=".45"/>
+        <circle class="ring" cx="1312" cy="496" r="14"/>
+        <circle class="ring" cx="1312" cy="496" r="24" opacity=".45"/>
+        <path class="dotf faint" d="M 90 760 C 150 800, 205 845, 250 895"/>
+      </svg>
+    </div>
+  </div></div>
+</div>
+
+<div class="hud">
+  <span class="mark"></span><span class="co">Northwind Co.</span>
+  <span class="crumbs"><a href="estate-visual.html">Terrace</a>
+    <span>▸</span> <span class="here">Collections</span></span>
+  <span class="line">Nine days below target · <b>Meera needs you</b></span>
+  <div class="right">
+    <span class="seg" id="tod">
+      <button data-v="day" aria-pressed="false">Day</button>
+      <button data-v="night" aria-pressed="true">Night</button>
+    </span>
+    <span class="seg"><button id="reset">Reset view</button></span>
+  </div>
+</div>
+<div class="hint">Drag to orbit · scroll to zoom · hover a colleague · ⌘↑ rises · ⌘↓ descends to the Undercroft</div>
+<div class="echo" id="echo"></div>
+<div class="credit">vihara · district room · visual concept</div>
+
+<script>
+'use strict';
+const ground = document.getElementById('ground');
+const el = (cls, css, parent, tag) => {
+  const d = document.createElement(tag || 'div');
+  d.className = cls; Object.assign(d.style, css || {});
+  (parent || ground).appendChild(d); return d;
+};
+const px = n => n + 'px';
+
+/* ─────────────────────────────── 3d box builder (same math as the estate) ── */
+function box(parent, x, y, w, d, h, mat){
+  const b = el('b3 ' + mat, { left:px(x), top:px(y), width:px(w), height:px(d) }, parent);
+  el('face f-top', { left:0, top:0, width:px(w), height:px(d),
+    transform:`translateZ(${h}px)` }, b);
+  el('face f-n wall-y', { left:0, top:0, width:px(w), height:px(h),
+    transformOrigin:'top', transform:'rotateX(90deg)' }, b);
+  el('face f-s wall-y', { left:0, top:px(d), width:px(w), height:px(h),
+    transformOrigin:'top', transform:'rotateX(90deg)' }, b);
+  el('face f-w wall-x', { left:0, top:0, width:px(h), height:px(d),
+    transformOrigin:'left', transform:'rotateY(-90deg)' }, b);
+  el('face f-e wall-x', { left:px(w), top:0, width:px(h), height:px(d),
+    transformOrigin:'left', transform:'rotateY(-90deg)' }, b);
+  return b;
+}
+
+/* echo (L10) */
+let echoTimer = 0;
+function echo(t){
+  const e = document.getElementById('echo');
+  e.textContent = t; e.classList.add('show');
+  clearTimeout(echoTimer); echoTimer = setTimeout(() => e.classList.remove('show'), 3200);
+}
+
+/* ─────────────────────────────── the room slab ────────────────────────────
+   One district = one large floating plinth. Everything inside lives on `on`. */
+const RX = 310, RY = 250, RW = 980, RD = 680, RH = 18;
+el('underglow', { left:px(RX - RW*.12), top:px(RY - RD*.12),
+  width:px(RW*1.24), height:px(RD*1.24) });
+el('dayshadow', { left:px(RX + RW*.55), top:px(RY + RD*.78),
+  width:px(620), height:px(380) });
+const room = el('b3', { left:px(RX), top:px(RY), width:px(RW), height:px(RD),
+  transform:'translateZ(7px)' });
+box(room, 0, 0, RW, RD, RH, 'plinth');
+const on = el('onplinth b3', { left:0, top:0, width:px(RW), height:px(RD),
+  transform:`translateZ(${RH}px)` }, room);
+
+/* faint room name on the slab floor */
+el('qlabel', { left:px(330), top:px(24) }, on).textContent = 'collections';
+
+/* on-slab flows: work arriving from the west dock to each colleague */
+const slabFlows = el('flows', { left:0, top:0, width:px(RW), height:px(RD) }, on, 'div');
+slabFlows.innerHTML = `
+<svg viewBox="0 0 ${RW} ${RD}" width="${RW}" height="${RD}">
+  <defs>
+    <marker id="arrw" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M0 0 L8 4 L0 8 Z" style="fill:rgba(246,241,233,.5)"/>
+    </marker>
+  </defs>
+  <path class="dotf urgent" d="M 4 360 C 60 300, 70 230, 92 150" marker-end="url(#arrw)"/>
+  <path class="dotf" d="M 4 360 C 140 350, 300 262, 396 216" marker-end="url(#arrw)"
+        style="animation-delay:.5s"/>
+  <path class="dotf faint" d="M 4 360 C 70 385, 100 405, 132 424" marker-end="url(#arrw)"
+        style="animation-delay:1s"/>
+  <path class="dotf faint" d="M 860 300 C 910 285, 950 266, 976 252" marker-end="url(#arrw)"/>
+</svg>`;
+
+/* ─────────────────────────────── workstations ───────────────────────────── */
+function ws(cfg){
+  const s = el('site ws' + (cfg.idle ? ' idle' : ''), {
+    left:px(cfg.x), top:px(cfg.y), width:px(cfg.w), height:px(cfg.h) }, on);
+  const halo = el('halo' + (cfg.beacon ? ' gold' : ''), {
+    left:px(-14), top:px(-14), width:px(cfg.w + 28), height:px(cfg.h + 28) }, s);
+  halo.innerHTML = '<i></i><i></i><i></i>';
+  const lift = el('lift', {}, s);
+  box(lift, 0, 0, 84, 58, 24, 'glass');                       // the desk
+  if (cfg.totem){
+    box(lift, 96, 6, 16, 12, cfg.totem, 'glass');             // the work totem
+    if (cfg.ghost){
+      const g = el('b3', { left:px(96), top:px(6), width:px(16), height:px(12),
+        transform:`translateZ(${cfg.totem}px)` }, lift);
+      box(g, 0, 0, 16, 12, cfg.ghost, 'ghost');
+    }
+  }
+  if (cfg.beacon){
+    const bp = el('bpoint', { left:px(104), top:px(12) }, lift);
+    const beam = el('bill beam', {}, bp);
+    beam.style.setProperty('--z', px(cfg.totem));
+    el('orb', {}, beam);
+  }
+  const np = el('nameplate', { left:0, top:px(cfg.h + 6) }, s);
+  np.innerHTML = `<p class="eyebrow">${cfg.code}</p><p class="nm">${cfg.name}</p>`;
+  if (cfg.needtag)
+    el('needtag', { left:0, top:px(cfg.h + 58) }, s).textContent = cfg.needtag;
+  const plate = el('plate', { left:px(cfg.plateAt.x), top:px(cfg.plateAt.y) }, s);
+  plate.innerHTML = `<p class="pt">${cfg.plateTitle}</p>` +
+    cfg.lines.map(l => `<p class="pl${l.need ? ' need' : ''}">${l.t || l}</p>`).join('');
+  if (cfg.leader)
+    el('leader', { left:px(cfg.leader.x), top:px(cfg.leader.y),
+      transform:`rotate(${cfg.leader.r || 0}deg) translateZ(.5px)` }, s);
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.site.pinned').forEach(o => { if (o !== s) o.classList.remove('pinned'); });
+    s.classList.toggle('pinned');
+    echo(s.classList.contains('pinned') ? 'opened ' + cfg.name + "'s desk" : 'closed ' + cfg.name + "'s desk");
+  });
+  s.addEventListener('mouseenter', () => echo('looking at ' + cfg.name));
+  return s;
+}
+
+ws({ name:'Meera', code:'agt-046 · associate · a2', x:100, y:110, w:126, h:70,
+  totem:70, ghost:22, beacon:true,
+  needtag:'needs you · kt-2291',
+  plateTitle:'Meera · A2', plateAt:{ x:215, y:-95 }, leader:{ x:178, y:-20, r:-38 },
+  lines:[ { t:'Hand raised — KT-2291', need:true },
+          'Chasing 41 open invoices',
+          'On-time 84% · accuracy 96%' ] });
+
+ws({ name:'Ravi', code:'agt-038 · probationer · a1', x:390, y:150, w:145, h:70,
+  totem:62,
+  plateTitle:'Ravi · A1', plateAt:{ x:-10, y:130 }, leader:{ x:30, y:100, r:90 },
+  lines:[ 'Reconciling 14 invoices',
+          'Every act raises a card at A1',
+          'On-time 91% · accuracy 88%' ] });
+
+ws({ name:'Anjali', code:'agt-041 · probationer · a1', x:140, y:400, w:145, h:70,
+  totem:40, idle:true,
+  plateTitle:'Anjali · A1', plateAt:{ x:-45, y:120 }, leader:{ x:12, y:92, r:140 },
+  lines:[ 'Idle — next sweep at 15:00',
+          'Yesterday: 22 reminders sent',
+          'On-time 95% · accuracy 93%' ] });
+
+/* ─────────────────────────────── the KPI pedestal ───────────────────────── */
+(function(){
+  const s = el('site ws', { left:px(620), top:px(100), width:px(340), height:px(150) }, on);
+  const halo = el('halo', { left:px(-30), top:px(6), width:px(124), height:px(124) }, s);
+  halo.innerHTML = '<i></i><i></i><i></i>';
+  const lift = el('lift', {}, s);
+  // pedestal sits west of its readouts so its own east wall cannot occlude them
+  box(lift, -16, 20, 96, 96, 42, 'glass');
+  const g = el('b3', { left:px(-16), top:px(20), width:px(96), height:px(96),
+    transform:'translateZ(42px)' }, lift);
+  box(g, 0, 0, 96, 96, 24, 'ghost');
+  el('bigfig', { left:px(140), top:px(10) }, s).textContent = '38d';
+  el('delta', { left:px(142), top:px(64) }, s).textContent = '↑ 9 days · target 30';
+  const sp = el('spark', { left:px(140), top:px(96), width:px(180), height:px(44) }, s);
+  sp.innerHTML = `<svg viewBox="0 0 180 44" width="180" height="44">
+    <path d="M0 30 L22 27 L44 29 L66 24 L88 26 L110 20 L132 22 L154 14"
+          fill="none" stroke="rgba(246,241,233,.45)" stroke-width="1.5"/>
+    <path d="M154 14 L178 8" fill="none" stroke="var(--negative)" stroke-width="1.5"/>
+    <circle cx="178" cy="8" r="2.5" fill="var(--negative)"/>
+  </svg>`;
+  const np = el('nameplate', { left:px(142), top:px(148) }, s);
+  np.innerHTML = '<p class="eyebrow">kpi plinth · dso</p>';
+  const plate = el('plate', { left:px(120), top:px(-75) }, s);
+  plate.innerHTML = `<p class="pt">Days sales outstanding</p>
+    <p class="pl">38 days, up 9 since June</p>
+    <p class="pl">Worst: KT-2291 at 62 days</p>
+    <p class="cap">flip ⇄ query</p>`;
+  el('leader', { left:px(84), top:px(26), transform:'translateZ(.5px)' }, s);
+  s.addEventListener('mouseenter', () => echo('looking at the DSO plinth'));
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.site.pinned').forEach(o => { if (o !== s) o.classList.remove('pinned'); });
+    s.classList.toggle('pinned'); echo('opened the DSO plinth');
+  });
+})();
+
+/* ─────────────────────────────── the treasury ───────────────────────────── */
+(function(){
+  const s = el('site ws', { left:px(620), top:px(380), width:px(200), height:px(170) }, on);
+  const halo = el('halo', { left:px(-10), top:px(-10), width:px(220), height:px(94) }, s);
+  halo.innerHTML = '<i></i><i></i><i></i>';
+  const lift = el('lift', {}, s);
+  box(lift, 0, 0, 200, 74, 30, 'glass');
+  const bar = el('plate fixed', { left:0, top:px(95), width:px(200), padding:'0',
+    background:'transparent', border:'0', boxShadow:'none' }, s);
+  bar.innerHTML = `<div class="bar"><b style="width:52%"></b><b class="reserve" style="width:11%"></b></div>
+    <p class="cap">₹18k / ₹30k · reserve held</p>`;
+  const plate = el('plate', { left:0, top:px(165) }, s);
+  plate.innerHTML = `<p class="pt">Treasury · this period</p>
+    <p class="pl">Burn is steady · 11 days left</p>
+    <p class="pl">The reserve is protected — P14 holds the key</p>`;
+  el('leader', { left:px(100), top:px(126), transform:'rotate(90deg) translateZ(.5px)' }, s);
+  s.addEventListener('mouseenter', () => echo('looking at the treasury'));
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.site.pinned').forEach(o => { if (o !== s) o.classList.remove('pinned'); });
+    s.classList.toggle('pinned'); echo('opened the treasury gauge');
+  });
+})();
+
+/* ─────────────────────────────── live runs (always visible, flat) ───────── */
+(function(){
+  const plate = el('plate fixed', { left:px(380), top:px(470) }, on);
+  plate.innerHTML = `<p class="pt">Live runs</p>
+    <p class="pl row" data-run="chase KT-2291">chase KT-2291<span class="tm">00:04</span></p>
+    <p class="pl row" data-run="reconcile 14 invoices">reconcile 14 invoices<span class="tm">00:31</span></p>
+    <p class="pl row" data-run="draft reminder">draft reminder<span class="tm">queued</span></p>
+    <p class="cap">row ▸ trace</p>`;
+  plate.querySelectorAll('.row').forEach(r =>
+    r.addEventListener('click', () => echo('opened the trace for ' + r.dataset.run)));
+})();
+
+/* ─────────────────────────────── ground: roads, docks, parked, lamps ────── */
+function road(x1, y1, x2, y2, cls){
+  const L = Math.hypot(x2 - x1, y2 - y1);
+  const a = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+  const r = el('road' + (cls ? ' ' + cls : ''), { left:px(x1), top:px(y1 - 5.5), width:px(L),
+    transform:`rotate(${a}deg) translateZ(.25px)` });
+  if (cls !== 'parked'){
+    const n = Math.max(1, Math.round(L / 190));
+    for (let i = 0; i < n; i++){
+      const d = el('tdot', {}, r);
+      d.style.setProperty('--L', px(L - 4));
+      d.style.setProperty('--dur', (L / 55) + 's');
+      d.style.setProperty('--del', (-i * (L / 55) / n) + 's');
+    }
+  }
+  return r;
+}
+road(70, 640, 308, 612);          // in — from the spine
+road(1292, 498, 1536, 469);       // out — onward signals, inside the bounds frame
+road(210, 706, 308, 694, 'parked');
+[[235,702],[258,699],[281,696]].forEach(p =>
+  el('pdot', { left:px(p[0]), top:px(p[1]) }));
+
+const PLB = [
+  { t:'in · 42 signals/h',  x:110,  y:664, r:-7 },
+  { t:'out · 37/h',         x:1360, y:505, r:-7 },
+  { t:'parked · 3 · none overdue', x:140, y:726, r:-7 },
+];
+PLB.forEach(p => {
+  const d = el('pathlabel', { left:px(p.x), top:px(p.y),
+    transform:`rotate(${p.r}deg) translateZ(.5px)` });
+  d.textContent = p.t;
+});
+
+function lamp(x, y){
+  el('lamppool', { left:px(x - 48), top:px(y - 37), width:px(96), height:px(74) });
+  const bp = el('bpoint', { left:px(x), top:px(y) });
+  const post = el('bill lamppost', {}, bp); post.style.setProperty('--z', '0px');
+  el('lampbulb', {}, post);
+}
+lamp(300, 598); lamp(1312, 506);  // east lamp past the slab's occlusion band
+
+/* the room's nameplate, on the ground by the slab */
+const rn = el('nameplate', { left:px(310), top:px(946) });
+rn.innerHTML = '<p class="eyebrow">p08 · money quarter</p><p class="nm">Collections</p>';
+
+/* scattered ground glyphs */
+(function(){
+  let seed = 42;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const g = ['·','+','∙','◦','⌁','·','·','+'];
+  for (let i = 0; i < 46; i++){
+    const d = el('glyph', { left:px(80 + rnd() * 1440), top:px(80 + rnd() * 1040) });
+    if (i % 6 === 0) d.style.fontSize = '16px';
+    d.textContent = g[Math.floor(rnd() * g.length)];
+  }
+})();
+
+/* stars */
+(function(){
+  const sky = document.getElementById('sky');
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 90; i++){
+    const s = document.createElement('i');
+    s.style.left = (rnd() * 100) + '%';
+    s.style.top = (rnd() * 60) + '%';
+    s.style.opacity = (.12 + rnd() * .5).toFixed(2);
+    const sz = rnd() < .12 ? 2 : 1;
+    s.style.width = s.style.height = sz + 'px';
+    sky.appendChild(s);
+  }
+})();
+
+/* ─────────────────────────────── camera (same machinery as the estate) ──── */
+const stage = document.getElementById('stage');
+const fit = document.getElementById('fit');
+const BASE = { rx:56, rz:-32 };
+let rx = BASE.rx, rz = BASE.rz, zoom = 1, idleT = 0, dragging = false;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function applyCam(extraRz){
+  stage.style.setProperty('--rx', rx + 'deg');
+  stage.style.setProperty('--rz', (rz + (extraRz || 0)) + 'deg');
+}
+function applyFit(){
+  const s = Math.min(innerWidth / 1500, innerHeight / 980) * 1.02 * zoom;
+  fit.style.setProperty('--s', s.toFixed(3));
+}
+applyCam(); applyFit();
+addEventListener('resize', applyFit);
+
+let px0 = 0, py0 = 0, moved = 0;
+stage.addEventListener('pointerdown', e => {
+  if (e.target.closest('.hud')) return;
+  dragging = true; moved = 0; px0 = e.clientX; py0 = e.clientY;
+  stage.classList.add('dragging');
+  // no setPointerCapture here — capture retargets clicks and kills .site handlers
+});
+stage.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - px0, dy = e.clientY - py0;
+  moved += Math.abs(dx) + Math.abs(dy);
+  if (moved > 3 && !stage.hasPointerCapture(e.pointerId))
+    stage.setPointerCapture(e.pointerId);
+  rz += dx * .12; rx -= dy * .08;
+  rz = Math.max(-75, Math.min(6, rz)); rx = Math.max(45, Math.min(68, rx));
+  px0 = e.clientX; py0 = e.clientY; idleT = 0; applyCam();
+});
+stage.addEventListener('pointerup', () => { dragging = false; stage.classList.remove('dragging'); });
+stage.addEventListener('click', e => {
+  if (moved > 3) return;
+  if (!e.target.closest('.site') && !e.target.closest('.hud'))
+    document.querySelectorAll('.site.pinned').forEach(o => o.classList.remove('pinned'));
+});
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom = Math.max(.5, Math.min(1.7, zoom * (e.deltaY < 0 ? 1.08 : .92)));
+  applyFit();
+}, { passive:false });
+stage.addEventListener('dblclick', resetView);
+document.getElementById('reset').addEventListener('click', resetView);
+function resetView(){ rx = BASE.rx; rz = BASE.rz; zoom = 1; applyCam(); applyFit(); echo('view reset'); }
+
+/* the depth dial, on the keyboard: rise to the Terrace */
+document.addEventListener('keydown', e => {
+  if (!e.metaKey && !e.ctrlKey) return;
+  if (e.key === 'ArrowUp'){ e.preventDefault(); location.href = 'estate-visual.html'; }
+  if (e.key === 'ArrowDown'){ e.preventDefault(); location.href = 'undercroft-visual.html'; }
+});
+
+if (!reduce){
+  let t0 = performance.now();
+  (function loop(t){
+    const dt = (t - t0) / 1000; t0 = t;
+    idleT += dt;
+    if (!dragging && idleT > 4) applyCam(Math.sin(t / 9000) * 1.4);
+    requestAnimationFrame(loop);
+  })(t0);
+}
+
+document.querySelectorAll('#tod button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#tod button')
+      .forEach(o => o.setAttribute('aria-pressed', String(o === btn)));
+    document.body.classList.toggle('day', btn.dataset.v === 'day');
+    echo(btn.dataset.v === 'day' ? 'daylight in the room' : 'night falls on the room');
+  });
+});
+
+/* ── the energy floor (legacy background system) ── */
+(function(){
+  const cv = document.getElementById('floor');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const W = 1200, H = 700; cv.width = W; cv.height = H;
+  const R = 26, gap = 2.4, SQ3 = Math.sqrt(3);
+  const hex = new Path2D();
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 3 * i;
+    const x = (R - gap) * Math.cos(a), y = (R - gap) * Math.sin(a);
+    i ? hex.lineTo(x, y) : hex.moveTo(x, y);
+  }
+  hex.closePath();
+  const cols = Math.ceil(W / (R * 1.5)) + 2, rows2 = Math.ceil(H / (R * SQ3)) + 2;
+  let fseed = 11;
+  const frnd = () => (fseed = (fseed * 16807) % 2147483647) / 2147483647;
+  const blobs = [];
+  for (let i = 0; i < 7; i++) blobs.push({
+    x: frnd() * W, y: frnd() * H, r: 130 + frnd() * 180,
+    dx: .3 + frnd() * .7, dy: .25 + frnd() * .6, p: frnd() * 6.28, white: i === 6 });
+  let ft = 0;
+  function fframe(){
+    ft += .016;
+    ctx.fillStyle = '#060505'; ctx.fillRect(0, 0, W, H);
+    for (const b of blobs){
+      const x = b.x + Math.sin(ft * b.dx + b.p) * 150;
+      const y = b.y + Math.cos(ft * b.dy + b.p) * 95;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, b.r);
+      const c = '246,241,233';   /* light, not signal — the floor spends no gold */
+      g.addColorStop(0, `rgba(${c},${b.white ? .26 : .22})`);
+      g.addColorStop(1, `rgba(${c},0)`);
+      ctx.fillStyle = g; ctx.fillRect(x - b.r, y - b.r, b.r * 2, b.r * 2);
+    }
+    ctx.fillStyle = '#0b0a09';
+    for (let r = 0; r < rows2; r++) for (let c = 0; c < cols; c++){
+      const x = c * R * 1.5, y = r * R * SQ3 + (c % 2 ? R * SQ3 / 2 : 0);
+      ctx.save(); ctx.translate(x, y); ctx.fill(hex); ctx.restore();
+    }
+    if (!reduce) requestAnimationFrame(fframe);
+  }
+  fframe();
+})();
+</script>
+</body>
+</html>

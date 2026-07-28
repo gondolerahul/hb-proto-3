@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vihara — the Terrace (visual concept)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════ tokens (Buddha Cognitive Lab, verbatim) ═══ */
+:root{
+  --gold-300:#fdc871; --gold-500:#edab48; --gold-700:#a8722a;
+  --bg:#0a0908; --surface:#141210; --surface-2:#1c1916;
+  --fg:#f6f1e9; --fg-muted:#b3aaa0; --fg-subtle:#7c746b; --fg-faint:#544d46;
+  --border:rgba(255,240,220,.08); --border-strong:rgba(255,240,220,.16);
+  --gradient-gold:linear-gradient(105deg,#fdc871 0%,#edab48 32%,#ffefd8 58%,#fdc871 100%);
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --focus-ring:0 0 0 3px rgba(237,171,72,.32);
+  /* day–night as luminance (charter decision 3) */
+  --daymul:1;        /* face-alpha multiplier      */
+  --glowmul:1;       /* rim / halo strength        */
+  --lamp:1;          /* lamplight pools (night)    */
+  --shadow-o:0;      /* long soft shadows (day)    */
+  --groundc:#0b0a09;
+}
+body.day{ --daymul:2.3; --glowmul:.5; --lamp:0; --shadow-o:.42; --groundc:#131110; }
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(120% 90% at 50% 30%, #0e0c0a 0%, #060505 70%);
+     color:var(--fg);font-family:var(--font-body);font-weight:300;overflow:hidden;
+     -webkit-font-smoothing:antialiased}
+body.day{background:radial-gradient(120% 90% at 50% 20%, #191512 0%, #0a0908 75%)}
+
+/* ── the energy floor (legacy background system, re-keyed to the brand) ── */
+.floorwrap{position:fixed;left:50%;bottom:-14vh;width:210vw;height:120vh;z-index:0;
+  transform:translateX(-50%) perspective(900px) rotateX(62deg);transform-origin:50% 100%;
+  pointer-events:none;opacity:.4}
+.floorwrap::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top, transparent 0%, rgba(6,5,5,.4) 40%, #060505 90%)}
+#floor{width:100%;height:100%;display:block}
+/* ═══════════════════════════════ sky ═══ */
+.sky{position:fixed;inset:0;pointer-events:none;opacity:.8;z-index:0;transition:opacity 1.2s var(--ease-out)}
+.sky i{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(246,241,233,.5)}
+body.day .sky{opacity:0}
+
+/* ═══════════════════════════════ stage / camera ═══ */
+.stage{position:fixed;inset:0;z-index:1;--rx:56deg;--rz:-32deg;cursor:grab;touch-action:none}
+.stage.dragging{cursor:grabbing}
+.fit{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%) scale(var(--s,1))}
+.persp{perspective:2000px}
+.ground{position:relative;width:1600px;height:1200px;
+  transform:rotateX(var(--rx)) rotateZ(var(--rz));transform-style:preserve-3d;
+  background-color:var(--groundc);
+  background-image:
+    radial-gradient(65% 55% at 50% 46%, rgba(246,241,233,.028) 0%, transparent 70%),
+    repeating-linear-gradient(0deg,  rgba(246,241,233,.04) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(246,241,233,.04) 0 1px, transparent 1px 44px);
+  border:1px solid rgba(246,241,233,.05);
+  transition:background-color 1.2s var(--ease-out)}
+/* daylight key sweeping in from the north-west */
+.keylight{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(118deg, rgba(255,246,230,.13) 0%, rgba(255,246,230,.05) 34%, transparent 62%);
+  opacity:0;transition:opacity 1.2s var(--ease-out)}
+body.day .keylight{opacity:1}
+.bounds{position:absolute;left:60px;top:60px;right:60px;bottom:60px;
+  border:1px solid rgba(246,241,233,.09);border-radius:26px;pointer-events:none}
+.glyph{position:absolute;font-family:var(--font-mono);font-size:13px;color:rgba(246,241,233,.13);
+  pointer-events:none}
+
+/* ═══════════════════════════════ 3d faces ═══ */
+.b3,.site,.onplinth,.bpoint{transform-style:preserve-3d}
+.b3{position:absolute}
+.face{position:absolute;box-sizing:border-box;
+  background-color:rgba(246,241,233,calc(var(--fa,.06)*var(--boost,1)*var(--daymul)));
+  border:1px solid rgba(246,241,233,calc(var(--ba,.26)*var(--boost,1)));
+  transition:background-color .35s var(--ease-out), border-color .35s var(--ease-out)}
+/* glass — holographic building volumes */
+.glass .face.f-top{--fa:.11;--ba:.38;
+  box-shadow:0 0 22px rgba(246,241,233,calc(.10*var(--glowmul)))}
+.glass .face.f-n,.glass .face.f-w{--fa:.045;--ba:.22}
+.glass .face.f-s,.glass .face.f-e{--fa:.08;--ba:.30}
+.glass .face.wall-y{background-image:repeating-linear-gradient(to bottom,
+  rgba(246,241,233,.07) 0 1px, transparent 1px 13px)}
+.glass .face.wall-x{background-image:repeating-linear-gradient(to right,
+  rgba(246,241,233,.07) 0 1px, transparent 1px 13px)}
+/* silvered — the Glasshouse (desaturated, art bible §5) */
+.silver .face{background-color:rgba(228,232,236,calc(var(--fa,.05)*var(--boost,1)*var(--daymul)));
+  border-color:rgba(228,232,236,calc(var(--ba,.24)*var(--boost,1)))}
+.silver .face.f-top{--fa:.09;--ba:.34;box-shadow:0 0 20px rgba(228,232,236,calc(.09*var(--glowmul)))}
+.silver .face.f-n,.silver .face.f-w{--fa:.04;--ba:.20}
+.silver .face.f-s,.silver .face.f-e{--fa:.07;--ba:.28}
+.silver .face.wall-y{background-image:
+  repeating-linear-gradient(to bottom, rgba(228,232,236,.08) 0 1px, transparent 1px 11px),
+  repeating-linear-gradient(to right,  rgba(228,232,236,.06) 0 1px, transparent 1px 15px)}
+.silver .face.wall-x{background-image:
+  repeating-linear-gradient(to right,  rgba(228,232,236,.08) 0 1px, transparent 1px 11px),
+  repeating-linear-gradient(to bottom, rgba(228,232,236,.06) 0 1px, transparent 1px 15px)}
+/* ghost — the wireframe scaffold above the solid mass (inspiration 1) */
+.ghost .face{background-color:transparent;
+  border:1px solid rgba(246,241,233,calc(.15*var(--boost,1)));
+  background-image:repeating-linear-gradient(to bottom, rgba(246,241,233,.045) 0 1px, transparent 1px 12px)}
+.ghost .face.f-top{background-image:none;border-style:solid}
+.ghost.silver .face{border-color:rgba(228,232,236,calc(.14*var(--boost,1)));
+  background-image:repeating-linear-gradient(to bottom, rgba(228,232,236,.04) 0 1px, transparent 1px 12px)}
+/* plinth — the floating slab (inspirations 2 + 5) */
+.plinth .face{border-color:rgba(246,241,233,calc(.16*var(--boost,1)))}
+.plinth .face.f-top{background-color:#17140f;background-image:
+  linear-gradient(125deg, rgba(246,241,233,.05) 0%, transparent 45%);
+  border-color:rgba(246,241,233,calc(.34*var(--boost,1)));
+  box-shadow:0 0 26px rgba(246,241,233,calc(.13*var(--glowmul)))}
+.plinth .face.f-n,.plinth .face.f-w{background-color:#0c0a08}
+.plinth .face.f-s,.plinth .face.f-e{background-color:#110e0b}
+body.day .plinth .face.f-top{background-color:#1e1a15}
+body.day .ghost .face{border-color:rgba(246,241,233,calc(.24*var(--boost,1)))}
+body.day .ghost.silver .face{border-color:rgba(228,232,236,.20)}
+/* the Glasshouse site drains WHOLE — desaturation applies at the plane boundary (§5),
+   so the plinth, glow, halo, plate and leader go cool with the buildings */
+.silverS .plinth .face{border-color:rgba(228,232,236,calc(.15*var(--boost,1)))}
+.silverS .plinth .face.f-n,.silverS .plinth .face.f-w{background-color:#0b0c0d}
+.silverS .plinth .face.f-s,.silverS .plinth .face.f-e{background-color:#0f1113}
+.silverS .plinth .face.f-top{background-color:#121316;
+  background-image:linear-gradient(125deg, rgba(228,232,236,.05) 0%, transparent 45%);
+  border-color:rgba(228,232,236,calc(.30*var(--boost,1)));
+  box-shadow:0 0 26px rgba(228,232,236,calc(.11*var(--glowmul)))}
+body.day .silverS .plinth .face.f-top{background-color:#191b1e}
+.silverS .underglow{background:radial-gradient(50% 50% at 50% 50%,
+  rgba(228,232,236,calc(.12*var(--glowmul))) 0%, transparent 70%)}
+.silverS .halo i{border-color:rgba(228,232,236,.4)}
+.silverS .halo i:nth-child(2){border-color:rgba(228,232,236,.22)}
+.silverS .halo i:nth-child(3){border-color:rgba(228,232,236,.10)}
+.silverS .plate{border-color:rgba(228,232,236,.20)}
+.silverS .leader{background:linear-gradient(90deg, rgba(228,232,236,.4), rgba(228,232,236,.06))}
+
+/* under-glow + long day shadow, flat on the ground */
+.underglow{position:absolute;border-radius:50%;pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%, rgba(246,241,233,calc(.16*var(--glowmul))) 0%, transparent 70%)}
+.dayshadow{position:absolute;pointer-events:none;opacity:var(--shadow-o);
+  background:linear-gradient(135deg, rgba(0,0,0,.55) 0%, transparent 72%);
+  transform:skewX(38deg);transform-origin:0 0;border-radius:8px;
+  transition:opacity 1.2s var(--ease-out)}
+
+/* ═══════════════════════════════ sites (hover group) ═══ */
+.site{position:absolute;cursor:pointer}
+.site .lift{position:absolute;inset:0;transform-style:preserve-3d;
+  transform:translateZ(7px);              /* the slab floats (inspirations 2 + 5) */
+  transition:transform .45s var(--ease-out)}
+.site:hover .lift,.site.pinned .lift{transform:translateZ(18px)}
+.site:hover,.site.pinned{--boost:1.75}
+
+/* concentric halo, flat on the surface (inspirations 3 + 4) */
+.halo{position:absolute;pointer-events:none}
+.halo i{position:absolute;inset:0;border:1px solid rgba(246,241,233,.4);border-radius:8px;
+  opacity:0;transform:scale(.86);transition:all .5s var(--ease-out)}
+.halo i:nth-child(2){inset:-16px;border-color:rgba(246,241,233,.22);border-radius:20px;
+  transition-delay:.05s}
+.halo i:nth-child(3){inset:-33px;border-color:rgba(246,241,233,.10);border-radius:25px;
+  transition-delay:.1s}
+.site:hover .halo i,.site.pinned .halo i{opacity:calc(.9*var(--glowmul));transform:scale(1)}
+/* the beacon's gold ripple — always live */
+.halo.gold i{border-color:rgba(237,171,72,.55);animation:ripple 3.2s var(--ease-out) infinite;
+  opacity:1;transform:none;transition:none}
+.halo.gold i:nth-child(2){border-color:rgba(237,171,72,.35);animation-delay:1.05s}
+.halo.gold i:nth-child(3){border-color:rgba(237,171,72,.2);animation-delay:2.1s}
+/* the hover rule above must never dim the gold ripple (§4: beacon identical always) */
+.site:hover .halo.gold i,.site.pinned .halo.gold i{opacity:1;transform:none}
+/* fixed opacity, NOT --glowmul: a raised hand reads identically at 3pm and 9pm (§4) */
+@keyframes ripple{0%{transform:scale(.82);opacity:0}18%{opacity:.9}
+  100%{transform:scale(1.18);opacity:0}}
+
+/* ═══════════════════════════════ flat labels ═══ */
+.nameplate{position:absolute;pointer-events:none;white-space:nowrap;transform:translateZ(.5px)}
+.nameplate .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;
+  color:var(--fg-subtle);text-transform:uppercase;margin:0 0 2px}
+.nameplate .nm{font-family:var(--font-display);font-weight:500;font-size:20px;color:var(--fg);margin:0}
+.nameplate.silvern .eyebrow{color:#9aa0a8}.nameplate.silvern .nm{color:#dfe3e8}
+.qlabel{position:absolute;pointer-events:none;font-family:var(--font-display);font-weight:600;
+  font-size:46px;letter-spacing:.18em;color:rgba(246,241,233,.11);
+  white-space:nowrap}
+body.day .qlabel{color:rgba(246,241,233,.15)}
+.pathlabel{position:absolute;pointer-events:none;font-family:var(--font-mono);font-size:12px;
+  letter-spacing:.14em;color:rgba(246,241,233,.34);white-space:nowrap}
+
+/* detail plate — materializes flat on the ground */
+.plate{position:absolute;width:236px;padding:12px 14px;border-radius:9px;
+  background:rgba(12,10,9,.78);border:1px solid rgba(246,241,233,.15);
+  box-shadow:0 0 30px rgba(0,0,0,.5);
+  opacity:0;transform:translateZ(.5px) translateY(8px);
+  transition:all .4s var(--ease-out);pointer-events:none}
+.site:hover .plate,.site.pinned .plate{opacity:1;transform:translateZ(.5px)}
+.plate .pt{font-family:var(--font-display);font-weight:500;font-size:17px;color:var(--fg);
+  margin:0 0 6px}
+.plate .pl{font-size:14.5px;color:var(--fg-muted);margin:0 0 3px;line-height:1.45}
+.plate .pl.need{color:var(--fg);font-weight:500}
+.plate .pl.need::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--gold-500);margin-right:7px;vertical-align:1px}
+.plate .pl.silvert{color:#b9bec6}
+.plate .grade{display:inline-block;font-family:var(--font-mono);font-size:10px;
+  letter-spacing:.16em;color:#b9bec6;border:1px solid rgba(228,232,236,.3);border-radius:99px;
+  padding:1.5px 8px;margin-top:4px}
+.plate .bar{height:5px;border-radius:99px;background:rgba(246,241,233,.08);margin-top:7px;
+  overflow:hidden;display:flex}
+.plate .bar b{display:block;height:100%;background:rgba(246,241,233,.42)}
+.plate .bar b.reserve{background:var(--gradient-gold)}
+.plate .cap{font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle);margin-top:5px;
+  letter-spacing:.06em}
+.plate a.enter{display:inline-block;margin-top:7px;font-size:13.5px;color:var(--fg);
+  text-decoration:none;border-bottom:1px solid var(--border-strong);pointer-events:auto}
+.plate a.enter:hover{border-bottom-color:rgba(246,241,233,.5)}
+.leader{position:absolute;height:1px;background:linear-gradient(90deg,
+  rgba(246,241,233,.4), rgba(246,241,233,.06));transform-origin:0 50%;
+  opacity:0;transition:opacity .4s var(--ease-out);pointer-events:none}
+.site:hover .leader,.site.pinned .leader{opacity:1}
+
+/* needs-you tag, flat — gold marks it, the words stay --fg (AA floor, art bible §11) */
+.needtag{position:absolute;font-family:var(--font-mono);font-size:12.5px;letter-spacing:.18em;
+  color:var(--fg);font-weight:500;text-transform:uppercase;white-space:nowrap;
+  pointer-events:none;transform:translateZ(.5px)}
+.needtag::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:var(--gold-500);margin-right:9px;vertical-align:0}
+
+/* ═══════════════════════════════ roads + traffic ═══ */
+.road{position:absolute;height:11px;transform-origin:0 50%;pointer-events:none;
+  background:linear-gradient(0deg, transparent 0%, rgba(246,241,233,.05) 22%,
+    rgba(246,241,233,.09) 50%, rgba(246,241,233,.05) 78%, transparent 100%);
+  border-top:1px solid rgba(246,241,233,.14);border-bottom:1px solid rgba(246,241,233,.14)}
+.road::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;
+  background:repeating-linear-gradient(90deg, rgba(246,241,233,.38) 0 3px, transparent 3px 18px);
+  animation:dashflow 1.6s linear infinite}
+@keyframes dashflow{to{background-position-x:18px}}
+.tdot{position:absolute;left:0;top:50%;width:4px;height:4px;border-radius:50%;
+  background:#fff6e6;box-shadow:0 0 7px 1px rgba(246,241,233,.55);
+  animation:ride var(--dur,6s) linear infinite;animation-delay:var(--del,0s)}
+@keyframes ride{from{transform:translate(-4px,-50%)}to{transform:translate(var(--L),-50%)}}
+
+/* the pulse at the spine junction — Sheel's heartbeat */
+.pulse{position:absolute;pointer-events:none;transform:translateZ(.5px)}
+.pulse .c{position:absolute;inset:0;border:1px solid rgba(246,241,233,.4);border-radius:50%;
+  animation:pulsering 4.6s var(--ease-out) infinite}
+.pulse .c:nth-child(2){animation-delay:2.3s}
+.pulse .dot{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px;
+  border-radius:50%;background:rgba(246,241,233,.8)}
+@keyframes pulsering{0%{transform:scale(.3);opacity:.7}100%{transform:scale(1.6);opacity:0}}
+
+/* flat time scrubber (inspiration 3's flat slider) */
+.scrubber{position:absolute;width:320px;pointer-events:none;transform:translateZ(.5px)}
+.scrubber .track{height:1px;background:rgba(246,241,233,.22);position:relative}
+.scrubber .track::before,.scrubber .track::after{content:"";position:absolute;top:-3px;width:1px;
+  height:7px;background:rgba(246,241,233,.3)}
+.scrubber .track::before{left:0}.scrubber .track::after{right:0}
+.scrubber .knob{position:absolute;left:46%;top:-4px;width:9px;height:9px;border-radius:50%;
+  background:#f6f1e9;box-shadow:0 0 9px rgba(246,241,233,.5)}
+.scrubber .lbl{display:flex;justify-content:space-between;font-family:var(--font-mono);
+  font-size:11px;letter-spacing:.16em;color:var(--fg-subtle);margin-top:7px}
+.scrubber .lbl b{color:var(--fg-muted);font-weight:500}
+
+/* fog (weather over Care) */
+.fogwrap{position:absolute;transform:translateZ(30px);pointer-events:none}
+.fog{position:absolute;border-radius:50%;filter:blur(13px);
+  background:radial-gradient(50% 50% at 50% 50%, rgba(246,241,233,.13) 0%, transparent 70%);
+  animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translateX(34px)}}
+
+/* lamplight pools (night) */
+.lamppool{position:absolute;border-radius:50%;pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%, rgba(168,114,42,.45) 0%, transparent 70%);
+  opacity:var(--lamp);transition:opacity 1.2s var(--ease-out)}
+
+/* ═══════════════════════════════ billboards (beacon, lamps, orbs) ═══ */
+.bpoint{position:absolute;width:0;height:0}
+.bill{position:absolute;left:0;top:0;
+  transform:translateZ(var(--z,0)) rotateZ(calc(var(--rz)*-1)) rotateX(calc(var(--rx)*-1))
+            translate(-50%,-100%)}
+.beam{width:3px;height:132px;background:linear-gradient(to top,
+  rgba(237,171,72,.85), rgba(237,171,72,.25) 60%, transparent);border-radius:2px;
+  box-shadow:0 0 14px rgba(237,171,72,.5)}
+.orb{position:absolute;left:50%;top:0;width:11px;height:11px;margin:-6px;border-radius:50%;
+  background:var(--gradient-gold);box-shadow:0 0 20px 5px rgba(237,171,72,.55);
+  animation:breathe 4s var(--ease-out) infinite}
+@keyframes breathe{0%,100%{box-shadow:0 0 14px 3px rgba(237,171,72,.4)}
+  50%{box-shadow:0 0 26px 8px rgba(237,171,72,.7)}}
+.lamppost{width:1px;height:26px;background:rgba(246,241,233,.35)}
+.lampbulb{position:absolute;left:50%;top:0;width:5px;height:5px;margin:-3px;border-radius:50%;
+  background:rgba(246,241,233,.75);
+  box-shadow:0 0 10px 3px rgba(168,114,42,calc(.55*var(--lamp)));   /* gold-700 lamplight only */
+  opacity:calc(.35 + .65*var(--lamp));transition:all 1.2s var(--ease-out)}
+
+/* ═══════════════════════════════ svg flow layer ═══ */
+.flows{position:absolute;inset:0;pointer-events:none}
+/* scoped to .dotf — a bare `.flows path` also matches the paths INSIDE <marker>
+   defs and silently kills every arrowhead (CSS beats presentation attributes) */
+.flows .dotf{fill:none;stroke-linecap:round}
+.flows .dotf{stroke:rgba(246,241,233,.4);stroke-width:2;stroke-dasharray:.1 9;
+  animation:flow 2.6s linear infinite}
+.flows .dotf.faint{stroke:rgba(246,241,233,.22)}
+/* urgency is TEMPO and density, never hue — traffic is not gold (art bible §2.1) */
+.flows .dotf.urgent{stroke:rgba(246,241,233,.6);animation-duration:1.7s}
+.flows .dotf.silverf{stroke:rgba(210,216,224,.45)}
+@keyframes flow{to{stroke-dashoffset:-18.2}}
+.flows .ring{fill:none;stroke:rgba(246,241,233,.2);stroke-width:1}
+.flows .ringdash{fill:none;stroke:rgba(246,241,233,.14);stroke-width:1;
+  stroke-dasharray:3 7;animation:ringcrawl 40s linear infinite}
+@keyframes ringcrawl{to{stroke-dashoffset:-120}}
+
+/* ═══════════════════════════════ HUD (screen space) ═══ */
+.hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
+  padding:14px 22px;pointer-events:none;z-index:10}
+.hud .mark{width:10px;height:10px;border-radius:50%;background:var(--gradient-gold);flex:none}
+.hud .co{font-family:var(--font-display);font-weight:500;font-size:15px}
+.hud .line{font-size:14px;color:var(--fg-muted)}
+.hud .line b{color:var(--fg);font-weight:500}
+.hud .line b::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--gold-500);margin-right:6px;vertical-align:1px}
+.hud .right{margin-left:auto;display:flex;gap:10px;pointer-events:auto}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:999px;overflow:hidden}
+.seg button{font-family:var(--font-body);font-size:12.5px;font-weight:500;border:0;
+  padding:6px 14px;background:transparent;color:var(--fg-muted);cursor:pointer;
+  transition:all .18s var(--ease-out)}
+.seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--fg)}
+.seg button:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+.hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  font-family:var(--font-body);font-size:12px;color:var(--fg-muted);
+  z-index:10;pointer-events:none}
+.echo{position:fixed;bottom:14px;left:22px;font-size:13px;color:var(--fg-muted);z-index:10;
+  opacity:0;transition:opacity .3s var(--ease-out);pointer-events:none}
+.echo.show{opacity:1}
+.credit{position:fixed;bottom:14px;right:22px;font-family:var(--font-mono);font-size:9.5px;
+  letter-spacing:.12em;color:var(--fg-faint);z-index:10;pointer-events:none;
+  text-transform:uppercase}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.16s!important}
+  /* the static beacon holds the breathe PEAK — reduced motion is a path, not a dimmer */
+  .orb{box-shadow:0 0 26px 8px rgba(237,171,72,.7)}
+}
+</style>
+</head>
+<body>
+<div class="floorwrap"><canvas id="floor"></canvas></div>
+<div class="sky" id="sky"></div>
+
+<div class="stage" id="stage">
+  <div class="fit" id="fit"><div class="persp">
+    <div class="ground" id="ground">
+      <div class="keylight"></div>
+      <div class="bounds"></div>
+      <svg class="flows" viewBox="0 0 1600 1200" width="1600" height="1200">
+        <defs>
+          <marker id="arrw" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="7" markerHeight="7"
+                  orient="auto-start-reverse">
+            <path d="M0 0 L8 4 L0 8 Z" style="fill:rgba(246,241,233,.5)"/>
+          </marker>
+          <marker id="arrs" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="7" markerHeight="7"
+                  orient="auto-start-reverse">
+            <path d="M0 0 L8 4 L0 8 Z" style="fill:rgba(210,216,224,.5)"/>
+          </marker>
+        </defs>
+        <!-- junction rings at the pulse -->
+        <circle class="ring" cx="760" cy="640" r="30"/>
+        <circle class="ringdash" cx="760" cy="640" r="46"/>
+        <!-- converging flow: signals into the raised hand (inspiration 4) — warm-white,
+             urgency carried by tempo; the beacon stays the only gold in the frame -->
+        <path class="dotf urgent" d="M 700 585 C 715 520, 733 470, 750 420" marker-end="url(#arrw)"/>
+        <path class="dotf urgent" d="M 655 610 C 662 515, 692 458, 724 414" marker-end="url(#arrw)"
+              style="animation-delay:.6s"/>
+        <!-- silver flow: the real → the Glasshouse -->
+        <path class="dotf silverf" d="M 880 280 C 1010 210, 1120 200, 1235 216" marker-end="url(#arrs)"/>
+        <!-- ambient estate flows -->
+        <path class="dotf faint" d="M 210 740 C 300 690, 420 665, 560 690"/>
+        <path class="dotf faint" d="M 1180 560 C 1150 620, 1090 660, 990 672" style="animation-delay:1.2s"/>
+      </svg>
+      <!-- everything else is built by the script -->
+    </div>
+  </div></div>
+</div>
+
+<div class="hud">
+  <span class="mark"></span><span class="co">Northwind Co.</span>
+  <span class="line">All is well · ₹2.4L collected this week · <b>one colleague is waiting</b></span>
+  <div class="right">
+    <span class="seg" id="tod">
+      <button data-v="day" aria-pressed="false">Day</button>
+      <button data-v="night" aria-pressed="true">Night</button>
+    </span>
+    <span class="seg"><button id="reset">Reset view</button></span>
+  </div>
+</div>
+<div class="hint">Drag to orbit · scroll to zoom · hover a district · double-click resets</div>
+<div class="echo" id="echo"></div>
+<div class="credit">vihara · terrace · visual concept</div>
+
+<script>
+'use strict';
+const ground = document.getElementById('ground');
+const el = (cls, css, parent, tag) => {
+  const d = document.createElement(tag || 'div');
+  d.className = cls; Object.assign(d.style, css || {});
+  (parent || ground).appendChild(d); return d;
+};
+const px = n => n + 'px';
+
+/* ─────────────────────────────── 3d box builder ───────────────────────────
+   Walls rise to +z (out of the ground plane). Verified transforms:
+   rotateX(90deg) about an element's top edge maps its +y extent to +z;
+   rotateY(-90deg) about its left edge maps its +x extent to +z.           */
+function box(parent, x, y, w, d, h, mat){
+  const b = el('b3 ' + mat, { left:px(x), top:px(y), width:px(w), height:px(d) }, parent);
+  el('face f-top', { left:0, top:0, width:px(w), height:px(d),
+    transform:`translateZ(${h}px)` }, b);
+  el('face f-n wall-y', { left:0, top:0, width:px(w), height:px(h),
+    transformOrigin:'top', transform:'rotateX(90deg)' }, b);
+  el('face f-s wall-y', { left:0, top:px(d), width:px(w), height:px(h),
+    transformOrigin:'top', transform:'rotateX(90deg)' }, b);
+  el('face f-w wall-x', { left:0, top:0, width:px(h), height:px(d),
+    transformOrigin:'left', transform:'rotateY(-90deg)' }, b);
+  el('face f-e wall-x', { left:px(w), top:0, width:px(h), height:px(d),
+    transformOrigin:'left', transform:'rotateY(-90deg)' }, b);
+  return b;
+}
+
+/* ─────────────────────────────── site builder ───────────────────────────── */
+const PL_H = 16;   // plinth height
+function site(cfg){
+  const s = el('site' + (cfg.silver ? ' silverS' : ''), {
+    left:px(cfg.x), top:px(cfg.y), width:px(cfg.pw), height:px(cfg.pd) }, ground);
+  s.dataset.name = cfg.name;
+
+  // flat furniture, under everything
+  el('underglow', { left:px(-cfg.pw*.25), top:px(-cfg.pd*.25),
+    width:px(cfg.pw*1.5), height:px(cfg.pd*1.5) }, s);
+  el('dayshadow', { left:px(cfg.pw*.55), top:px(cfg.pd*.75),
+    width:px(cfg.pw*1.05), height:px(cfg.pd*.8) }, s);
+  const halo = el('halo' + (cfg.beacon ? ' gold' : ''), {
+    left:px(-10), top:px(-10), width:px(cfg.pw+20), height:px(cfg.pd+20) }, s);
+  halo.innerHTML = '<i></i><i></i><i></i>';
+
+  // the lifting stack: plinth + buildings
+  const lift = el('lift', {}, s);
+  box(lift, 0, 0, cfg.pw, cfg.pd, PL_H, 'plinth');
+  const on = el('onplinth b3', { left:0, top:0, width:px(cfg.pw), height:px(cfg.pd),
+    transform:`translateZ(${PL_H}px)` }, lift);
+  (cfg.blds || []).forEach(bd => {
+    box(on, bd.x, bd.y, bd.w, bd.d, bd.h, bd.mat || 'glass');
+    if (bd.ghost){
+      const g = el('b3', { left:px(bd.x), top:px(bd.y), width:px(bd.w), height:px(bd.d),
+        transform:`translateZ(${bd.h}px)` }, on);
+      box(g, 0, 0, bd.w, bd.d, bd.ghost, (bd.mat || 'glass') === 'silver' ? 'ghost silver' : 'ghost');
+    }
+  });
+
+  // beacon: gold beam + orb rising from a building roof (billboarded)
+  if (cfg.beacon){
+    const bp = el('bpoint', { left:px(cfg.beacon.x), top:px(cfg.beacon.y) }, on);
+    const beam = el('bill beam', {}, bp);
+    beam.style.setProperty('--z', px(cfg.beacon.z));
+    el('orb', {}, beam);
+    el('needtag', { left:px(cfg.beacon.x + 45), top:px(cfg.pd + 34) }, s)
+      .textContent = 'needs you · meera';
+  }
+
+  // flat name plate
+  const np = el('nameplate' + (cfg.silver ? ' silvern' : ''),
+    { left:px(cfg.nameAt ? cfg.nameAt.x : 4), top:px(cfg.nameAt ? cfg.nameAt.y : cfg.pd + 12) }, s);
+  np.innerHTML = `<p class="eyebrow">${cfg.code}</p><p class="nm">${cfg.name}</p>`;
+
+  // flat detail plate + leader, materializing on hover.
+  // Positions are explicit per site (plateAt) — the formulaic east/west placement
+  // put plates off the slab edge, under neighbouring plinths and across roads.
+  const pa = cfg.plateAt || { x: cfg.pw + 46, y: cfg.pd * .12 };
+  const plate = el('plate', { left:px(pa.x), top:px(pa.y) }, s);
+  plate.innerHTML =
+    `<p class="pt">${cfg.plate.title}</p>` +
+    cfg.plate.lines.map(l =>
+      `<p class="pl${l.need ? ' need' : ''}${cfg.silver ? ' silvert' : ''}">${l.t || l}</p>`).join('') +
+    (cfg.plate.grade ? `<span class="grade">${cfg.plate.grade}</span>` : '') +
+    (cfg.plate.bar ? `<div class="bar"><b style="width:${cfg.plate.bar.v}%"></b>` +
+       (cfg.plate.bar.reserve ? `<b class="reserve" style="width:${cfg.plate.bar.reserve}%"></b>` : '') +
+       `</div><p class="cap">${cfg.plate.bar.cap}</p>` : '') +
+    (cfg.href ? `<a class="enter" href="${cfg.href}">${cfg.enter || 'enter ▸'}</a>` : '');
+  const ly = Math.max(6, Math.min(cfg.pd - 6, pa.y + 20));
+  el('leader', pa.x > 0
+    ? { left:px(cfg.pw + 4), top:px(ly), width:px(40) }
+    : { left:px(-44), top:px(ly), width:px(40) }, s);
+
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.site.pinned').forEach(o => { if (o !== s) o.classList.remove('pinned'); });
+    s.classList.toggle('pinned');
+    echo(s.classList.contains('pinned') ? 'opened ' + cfg.name : 'closed ' + cfg.name);
+  });
+  s.addEventListener('mouseenter', () => echo('looking at ' + cfg.name));
+  return s;
+}
+
+/* ─────────────────────────────── the estate ─────────────────────────────── */
+const SITES = [
+  { id:'growth', name:'Growth', code:'P03 · growth quarter', x:210, y:330, pw:250, pd:195,
+    blds:[ { x:28, y:36, w:100, d:74, h:92, ghost:34 },
+           { x:150, y:96, w:72, d:62, h:56 } ],
+    plate:{ title:'Growth · P03',
+      lines:[ 'Leads 42 · up 9 this week', '2 colleagues, both running' ],
+      bar:{ v:30, cap:'₹6k of ₹20k this period' } }, plateAt:{ x:296, y:8 } },
+
+  { id:'money', name:'Collections', code:'P08 · money quarter', x:650, y:210, pw:225, pd:205,
+    href:'district-visual.html', enter:'enter the room ▸',
+    blds:[ { x:66, y:38, w:88, d:88, h:168, ghost:46 },
+           { x:26, y:132, w:64, d:52, h:44 } ],
+    beacon:{ x:110, y:82, z:170 },
+    plate:{ title:'Collections · P08',
+      lines:[ { t:'Meera · A2 · hand raised', need:true },
+              'DSO 38 days · up 9 since June', 'KT-2291 crossed 60 days overdue' ],
+      bar:{ v:52, reserve:11, cap:'₹18k of ₹30k · gold seam = protected reserve' } },
+    plateAt:{ x:271, y:-40 } },
+
+  { id:'care', name:'Customer Care', code:'P06 · care quarter', x:1080, y:360, pw:240, pd:185,
+    blds:[ { x:36, y:44, w:154, d:92, h:56 } ],
+    fog:true,
+    plate:{ title:'Customer Care · P06',
+      lines:[ 'CSAT 4.6 · flat',
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--fg-muted)"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 17H7"/><path d="M17 21H9"/></svg>Fog — below target for 9 days' ],
+      bar:{ v:60, cap:'₹9k of ₹15k this period' } }, plateAt:{ x:-282, y:22 } },
+
+  { id:'trust', name:'Trust & Compliance', code:'P14 · trust quarter', x:960, y:770, pw:170, pd:145,
+    blds:[ { x:42, y:36, w:84, d:66, h:48 } ],
+    plate:{ title:'Trust · P14',
+      lines:[ 'No audits open', 'A quiet week — as it should be' ],
+      bar:{ v:8, cap:'₹1k of ₹12k this period' } }, plateAt:{ x:216, y:138 } },
+
+  { id:'library', name:'The Library', code:'archive · knowledge', x:1290, y:680, pw:160, pd:135,
+    blds:[ { x:38, y:32, w:84, d:64, h:62 } ],
+    plate:{ title:'The Library',
+      lines:[ '"Pricing 2026" answered 40', 'questions this month', 'Cited by Meera, Ravi, Pragya' ] },
+    plateAt:{ x:-286, y:-18 } },
+
+  { id:'glass', name:'The Glasshouse', code:'twin · beside the real', x:1240, y:110, pw:210, pd:165,
+    silver:true, href:'glasshouse-visual.html', enter:'step inside ▸',
+    blds:[ { x:34, y:34, w:130, d:96, h:66, mat:'silver', ghost:28 },
+           { x:76, y:64, w:44, d:34, h:96, mat:'silver' } ],
+    plate:{ title:'The Glasshouse',
+      lines:[ { t:'2 scenarios on the shelf' }, { t:'chase cadence 4d · +₹1.4L/mo' } ],
+      grade:'forecast · twin run S-14' }, plateAt:{ x:-282, y:20 } },
+];
+SITES.forEach(site);
+
+/* fog over Care */
+const care = SITES.find(s => s.id === 'care');
+const fw = el('fogwrap', { left:px(care.x), top:px(care.y) });
+el('fog', { left:px(6), top:px(10), width:px(180), height:px(96) }, fw);
+el('fog', { left:px(70), top:px(46), width:px(150), height:px(80), animationDelay:'-6s' }, fw);
+
+/* ─────────────────────────────── gatehouses ─────────────────────────────── */
+function gate(cfg){
+  const s = el('site', { left:px(cfg.x), top:px(cfg.y), width:px(96), height:px(78) }, ground);
+  el('underglow', { left:px(-18), top:px(-14), width:px(132), height:px(106) }, s);
+  el('dayshadow', { left:px(53), top:px(58), width:px(100), height:px(62) }, s);
+  const halo = el('halo', { left:px(-8), top:px(-8), width:px(112), height:px(94) }, s);
+  halo.innerHTML = '<i></i><i></i><i></i>';
+  const lift = el('lift', {}, s);
+  box(lift, 0, 0, 96, 78, 12, 'plinth');
+  const on = el('onplinth b3', { left:0, top:0, width:px(96), height:px(78),
+    transform:'translateZ(12px)' }, lift);
+  box(on, 26, 20, 44, 36, 26, 'glass');
+  // lamp post + pool (inspiration 5) — the pool centres on the post at (88,6)
+  el('lamppool', { left:px(40), top:px(-31), width:px(96), height:px(74) }, s);
+  const bp = el('bpoint', { left:px(88), top:px(6) }, on);
+  const post = el('bill lamppost', {}, bp); post.style.setProperty('--z', '0px');
+  el('lampbulb', {}, post);
+  const np = el('nameplate', { left:px(-2), top:px(84) }, s);
+  np.innerHTML = `<p class="eyebrow">${cfg.code}</p><p class="nm">${cfg.name}</p>`;
+  const plate = el('plate', { left:px(cfg.plateAt.x), top:px(cfg.plateAt.y), width:px(196) }, s);
+  plate.innerHTML = `<p class="pt">${cfg.name}</p><p class="pl">${cfg.stat}</p>`;
+  s.addEventListener('mouseenter', () => echo('looking at the ' + cfg.name.toLowerCase()));
+}
+const GATES = [
+  { name:'Voice gate',    code:'kar-01 · gatehouse', x:150, y:880,  stat:'31 calls today · live',
+    plateAt:{ x:-10, y:95 } },
+  { name:'Email gate',    code:'kar-02 · gatehouse', x:340, y:960,  stat:'142 inbound today',
+    plateAt:{ x:-10, y:95 } },
+  { name:'WhatsApp gate', code:'kar-03 · gatehouse', x:540, y:1010, stat:'212 inbound today',
+    plateAt:{ x:110, y:-8 } },
+];
+GATES.forEach(gate);
+
+/* ─────────────────────────────── roads + traffic ────────────────────────── */
+function road(x1, y1, x2, y2){
+  const L = Math.hypot(x2 - x1, y2 - y1);
+  const a = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+  const r = el('road', { left:px(x1), top:px(y1 - 5.5), width:px(L),
+    transform:`rotate(${a}deg) translateZ(.25px)` });   /* .25px: above glyphs, below text */
+  const n = Math.max(1, Math.round(L / 190));
+  for (let i = 0; i < n; i++){
+    const d = el('tdot', {}, r);
+    d.style.setProperty('--L', px(L - 4));
+    d.style.setProperty('--dur', (L / 55) + 's');
+    d.style.setProperty('--del', (-i * (L / 55) / n) + 's');
+  }
+  return r;
+}
+const J = { x:760, y:640 };
+road(J.x, J.y, 445, 470);      // spine → Growth
+road(J.x, J.y, 762, 418);      // spine → Collections
+road(J.x, J.y, 1085, 480);     // spine → Care
+road(J.x, J.y, 1010, 785);     // spine → Trust
+road(1130, 845, 1295, 762);    // Trust → Library
+road(198, 918, J.x - 24, 662); // voice gate → spine
+road(388, 995, J.x - 12, 668); // email gate → spine
+road(588, 1042, J.x, 676);     // whatsapp gate → spine
+
+/* the pulse at the junction */
+const pu = el('pulse', { left:px(J.x - 26), top:px(J.y - 26), width:px(52), height:px(52) });
+pu.innerHTML = '<div class="c"></div><div class="c"></div><div class="dot"></div>';
+const pn = el('nameplate', { left:px(810), top:px(684) });
+pn.innerHTML = '<p class="eyebrow">the pulse</p><p class="nm">Sheel</p>';
+
+/* flat quarter labels (inspiration 5) */
+const QL = [
+  { t:'growth', x:150, y:578 }, { t:'money', x:640, y:132 },
+  { t:'care', x:1120, y:568 }, { t:'trust', x:880, y:944 },
+];
+QL.forEach(q => el('qlabel', { left:px(q.x), top:px(q.y) }).textContent = q.t);
+
+/* flat labels along the roads — rotation matches each road's own bearing */
+const PLB = [
+  { t:'message.inbound', x:470, y:905, r:-42 },
+  { t:'voice.inbound',   x:300, y:836, r:-24.5 },
+  { t:'object.synced',   x:872, y:556, r:-25 },
+  { t:'signal traffic · 42/h', x:600, y:584, r:28.5 },
+];
+PLB.forEach(p => {
+  const d = el('pathlabel', { left:px(p.x), top:px(p.y),
+    transform:`rotate(${p.r}deg) translateZ(.5px)` });
+  d.textContent = p.t;
+});
+
+/* flat time scrubber on the western rim */
+const sc = el('scrubber', { left:px(170), top:px(655) });
+sc.innerHTML = `<div class="track"><div class="knob"></div></div>
+  <div class="lbl"><span>06:00</span><b>now</b><span>+7d</span></div>`;
+
+/* scattered ground glyphs (inspiration 2) */
+(function(){
+  let seed = 42;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const g = ['·','+','∙','◦','⌁','·','·','+'];   /* no U+25AB — it has the Emoji property */
+  for (let i = 0; i < 46; i++){
+    const d = el('glyph', { left:px(80 + rnd() * 1440), top:px(80 + rnd() * 1040) });
+    if (i % 6 === 0) d.style.fontSize = '16px';
+    d.textContent = g[Math.floor(rnd() * g.length)];
+  }
+})();
+
+/* stars */
+(function(){
+  const sky = document.getElementById('sky');
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 90; i++){
+    const s = document.createElement('i');
+    s.style.left = (rnd() * 100) + '%';
+    s.style.top = (rnd() * 60) + '%';
+    s.style.opacity = (.12 + rnd() * .5).toFixed(2);
+    const sz = rnd() < .12 ? 2 : 1;
+    s.style.width = s.style.height = sz + 'px';
+    sky.appendChild(s);
+  }
+})();
+
+/* ─────────────────────────────── camera ─────────────────────────────────── */
+const stage = document.getElementById('stage');
+const fit = document.getElementById('fit');
+const BASE = { rx:56, rz:-32 };
+let rx = BASE.rx, rz = BASE.rz, zoom = 1, idleT = 0, dragging = false;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function applyCam(extraRz){
+  stage.style.setProperty('--rx', rx + 'deg');
+  stage.style.setProperty('--rz', (rz + (extraRz || 0)) + 'deg');
+}
+function applyFit(){
+  const s = Math.min(innerWidth / 1500, innerHeight / 980) * 1.02 * zoom;
+  fit.style.setProperty('--s', s.toFixed(3));
+}
+applyCam(); applyFit();
+addEventListener('resize', applyFit);
+
+let px0 = 0, py0 = 0, moved = 0;
+stage.addEventListener('pointerdown', e => {
+  if (e.target.closest('.hud')) return;
+  dragging = true; moved = 0; px0 = e.clientX; py0 = e.clientY;
+  stage.classList.add('dragging');
+  // NO setPointerCapture here — capture retargets the subsequent click to #stage,
+  // which would kill every .site click handler. Capture starts on real movement.
+});
+stage.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - px0, dy = e.clientY - py0;
+  moved += Math.abs(dx) + Math.abs(dy);
+  if (moved > 3 && !stage.hasPointerCapture(e.pointerId))
+    stage.setPointerCapture(e.pointerId);
+  rz += dx * .12; rx -= dy * .08;
+  rz = Math.max(-75, Math.min(6, rz)); rx = Math.max(45, Math.min(68, rx));
+  px0 = e.clientX; py0 = e.clientY; idleT = 0; applyCam();
+});
+stage.addEventListener('pointerup', () => { dragging = false; stage.classList.remove('dragging'); });
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom = Math.max(.5, Math.min(1.7, zoom * (e.deltaY < 0 ? 1.08 : .92)));
+  applyFit();
+}, { passive:false });
+stage.addEventListener('dblclick', resetView);
+document.getElementById('reset').addEventListener('click', resetView);
+function resetView(){ rx = BASE.rx; rz = BASE.rz; zoom = 1; applyCam(); applyFit(); echo('view reset'); }
+
+/* the depth dial on the keyboard: rise to the still surface */
+document.addEventListener('keydown', e => {
+  if (!e.metaKey && !e.ctrlKey) return;
+  if (e.key === 'ArrowUp'){ e.preventDefault(); location.href = 'still-visual.html'; }
+});
+
+/* idle drift — a slow breath of the camera, unless reduced motion */
+if (!reduce){
+  let t0 = performance.now();
+  (function loop(t){
+    const dt = (t - t0) / 1000; t0 = t;
+    idleT += dt;
+    if (!dragging && idleT > 4) applyCam(Math.sin(t / 9000) * 1.4);
+    requestAnimationFrame(loop);
+  })(t0);
+}
+
+/* day / night */
+document.querySelectorAll('#tod button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#tod button')
+      .forEach(o => o.setAttribute('aria-pressed', String(o === btn)));
+    document.body.classList.toggle('day', btn.dataset.v === 'day');
+    echo(btn.dataset.v === 'day' ? 'daylight on the estate' : 'night falls on the estate');
+  });
+});
+
+/* echo line (L10) */
+let echoTimer = 0;
+function echo(t){
+  const e = document.getElementById('echo');
+  e.textContent = t; e.classList.add('show');
+  clearTimeout(echoTimer); echoTimer = setTimeout(() => e.classList.remove('show'), 3200);
+}
+
+/* ── the energy floor (legacy background system) ── */
+(function(){
+  const cv = document.getElementById('floor');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const W = 1200, H = 700; cv.width = W; cv.height = H;
+  const R = 26, gap = 2.4, SQ3 = Math.sqrt(3);
+  const hex = new Path2D();
+  for (let i = 0; i < 6; i++){
+    const a = Math.PI / 3 * i;
+    const x = (R - gap) * Math.cos(a), y = (R - gap) * Math.sin(a);
+    i ? hex.lineTo(x, y) : hex.moveTo(x, y);
+  }
+  hex.closePath();
+  const cols = Math.ceil(W / (R * 1.5)) + 2, rows2 = Math.ceil(H / (R * SQ3)) + 2;
+  let fseed = 11;
+  const frnd = () => (fseed = (fseed * 16807) % 2147483647) / 2147483647;
+  const blobs = [];
+  for (let i = 0; i < 7; i++) blobs.push({
+    x: frnd() * W, y: frnd() * H, r: 130 + frnd() * 180,
+    dx: .3 + frnd() * .7, dy: .25 + frnd() * .6, p: frnd() * 6.28, white: i === 6 });
+  let ft = 0;
+  function fframe(){
+    ft += .016;
+    ctx.fillStyle = '#060505'; ctx.fillRect(0, 0, W, H);
+    for (const b of blobs){
+      const x = b.x + Math.sin(ft * b.dx + b.p) * 150;
+      const y = b.y + Math.cos(ft * b.dy + b.p) * 95;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, b.r);
+      const c = '246,241,233';   /* light, not signal — the floor spends no gold */
+      g.addColorStop(0, `rgba(${c},${b.white ? .26 : .22})`);
+      g.addColorStop(1, `rgba(${c},0)`);
+      ctx.fillStyle = g; ctx.fillRect(x - b.r, y - b.r, b.r * 2, b.r * 2);
+    }
+    ctx.fillStyle = '#0b0a09';
+    for (let r = 0; r < rows2; r++) for (let c = 0; c < cols; c++){
+      const x = c * R * 1.5, y = r * R * SQ3 + (c % 2 ? R * SQ3 / 2 : 0);
+      ctx.save(); ctx.translate(x, y); ctx.fill(hex); ctx.restore();
+    }
+    if (!reduce) requestAnimationFrame(fframe);
+  }
+  fframe();
+})();
+</script>
+</body>
+</html>
