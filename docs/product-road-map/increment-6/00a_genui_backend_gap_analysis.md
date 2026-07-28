@@ -2,7 +2,9 @@
 
 > **Document class:** pre-design analysis — what the ratified Vihara spec asks the *backend* for that does not exist, and what the *road map* never scoped.
 > **Author:** Buddha Cognitive Lab (analysis by Claude, decisions by Rahul)
-> **Created:** 2026-07-24 · **Status:** v1.4 — analysis complete; **ten of the 23 VG findings are closed** by Increment 6 (marked ✅ in §2), which is now complete. The rest (VG-01…04, 06, 07, 18…23) are Increment 7's substrate work, and **VG-08** — voice go-live — is a G3 prerequisite, now **planned and parked** as [increment-7/00a](../increment-7/00a_voice_go_live_plan.md).
+> **Created:** 2026-07-24 · **Status:** v1.5 — analysis complete; **eleven of the 23 VG findings are closed** — ten by Increment 6 (✅ in §3) and **VG-21 by LEARN**, which had been closed for three days before anybody noticed (see its section). **VG-08** — voice go-live — is **built and awaiting a live call**, no longer parked. **VG-22** is specified but unbuilt. The rest (VG-01…04, 06, 07, 18…20, 23) are Increment 7's substrate work, now contracted in [increment-7/06_backend_api_contracts.md](../increment-7/06_backend_api_contracts.md).
+>
+> **One correction from Increment-7 Phase A:** this document and the HANDOFF both say the tier gate has **five** certified endpoints. STRAT added a **sixth** on 2026-07-26 — resolution adoption, `IntentKind.STRATEGY_RESOLUTION`. The count is now kept honest by CI rather than by memory ([04_component_registry.md](../increment-7/04_component_registry.md) rule R5).
 > **Inputs:** [genui_design_gate_spec.md](../genui_design_gate_spec.md) v1.2 (Vihara, ratified) · [genui_design_gate_concepts.md](../genui_design_gate_concepts.md) §6 (owner selection) · [build_roadmap.md](../build_roadmap.md) §4 Inc-6 · [00_charter.md](./00_charter.md) · the shipped code on `master` @ `a403cda`
 > **Method:** every Vihara law (§2), depth level (§3), ontology row (§4), surface (§5), contract (§7–§9) and journey (§15) was walked against the code and each was marked *built* / *partial* / *absent*, with the file that proves it.
 
@@ -60,7 +62,7 @@ Severity: **B** = blocks the named gate · **M** = major, gate degrades without 
 | VG-05 ✅ | Certified actions ungated outside Pragya | G2/G3 | **B** | `require_tier` has no REST call sites |
 | VG-06 | Echo bus (L10) absent | G0 | **M** | no `action_echo` endpoint or store |
 | VG-07 | Pragya channel is chat-shaped, not event-shaped | G3 | **B** | `pragya/api.py` has no §7 events |
-| VG-08 🅿️ | Voice is a tested seam, not a live call | G3 | **B** | Inc-4 §12.5, already known. **Planned & parked:** [increment-7/00a](../increment-7/00a_voice_go_live_plan.md) |
+| VG-08 🚧 | Voice is a tested seam, not a live call | G3 | **B** | Inc-4 §12.5. **BUILD COMPLETE 2026-07-28** — all six gaps closed, both live transports written, migration `iauth002`; **awaiting a live call**: [increment-7/00a](../increment-7/00a_voice_go_live_plan.md) §8 |
 | VG-09 ✅ | Glasshouse has no backend at all | G5 | **B** | nothing simulation-related in `src/ai/` |
 | VG-10 ✅ | No canary for agent/process changes | G5 | **M** | `intelligence/canary.py` is model-only |
 | VG-11 ✅ | Strategy pipeline has no domain model | G2 | **M** | HBS Planning module has one object |
@@ -73,7 +75,7 @@ Severity: **B** = blocks the named gate · **M** = major, gate degrades without 
 | VG-18 | No termination workflow | G2 | m | soft-delete only |
 | VG-19 | No notification / push infrastructure | G4 | **B** | no device tokens, no broker |
 | VG-20 | Private Line has no backend | G4 | **B** | Morning Story, Pocket Desk, read-mirror |
-| VG-21 | No per-user density / preference store | G0/G2 | **M** | LEARN dependency, nothing today |
+| VG-21 ✅ | No per-user density / preference store | G0/G2 | **M** | LEARN dependency, nothing today — **closed by LEARN 2026-07-25**, found 2026-07-28 (§VG-21) |
 | VG-22 | No manifest latency budget / cache | G6 | m | §12.1 asks <300ms first-scaffold |
 | VG-23 | D3 (context taint) is load-bearing under GenUI | all | **M** | generative output now chooses UI |
 
@@ -237,13 +239,19 @@ No device tokens, no push service, no notification broker anywhere in the tree. 
 
 G4 needs: the **Morning Story** (a daily narrative generation job over the estate read model), the **Pocket Desk** (pinned live cards), the **WhatsApp read-mirror** (outbound notify — `signals/whatsapp_inbound.py` is inbound only), and mobile device registration/attestation so biometric certified cards can meet the T2 bar.
 
-### VG-21 · No per-user density / preference store
+### VG-21 · No per-user density / preference store — ✅ **CLOSED by LEARN 2026-07-25** (found 2026-07-28)
 
-§6.3's persistent density scalar, plus desk order and the morning set, are shown in the §9.1 architecture as **LEARN outputs**. No user-preference store exists today. This is the clearest structural reason GENUI builds after LEARN, and it should be an explicit LEARN deliverable rather than discovered at G2.
+§6.3's persistent density scalar, plus desk order and the morning set, are shown in the §9.1 architecture as **LEARN outputs**. No user-preference store existed when this was written, and the recommendation was to make it an explicit LEARN deliverable rather than discover it at G2.
 
-### VG-22 · No manifest latency budget or cache
+**It was.** `ai/learning/preferences.py` shipped with LEARN on 2026-07-25: `get_preferences` / `set_preference` / `learn_preference` / `observe_density`, three namespaces (`density`, `notify`, `surface`), a three-observation threshold before the platform sets anything on a person's behalf, and `GET`/`PUT /ai/learning/preferences` + `POST /ai/learning/preferences/observe-density`. Vihara needs **no new preference endpoint** — see [increment-7/06_backend_api_contracts.md §8](../increment-7/06_backend_api_contracts.md).
+
+Recorded here rather than silently: this finding sat marked open at severity **M** for three days after the code that closed it merged, which is the ordinary way a gap register goes stale.
+
+### VG-22 · No manifest latency budget or cache — 📐 **specified 2026-07-28**
 
 §12.1 sets <300ms first-scaffold, streamed manifests, intent-shape cache, optimistic skeletons. Nothing exists; it is a G0/G6 engineering task, listed for completeness.
+
+**Phase A specified it**: per-surface budgets measured at p75 on tier B, four device tiers, frame budgets and demotion rules in [increment-7/08_device_matrix.md](../increment-7/08_device_matrix.md); the two-part streamed manifest and the intent-shape cache key in [increment-7/05_manifest_contract.md](../increment-7/05_manifest_contract.md) §5–§6. Still unbuilt — the finding stays open — but it is no longer under-determined.
 
 ### VG-23 · D3 becomes materially more load-bearing under GenUI
 
@@ -266,8 +274,8 @@ Gaps in the *plan*, not the code. These are the ones that need an owner decision
 | VR-07 | **Push infrastructure is in no increment** (VG-19) and G4 blocks on it. | Scope with the Private Line; the single-writer constraint is architectural |
 | VR-08 ✅ | **No KPI history store** (VG-12) — the increment whose goal is "Week 12 > Week 1, *measured*" has nothing that records week 1. | Make it an early **LEARN** deliverable; four surfaces unblock at once |
 | VR-09 ✅ | **Entity version ledger is unowned** (VG-17). The Gallery needs it, the Glasshouse diff needs it, SEGA needs it for rollback. | Build once in SEGA; GENUI consumes |
-| VR-10 | **"GenUI replaces the React app" is now false by ratification.** Spec §5 scope call + §14.2: partner and platform-admin consoles stay on legacy React and are rebuilt later. | Amend the cutover criteria to "replaces the **tenant** React surface"; the 59-screen parity checklist should mark which screens are out of scope rather than retired |
-| VR-11 🅿️ | **Voice go-live is a G3 prerequisite, not an ops remainder** (VG-08). | Promoted; **planned and parked** as [increment-7/00a](../increment-7/00a_voice_go_live_plan.md). Note the scope correction there: business voice is already live — VG-08 is Pragya's inward face alone |
+| VR-10 ✅ | **"GenUI replaces the React app" is now false by ratification.** Spec §5 scope call + §14.2: partner and platform-admin consoles stay on legacy React and are rebuilt later. | **Closed 2026-07-28** by [increment-7/09_screen_parity_register.md](../increment-7/09_screen_parity_register.md): all 59 files dispositioned, the amended cutover criterion written. Two corrections — "59 screens" is a **file** count (five are not screens; the denominator is **54**), and parity is **28 of 30 in-scope tenant screens**. It also raised **VP-03**: three tenant functions have no Vihara surface at all |
+| VR-11 🚧 | **Voice go-live is a G3 prerequisite, not an ops remainder** (VG-08). | Promoted, planned, and **built 2026-07-28** — six gaps closed (two of them found while building), both live transports written, migration `iauth002`. **Awaiting a live call**: [increment-7/00a](../increment-7/00a_voice_go_live_plan.md) §8. The scope correction there stands: business voice is already live — VG-08 is Pragya's inward face alone |
 | VR-12 ✅ | **Certified-action step-up is a gap in the shipped product today** (VG-05), not only in Vihara. | Pull forward as an independent hardening task, ahead of the Inc-6 build |
 
 ---
