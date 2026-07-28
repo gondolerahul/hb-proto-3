@@ -24,7 +24,7 @@ Measured against the running dev database and `master` @ the Increment-6 merge, 
 | Thing | State |
 |---|---|
 | `integration_registry` | **19 rows.** GCP project `hirebuddha-production`, region `us-central1`, keys present. Gemini 2.5 (flash/lite/pro), `gemini-3.1-flash-live-preview` (`use_ai_studio: true`) for speech-to-speech, Azure `gpt-5.5`, imagen/veo/lyria, Tata Tele (`COMMUNICATION`, live credentials) |
-| ASR / TTS rows | **None.** No `pragya-asr-whisper-vertex`, no `pragya-tts-gemini`, no `AUDIO_GEN` speech row of any kind |
+| ASR / TTS rows | **None.** No `pragya-asr-whisper-vertex`, no `pragya-tts-gemini`, no `AUDIO_GENERATION` row of any kind |
 | `model_task_defaults` | 8 task types configured, including `speech_to_speech` |
 | `channels/speech.py` | `Transcriber` / `Speaker` **Protocols only** — no implementation anywhere |
 | `channels/voice.py` | `drive_call` complete; consumes and emits audio frames; **nothing feeds it** |
@@ -82,9 +82,11 @@ Shape fixed by `channels/speech.py`:
 | Field | ASR | TTS |
 |---|---|---|
 | `service_sku` | `pragya-asr-whisper-vertex` | `pragya-tts-gemini` |
-| `service_category` | `AUDIO_GEN` | `AUDIO_GEN` |
+| `service_category` | `AUDIO_GENERATION` | `AUDIO_GENERATION` |
 | `component_type` / `cost_unit` | `minute` | `character` |
 | `service_metadata` | `{"project_id": "hirebuddha-production", "region": "us-central1"}` | same |
+
+> **`AUDIO_GENERATION`, not `AUDIO_GEN`** — corrected 2026-07-26. The first draft of this plan took `AUDIO_GEN` from a stale comment in `config/models.py` that listed categories which had never existed in the data. The value that works is the one in the UI's `SERVICE_CATEGORIES`, which follows the `IMAGE_GENERATION` / `VIDEO_GENERATION` convention. Note the category is **descriptive only** for this purpose: `speech.py::_resolve` filters on `service_sku` and `status`, so voice resolution is unaffected either way.
 
 **Seed on the APP company, not a tenant.** `_resolve` already falls back to the platform-owned row, so one pair serves every tenant until one brings its own — the same fallback the usage service uses.
 

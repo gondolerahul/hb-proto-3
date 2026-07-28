@@ -32,6 +32,7 @@ const SERVICE_CATEGORIES = [
     { id: 'API_TOOL', name: 'API Tool (Apollo/Clay/Zapier)' },
     { id: 'IMAGE_GENERATION', name: 'Image Generation' },
     { id: 'VIDEO_GENERATION', name: 'Video Generation' },
+    { id: 'AUDIO_GENERATION', name: 'Audio Generation (ASR/TTS)' },
     { id: 'EMAIL', name: 'Email (IMAP/SMTP)' },
     { id: 'SOCIAL_MEDIA', name: 'Social Media (WhatsApp/Instagram)' },
     { id: 'OTHER', name: 'Other' }

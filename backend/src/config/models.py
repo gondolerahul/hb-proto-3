@@ -35,7 +35,23 @@ class IntegrationRegistry(Base):
     model_name = Column(String, nullable=True)       # e.g., gemini-2.0-flash, claude-3-5-sonnet
     service_sku = Column(String, nullable=False)     # e.g., gemini-2.0-flash-in
     service_category = Column(String, nullable=False, default="LLM")
-    # Categories: LLM, LLM_LIVE, IMAGE_GEN, AUDIO_GEN, VIDEO_GEN, 3D_GEN, API_TOOL, COMMUNICATION
+    # Descriptive, not a constraint: no DB check, no Pydantic Literal, and the
+    # resolvers that matter (speech.py, embedding_service) filter by
+    # `service_sku` or by a specific category string, never by this list.
+    #
+    # Values actually in use, as of 2026-07-26 — keep in step with
+    # SERVICE_CATEGORIES in frontend/src/components/CreateIntegrationModal.tsx,
+    # which is the only real enumeration:
+    #   LLM · COMMUNICATION · API_TOOL · IMAGE_GENERATION · VIDEO_GENERATION
+    #   AUDIO_GENERATION · EMAIL · SOCIAL_MEDIA · OTHER
+    # Referenced in code but absent from that dropdown: EMBEDDING
+    # (embedding_service.py), CUSTOM_API (step_executor.py), LLM_LIVE
+    # (platform_schema_compiler.py). A row needing one of those must be
+    # created outside the UI today.
+    #
+    # The previous version of this comment listed IMAGE_GEN / AUDIO_GEN /
+    # VIDEO_GEN / 3D_GEN, none of which have ever existed in the data — it had
+    # drifted, and reading it cost a wrong instruction in a plan document.
     component_type = Column(String, nullable=False)
     # Types: input_token, output_token, analysis, minute, character, flat_fee, image, video_second
     encrypted_api_key = Column(Text, nullable=True)
