@@ -166,23 +166,59 @@ class TestSpeaker:
         assert all(chunks)
 
 
-class TestLiveTransportsAreHonestlyAbsent:
-    @pytest.mark.asyncio
-    async def test_the_asr_default_refuses_with_a_pointer(self):
-        """A tested seam should say so at the moment somebody reaches for the
-        untested half, not fail obscurely inside an SDK."""
-        async def frames() -> AsyncIterator[bytes]:
-            yield _mulaw()
+class TestNoTestEverReachesTheLiveTransport:
+    """The live transports call Google. **No test may invoke one.**
 
-        with pytest.raises(NotImplementedError) as exc:
-            [t async for t in ChirpTranscriber(_provider()).stream(frames())]
-        assert "voice_go_live_plan" in str(exc.value)
+    This mattered the moment they stopped raising `NotImplementedError`: the
+    tests that used to assert "not built yet" started opening a real gRPC
+    channel and failing on ADC reauth. A suite that needs credentials to pass
+    is a suite that stops being run.
 
-    @pytest.mark.asyncio
-    async def test_the_tts_default_refuses_with_a_pointer(self):
-        with pytest.raises(NotImplementedError) as exc:
-            [c async for c in GeminiSpeaker(_provider()).stream("hi")]
-        assert "voice_go_live_plan" in str(exc.value)
+    So these assert the *wiring* — that a supplied transport is the one used,
+    and that the default is the live one — without ever calling the default.
+    """
+
+    def test_a_supplied_transport_is_the_one_used(self):
+        def transport(audio):  # pragma: no cover — identity check only
+            raise AssertionError("not called")
+
+        assert ChirpTranscriber(_provider(), transport)._transport is transport
+
+    def test_a_supplied_tts_transport_is_the_one_used(self):
+        def transport(text):  # pragma: no cover
+            raise AssertionError("not called")
+
+        assert GeminiSpeaker(_provider(), transport)._transport is transport
+
+    def test_the_default_is_the_live_transport_not_a_stub(self):
+        """Constructed, never invoked. If this ever returns something that
+        answers without a network, the seam has quietly become a fake and the
+        first live call would be in production."""
+        built = ChirpTranscriber(_provider())._transport
+        assert callable(built)
+        assert "_live_asr_transport" in getattr(built, "__qualname__", "")
+
+    def test_the_default_tts_is_the_live_transport(self):
+        built = GeminiSpeaker(_provider())._transport
+        assert "_live_tts_transport" in getattr(built, "__qualname__", "")
+
+    def test_a_row_without_a_project_is_refused_before_any_network_call(self):
+        """A registry row that exists but cannot build a client is a different
+        problem from a missing row, and wants a different fix."""
+        from src.ai.pragya.channels.adapters import SpeechConfigNotUsable
+
+        bare = ResolvedProvider(sku="pragya-asr-chirp-vertex",
+                                provider_name="Google", model_name="chirp_3",
+                                api_key=None, metadata={})
+
+        async def _go():
+            async def frames() -> AsyncIterator[bytes]:
+                yield _mulaw()
+            return [t async for t in ChirpTranscriber(bare).stream(frames())]
+
+        with pytest.raises(SpeechConfigNotUsable) as exc:
+            asyncio.run(_go())
+        assert "project_id" in str(exc.value)
 
 
 class _FakeSocket:
@@ -375,3 +411,77 @@ class TestWebhookDivergence:
         assert captured["metadata"]["face"] == "pragya"
         assert captured["metadata"]["shared_line"] is True
         assert captured["company_id"] is None
+
+
+class TestBargeIn:
+    """Chirp 3 emits no interim results, so `drive_call`'s partial-driven
+    barge-in branch is unreachable. Without energy VAD, Pragya talks over the
+    caller on every long reply and nothing anywhere reports it."""
+
+    def _handler(self, *, speaking: bool):
+        import time
+
+        from src.voice.pragya_stream_handler import (
+            SPEAKING_WINDOW_SECONDS, PragyaStreamHandler,
+        )
+
+        class _State:
+            interrupted = False
+
+        h = PragyaStreamHandler(_FakeSocket([]), uuid.uuid4(), db=None)
+        h._call_state = _State()
+        h._last_sent_at = (time.monotonic() if speaking
+                           else time.monotonic() - SPEAKING_WINDOW_SECONDS - 1)
+        return h
+
+    def _loud(self) -> bytes:
+        import audioop
+        return audioop.lin2ulaw(b"\x00\x40" * 160, 2)
+
+    def _quiet(self) -> bytes:
+        import audioop
+        return audioop.lin2ulaw(b"\x00\x00" * 160, 2)
+
+    def test_speech_while_she_is_speaking_is_an_interruption(self):
+        h = self._handler(speaking=True)
+        h._note_inbound_energy(self._loud())
+        assert h._call_state.interrupted is True
+
+    def test_silence_while_she_is_speaking_is_not(self):
+        """μ-law frames flow continuously even in silence, so 'a frame
+        arrived' is not activity — only energy is."""
+        h = self._handler(speaking=True)
+        h._note_inbound_energy(self._quiet())
+        assert h._call_state.interrupted is False
+
+    def test_speech_when_she_is_not_speaking_is_an_ordinary_turn(self):
+        """Otherwise every word the caller says would count as an
+        interruption, and `interrupted` would never clear."""
+        h = self._handler(speaking=False)
+        h._note_inbound_energy(self._loud())
+        assert h._call_state.interrupted is False
+
+    def test_a_malformed_frame_is_not_a_barge_in(self):
+        h = self._handler(speaking=True)
+        h._note_inbound_energy(b"\x01\x02\x03")   # not a whole μ-law frame
+        assert h._call_state.interrupted in (False, True)  # must not raise
+
+    def test_nothing_happens_before_a_call_state_exists(self):
+        h = self._handler(speaking=True)
+        h._call_state = None
+        h._note_inbound_energy(self._loud())   # must not raise
+
+    def test_sending_a_frame_marks_her_as_speaking(self):
+        """The window is driven by outbound sends, so a handler that forgot to
+        stamp it would silently disable barge-in."""
+        import time
+
+        async def _go():
+            h = self._handler(speaking=False)
+            h.stream_sid = "MZ1"
+            before = h._last_sent_at
+            await h._send(b"\xff" * 160)
+            assert h._last_sent_at > before
+            assert time.monotonic() - h._last_sent_at < 0.1
+
+        asyncio.run(_go())

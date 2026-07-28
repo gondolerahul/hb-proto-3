@@ -1,6 +1,6 @@
 # Increment 7 — Prerequisite Plan: Voice Go-Live (VG-08 / VR-11)
 
-> **Status:** 🚧 **IN PROGRESS — gaps 1–5 closed 2026-07-28; the live transports remain.** Everything that does not need credentials is built and tested. **Resume at Phase 1** (§5): confirm the two products, then implement the two `NotImplementedError` transports in `channels/adapters.py`. Nothing else stands between here and a call.
+> **Status:** 🚧 **BUILD COMPLETE 2026-07-28 — awaiting a live call.** All five gaps closed and both live transports written. **Nothing is known to be missing; nothing has been proven on a phone.** Two things stand in the way and both are config: the ASR row's region says `us-central1` and Chirp needs `us`, and ADC must be valid where the worker runs. Resume at §8.
 > **Closes:** gap-analysis **VG-08** (voice is a tested seam, not a live call) + **VR-11** (voice go-live is a G3 prerequisite, not an ops remainder), and the Increment-4 remainder recorded in [01_pragya_runtime.md](../increment-4/01_pragya_runtime.md) §12.5.
 > **Gates:** Vihara **G3** — *"the steward is present"*, which cannot pass on a tested seam.
 > **Parent:** [00_charter.md](./00_charter.md) §Prerequisites.
@@ -41,17 +41,25 @@ Increment 4 §12.5 named three. Tracing the code for this plan found a fourth, a
 | 3 | **`drive_call` is not connected to carrier media** | `drive_call` was a second consumer of the media stream that was never attached | ✅ **closed** — `voice/pragya_stream_handler.py` + `/stream/pragya/{id}` |
 | 4 | **`route_for_number` has no effect** | `webhook_router.py` resolved the face, **logged it, and fell through to the gateway path anyway** | ✅ **closed** — `_connect_pragya` |
 | 5 | **No Pragya entity exists, and nothing creates one** | Found 2026-07-28. `PRAGYA_ENTITY_NAMES` was only ever *read*; `assign_pragya_number` refuses without her | ✅ **closed** — `ai/pragya/seed.py` |
-| — | **The live ASR/TTS transports** | Both raise `NotImplementedError` pointing here | ⏳ **open — the only remaining work.** Needs Phase 1's answer |
+| — | **The live ASR/TTS transports** | — | ✅ **written 2026-07-28** — Chirp 3 over Speech-v2 streaming, Gemini TTS over Vertex, both ADC. **Never executed**: no test may reach them (§3.2) |
+| 6 | **Barge-in was silently dead** | Found 2026-07-28 from the Phase-1 answer | ✅ **closed** — `drive_call` sets `interrupted` from a *non-final* transcript, and **Chirp 3 emits no interim results**, so that branch is unreachable. Energy VAD in the stream handler replaces it |
 
 **Gap 5 was not in the original four** and sat ahead of all of them: every resolver was written as *"the tenant's Pragya entity, **if one is seeded**"* and nothing ever seeded one. It went unnoticed from Increment 3 until a phone number needed somewhere to point.
 
 **Gap 4 was the one to fix first**, and the reason is worth keeping: until that branch diverged, gaps 1–3 could all be complete and a call to Pragya's number would still land on the legacy speech-to-speech stack, with nothing obviously wrong in the logs.
+
+### 3.2 The test suite must never reach a live transport
+
+The moment the transports stopped raising `NotImplementedError`, the two tests asserting "not built yet" started opening a real gRPC channel and failing on ADC reauth. A suite that needs credentials to pass is a suite that stops being run.
+
+They were replaced with tests that assert the *wiring* — a supplied transport is the one used, the default is the live one — without ever invoking the default. That property is worth protecting deliberately: if the default ever answers without a network, the seam has quietly become a fake and the first live call would happen in production.
 
 ### 3.1 What building it changed
 
 * **The SKUs in code were wrong, not the owner's rows.** `speech.py` hardcoded `pragya-asr-whisper-vertex` and a single `pragya-tts-gemini`; the rows created were `pragya-asr-chirp-vertex` and the `pragya-tts-gemini-in`/`-out` **pair**. The pair is this registry's convention for every token-billed service (`gemini-2.5-flash-in`/`-out`, `gpt-5.5-in`/`-out`) and Gemini TTS bills per token both ways — the single-SKU assumption was simply wrong about the product. ASR stays one row because Chirp bills per minute, and that asymmetry is the billing model rather than an inconsistency.
 * **Chirp, not Whisper** (owner decision) — for the §5 Phase 1 reason: Whisper on Model Garden is a self-deployed endpoint billed per node-hour, a standing charge for a line idle most of the day.
 * **One shared line, inverting decision 5** (owner decision) — see §4.3.
+* **Barge-in was about to be lost silently.** Phase 1's third answer — Chirp 3 emits **no interim results** — turned out to break a shipped feature. `drive_call` sets `state.interrupted` from a *non-final* transcript, so with an ASR that never sends one, Pragya talks over the caller on every long reply and nothing anywhere reports it. Barge-in now comes from **energy VAD in the stream handler**, using the same `audioop.rms` / `VOICE_VAD_RMS_THRESHOLD` the shipped speech-to-speech path already uses. It has to live in the receive loop: during synthesis the transcriber is not pulling from the inbound queue, so a check further down would not see the interrupting audio until she had finished speaking anyway.
 * **A test was passing for the wrong reason.** `test_voice_is_refused_when_the_speech_skus_are_unconfigured` asserted the *absence of global configuration* rather than a property of the tenant: it passed only while no speech rows existed anywhere, because `_resolve` deliberately falls back to the platform row. It broke the day voice was configured — the day the feature started working, which is the worst possible moment for a test to fail. It now injects the missing SKU.
 
 ## 4. Decisions (locked 2026-07-26 — do not re-litigate)
@@ -92,7 +100,7 @@ The same question applies to TTS (Cloud Text-to-Speech streaming vs Gemini audio
 
 > ⚠️ **Verify against current GCP documentation.** The above reflects a model knowledge cutoff and GCP moves quickly. Check streaming support, telephony sample-rate handling and current pricing directly.
 
-**Output needed to unblock Phase 2 and finish Phase 3:** the two product names, and whether each authenticates by API key or by ADC / service account.
+**✅ Answered 2026-07-28:** Chirp 3 via **Cloud Speech-to-Text v2**, the **`us` multi-region**; **ADC / service account** for both; and **Chirp 3 emits no interim results** — which cost a shipped feature and is why gap 6 exists.
 
 ### Phase 2 — seed two registry rows *(owner, 15 min — after Phase 1)*
 
@@ -167,5 +175,47 @@ Build notes, **VG-08 and VR-11 marked closed** in [00a_genui_backend_gap_analysi
 
 | Date | Change |
 |---|---|
+| 2026-07-28 | v3.0 — **build complete; awaiting a live call.** Phase 1 answered (Chirp 3 / Speech-v2, `us` multi-region, ADC both, **no interim results**). Both live transports written. **Gap 6 found from that third answer**: barge-in was driven by ASR partials, so an ASR without them would have lost it silently — replaced with energy VAD in the stream handler. §3.2 records why no test may reach a live transport. **§8 is where to resume**, including two config fixes: the ASR row's region reads `us-central1` and Chirp needs `us`, and ADC needs re-authenticating. |
 | 2026-07-28 | v2.0 — **gaps 1–5 closed; only the live transports remain.** Adapters (`channels/adapters.py`, transport injected), media wiring (`voice/pragya_stream_handler.py` + `/stream/pragya/{id}`), the webhook branch that finally diverges (`_connect_pragya`), and **gap 5** — the Pragya seeder, a blocker that was not in the original four. Two further owner decisions recorded in §4: one shared number (inverting decision 5, with the security consequence stated) and one-address-one-tenant enforced by a partial unique index. §3.1 records what building it changed, including a test that was passing only because voice had never been configured. |
 | 2026-07-26 | v1.0 — planned and **parked**. Scope corrected (VG-08 is Pragya's inward face, not voice generally — business voice is already live); current state verified against the running registry; a **fourth gap found** (`route_for_number` computes the face and discards it); two decisions locked (ASR-LLM-TTS as designed; GCP already in use); six phases with the credential-independent work identified so Phases 3–4 need not wait on Phase 1. |
+
+
+---
+
+## 8. Resume here — what is left is a phone call
+
+The build is done. What remains cannot be proven from this machine.
+
+### 8.1 Two config fixes first
+
+1. **The ASR row's region is wrong.** It reads `us-central1`; Chirp 3 is served from the `us` / `eu` **multi-regions**. This is my error propagated from §5 of the first draft of this plan. `scripts/setup_pragya_voice.py --check` now flags it explicitly.
+2. **ADC must be valid where the worker runs.** Both transports use ambient credentials, and this VM currently reports *"Reauthentication is needed — run `gcloud auth application-default login`"*.
+
+### 8.2 Then
+
+```
+poetry run python scripts/setup_pragya_voice.py --check
+poetry run python scripts/setup_pragya_voice.py --seed --company <tenant>
+poetry run python scripts/setup_pragya_voice.py --assign <number> --owner-company <app company>
+```
+
+Register your own mobile as a **voice** channel binding in that tenant's console (it must be *verified* — an unverified row is a claim, not a binding, and resolves nothing), then dial the number.
+
+### 8.3 What to expect, and what would be a bug
+
+| Observed | Meaning |
+|---|---|
+| She answers and knows who you are | Caller → binding → tenant resolved; the shared line works |
+| *"I don't recognise this one"* | No **verified** voice binding for your number in any tenant |
+| *"voice isn't set up on this account"* | A speech registry row is missing or unusable — run `--check` |
+| She answers T0/T1 questions | Correct |
+| She refuses a T2 command and points at the console | **Correct, not a bug.** `voice_tier_ceiling` caps the channel at T1 and applies the cap *before* session state, so an elevation earned in the console cannot ride onto the next call |
+| She talks over you when you interrupt | **A bug** — gap 6's energy VAD is not firing. Check `VOICE_VAD_RMS_THRESHOLD` (300) against the carrier's actual levels |
+| The reply plays too fast or too slow | A sample-rate mismatch. Gemini emits 24 kHz PCM and the carrier wants 8 kHz μ-law; this does not raise, it just sounds wrong |
+| A `TypeError` about an async generator on the first ASR call | The SDK's `streaming_recognize` return shape — the transport tolerates both, so this would mean a third shape |
+
+### 8.4 What is still honestly unproven
+
+* **No line of either live transport has ever executed.** They are written from the SDK contracts, not from a successful call. The first run is the test.
+* **The latency budget is unmeasured.** ASR-LLM-TTS is three hops where speech-to-speech is one. `THINKING_FILLER` fires after 1.2 s because ~1 s of silence reads as a dropped call — but that threshold is tuned against a guess.
+* **`_speak_plain` says nothing aloud.** The refusal paths run before a tenant is resolved, so there is no tenant TTS to bill; an unknown caller currently gets a short silence and a hangup rather than the sentence in `UNKNOWN_TENANT`. Fixing it properly needs a platform-owned voice, which is a decision about who pays.

@@ -52,12 +52,23 @@ async def _check() -> int:
         print("\nSpeech registry rows:")
         for sku in (ASR_SKU, TTS_SKU_IN, TTS_SKU_OUT):
             rows = (await db.execute(text(
-                "SELECT company_id, provider_name, model_name, status "
+                "SELECT company_id, provider_name, model_name, status, service_metadata "
                 "FROM integration_registry WHERE service_sku = :sku"
             ), {"sku": sku})).all()
-            print(f"  {'✓' if rows else '✗'} {sku}"
-                  + (f" → {rows[0][1]}/{rows[0][2]} ({rows[0][3]})" if rows else
-                     "  — MISSING; voice_ready will refuse"))
+            if not rows:
+                print(f"  ✗ {sku}  — MISSING; voice_ready will refuse")
+                continue
+            meta = rows[0][4] or {}
+            region = meta.get("region", "(none — defaults to us-central1)")
+            print(f"  ✓ {sku} → {rows[0][1]}/{rows[0][2]} ({rows[0][3]})  "
+                  f"project={meta.get('project_id', '—')} region={region}")
+            # Chirp 3 is served from the `us`/`eu` **multi-regions**, not from
+            # us-central1. A wrong region here does not fail at config time —
+            # it fails on the first call, which is the expensive place to find
+            # out, so it is called out where somebody will read it.
+            if "asr" in sku and region not in ("us", "eu"):
+                print(f"      ⚠ Chirp 3 is served from the `us`/`eu` "
+                      f"multi-regions — {region!r} will not resolve")
 
         print("\nShared line:")
         shared = (await db.execute(text(

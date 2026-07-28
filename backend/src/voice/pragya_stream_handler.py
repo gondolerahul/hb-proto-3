@@ -23,15 +23,23 @@ caller at T0.
 from __future__ import annotations
 
 import asyncio
+import audioop
 import base64
 import json
 import logging
+import time
 import uuid
 from typing import Any, AsyncIterator, Optional
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["PragyaStreamHandler", "UNKNOWN_TENANT"]
+__all__ = ["PragyaStreamHandler", "UNKNOWN_TENANT", "SPEAKING_WINDOW_SECONDS"]
+
+#: How recently we must have sent audio to count as "still speaking".
+#: Frames go out every 20 ms, so a quarter-second gap means synthesis has
+#: stopped. Used only to decide whether inbound speech is an *interruption* or
+#: an ordinary turn.
+SPEAKING_WINDOW_SECONDS = 0.25
 
 #: Said when the calling number matches no verified binding in any tenant.
 #: Deliberately does not say "you are not registered" in a way that confirms
@@ -71,6 +79,9 @@ class PragyaStreamHandler:
         # Injected in tests; resolved from the registry on a real call.
         self._transcriber = transcriber
         self._speaker = speaker
+        # Barge-in state. See `_note_inbound_energy`.
+        self._call_state: Any = None
+        self._last_sent_at: float = 0.0
 
     # ── the media stream ────────────────────────────────────────────────
 
@@ -94,7 +105,9 @@ class PragyaStreamHandler:
                 elif kind == "media":
                     payload = event.get("media", {}).get("payload")
                     if payload:
-                        await self._inbound.put(base64.b64decode(payload))
+                        frame = base64.b64decode(payload)
+                        self._note_inbound_energy(frame)
+                        await self._inbound.put(frame)
                 elif kind == "stop":
                     break
         except Exception as exc:  # noqa: BLE001
@@ -116,11 +129,46 @@ class PragyaStreamHandler:
         """One μ-law frame back to the carrier."""
         if not self.stream_sid or not chunk:
             return
+        self._last_sent_at = time.monotonic()
         await self.websocket.send_text(json.dumps({
             "event": "media",
             "streamSid": self.stream_sid,
             "media": {"payload": base64.b64encode(chunk).decode("ascii")},
         }))
+
+    def _note_inbound_energy(self, frame: bytes) -> None:
+        """Detect the caller talking over Pragya, from audio energy.
+
+        **This is barge-in, and it has to live here** because Chirp 3 emits no
+        interim results (owner, Phase 1). `drive_call` sets `interrupted` from
+        a non-final transcript — with an ASR that never sends one, that branch
+        is unreachable and Pragya talks over the caller on every long reply,
+        with no error anywhere. Continuing to talk over someone is the single
+        most irritating thing a phone system does; losing it silently to a
+        model's feature set is not an acceptable way to lose it.
+
+        Energy VAD is the same mechanism the shipped speech-to-speech handler
+        already uses (`audioop.rms` against `VOICE_VAD_RMS_THRESHOLD`) — μ-law
+        frames flow continuously even in silence, so activity means frames with
+        real energy rather than frames at all.
+
+        The receive loop is the only place this can run: during synthesis the
+        transcriber is not pulling from the inbound queue, so a check further
+        down the pipeline would not see the interrupting audio until Pragya had
+        already finished speaking.
+        """
+        if self._call_state is None:
+            return
+        if time.monotonic() - self._last_sent_at > SPEAKING_WINDOW_SECONDS:
+            return   # she is not speaking; this is an ordinary turn
+        try:
+            from src.common.config import settings
+
+            rms = audioop.rms(audioop.ulaw2lin(frame, 2), 2)
+        except Exception:  # noqa: BLE001 — a malformed frame is not a barge-in
+            return
+        if rms > int(getattr(settings, "VOICE_VAD_RMS_THRESHOLD", 300)):
+            self._call_state.interrupted = True
 
     # ── the call ────────────────────────────────────────────────────────
 
@@ -169,6 +217,8 @@ class PragyaStreamHandler:
             call_sid=str(self.call_sid or self.session_id),
             from_number=self.from_number,
         )
+        # Handed to the receive loop so energy VAD can set `interrupted`.
+        self._call_state = state
         async for chunk in drive_call(
                 self.db, state, transcriber, speaker, self._audio_in()):
             await self._send(chunk)

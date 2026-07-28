@@ -25,6 +25,7 @@ audible clicks at frame edges.
 """
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
@@ -32,7 +33,19 @@ from src.ai.pragya.channels.speech import ResolvedProvider
 
 logger = logging.getLogger(__name__)
 
+
+class SpeechConfigNotUsable(RuntimeError):
+    """The registry row exists but cannot be used to build a client.
+
+    Distinct from `SpeechConfigError`, which means *no row*. This one means a
+    row that is present and wrong — and the two want different fixes, so
+    collapsing them would send an operator looking for a missing row that is
+    right there.
+    """
+
+
 __all__ = [
+    "SpeechConfigNotUsable",
     "AsrTransport",
     "TtsTransport",
     "ChirpTranscriber",
@@ -143,33 +156,112 @@ class GeminiSpeaker:
 
 
 def _live_asr_transport(provider: ResolvedProvider) -> AsrTransport:
-    """The real Chirp 3 streaming call. **Not exercised by any test.**
+    """Chirp 3 over Cloud Speech-to-Text v2 streaming.
 
-    Built lazily so importing this module needs no Google SDK and no
-    credentials — the same shape FLEET's adapter uses, and the reason the rest
-    of the pipeline can be finished and proven before the account is live.
+    **Never exercised by a test** — every test injects a transport. Built
+    lazily so importing this module needs no credentials, the same shape
+    FLEET's adapter uses, and the reason the rest of the pipeline could be
+    finished and proven before the account was live.
+
+    Owner answers (Phase 1, 2026-07-28): the **`us` multi-region**, and
+    **ADC / service account** rather than an API key — so no key is read from
+    the registry row here, and the client picks up the ambient credentials.
+
+    The recognizer path ends in ``_``, which is Speech-v2's "configure inline"
+    form: the config travels in the first request rather than being a
+    pre-created recognizer resource somebody has to provision separately.
     """
 
     async def _transport(audio: AsyncIterator[bytes]) -> AsyncIterator[tuple[str, bool]]:
-        raise NotImplementedError(
-            "the live Chirp transport is not built yet — construct "
-            "ChirpTranscriber with an explicit transport, or finish Phase 1 of "
-            "increment-7/00a_voice_go_live_plan.md (confirm the product, its "
-            "auth mode and whether it emits interim results)")
-        yield ("", False)  # pragma: no cover — makes this an async generator
+        from google.cloud.speech_v2 import SpeechAsyncClient
+        from google.cloud.speech_v2.types import cloud_speech
+        from google.api_core.client_options import ClientOptions
+
+        project = provider.project_id
+        if not project:
+            raise SpeechConfigNotUsable(
+                f"{provider.sku!r} has no project_id in service_metadata")
+        region = provider.region
+
+        client = SpeechAsyncClient(client_options=ClientOptions(
+            api_endpoint=f"{region}-speech.googleapis.com"))
+        recognizer = f"projects/{project}/locations/{region}/recognizers/_"
+
+        config = cloud_speech.RecognitionConfig(
+            auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
+            language_codes=[provider.metadata.get("language_code", "en-US")],
+            model=provider.model_name or "chirp_3",
+        )
+        streaming_config = cloud_speech.StreamingRecognitionConfig(config=config)
+
+        async def _requests() -> AsyncIterator[Any]:
+            yield cloud_speech.StreamingRecognizeRequest(
+                recognizer=recognizer, streaming_config=streaming_config)
+            async for frame in audio:
+                yield cloud_speech.StreamingRecognizeRequest(audio=frame)
+
+        # `streaming_recognize` returns an awaitable that resolves to an async
+        # iterable in some versions of the SDK and the iterable directly in
+        # others. Tolerating both is not defensive clutter: **this line has
+        # never run against a live endpoint** (no test may reach it — see
+        # tests/unit/test_pragya_voice_adapters.py), so guessing one shape
+        # would turn a version difference into a failed first call with a
+        # confusing `TypeError`.
+        pending = client.streaming_recognize(requests=_requests())
+        responses = await pending if inspect.isawaitable(pending) else pending
+
+        async for response in responses:
+            for result in response.results:
+                if not result.alternatives:
+                    continue
+                # Chirp 3 emits **no interim results** (owner, Phase 1), so
+                # `is_final` is read from the response rather than assumed —
+                # it will be True on every result today, and an ASR that gains
+                # interims later starts working without a change here.
+                yield (result.alternatives[0].transcript, bool(result.is_final))
 
     return _transport
 
 
 def _live_tts_transport(provider: ResolvedProvider) -> TtsTransport:
-    """The real Gemini TTS streaming call. **Not exercised by any test.**"""
+    """Gemini TTS streaming synthesis over Vertex.
+
+    **Never exercised by a test.** ADC / service account (Phase 1), so the
+    client is built with ``vertexai=True`` and no API key.
+
+    Yields raw PCM; `GeminiSpeaker` converts to carrier μ-law.
+    """
 
     async def _transport(text: str) -> AsyncIterator[bytes]:
-        raise NotImplementedError(
-            "the live Gemini TTS transport is not built yet — construct "
-            "GeminiSpeaker with an explicit transport, or finish Phase 1 of "
-            "increment-7/00a_voice_go_live_plan.md")
-        yield b""  # pragma: no cover
+        from google import genai
+        from google.genai import types as genai_types
+
+        project = provider.project_id
+        if not project:
+            raise SpeechConfigNotUsable(
+                f"{provider.sku!r} has no project_id in service_metadata")
+
+        client = genai.Client(vertexai=True, project=project,
+                              location=provider.region)
+        voice = provider.metadata.get("voice_name", "Kore")
+
+        stream = await client.aio.models.generate_content_stream(
+            model=provider.model_name or "gemini-3.1-flash-tts-preview",
+            contents=text,
+            config=genai_types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=genai_types.SpeechConfig(
+                    voice_config=genai_types.VoiceConfig(
+                        prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                            voice_name=voice))),
+            ),
+        )
+        async for chunk in stream:
+            for candidate in (chunk.candidates or []):
+                for part in (candidate.content.parts or []):
+                    data = getattr(getattr(part, "inline_data", None), "data", None)
+                    if data:
+                        yield data
 
     return _transport
 
