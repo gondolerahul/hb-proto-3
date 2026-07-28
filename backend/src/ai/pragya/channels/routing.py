@@ -35,7 +35,15 @@ from src.voice.phone_pool_models import PhoneNumber
 logger = logging.getLogger(__name__)
 
 __all__ = ["VoiceFace", "NumberRoute", "number_candidates", "route_for_number",
-           "pragya_entity_for", "assign_pragya_number"]
+           "pragya_entity_for", "assign_pragya_number",
+           "PRAGYA_SHARED_LABEL", "company_for_caller", "assign_shared_pragya_number"]
+
+#: Marks the one number that serves **every** tenant. Carried on the
+#: `phone_numbers` row rather than in settings, so the shared line lives in the
+#: same `available → claimed → assigned` lifecycle as every other number — the
+#: rule this module already follows for exactly one reason: a parallel flag can
+#: disagree with the pool, and then two places disagree about who owns a line.
+PRAGYA_SHARED_LABEL = "Pragya (shared account manager line)"
 
 
 class VoiceFace(str, Enum):
@@ -114,6 +122,23 @@ async def route_for_number(
     company_id = cast(Optional[uuid.UUID], assigned.company_id)
     entity_id = cast(Optional[uuid.UUID], assigned.agent_id)
 
+    # The **shared line** (owner decision, 2026-07-26). One number serves every
+    # tenant, so the number no longer answers "which company" — it answers only
+    # "which face". The company comes from the caller, resolved by
+    # `company_for_caller` at the call site.
+    #
+    # This inverts decision 5, and the inversion is the point rather than an
+    # oversight: the discriminator moves from the destination (which the caller
+    # cannot choose) to the caller's own address (which they can spoof). What
+    # keeps it safe is unchanged and enforced elsewhere — an unbound caller is
+    # capped at T0 and reads nothing, T2+ never runs on voice, and T3 is
+    # refused outright as "the most spoofable" channel.
+    if str(assigned.label or "") == PRAGYA_SHARED_LABEL:
+        return NumberRoute(
+            VoiceFace.PRAGYA, company_id=None, entity_id=None,
+            reason="the shared account-manager line; the tenant resolves "
+                   "from the caller")
+
     if company_id is None:
         return NumberRoute(
             VoiceFace.UNKNOWN, reason="assigned number has no company")
@@ -162,4 +187,80 @@ async def assign_pragya_number(
     setattr(row, "label", "Pragya (account manager)")
     await db.flush()
     logger.info("assigned %s to Pragya for company %s", phone_number, company_id)
+    return row
+
+
+async def company_for_caller(
+    db: AsyncSession, from_number: str,
+) -> Optional[uuid.UUID]:
+    """Which tenant a calling number belongs to, or None.
+
+    **This is only sound because an address can belong to at most one tenant**
+    — a partial unique index on `(channel_kind, address) WHERE revoked_at IS
+    NULL` (migration `iauth002`, owner decision 2026-07-26). Without it this
+    query would return whichever row the planner happened to reach first, and
+    an arbitrary pick here is a cross-tenant disclosure read aloud over the
+    phone. With it, `.limit(1)` is exact rather than a tie-break.
+
+    Only a **verified** binding counts. An unverified row is a claim, not a
+    binding (`ChannelBinding`'s own docstring), and letting a claim select a
+    tenant would let anyone nominate whose business they reach.
+
+    Returning None is a first-class answer: the caller is unrecognised, and the
+    voice ceiling already caps an unbound caller at T0 — she can greet them and
+    answer a general question, and can read nothing.
+    """
+    # Both from models: `normalise_address` lives there and `bindings` merely
+    # re-imports it, so taking it from the owner avoids depending on a name
+    # that module does not export.
+    from src.ai.inward_auth.models import ChannelBinding, ChannelKind, normalise_address
+
+    candidates = number_candidates(from_number)
+    if not candidates:
+        return None
+    normalised = {normalise_address(ChannelKind.VOICE, c) or c for c in candidates}
+
+    row = (await db.execute(
+        select(ChannelBinding).where(
+            ChannelBinding.channel_kind == ChannelKind.VOICE,
+            ChannelBinding.address.in_(sorted(normalised)),
+            ChannelBinding.verified_at.isnot(None),
+            ChannelBinding.revoked_at.is_(None),
+        ).limit(1)
+    )).scalars().first()
+
+    return cast(Optional[uuid.UUID], row.company_id) if row is not None else None
+
+
+async def assign_shared_pragya_number(
+    db: AsyncSession, *, phone_number: str, owner_company_id: uuid.UUID,
+) -> PhoneNumber:
+    """Mark a number as **the** shared account-manager line.
+
+    ``owner_company_id`` is who *holds* the number (the platform company in
+    practice) — deliberately not who it serves, which is everyone. It is
+    recorded because a phone number is a billable asset that must belong to
+    somebody, not because routing reads it.
+
+    Unlike `assign_pragya_number` this requires no Pragya entity up front: the
+    line serves every tenant, and each tenant's own Pragya is resolved after
+    the caller identifies which tenant that is.
+    """
+    candidates = number_candidates(phone_number)
+    row = (await db.execute(
+        select(PhoneNumber).where(
+            or_(*[PhoneNumber.phone_number == c for c in candidates]),
+        ).limit(1)
+    )).scalars().first()
+    if row is None:
+        raise ValueError(f"{phone_number} is not in the phone pool")
+
+    setattr(row, "company_id", owner_company_id)
+    setattr(row, "agent_id", None)   # no single agent — it serves every tenant
+    setattr(row, "status", "assigned")
+    setattr(row, "is_active", True)
+    setattr(row, "label", PRAGYA_SHARED_LABEL)
+    await db.flush()
+    logger.info("assigned %s as the shared Pragya line (held by %s)",
+                phone_number, owner_company_id)
     return row

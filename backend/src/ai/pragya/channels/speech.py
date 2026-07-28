@@ -36,7 +36,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ASR_SKU",
-    "TTS_SKU",
+    "TTS_SKU_IN",
+    "TTS_SKU_OUT",
+    "TTS_SKUS",
     "SpeechConfigError",
     "ResolvedProvider",
     "Transcriber",
@@ -48,8 +50,27 @@ __all__ = [
 
 #: The registry SKUs Pragya's voice face resolves. Seeded per tenant (or at
 #: the platform company, which the usage service already falls back to).
-ASR_SKU = "pragya-asr-whisper-vertex"
-TTS_SKU = "pragya-tts-gemini"
+#:
+#: **ASR is one SKU, TTS is a pair, and that asymmetry is the billing model
+#: rather than an inconsistency.** Chirp 3 bills per minute of audio, so one
+#: row carries the whole cost. Gemini TTS bills per token in *and* per token
+#: out, and this registry has always split a token-billed service into `-in`
+#: and `-out` rows (`gemini-2.5-flash-in`/`-out`, `gpt-5.5-in`/`-out`). The
+#: first version of this module assumed a single per-character TTS row and was
+#: simply wrong about the product.
+#:
+#: Chirp rather than Whisper (owner decision, 2026-07-26): Whisper on Vertex
+#: Model Garden is a self-deployed endpoint billed per node-hour, which for a
+#: phone line idle most of the day is a standing charge for nothing. Chirp 3 is
+#: managed, supports `StreamingRecognize`, and bills per minute.
+ASR_SKU = "pragya-asr-chirp-vertex"
+TTS_SKU_IN = "pragya-tts-gemini-in"
+TTS_SKU_OUT = "pragya-tts-gemini-out"
+
+#: What `voice_ready` and `resolve_tts` must find. Both halves, because a
+#: tenant with only the input row configured would be billed silently wrong
+#: rather than told they are not set up.
+TTS_SKUS = (TTS_SKU_IN, TTS_SKU_OUT)
 
 
 class SpeechConfigError(RuntimeError):
@@ -170,8 +191,14 @@ async def resolve_asr(
 async def resolve_tts(
     db: AsyncSession, company_id: uuid.UUID,
 ) -> ResolvedProvider:
-    """Gemini TTS, per decision 7."""
-    return await _resolve(db, company_id, TTS_SKU)
+    """Gemini TTS — resolved from the **output** row.
+
+    A token-billed service is two registry rows, and the adapter needs one set
+    of credentials. The `-out` row is the authority because output tokens are
+    where the synthesis cost actually lands; the `-in` row exists so the
+    prompt side is metered and is validated by `voice_ready`, not read here.
+    """
+    return await _resolve(db, company_id, TTS_SKU_OUT)
 
 
 async def voice_ready(
@@ -184,9 +211,12 @@ async def voice_ready(
     up yet.
     """
     missing: list[str] = []
-    for sku, resolver in ((ASR_SKU, resolve_asr), (TTS_SKU, resolve_tts)):
+    # Every SKU, not just the two the adapters read: a tenant with the `-in`
+    # row missing is configured wrongly rather than configured partially, and
+    # the honest moment to say so is before the phone rings.
+    for sku in (ASR_SKU, TTS_SKU_IN, TTS_SKU_OUT):
         try:
-            await resolver(db, company_id)
+            await _resolve(db, company_id, sku)
         except SpeechConfigError:
             missing.append(sku)
     if missing:

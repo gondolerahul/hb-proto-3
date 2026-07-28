@@ -25,9 +25,11 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -106,6 +108,23 @@ class ChannelBinding(Base):
     __table_args__ = (
         UniqueConstraint("company_id", "channel_kind", "address",
                          name="uq_channel_binding_address"),
+        # **An address belongs to at most one tenant** (owner decision,
+        # 2026-07-26). Pragya answers on a *single shared number*, so the
+        # number dialled no longer says which company the caller reached —
+        # the caller's own address does. That only works if an address cannot
+        # mean two tenants at once.
+        #
+        # Structural rather than a runtime tie-break, deliberately: the
+        # alternative was asking a caller "which business?" or picking the
+        # most-recent, and a wrong pick there is a cross-tenant disclosure
+        # read aloud over the phone. Same reasoning as LEARN's B10 guarantee —
+        # make it impossible to represent, not merely impolite to do.
+        #
+        # Partial on `revoked_at IS NULL`: a revoked binding is history, and
+        # someone who genuinely leaves one business for another must be able
+        # to register the same phone there.
+        Index("uq_channel_binding_address_global", "channel_kind", "address",
+              unique=True, postgresql_where=text("revoked_at IS NULL")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

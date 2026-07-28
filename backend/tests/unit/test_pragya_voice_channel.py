@@ -18,7 +18,9 @@ from src.ai.pragya.channels.routing import (
     VoiceFace,
     number_candidates,
 )
-from src.ai.pragya.channels.speech import ASR_SKU, TTS_SKU, SpeechConfigError
+from src.ai.pragya.channels.speech import (
+    ASR_SKU, TTS_SKUS, TTS_SKU_IN, TTS_SKU_OUT, SpeechConfigError,
+)
 from src.ai.pragya.channels.voice import (
     NOT_CONFIGURED,
     CallState,
@@ -237,9 +239,20 @@ def test_a_partial_transcript_is_what_signals_an_interruption() -> None:
 
 
 def test_the_speech_skus_are_the_decided_providers() -> None:
-    """Decision 7 — resolved through the registry, not hardcoded clients."""
-    assert "whisper" in ASR_SKU and "vertex" in ASR_SKU
-    assert "gemini" in TTS_SKU
+    """Decision 7 — resolved through the registry, not hardcoded clients.
+
+    **Chirp, not Whisper** (owner decision, 2026-07-26). Whisper on Vertex
+    Model Garden is a self-deployed endpoint billed per node-hour; for a phone
+    line idle most of the day that is a standing charge for nothing. Chirp 3 is
+    managed, streams, and bills per minute.
+    """
+    assert "chirp" in ASR_SKU and "vertex" in ASR_SKU
+    assert all("gemini" in sku for sku in TTS_SKUS)
+    # A token-billed service is two rows in this registry (`gemini-2.5-flash-in`
+    # /`-out`, `gpt-5.5-in`/`-out`), and Gemini TTS bills per token both ways.
+    # The pair is the shape, not a duplicate.
+    assert TTS_SKUS == (TTS_SKU_IN, TTS_SKU_OUT)
+    assert TTS_SKU_IN.endswith("-in") and TTS_SKU_OUT.endswith("-out")
 
 
 def test_speech_config_error_is_a_configuration_state_not_a_crash() -> None:

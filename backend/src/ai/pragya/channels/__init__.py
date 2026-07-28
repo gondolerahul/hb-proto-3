@@ -16,6 +16,8 @@ boundary, which would have made voice a parallel universe with its own rules.
 """
 from __future__ import annotations
 
-__all__ = ["ASR_SKU", "TTS_SKU"]
+__all__ = ["ASR_SKU", "TTS_SKU_IN", "TTS_SKU_OUT", "TTS_SKUS"]
 
-from src.ai.pragya.channels.speech import ASR_SKU, TTS_SKU
+from src.ai.pragya.channels.speech import (
+    ASR_SKU, TTS_SKU_IN, TTS_SKU_OUT, TTS_SKUS,
+)

@@ -614,13 +614,67 @@ async def test_assigning_pragyas_number_refuses_without_a_pragya_entity(voice_te
             await db.commit()
 
 
-async def test_voice_is_refused_when_the_speech_skus_are_unconfigured(voice_tenant):
-    """Checked before answering, not discovered mid-call."""
-    from src.ai.pragya.channels.speech import voice_ready
+async def test_voice_is_refused_when_the_speech_skus_are_unconfigured(
+        voice_tenant, monkeypatch):
+    """Checked before answering, not discovered mid-call.
+
+    The missing SKU is **injected**, not assumed from an empty database. This
+    test used to call `voice_ready` on a bare tenant and assert it refused —
+    which passed only while no speech rows existed *anywhere*, because
+    `_resolve` deliberately falls back to the platform company's row. It broke
+    the day voice was actually configured, i.e. the day the feature started
+    working, which is the worst possible time for a test to fail.
+
+    A test that asserts the absence of global configuration is testing the
+    environment. This one tests the logic.
+    """
+    import src.ai.pragya.channels.speech as speech
+    from src.ai.pragya.channels.speech import SpeechConfigError, voice_ready
     from src.common.database import AsyncSessionLocal
 
     cid, _ = voice_tenant
+
+    async def _missing(db, company_id, sku):
+        raise SpeechConfigError(f"no active {sku!r} entry")
+
+    monkeypatch.setattr(speech, "_resolve", _missing)
+
     async with AsyncSessionLocal() as db:
         ready, why = await voice_ready(db, cid)
+
     assert not ready
     assert "not configured" in why
+    # Every missing SKU is named, so an operator is told what to add rather
+    # than that something is wrong.
+    for sku in (speech.ASR_SKU, speech.TTS_SKU_IN, speech.TTS_SKU_OUT):
+        assert sku in why, sku
+
+
+@pytest.mark.asyncio
+async def test_a_half_configured_tenant_is_refused_not_half_accepted(
+        voice_tenant, monkeypatch):
+    """The `-in` row missing is *misconfigured*, not partially configured.
+
+    Gemini TTS bills per token both ways. A tenant with only the output row
+    would still synthesise speech and would still be billed — just not metered
+    on the prompt side, silently and only in the direction that favours nobody.
+    """
+    import src.ai.pragya.channels.speech as speech
+    from src.ai.pragya.channels.speech import SpeechConfigError, voice_ready
+    from src.common.database import AsyncSessionLocal
+
+    cid, _ = voice_tenant
+
+    async def _only_in_missing(db, company_id, sku):
+        if sku == speech.TTS_SKU_IN:
+            raise SpeechConfigError(f"no active {sku!r} entry")
+        return object()
+
+    monkeypatch.setattr(speech, "_resolve", _only_in_missing)
+
+    async with AsyncSessionLocal() as db:
+        ready, why = await voice_ready(db, cid)
+
+    assert not ready
+    assert speech.TTS_SKU_IN in why
+    assert speech.TTS_SKU_OUT not in why

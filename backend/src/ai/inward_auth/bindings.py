@@ -106,6 +106,30 @@ async def begin_enrollment(
         # re-pointing it would let one user capture another's second factor.
         return BindingResult(False, "address is already bound to another user")
 
+    # **An address belongs to at most one tenant** (owner decision, 2026-07-26).
+    # Pragya answers on a single shared number, so the caller's own address is
+    # what resolves *which company* they reached — an address meaning two
+    # tenants would make that resolution a coin flip, and a wrong flip is a
+    # cross-tenant disclosure read aloud over the phone.
+    #
+    # A partial unique index enforces this at the database (models.py), which
+    # is the guarantee; this check exists so the person enrolling gets a
+    # sentence they can act on instead of an IntegrityError.
+    elsewhere = (await db.execute(
+        select(ChannelBinding).where(
+            ChannelBinding.channel_kind == channel_kind,
+            ChannelBinding.address == normalised,
+            ChannelBinding.company_id != company_id,
+            ChannelBinding.revoked_at.is_(None),
+        ).limit(1)
+    )).scalars().first()
+    if elsewhere is not None:
+        return BindingResult(
+            False,
+            "this address is already registered to a different company — an "
+            "address can speak for one business at a time. Revoke it there "
+            "first, or register a different one here.")
+
     # The tenant's own consent posture governs contacting the address, even
     # though the user is claiming it — a DNC'd number stays un-messaged.
     consent = await check_outbound_consent(
