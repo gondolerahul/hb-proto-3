@@ -13,9 +13,12 @@ a human cannot check):
 * **``recommendation`` is null.** Nothing on the platform writes one today —
   a recommendation is Pragya's, and her tray-delivery path is STEWARD's
   work. The shape is contracted now so the renderer knows where it will go.
-* **``paths[].cost`` carries only the act's own amount.** The approve path
-  of a payment costs the payment; that is the gate's number, not an
-  estimate. A true per-decision cost model is a G2 design of its own.
+* **``paths[].cost`` prefers the act's own amount.** The approve path of a
+  payment costs the payment; that is the gate's number, not an estimate.
+  Where the gate carries no amount, DRIVER D2's estimator may supply an
+  **observed median** (``genui/cost.py`` — labeled as observed, floored at
+  five observations, company-scoped); below the floor the cost stays
+  ``null`` and the renderer shows no line. The two bases are never summed.
 * **``currency`` is null.** The gate's snapshot records a bare amount; the
   platform does not stamp a currency on it yet. A guessed "INR" would be
   wrong for exactly the tenants least able to notice.
@@ -36,6 +39,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.genui.cost import observed_decision_cost
 from src.ai.genui.estate import sla_seconds_left
 from src.ai.governance.models import HITLCheckpointDef
 from src.ai.inward_auth.guard import approval_summary, intent_for_approval
@@ -94,8 +98,14 @@ def compose_tray(
     sla_seconds: int | None,
     on_timeout: str | None,
     now: datetime,
+    observed_cost: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """One tray, in spec §6.1's field order."""
+    """One tray, in spec §6.1's field order.
+
+    ``observed_cost`` is D2's estimate for this approval's checkpoint. It
+    fills the approve path ONLY when the gate carries no amount of its own
+    — the gate's number always wins, and the two are never summed.
+    """
     snap = approval.context_snapshot if isinstance(approval.context_snapshot, dict) else {}
     # The gate's reason is the honest "what happened" — its own words at the
     # moment it stopped the run, not a retelling.
@@ -110,6 +120,8 @@ def compose_tray(
             "currency": None,
             "basis": "the amount itself",
         }
+    elif observed_cost is not None:
+        approve_cost = observed_cost
 
     block = certified_block(approval.id, {
         **snap, "checkpoint_key": approval.checkpoint_key})
@@ -187,12 +199,18 @@ async def tray_list(
     trays: list[dict[str, Any]] = []
     for approval, entity_id, entity_name in await _pending_with_entities(db, company_id):
         sla_seconds, on_timeout = slas.get(approval.checkpoint_key or "", (None, None))
+        snap = approval.context_snapshot if isinstance(approval.context_snapshot, dict) else {}
+        observed = None
+        if snap.get("amount") is None:
+            observed = await observed_decision_cost(
+                db, company_id, approval.checkpoint_key, now=now)
         trays.append(compose_tray(
             approval=approval,
             prepared_by=(entity_id, entity_name),
             sla_seconds=sla_seconds,
             on_timeout=on_timeout,
             now=now,
+            observed_cost=observed,
         ))
     return trays
 
@@ -209,10 +227,16 @@ async def tray_detail(
     slas = await _sla_map(db)
     approval, entity_id, entity_name = rows[0]
     sla_seconds, on_timeout = slas.get(approval.checkpoint_key or "", (None, None))
+    snap = approval.context_snapshot if isinstance(approval.context_snapshot, dict) else {}
+    observed = None
+    if snap.get("amount") is None:
+        observed = await observed_decision_cost(
+            db, company_id, approval.checkpoint_key, now=now)
     return compose_tray(
         approval=approval,
         prepared_by=(entity_id, entity_name),
         sla_seconds=sla_seconds,
         on_timeout=on_timeout,
         now=now,
+        observed_cost=observed,
     )
