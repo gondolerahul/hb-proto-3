@@ -17,6 +17,9 @@ export default defineConfig({
   server: {
     port: 4044,
     strictPort: true,
+    // Served publicly behind Apache at vihara.hirebuddha.com (deploy/apache);
+    // Vite refuses unknown Host headers without this.
+    allowedHosts: ["vihara.hirebuddha.com"],
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: false },
     },
