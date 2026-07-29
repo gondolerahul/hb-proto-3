@@ -1,7 +1,7 @@
 """schemas/document.py — Document upload, list, and semantic search DTOs."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -36,6 +36,16 @@ class DocumentResponse(BaseModel):
     upload_status: str
     created_at: datetime
     updated_at: datetime
+    # LIB provenance (Inc 6, lib001) — additive so the Library surface can
+    # render provenance/staleness off the list read (DRIVER D9). Optional:
+    # rows predating the backfill answer with their honest defaults.
+    source_kind: Optional[str] = None
+    source_uri: Optional[str] = None
+    effective_from: Optional[date] = None
+    staleness_state: Optional[str] = None
+    staleness_reason: Optional[str] = None
+    superseded_by_id: Optional[UUID] = None
+    memory_domain: Optional[str] = None
 
     class Config:
         from_attributes = True

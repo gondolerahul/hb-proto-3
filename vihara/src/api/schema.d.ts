@@ -2770,6 +2770,8 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      /** Effective From */
+      effective_from?: string | null;
       /** Entity Id */
       entity_id: string | null;
       /** File Size */
@@ -2783,6 +2785,18 @@ export interface components {
        * Format: uuid
        */
       id: string;
+      /** Memory Domain */
+      memory_domain?: string | null;
+      /** Source Kind */
+      source_kind?: string | null;
+      /** Source Uri */
+      source_uri?: string | null;
+      /** Staleness Reason */
+      staleness_reason?: string | null;
+      /** Staleness State */
+      staleness_state?: string | null;
+      /** Superseded By Id */
+      superseded_by_id?: string | null;
       /**
        * Updated At
        * Format: date-time

@@ -2133,6 +2133,18 @@
       "title": "Created At",
       "type": "string"
      },
+     "effective_from": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Effective From"
+     },
      "entity_id": {
       "anyOf": [
        {
@@ -2168,6 +2180,73 @@
       "format": "uuid",
       "title": "Id",
       "type": "string"
+     },
+     "memory_domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Memory Domain"
+     },
+     "source_kind": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Kind"
+     },
+     "source_uri": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Uri"
+     },
+     "staleness_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Staleness Reason"
+     },
+     "staleness_state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Staleness State"
+     },
+     "superseded_by_id": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Superseded By Id"
      },
      "updated_at": {
       "format": "date-time",

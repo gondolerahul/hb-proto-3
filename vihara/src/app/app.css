@@ -888,3 +888,61 @@
 .vh-desaturated {
   filter: grayscale(1) opacity(0.75);
 }
+
+/* ── the library (DRIVER D9, D6 §13) ──────────────────────────────────── */
+.vh-library {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-library-header {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+}
+.vh-library-header h2 {
+  margin: 0;
+}
+.vh-library-header nav {
+  display: flex;
+  gap: 0.6rem;
+}
+.vh-library-body {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 2fr;
+  gap: 1rem;
+}
+.vh-shelf {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+.vh-doc-pane {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.vh-doc-pane h3,
+.vh-doc-pane p {
+  margin: 0;
+}
+.vh-staleness {
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-passage blockquote {
+  margin: 0.5rem 0 0;
+  border-left: 2px solid var(--ink-500);
+  padding-left: 0.75rem;
+}
+.vh-passage cite {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--fg-muted, var(--ink-300));
+}
