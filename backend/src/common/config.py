@@ -168,6 +168,12 @@ class Settings(BaseSettings):
     # namespace); until it does, this is deliberately one setting, not a
     # guess per tenant.
     VIHARA_ESTATE_TIMEZONE: str = "UTC"
+    # Self-hosted Web Push (VG-19, charter decision 7): our VAPID pair, no
+    # vendor. Empty means push is unconfigured — subscriptions still store,
+    # sends fail loudly. Generate with `vapid --gen` (py-vapid).
+    VIHARA_VAPID_PRIVATE_KEY: str = ""
+    VIHARA_VAPID_PUBLIC_KEY: str = ""
+    VIHARA_VAPID_SUBJECT: str = "mailto:ops@hirebuddha.com"
 
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.

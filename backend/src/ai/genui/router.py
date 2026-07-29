@@ -26,6 +26,7 @@ from src.ai.genui.manifest import (
     cached_compose,
     stream_manifest,
 )
+from src.ai.genui.push import subscribe, unsubscribe
 from src.ai.genui.registry import registry_payload, registry_version
 from src.ai.genui.stream import stream_events
 from src.ai.genui.trays import tray_detail, tray_list
@@ -186,3 +187,45 @@ async def post_echo(
         db, cast(uuid.UUID, current_user.company_id),
         cast(uuid.UUID, current_user.id), payload)
     return {"echo_id": str(echo.id)}
+
+
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionBody(BaseModel):
+    endpoint: str
+    keys: PushKeys
+    ua: str | None = None
+
+
+@router.post("/push/subscriptions", status_code=201)
+async def post_push_subscription(
+    body: PushSubscriptionBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Register this device for tray pushes (VG-19). Idempotent on the
+    endpoint — a browser re-subscribing revives its row."""
+    subscription = await subscribe(
+        db, cast(uuid.UUID, current_user.company_id),
+        cast(uuid.UUID, current_user.id),
+        endpoint=body.endpoint, p256dh=body.keys.p256dh,
+        auth=body.keys.auth, ua=body.ua)
+    return {"id": str(subscription.id)}
+
+
+@router.delete("/push/subscriptions/{subscription_id}", status_code=204)
+async def delete_push_subscription(
+    subscription_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Revoke one of your subscriptions. 404 for unknown and foreign alike."""
+    revoked = await unsubscribe(
+        db, cast(uuid.UUID, current_user.company_id),
+        cast(uuid.UUID, current_user.id), subscription_id)
+    if not revoked:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    return Response(status_code=204)

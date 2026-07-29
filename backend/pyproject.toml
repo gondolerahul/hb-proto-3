@@ -57,6 +57,7 @@ webauthn = "^3.0.0"     # passkey/FIDO2 ceremonies (Inc-3 AUTH, platform-built)
 # imports at module scope — unpinned, a fresh install breaks `import src.main`.
 setuptools = "<81"
 google-cloud-speech = "^2.40.0"
+pywebpush = "^2.3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
