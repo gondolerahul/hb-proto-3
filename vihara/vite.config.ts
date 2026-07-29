@@ -1,0 +1,45 @@
+/// <reference types="vitest" />
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+/**
+ * Vihara's build (D1 §2, §6).
+ *
+ * - Dev port 4044 (owner decision 2026-07-29; 02_stack_and_repo.md §6).
+ * - `/api` proxies to the backend so the dev app and the SEAM endpoints
+ *   share an origin — cookie-mode auth (VP-01) needs same-origin cookies.
+ * - The World renderer, when it arrives (WORLD/G1), is a dynamic import;
+ *   the manualChunks rule quarantines three.js so the tier-C bundle gate
+ *   (scripts/check_bundle_budget.mjs) has a chunk boundary to measure.
+ */
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 4044,
+    strictPort: true,
+    proxy: {
+      "/api": { target: "http://localhost:8000", changeOrigin: false },
+    },
+  },
+  build: {
+    rollupOptions: {
+      input: { main: "index.html" },
+      output: {
+        manualChunks(id: string) {
+          if (
+            id.includes("node_modules/three") ||
+            id.includes("@react-three")
+          ) {
+            return "world";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
+  test: {
+    environment: "jsdom",
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    globals: false,
+  },
+});

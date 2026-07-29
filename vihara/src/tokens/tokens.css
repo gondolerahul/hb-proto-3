@@ -1,0 +1,57 @@
+/* Vihara's token entry (D2 / SUB T2).
+ *
+ * colors_and_type.css is a MIRROR of the design-system source of truth
+ * (docs/product-road-map/increment-7/buddha-cognitive-lab-design-system/
+ * project/colors_and_type.css) — never edited here. scripts/sync_tokens.mjs
+ * re-copies it; a vitest asserts byte-equality, the same two-copies gate
+ * the component registry uses.
+ *
+ * What Vihara ADDS lives below the import: the handful of world-facing
+ * roles the art bible defines that the brand never needed — and nothing
+ * else. The gold budget (art bible §2.1) is enforced by usage, not by new
+ * variables: gold means "this needs you" or "this is certified".
+ */
+@import "./colors_and_type.css";
+
+:root {
+  /* The Glasshouse drains at the plane boundary (art bible §5): the
+     renderer applies this filter to the twin pane — components never
+     desaturate themselves, which is what makes the plane unforgeable. */
+  --twin-desaturate: saturate(0.15) brightness(0.9);
+
+  /* Needs-you dots are flat gold-500; --gradient-gold stays reserved for
+     the brand mark and certified seals (art bible §13). */
+  --beacon: var(--gold-500);
+
+  /* The energy floor is light, never gold (art bible §13). */
+  --energy-floor: rgba(255, 253, 249, 0.05);
+}
+
+/* Minimal shell chrome for the substrate; surfaces style themselves. */
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg, var(--ink-50));
+  font-family: var(--font-body, "Hanken Grotesk", sans-serif);
+}
+
+.vihara-shell {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.vihara-wordmark {
+  font-family: var(--font-display, "Space Grotesk", sans-serif);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.vihara-quiet {
+  color: var(--fg-subtle, var(--ink-400));
+  margin: 0;
+}

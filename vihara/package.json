@@ -1,0 +1,37 @@
+{
+  "name": "vihara",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Vihara — the tenant's estate (Increment 7). A separate app beside frontend/; no import crosses that boundary in either direction.",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
+    "test": "vitest run",
+    "build": "vite build && node scripts/check_bundle_budget.mjs",
+    "gen:api": "node scripts/gen_api.mjs"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "lucide-react": "^0.323.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^14.2.1",
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "jsdom": "^24.0.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8",
+    "vitest": "^1.6.0"
+  }
+}
