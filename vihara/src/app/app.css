@@ -275,3 +275,120 @@
   gap: 0.75rem;
   align-items: center;
 }
+
+/* ── the tray (DRIVER D1, D6 §4) ──────────────────────────────────────── */
+/* Gold audit: the tray adds NO gold of its own — the certified frame
+ * inside it carries gold's ceremony meaning, and the shell's waiting
+ * count carries "this needs you". The countdown is deliberately quiet:
+ * fg-muted, no animation, and nothing here may ever turn it red. */
+.vh-tray-panel {
+  position: fixed;
+  top: 3.5rem;
+  right: 1rem;
+  bottom: 3rem;
+  width: min(30rem, calc(100vw - 2rem));
+  overflow-y: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  padding: 1rem;
+}
+.vh-tray-stack {
+  display: grid;
+  gap: 1rem;
+}
+.vh-tray {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+}
+.vh-tray-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.vh-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-sla {
+  font-size: 0.8rem;
+  color: var(--fg-muted, var(--ink-300));
+  font-variant-numeric: tabular-nums;
+}
+.vh-tray-happened {
+  margin: 0;
+}
+.vh-tray-recommendation p {
+  margin: 0;
+}
+.vh-tray-recommendation details summary {
+  cursor: pointer;
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-tray-paths {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+.vh-tray-cost {
+  display: block;
+  color: var(--fg-muted, var(--ink-300));
+  font-variant-numeric: tabular-nums;
+}
+.vh-ceremony {
+  display: grid;
+  gap: 0.75rem;
+}
+.vh-ceremony-fallback {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+}
+.vh-ceremony-fallback label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.vh-ceremony-fallback input {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  color: inherit;
+  width: 8rem;
+}
+.vh-ceremony-fallback button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-echo-ribbon {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0.75rem;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-700);
+  border-radius: 999px;
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+  animation: vh-ribbon-in 120ms ease-out;
+}
+@keyframes vh-ribbon-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
