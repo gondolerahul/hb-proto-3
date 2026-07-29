@@ -40,6 +40,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from src.ai.genui.echo import record_echo, validate_echo
 from src.ai.genui.models import UiEcho
+from src.ai.genui.navigation import anchors_from_outcome, navigation_for
 from src.ai.genui.push import send_tray_push
 from src.ai.inward_auth.models import ChannelKind
 from src.ai.inward_auth.sessions import get_or_create_session
@@ -185,8 +186,16 @@ async def dispatch_message(
     user_id: uuid.UUID,
     message: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """One client message in, at most one Pragya event out. Unknown types
-    fail visible (an error event), never silent (the repo's standing rule)."""
+    """One client message in, at most one **caller-scoped** reply out.
+    Unknown types fail visible (an error event), never silent (the repo's
+    standing rule).
+
+    The utterance branch is the exception and speaks **to the session**
+    (STEWARD S3): presence → at most one navigation event → the narration —
+    because one session spans devices (rule 1), and an answer only the
+    asking device hears would make "zero repeated context" a per-device
+    promise. Its caller-scoped return is an error, or nothing.
+    """
     kind = message.get("type")
 
     if kind == "viewport":
@@ -220,12 +229,32 @@ async def dispatch_message(
             return {"type": "error", "reason": "an utterance needs text"}
         from src.ai.pragya.runtime import TurnRequest, run_turn
 
-        result = await run_turn(db, TurnRequest(
-            company_id=company_id, user_id=user_id, text=text,
-            channel_kind=ChannelKind.CONSOLE))
-        await db.commit()
+        await _hub._emit(state, {"type": "presence", "state": "working"})
+        try:
+            result = await run_turn(db, TurnRequest(
+                company_id=company_id, user_id=user_id, text=text,
+                channel_kind=ChannelKind.CONSOLE))
+            await db.commit()
+        except Exception:  # noqa: BLE001 — she is away, not the channel dead
+            # Presence must not pretend to listen when the runtime cannot
+            # run (§7's honest mapping). The next successful turn's own
+            # working → listening cycle clears it.
+            logger.exception("pragya turn failed on the channel")
+            await _hub._emit(state, {"type": "presence", "state": "away"})
+            return {
+                "type": "error",
+                "reason": "I can't act on that right now — something failed "
+                          "on my side. Give me a moment and ask again.",
+            }
+
+        navigation = navigation_for(result.command)
+        if navigation is not None:
+            # She walks the map before she speaks — the beam or the surface
+            # arrives, then the words about it.
+            await _hub._emit(state, navigation)
         event: dict[str, Any] = {
-            "type": "narrate", "text": result.reply, "anchors": []}
+            "type": "narrate", "text": result.reply,
+            "anchors": anchors_from_outcome(result)}
         if result.needs_step_up or result.needs_oob:
             # Reported so the client can open the ceremony — the ceremony
             # itself runs only through /ai/authn/* (rule 3).
@@ -234,7 +263,9 @@ async def dispatch_message(
                 "command_ref": result.command_ref,
                 "oob": result.needs_oob,
             }
-        return event
+        await _hub._emit(state, event)
+        await _hub._emit(state, {"type": "presence", "state": "listening"})
+        return None
 
     return {"type": "error", "reason": f"unknown message type {kind!r}"}
 
@@ -268,14 +299,12 @@ async def channel_socket(websocket: WebSocket) -> None:
         while True:
             message = await websocket.receive_json()
             async with AsyncSessionLocal() as db:
-                if message.get("type") == "utterance":
-                    await _hub._emit(state, {"type": "presence", "state": "working"})
+                # Presence transitions live inside dispatch_message (S3) —
+                # the loop only carries caller-scoped replies.
                 reply = await dispatch_message(
                     db, state, company_id, user_id, message)
             if reply is not None:
                 await websocket.send_json(reply)
-            if message.get("type") == "utterance":
-                await _hub._emit(state, {"type": "presence", "state": "listening"})
     except WebSocketDisconnect:
         pass
     finally:

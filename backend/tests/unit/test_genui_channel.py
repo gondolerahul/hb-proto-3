@@ -113,25 +113,108 @@ async def test_an_empty_utterance_is_an_error(hub):
     assert reply["type"] == "error"
 
 
-@pytest.mark.asyncio
-async def test_an_utterance_narrates_and_reports_a_needed_ceremony(hub, monkeypatch):
-    async def fake_run_turn(db, request):
-        return SimpleNamespace(
-            reply="That needs a passkey.", needs_step_up=True, needs_oob=False,
-            tier="T2", command_ref="cmd:1")
+class FakeDB:
+    async def commit(self):
+        return None
 
-    class FakeDB:
-        async def commit(self):
-            return None
+
+def _fake_outcome(**overrides):
+    base = dict(
+        reply="Done.", needs_step_up=False, needs_oob=False,
+        tier=None, command_ref=None, command=None, raised_approval=False)
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+@pytest.mark.asyncio
+async def test_an_utterance_narrates_to_the_session_and_reports_a_ceremony(
+        hub, monkeypatch):
+    """STEWARD S3: the answer goes to the session (every device), not to the
+    asking socket alone — one session across devices is rule 1's promise."""
+    async def fake_run_turn(db, request):
+        return _fake_outcome(
+            reply="That needs a passkey.", needs_step_up=True,
+            tier="T2", command_ref="cmd:1")
 
     import src.ai.pragya.runtime as runtime
 
     monkeypatch.setattr(runtime, "run_turn", fake_run_turn)
-    _, reply = await _dispatch(
-        hub, {"type": "utterance", "text": "raise Meera to A3"}, db=FakeDB())
-    assert reply["type"] == "narrate"
-    assert reply["text"] == "That needs a passkey."
-    assert reply["step_up"] == {"tier": "T2", "command_ref": "cmd:1", "oob": False}
+    asking, second = FakeSocket(), FakeSocket()
+    state = hub.join(SESSION, COMPANY, USER, asking)
+    hub.join(SESSION, COMPANY, USER, second)
+    reply = await ch.dispatch_message(
+        FakeDB(), state, COMPANY, USER,
+        {"type": "utterance", "text": "raise Meera to A3"})
+    assert reply is None
+    for socket in (asking, second):
+        narrate = [m for m in socket.sent if m["type"] == "narrate"]
+        assert len(narrate) == 1
+        assert narrate[0]["text"] == "That needs a passkey."
+        assert narrate[0]["step_up"] == {
+            "tier": "T2", "command_ref": "cmd:1", "oob": False}
+
+
+@pytest.mark.asyncio
+async def test_presence_cycles_working_then_listening_around_a_turn(
+        hub, monkeypatch):
+    async def fake_run_turn(db, request):
+        return _fake_outcome()
+
+    import src.ai.pragya.runtime as runtime
+
+    monkeypatch.setattr(runtime, "run_turn", fake_run_turn)
+    socket = FakeSocket()
+    state = hub.join(SESSION, COMPANY, USER, socket)
+    await ch.dispatch_message(
+        FakeDB(), state, COMPANY, USER, {"type": "utterance", "text": "hi"})
+    presence = [m["state"] for m in socket.sent if m["type"] == "presence"]
+    assert presence == ["working", "listening"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_turn_means_away_not_a_dead_channel(hub, monkeypatch):
+    """§7's honest mapping: she is *not able to be present* — pretending to
+    listen would be a lie, and the socket must survive to say so."""
+    async def broken_run_turn(db, request):
+        raise RuntimeError("runtime down")
+
+    import src.ai.pragya.runtime as runtime
+
+    monkeypatch.setattr(runtime, "run_turn", broken_run_turn)
+    socket = FakeSocket()
+    state = hub.join(SESSION, COMPANY, USER, socket)
+    reply = await ch.dispatch_message(
+        FakeDB(), state, COMPANY, USER, {"type": "utterance", "text": "hi"})
+    assert reply["type"] == "error"
+    presence = [m["state"] for m in socket.sent if m["type"] == "presence"]
+    assert presence == ["working", "away"]
+    assert [m for m in socket.sent if m["type"] == "narrate"] == []
+
+
+@pytest.mark.asyncio
+async def test_she_walks_the_map_before_she_speaks(hub, monkeypatch):
+    """A read of a district materializes its surface — emitted before the
+    narration, so the place arrives, then the words about it."""
+    async def fake_run_turn(db, request):
+        return _fake_outcome(
+            reply="Acquisition is quiet today.",
+            command=SimpleNamespace(
+                kind="tenant_read", target="p03", summary="show acquisition"))
+
+    import src.ai.pragya.runtime as runtime
+
+    monkeypatch.setattr(runtime, "run_turn", fake_run_turn)
+    socket = FakeSocket()
+    state = hub.join(SESSION, COMPANY, USER, socket)
+    await ch.dispatch_message(
+        FakeDB(), state, COMPANY, USER,
+        {"type": "utterance", "text": "show me acquisition"})
+    kinds = [m["type"] for m in socket.sent]
+    assert kinds.index("materialize") < kinds.index("narrate")
+    materialize = next(m for m in socket.sent if m["type"] == "materialize")
+    assert materialize["surface_id"] == "district.P03"
+    narrate = next(m for m in socket.sent if m["type"] == "narrate")
+    assert {"kind": "district", "label": "P03", "ref": "P03"} in narrate["anchors"]
 
 
 # ── the delivery door (rule 4 / L8) ──────────────────────────────────────────
