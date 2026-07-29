@@ -1,6 +1,6 @@
 # Increment 7 / Phase B — GLASS: The Glasshouse Opens (G5)
 
-> **Status:** ✍️ workstream opened 2026-07-29, branch `inc7/glass`.
+> **Status:** ✅ **BUILT 2026-07-29** (X0–X6 on `inc7/glass`) — G5's exit met at the test level; the pilot walkthrough (§8) stays owner-side. Build notes: §9.
 > **Read first:** [10_workstream_decomposition.md](./10_workstream_decomposition.md) §8 (the scope) · [increment-6/03_twin.md](../increment-6/03_twin.md) §14.7 (the assembly TWIN declared unbuilt — this workstream's first task) · [07_surface_wireframes.md](./07_surface_wireframes.md) §12 (the room) · [04_component_registry.md](./04_component_registry.md) (R5's certified-set rule, which constrains promotion).
 
 ---
@@ -107,8 +107,112 @@ A real tenant with real history, a real scenario replayed against yesterday, and
 
 ---
 
+## 9. § Build notes — ✅ BUILT 2026-07-29, X0–X6 (branch `inc7/glass`)
+
+A commit per task, gates green throughout. Final measures: mypy
+`--strict` **345 files** · layout lint · **2242 unit** (+2 skipped) · **16
+parity/eval** (the canary that mattered most here — see §9.2.1) ·
+integration green on live PG · migration head **`genui003`** — **GLASS
+added no migration** · Vitest **247** · bundle **shell 113.2 · line 3.5 ·
+world 215.5 KB gz** · `tsc` + eslint clean. **The certified set is still
+ten** and R5 is green on both sides.
+
+### 9.1 What shipped, per task
+
+* **X1 — the binding seam** (`twin/binding.py`): one frozen `TwinBinding`
+  on a contextvar, read at both `ToolRegistry.get_tool` sites in the
+  executor and inside `TenantDataPlane.session`, where the plane is
+  **forced to TWIN even when the caller asks for LIVE**.
+* **X2 — the runner** (`twin/runner.py`): the assembly TWIN declared
+  unbuilt. Price → daily cap → wallet → materialise → substitute →
+  replay through a handler that spawns a twin `ExecutionRun` per signal
+  and runs the **shipped** loop inside the binding → grade → write.
+* **X3 — the job** (`twin/jobs.py`, `POST …/run`): a rehearsal runs the
+  way real work runs.
+* **X4 — the promotion chain** (`twin/promotion_chain.py`): the consumer
+  `twin.promotion_proposed` never had, a HITL card on an existing
+  checkpoint, and a sweep that applies through **SEGA's** `apply_proposal`.
+* **X5 — the room** (`GlasshouseSurface.tsx`): two panes, the ribbon,
+  levers that price before they are pulled, the shelf with four grades.
+
+### 9.2 § Delta log — where the build corrected the design
+
+1. **The holds are per replayed run, not per scenario.**
+   `WalletHold.run_id` is FK'd to `execution_runs` and unique, so a
+   scenario-level hold needed an invented anchor run with an arbitrarily
+   chosen entity. Per-run holds through the shipped path are truer — a
+   rehearsal is admitted exactly the way real work is — and decision 4's
+   actual promise (*refuse before spending*) is kept by an **up-front
+   affordability check on the whole estimate**. Two different refusals
+   result, deliberately: over the daily cap says "resumes tomorrow,
+   nothing is lost"; out of credit is a different sentence for a
+   different fix.
+2. **Promotion needed no 22nd checkpoint.** Checkpoint #5,
+   `before_self_evolving_code_promotion` — *"Promoting self-evolved
+   code/instructions affecting an entity"* — is exactly this act and is
+   already `platform_mandatory`. GATE's lesson was against borrowing a
+   **mismatched** checkpoint (a payout checkpoint made an ad campaign
+   un-opt-out-able), never against reusing one that fits. **No migration.**
+3. **Promotion needed no eleventh certified act.** A promotion approval
+   is a HITL card, so the human approves it through `respond_to_approval`
+   — certified endpoint #1. An AST test in the twin package fails first,
+   and says why, if that ever changes.
+4. **Two source-string guards misfired on correct code, in one
+   workstream.** The new R5 test caught **its own docstring**; then
+   TWIN's decision-5 canary guard — which forbade the substring
+   `BlastRadius` anywhere under `twin/` — failed the first module to do
+   exactly what the rule demands, `import BlastRadiusError from
+   evolution`. Both are now **AST checks on definitions and calls**, and
+   the corrected canary guard was re-verified to fire when a class named
+   `BlastRadiusLimits` is added under `twin/`. This is the same lesson
+   SEAM recorded ("two tripwire tests this build caught their *own*
+   docstrings first") arriving twice more: **a guard that reads source as
+   text cannot tell using-correctly from re-implementing.**
+5. **Running a scenario is deliberately not a certified act.** It writes
+   only to the twin plane and X1's binding means it can reach nothing
+   else, so the ceremony belongs at promotion — where it is one of the
+   two existing certified acts. Stated in the endpoint's own docstring,
+   because "why is this ungated?" is the first question a reviewer asks.
+
+### 9.2.1 The gate that mattered
+
+X1 changes a path **every live run takes**. `tests/parity` — the
+attribution canary this repo trusts precisely because unit tests stay
+green while real runs break — stayed **16 green** after the seam landed,
+and the binding's own mutation tests fail in both directions: falling
+back to a real tool for an unlisted name, and not forcing the plane.
+
+### 9.3 Honest limits (each deliberate, none silent)
+
+* **No scenario has been run against a real tenant's history.** The
+  assembly is proven at the test level with the loop injected; the first
+  live rehearsal is the pilot's, and it is G5's exit demo (§8).
+* **The forecast half is untouched.** GLASS wires the *replay* path;
+  `forecast.py` still has no runner calling it, so a `forecast`-graded
+  run cannot yet be produced by this pipeline. The grade exists, the
+  producer does not.
+* **The promotion sweep has no cron.** `apply_approved_promotions` is
+  built and tested but nothing schedules it — the same shape SEGA's
+  `consume_proposals` shipped in. A promotion approved today applies when
+  something calls the sweep.
+* **`entity_version_id` is never stamped on a twin run**, so a promotion
+  argues from metrics rather than from a version diff. The column is
+  SEGA's link and the runner does not yet resolve it.
+* **The divergence computation is a placeholder.** It marks districts
+  whose categories the run touched; a real divergence needs the same
+  metric measured on both planes, which needs a baseline run — the
+  machinery (`cost.find_baseline`) exists and nothing calls it.
+* **Container-backend materialisation still refuses** (TWIN's limit 2,
+  untouched), so the Glasshouse is schema-backend only — which is the
+  tested default.
+* **Cost rates remain declared, not measured** (TWIN's limit 3), and the
+  estimate text says so where the tenant reads it.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.1 — **BUILT, X0–X6.** Build notes §9 with the five-delta log and honest limits. The deltas that matter: holds are per replayed run (the FK made a scenario-level hold need an invented anchor), promotion needed **neither** a 22nd checkpoint **nor** an eleventh certified act, and **two source-string guards misfired on correct code in one workstream** — the new R5 test caught its own docstring, and TWIN's canary guard failed the first module to correctly import SEGA's blast radius. Both are AST checks now, and the canary guard was re-verified to still fire. Parity stayed 16 green across a change to a path every live run takes. |
 | 2026-07-29 | v1.0 — workstream opened. Four owner decisions locked (§2): context-scoped twin binding · the runner is an arq job · the promotion chain goes all the way to SEGA's canary · a wallet hold is drawn before the run. Two assessment findings recorded before any code: **the substituted registry had no consumer and could not have had one** (the executor reads a class-level global; the record tool defaults to the live plane; the agent loop is line-capped), and **the room is assembly, not invention** (all five components authored, the plane flag and the desaturation token already shipped). One constraint decided the promotion design in advance: R5 keeps the certified set at ten, so promotion **routes into two existing certified acts** rather than adding an eleventh. |
