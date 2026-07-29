@@ -27,6 +27,7 @@ from src.ai.genui.manifest import (
     stream_manifest,
 )
 from src.ai.genui.registry import registry_payload, registry_version
+from src.ai.genui.stream import stream_events
 from src.ai.genui.trays import tray_detail, tray_list
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
@@ -109,6 +110,21 @@ async def get_tray(
     if tray is None:
         raise HTTPException(status_code=404, detail="Tray not found")
     return tray
+
+
+@router.get("/stream")
+async def get_stream(
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """The company-scoped live stream (VG-03). The company is fixed here,
+    at connect, from the session — the emitter never sees a selector. Every
+    (re)connect begins with a beacon snapshot; sampled states follow as
+    diffs (see stream.py's replay note)."""
+    return StreamingResponse(
+        stream_events(cast(uuid.UUID, current_user.company_id)),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/manifest")
