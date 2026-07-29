@@ -22,8 +22,14 @@ import { GallerySurface } from "./GallerySurface";
 import { GlasshouseSurface } from "./GlasshouseSurface";
 import { HallsSurface } from "./HallsSurface";
 import { LibrarySurface } from "./LibrarySurface";
+import {
+  fetchEngagementStage,
+  gateFromStage,
+  STILL_LOCKED_SENTENCE,
+  type OnboardingGate,
+} from "./onboarding";
 import { PreSession } from "./PreSession";
-import { useRibbon } from "./ribbon";
+import { announce, useRibbon } from "./ribbon";
 import { StandupSurface } from "./StandupSurface";
 import { TalentSurface } from "./TalentSurface";
 import { StillSurface } from "./StillSurface";
@@ -61,6 +67,36 @@ export function App(): JSX.Element {
       .then((trays) => setTrayCount(trays.length))
       .catch(() => setTrayCount(null));
   }, [inSession]);
+
+  // Onboarding staged in the world (P7): depth 0 is the reward at stage
+  // 9 — before that a session opens onto the Terrace's ghost estate.
+  const [gate, setGate] = useState<OnboardingGate>({
+    stillLocked: false,
+    stage: null,
+  });
+  useEffect(() => {
+    if (!inSession) return;
+    void fetchEngagementStage().then((stage) => {
+      const next = gateFromStage(stage);
+      setGate(next);
+      if (next.stillLocked) setDepth({ level: 1 });
+    });
+  }, [inSession]);
+
+  const goStill = (): void => {
+    if (!gate.stillLocked) {
+      setDepth({ level: 0 });
+      return;
+    }
+    // The stage may have advanced since the session opened — re-ask
+    // before refusing, and refuse with the reason said out loud.
+    void fetchEngagementStage().then((stage) => {
+      const next = gateFromStage(stage);
+      setGate(next);
+      if (next.stillLocked) announce(STILL_LOCKED_SENTENCE);
+      else setDepth({ level: 0 });
+    });
+  };
 
   if (!inSession) {
     return <PreSession onEntered={() => setInSession(true)} />;
@@ -111,7 +147,9 @@ export function App(): JSX.Element {
             type="button"
             className="vh-quiet-link"
             disabled={depth.level === 0}
-            onClick={() => setDepth({ level: 0 })}
+            data-locked={gate.stillLocked}
+            title={gate.stillLocked ? STILL_LOCKED_SENTENCE : undefined}
+            onClick={goStill}
           >
             still
           </button>
