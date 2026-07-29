@@ -8,7 +8,7 @@ import path from "node:path";
 import { cleanup, render, act } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { Atmosphere } from "../src/atmosphere/Atmosphere";
+import { Atmosphere, chooseEngine } from "../src/atmosphere/Atmosphere";
 import { DEPTH_DIM, luminanceAt, seededBlobs } from "../src/atmosphere/scene";
 import {
   setWorldCanvasActive,
@@ -134,6 +134,37 @@ describe("the atmosphere mount", () => {
       ).toBe("true");
     } finally {
       window.matchMedia = original;
+    }
+  });
+
+  it("the GL floor runs only in the shell on tier A/B, never under reduced motion (P3)", () => {
+    expect(chooseEngine("shell", "A", false)).toBe("gl");
+    expect(chooseEngine("shell", "B", false)).toBe("gl");
+    expect(chooseEngine("shell", "C", false)).toBe("2d");
+    expect(chooseEngine("shell", "D", false)).toBe("2d");
+    expect(chooseEngine("shell", null, false)).toBe("2d");
+    expect(chooseEngine("shell", "A", true)).toBe("2d");
+    // A login must not spend the world chunk; the pocket stays phone-light.
+    expect(chooseEngine("presession", "A", false)).toBe("2d");
+    expect(chooseEngine("line", "A", false)).toBe("2d");
+  });
+
+  it("pre-session and the Line render the 2D floor and never mount the GL wrapper", async () => {
+    for (const context of ["presession", "line"] as const) {
+      const { container, unmount } = render(<Atmosphere context={context} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(
+        container
+          .querySelector('[data-part="atmosphere"]')
+          ?.getAttribute("data-engine"),
+      ).toBe("2d");
+      expect(container.querySelector(".vh-glfloor")).toBeNull();
+      expect(
+        container.querySelector('canvas[data-part="atmosphere-floor"]'),
+      ).not.toBeNull();
+      unmount();
     }
   });
 

@@ -51,6 +51,15 @@
   display: block;
 }
 
+/* The GL floor draws its own perspective — no CSS transform. */
+.vh-glfloor {
+  position: absolute;
+  inset: 0;
+}
+.vh-glfloor canvas {
+  display: block;
+}
+
 .vh-watermark {
   position: absolute;
   right: -3vw;
