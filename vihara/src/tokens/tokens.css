@@ -46,10 +46,17 @@ body {
   gap: 0.5rem;
 }
 
+/* The pre-session hero wordmark — the logotype face with the brand's
+ * gradient (sanctioned gold: the mark and wordmark are the brand's own). */
 .vihara-wordmark {
-  font-family: var(--font-display, "Space Grotesk", sans-serif);
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-family: var(--font-logo, var(--font-display, "Space Grotesk", sans-serif));
+  font-weight: 400;
+  font-size: var(--text-4xl, 48px);
+  letter-spacing: 0.02em;
+  background: var(--gradient-gold, none);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
   margin: 0;
 }
 

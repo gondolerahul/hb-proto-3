@@ -54,7 +54,7 @@ describe("the §9 motion table, pinned", () => {
     // `infinite` may appear exactly once in the app's CSS — on the beacon.
     const repeats = appCss.match(/\binfinite\b/g) ?? [];
     expect(repeats).toHaveLength(1);
-    const beaconRule = appCss.match(/\.vh-beacon-count \{[\s\S]*?\}/);
+    const beaconRule = appCss.match(/^\.vh-beacon-count \{[\s\S]*?\}/m);
     expect(beaconRule?.[0]).toContain("infinite");
   });
 });
