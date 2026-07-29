@@ -229,3 +229,29 @@ async def delete_push_subscription(
     if not revoked:
         raise HTTPException(status_code=404, detail="Subscription not found")
     return Response(status_code=204)
+
+
+@router.get("/push/vapid-public-key")
+async def get_vapid_public_key(
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The public half of our VAPID pair (LINE L4) — the push client needs
+    it to subscribe. Public by nature; authenticated anyway because nothing
+    on this surface answers anonymously."""
+    from src.common.config import settings
+
+    key = settings.VIHARA_VAPID_PUBLIC_KEY
+    return {"key": key or None, "configured": bool(key)}
+
+
+@router.get("/line/morning")
+async def get_morning_story(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Today's Morning Story (LINE L1, VG-20). The stored telling when the
+    job has run — its audio aligned to its cards — else composed fresh,
+    text-only, the absence named."""
+    from src.ai.genui.morning import morning_story
+
+    return await morning_story(db, cast(uuid.UUID, current_user.company_id))
