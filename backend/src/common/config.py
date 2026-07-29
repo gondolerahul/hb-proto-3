@@ -162,6 +162,13 @@ class Settings(BaseSettings):
     WEBAUTHN_RP_NAME: str = "HireBuddha"
     WEBAUTHN_ORIGIN: str = "http://localhost:5173"
 
+    # ── Vihara (Inc-7 SEAM) ───────────────────────────────────────────────
+    # Deployment-wide estate clock for the day–night luminance phase. A
+    # per-tenant timezone has no home yet (candidate: LEARN's surface.*
+    # namespace); until it does, this is deliberately one setting, not a
+    # guess per tenant.
+    VIHARA_ESTATE_TIMEZONE: str = "UTC"
+
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.
     VOICEMAIL_DETECTION_ENABLED: bool = True

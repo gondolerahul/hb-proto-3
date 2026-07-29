@@ -1,18 +1,25 @@
 """genui/router.py — the /ai/genui surface (D5 §1).
 
-Starts with the registry read; the estate, stream, trays, echo and push
-endpoints land beside it task by task. Everything here is company-scoped from
-the session where a company is involved at all — no endpoint accepts a
-``company_id`` parameter (D5 §2.2, the VG-05 lesson applied before the fact).
+The registry read, the estate read model and the district detail; the stream,
+trays, echo and push endpoints land beside them task by task. Everything here
+is company-scoped from the session where a company is involved at all — no
+endpoint accepts a ``company_id`` parameter (D5 §2.2, the VG-05 lesson
+applied before the fact).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, Response
-from fastapi.responses import JSONResponse
+import uuid
+from typing import Any, cast
 
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.ai.genui.estate import district_view, estate_view
 from src.ai.genui.registry import registry_payload, registry_version
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
+from src.common.database import get_db
 
 router = APIRouter(prefix="/ai/genui", tags=["Vihara GenUI"])
 
@@ -41,3 +48,28 @@ def _cache_headers(version: str) -> dict[str, str]:
         "ETag": f'"{version}"',
         "Cache-Control": "private, max-age=3600",
     }
+
+
+@router.get("/estate")
+async def get_estate(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """The estate read model (VG-02). Company from the session, never a
+    parameter — cross-tenant access is not expressible on this surface."""
+    return await estate_view(db, cast(uuid.UUID, current_user.company_id))
+
+
+@router.get("/estate/district/{process_code}")
+async def get_district(
+    process_code: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """One district. 404 when this company has no such process — the same
+    answer a cross-tenant probe gets, so a probe learns nothing."""
+    district = await district_view(
+        db, cast(uuid.UUID, current_user.company_id), process_code)
+    if district is None:
+        raise HTTPException(status_code=404, detail="District not found")
+    return district
