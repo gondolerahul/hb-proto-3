@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
 import { fetchTrayList } from "../api/trays";
+import { Atmosphere } from "../atmosphere/Atmosphere";
 import { StewardDock, type Navigation } from "../steward/StewardDock";
 import { BoardroomSurface } from "./BoardroomSurface";
 import { BridgesSurface } from "./BridgesSurface";
@@ -92,6 +93,7 @@ export function App(): JSX.Element {
 
   return (
     <div className="vihara-shell-frame">
+      <Atmosphere context="shell" depthLevel={depth.level} />
       <header className="vh-shell-bar" data-part="shell">
         <span className="vihara-wordmark-small">Vihara</span>
         <nav className="vh-depth-dial" aria-label="depth">

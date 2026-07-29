@@ -1,0 +1,64 @@
+/* The atmosphere layer (POLISH P2) — behind everything, never content.
+ * z-index -1 works because the body background propagates to the viewport
+ * canvas, which paints below negative-z descendants. Gold audit: none —
+ * the floor is light, the watermark is the sanctioned brand mark. */
+.vh-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.vh-atmosphere[data-hidden="true"] {
+  display: none;
+}
+
+.vh-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    120% 90% at 50% 30%,
+    #0e0c0a 0%,
+    #060505 70%
+  );
+}
+
+/* The energy floor: perspective-tipped, fog at the horizon — the legacy
+ * system's construction, the wireframes' numbers. */
+.vh-floorwrap {
+  position: absolute;
+  left: 50%;
+  bottom: -14vh;
+  width: 210vw;
+  height: 120vh;
+  transform: translateX(-50%) perspective(900px) rotateX(62deg);
+  transform-origin: 50% 100%;
+}
+.vh-floorwrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    rgba(6, 5, 5, 0.4) 40%,
+    #060505 90%
+  );
+}
+.vh-floorwrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.vh-watermark {
+  position: absolute;
+  right: -3vw;
+  bottom: -10vh;
+  height: 92vh;
+  opacity: 0.05;
+}
+.vh-watermark img {
+  height: 100%;
+  width: auto;
+}

@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
 import { PreSession } from "../app/PreSession";
+import { Atmosphere } from "../atmosphere/Atmosphere";
 import { MorningStorySurface } from "./MorningStorySurface";
 import { PocketDesk } from "./PocketDesk";
 import {
@@ -43,6 +44,7 @@ export function LineApp(): JSX.Element {
 
   return (
     <div className="vh-line-frame" data-part="line-shell">
+      <Atmosphere context="line" />
       <header className="vh-shell-bar">
         <span className="vihara-wordmark-small">The Line</span>
         <nav className="vh-depth-dial" aria-label="line tabs">
