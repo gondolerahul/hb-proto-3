@@ -43,6 +43,7 @@ from src.ai.genui.echo import record_echo, validate_echo
 from src.ai.genui.models import UiEcho
 from src.ai.genui.navigation import anchors_from_outcome, navigation_for
 from src.ai.genui.push import send_tray_push
+from src.ai.genui.whatsapp_mirror import send_tray_notice
 from src.ai.inward_auth.models import ChannelKind
 from src.ai.inward_auth.sessions import get_or_create_session
 
@@ -159,9 +160,12 @@ async def deliver_tray(
     tray: dict[str, Any],
     *,
     push_transport: Any = None,
+    mirror_transport: Any = None,
 ) -> str:
-    """Deliver one tray: sockets first, push when nobody is listening.
-    Returns "socket" | "push" | "nowhere" — the caller may care, the user
+    """Deliver one tray: sockets first, push when nobody is listening, the
+    WhatsApp mirror when no device can be reached at all (LINE decision 1 —
+    the India-first case: an owner with WhatsApp who never installed the
+    PWA). Returns "socket" | "push" | "whatsapp" | "nowhere" — the user
     always gets at most one path (no double-notification)."""
     state = _hub.state_for_user(company_id, user_id)
     if state is not None and state.sockets:
@@ -174,7 +178,11 @@ async def deliver_tray(
         db, company_id, user_id,
         tray_id=str(tray.get("tray_id")), one_sentence=str(sentence),
         transport=push_transport)
-    return "push" if reached else "nowhere"
+    if reached:
+        return "push"
+    mirrored = await send_tray_notice(
+        db, company_id, user_id, str(sentence), transport=mirror_transport)
+    return "whatsapp" if mirrored else "nowhere"
 
 
 # ── echo fan-out (installed at boot) ─────────────────────────────────────────
