@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.genui.estate import district_view, estate_view
 from src.ai.genui.registry import registry_payload, registry_version
+from src.ai.genui.trays import tray_detail, tray_list
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.common.database import get_db
@@ -73,3 +74,28 @@ async def get_district(
     if district is None:
         raise HTTPException(status_code=404, detail="District not found")
     return district
+
+
+@router.get("/trays")
+async def get_trays(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Every pending tray, oldest first (VG-04) — spec §6.1's composed object,
+    not the raw approval rows."""
+    return await tray_list(db, cast(uuid.UUID, current_user.company_id))
+
+
+@router.get("/trays/{tray_id}")
+async def get_tray(
+    tray_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """One tray. 404 on unknown *and* cross-tenant alike — a probe must not
+    learn that an id exists in another tenant."""
+    tray = await tray_detail(
+        db, cast(uuid.UUID, current_user.company_id), tray_id)
+    if tray is None:
+        raise HTTPException(status_code=404, detail="Tray not found")
+    return tray

@@ -55,7 +55,7 @@
         "checkpoint_key": {"type": "string"},
         "summary": {"type": "string"},
         "amount": {"type": "number"},
-        "currency": {"type": "string"},
+        "currency": {"type": ["string", "null"]},
         "tier": {"enum": ["T2", "T3"]}
       },
       "required": ["approval_id", "checkpoint_key", "summary", "amount", "currency", "tier"],
