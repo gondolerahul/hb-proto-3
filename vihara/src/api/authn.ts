@@ -124,6 +124,47 @@ export async function stepUpWithTotp(code: string): Promise<StepUpOutcome> {
   return data;
 }
 
+// ── the T3 out-of-band leg (STEWARD S7) ────────────────────────────────
+// Both-legs-or-nothing: the nonce goes to a SECOND registered channel and
+// never rides this one — that separation is the only thing the second leg
+// is buying. The human reads it off that channel and types it here.
+
+export interface OobChallenge {
+  ok: boolean;
+  challenge_id?: string;
+  sent_to_channel?: string;
+  reason?: string;
+}
+
+export async function issueOob(commandRef: string): Promise<OobChallenge> {
+  try {
+    const { data } = await api.post<OobChallenge>("/ai/authn/oob/issue", {
+      command_ref: commandRef,
+    });
+    return data;
+  } catch (raised) {
+    const detail = (raised as {
+      response?: { data?: { detail?: unknown } };
+    }).response?.data?.detail;
+    return {
+      ok: false,
+      reason: typeof detail === "string" ? detail : "could not send",
+    };
+  }
+}
+
+export async function confirmOob(
+  challengeId: string,
+  commandRef: string,
+  nonce: string,
+): Promise<StepUpOutcome> {
+  const { data } = await api.post<StepUpOutcome & { ok: boolean }>(
+    "/ai/authn/oob/confirm",
+    { challenge_id: challengeId, command_ref: commandRef, nonce },
+  );
+  return data;
+}
+
 // ── passkey management (the Study, DRIVER D12) ─────────────────────────
 
 export interface PasskeyCredential {

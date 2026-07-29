@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
 import { fetchTrayList } from "../api/trays";
+import { StewardDock, type Navigation } from "../steward/StewardDock";
 import { BoardroomSurface } from "./BoardroomSurface";
 import { BridgesSurface } from "./BridgesSurface";
 import { DistrictSheet } from "./DistrictSheet";
@@ -62,6 +63,30 @@ export function App(): JSX.Element {
   if (!inSession) {
     return <PreSession onEntered={() => setInSession(true)} />;
   }
+
+  const navigateFromSteward = (navigation: Navigation): void => {
+    if (navigation.type === "focus" && navigation.district !== undefined) {
+      setDepth({ level: 2, district: navigation.district });
+      return;
+    }
+    if (navigation.surfaceId === "terrace") {
+      setDepth({ level: 1 });
+      return;
+    }
+    if (navigation.surfaceId?.startsWith("district.") === true) {
+      setDepth({
+        level: 2,
+        district: navigation.surfaceId.split(".", 2)[1] ?? "",
+      });
+    }
+  };
+
+  const contextRef: Record<string, unknown> =
+    depth.level === 2 && "district" in depth
+      ? { kind: "district", id: depth.district }
+      : depth.level === 2 && "room" in depth
+        ? { kind: "room", id: depth.room }
+        : { kind: "estate", id: null };
 
   return (
     <div className="vihara-shell-frame">
@@ -275,6 +300,16 @@ export function App(): JSX.Element {
           <TraySurface onCount={setTrayCount} />
         </aside>
       )}
+      <StewardDock
+        onNavigate={navigateFromSteward}
+        onTrayDelivered={() => {
+          setTrayCount((count) => (count ?? 0) + 1);
+          setTraysOpen(true);
+        }}
+        depthLevel={depth.level}
+        contextRef={contextRef}
+      />
+
       {ribbon !== null && (
         <footer className="vh-echo-ribbon" role="status" data-part="echo-ribbon">
           {ribbon}

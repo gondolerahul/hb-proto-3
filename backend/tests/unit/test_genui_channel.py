@@ -101,6 +101,33 @@ async def test_an_unknown_type_fails_visible(hub):
 
 
 @pytest.mark.asyncio
+async def test_the_mic_branch_routes_to_the_voice_leg(hub, monkeypatch):
+    """The dispatch branch is thin routing; the leg itself is S4-tested.
+    What this pins: open and closed reach the right functions, and an
+    unknown mic state fails visible like any unknown type."""
+    from src.ai.genui import voice_channel as vc
+
+    calls = []
+
+    async def fake_open(db, state, company_id, user_id):
+        calls.append("open")
+        return None
+
+    async def fake_close(state, *, abort=False):
+        calls.append(f"close(abort={abort})")
+
+    monkeypatch.setattr(vc, "open_mic", fake_open)
+    monkeypatch.setattr(vc, "close_mic", fake_close)
+    _, reply = await _dispatch(hub, {"type": "mic", "state": "open"})
+    assert reply is None
+    _, reply = await _dispatch(hub, {"type": "mic", "state": "closed"})
+    assert reply is None
+    _, reply = await _dispatch(hub, {"type": "mic", "state": "sideways"})
+    assert reply["type"] == "error" and "sideways" in reply["reason"]
+    assert calls == ["open", "close(abort=False)"]
+
+
+@pytest.mark.asyncio
 async def test_a_malformed_echo_is_refused_not_recorded(hub):
     _, reply = await _dispatch(
         hub, {"type": "action_echo", "sentence": "", "action_ref": {}})

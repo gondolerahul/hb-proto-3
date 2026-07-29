@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { fetchEstate } from "../api/genui";
 import { fetchExecutions, type RunSummary } from "../api/entities";
 import { connectEstateStream, applyStreamEvent } from "../estate/live";
+import { subscribeEstateStream } from "../estate/sharedStream";
 import type { EstateSnapshot } from "../renderers/world/layout";
 
 export interface DistrictLoaders {
@@ -24,7 +25,7 @@ export interface DistrictLoaders {
 const REAL: DistrictLoaders = {
   estate: fetchEstate,
   executions: fetchExecutions,
-  stream: connectEstateStream,
+  stream: subscribeEstateStream,
 };
 
 interface DistrictColleague {
