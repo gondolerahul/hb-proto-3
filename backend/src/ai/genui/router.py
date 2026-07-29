@@ -15,6 +15,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel
+
+from src.ai.genui.echo import record_echo, validate_echo
 from src.ai.genui.estate import district_view, estate_view
 from src.ai.genui.registry import registry_payload, registry_version
 from src.ai.genui.trays import tray_detail, tray_list
@@ -99,3 +102,33 @@ async def get_tray(
     if tray is None:
         raise HTTPException(status_code=404, detail="Tray not found")
     return tray
+
+
+class EchoBody(BaseModel):
+    sentence: str
+    action_ref: dict[str, Any]
+    manifest_hash: str | None = None
+    component_id: str | None = None
+    occurred_at: str | None = None
+
+
+@router.post("/echo", status_code=201)
+async def post_echo(
+    body: EchoBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Record one manual act's sentence (L10, VG-06).
+
+    An echo describes an act that already happened; it never causes one —
+    this endpoint takes no authority and triggers nothing. A 422 here means
+    the payload was not an echo, not that the act failed.
+    """
+    payload = body.model_dump()
+    problem = validate_echo(payload)
+    if problem is not None:
+        raise HTTPException(status_code=422, detail=problem)
+    echo = await record_echo(
+        db, cast(uuid.UUID, current_user.company_id),
+        cast(uuid.UUID, current_user.id), payload)
+    return {"echo_id": str(echo.id)}
