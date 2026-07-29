@@ -51,6 +51,17 @@ CERTIFIED_GATE_MAP: dict[str, str | None] = {
     "certified.consent": None,
 }
 
+#: R5's second exception family (DRIVER D3): gates whose certified surface
+#: is the **generic step-up ceremony** rather than a component of their own.
+#: D6 §7 draws the hall's bulk button opening ``certified.step-up`` — the
+#: act carries no domain block to render, so an eleventh component would be
+#: an invention the wireframes never asked for. Still derived, still
+#: tested: the R5 unit test counts these call sites beside the
+#: component-backed ones, so an unlisted ``enforce_*`` site still fails CI.
+CEREMONY_ONLY_GATES: tuple[str, ...] = (
+    "src/ai/tenant_schema/api.py::bulk_records",
+)
+
 
 def _check_entry(entry: dict[str, Any]) -> None:
     """Registry-level invariants, raised loudly at load (D3 §5)."""

@@ -916,6 +916,25 @@ export interface paths {
     /** Create Record */
     post: operations["create_record_api_v1_ai_tenant_records_post"];
   };
+  "/api/v1/ai/tenant/records/bulk": {
+    /**
+     * Bulk Records
+     * @description Bulk update/soft-delete — a **certified endpoint** (DRIVER D3).
+     *
+     * ``bulk_data_operation`` is T2 in the §20 matrix, and D6 §7 draws the
+     * hall's bulk button opening ``certified.step-up`` rather than a confirm
+     * dialog — so the gate is here, in the handler body (the VG-05 rule), and
+     * the ceremony is the generic step-up: the act carries no domain block of
+     * its own, which is why this call site is a *ceremony-only gate* in R5's
+     * correspondence table rather than an eleventh certified component.
+     *
+     * Bulk deliberately overrides per-record CAS: the human said "set these
+     * N now", and a version race inside the loop resolves to the human's
+     * write — each record is re-read under the same session before its
+     * update, and per-record failures are reported, never silently skipped.
+     */
+    post: operations["bulk_records_api_v1_ai_tenant_records_bulk_post"];
+  };
   "/api/v1/ai/tenant/records/{record_id}": {
     /** Get Record */
     get: operations["get_record_api_v1_ai_tenant_records__record_id__get"];
@@ -2091,6 +2110,19 @@ export interface components {
       /** Envelope Ref */
       envelope_ref?: string | null;
       [key: string]: unknown;
+    };
+    /** BulkRequest */
+    BulkRequest: {
+      /** Data */
+      data?: {
+        [key: string]: unknown;
+      } | null;
+      /** Def Name */
+      def_name: string;
+      /** Op */
+      op: string;
+      /** Record Ids */
+      record_ids: string[];
     };
     /**
      * CSATRequest
@@ -8285,6 +8317,45 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       201: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Bulk Records
+   * @description Bulk update/soft-delete — a **certified endpoint** (DRIVER D3).
+   *
+   * ``bulk_data_operation`` is T2 in the §20 matrix, and D6 §7 draws the
+   * hall's bulk button opening ``certified.step-up`` rather than a confirm
+   * dialog — so the gate is here, in the handler body (the VG-05 rule), and
+   * the ceremony is the generic step-up: the act carries no domain block of
+   * its own, which is why this call site is a *ceremony-only gate* in R5's
+   * correspondence table rather than an eleventh certified component.
+   *
+   * Bulk deliberately overrides per-record CAS: the human said "set these
+   * N now", and a version race inside the loop resolves to the human's
+   * write — each record is re-read under the same session before its
+   * update, and per-record failures are reported, never silently skipped.
+   */
+  bulk_records_api_v1_ai_tenant_records_bulk_post: {
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
         content: {
           "application/json": {
             [key: string]: unknown;

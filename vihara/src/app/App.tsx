@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
 import { fetchTrayList } from "../api/trays";
+import { HallsSurface } from "./HallsSurface";
 import { ManifestSurface } from "./ManifestSurface";
 import { PreSession } from "./PreSession";
 import { subscribeRibbon } from "./ribbon";
@@ -22,7 +23,8 @@ import { TraySurface } from "./TraySurface";
 type Depth =
   | { level: 0 }
   | { level: 1 }
-  | { level: 2; district: string };
+  | { level: 2; district: string }
+  | { level: 2; room: "halls" };
 
 export function App(): JSX.Element {
   const [inSession, setInSession] = useState(getAccessToken() !== null);
@@ -65,7 +67,15 @@ export function App(): JSX.Element {
           >
             terrace
           </button>
-          {depth.level === 2 && (
+          <button
+            type="button"
+            className="vh-quiet-link"
+            disabled={depth.level === 2 && "room" in depth}
+            onClick={() => setDepth({ level: 2, room: "halls" })}
+          >
+            halls
+          </button>
+          {depth.level === 2 && "district" in depth && (
             <span className="vh-quiet">{depth.district}</span>
           )}
         </nav>
@@ -114,8 +124,11 @@ export function App(): JSX.Element {
             onEnterDistrict={(district) => setDepth({ level: 2, district })}
           />
         )}
-        {depth.level === 2 && (
+        {depth.level === 2 && "district" in depth && (
           <ManifestSurface surface={`district.${depth.district}`} />
+        )}
+        {depth.level === 2 && "room" in depth && depth.room === "halls" && (
+          <HallsSurface />
         )}
       </main>
       {traysOpen && (

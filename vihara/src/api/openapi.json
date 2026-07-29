@@ -710,6 +710,45 @@
     "title": "BudgetRef",
     "type": "object"
    },
+   "BulkRequest": {
+    "properties": {
+     "data": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Data"
+     },
+     "def_name": {
+      "title": "Def Name",
+      "type": "string"
+     },
+     "op": {
+      "title": "Op",
+      "type": "string"
+     },
+     "record_ids": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "title": "Record Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "def_name",
+     "op",
+     "record_ids"
+    ],
+    "title": "BulkRequest",
+    "type": "object"
+   },
    "CSATRequest": {
     "description": "A +1/-1 CSAT rating on a completed run (Phase 12 `07` \u00a76, P-O2).",
     "properties": {
@@ -14092,6 +14131,55 @@
      }
     ],
     "summary": "Create Record",
+    "tags": [
+     "Tenant Schema"
+    ]
+   }
+  },
+  "/api/v1/ai/tenant/records/bulk": {
+   "post": {
+    "description": "Bulk update/soft-delete \u2014 a **certified endpoint** (DRIVER D3).\n\n``bulk_data_operation`` is T2 in the \u00a720 matrix, and D6 \u00a77 draws the\nhall's bulk button opening ``certified.step-up`` rather than a confirm\ndialog \u2014 so the gate is here, in the handler body (the VG-05 rule), and\nthe ceremony is the generic step-up: the act carries no domain block of\nits own, which is why this call site is a *ceremony-only gate* in R5's\ncorrespondence table rather than an eleventh certified component.\n\nBulk deliberately overrides per-record CAS: the human said \"set these\nN now\", and a version race inside the loop resolves to the human's\nwrite \u2014 each record is re-read under the same session before its\nupdate, and per-record failures are reported, never silently skipped.",
+    "operationId": "bulk_records_api_v1_ai_tenant_records_bulk_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BulkRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Bulk Records Api V1 Ai Tenant Records Bulk Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Bulk Records",
     "tags": [
      "Tenant Schema"
     ]

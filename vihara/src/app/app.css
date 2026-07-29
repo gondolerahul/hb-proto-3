@@ -392,3 +392,140 @@
   from { opacity: 0; transform: translateX(-50%) translateY(4px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+
+/* ── the registry halls (DRIVER D3, D6 §7) ────────────────────────────── */
+/* Gold audit: nothing in the hall is gold — the seal ⊛ and the tracked
+ * mark ◧ are structural glyphs in muted fg, and the only gold a bulk act
+ * meets is the certified step-up ceremony's own frame. */
+.vh-hall {
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-hall-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.vh-hall-modules {
+  display: flex;
+  gap: 0.5rem;
+}
+.vh-hall-header select,
+.vh-hall-header input,
+.vh-sheet-fields select,
+.vh-sheet-fields input {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  color: inherit;
+}
+.vh-register {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.vh-register th {
+  text-align: left;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted, var(--ink-300));
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--ink-700);
+}
+.vh-register td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--ink-800, var(--ink-700));
+}
+.vh-register tbody tr {
+  cursor: pointer;
+}
+.vh-register tbody tr:hover {
+  background: var(--surface-2);
+}
+.vh-seal,
+.vh-tracked {
+  color: var(--fg-muted, var(--ink-300));
+  margin-left: 0.3rem;
+}
+.vh-hall-footer {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.vh-hall-footer button,
+.vh-record-sheet footer button,
+.vh-proposal button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-bulk-bar {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.vh-record-sheet {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.vh-record-sheet header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.vh-record-sheet h3 {
+  margin: 0;
+}
+.vh-sheet-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.6rem;
+}
+.vh-sheet-fields label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.vh-proposals {
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-proposal {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.vh-analytics ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.vh-analytics li {
+  display: grid;
+  grid-template-columns: 8rem 1fr 3rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+.vh-bar {
+  display: block;
+  height: 0.6rem;
+  border-radius: 3px;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  min-width: 2px;
+}
