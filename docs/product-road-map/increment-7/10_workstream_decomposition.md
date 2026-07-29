@@ -14,7 +14,7 @@ The spec's G0–G6 are **proof points**, not units of work: G0's "substrate stan
 |---|---|---|---|---|
 | 1 | **SEAM** ✅ **BUILT 2026-07-29** | `inc7/seam` | `backend/src/ai/genui/` — every D5 endpoint, the manifest service, migration `genui001`, VP-01. Build notes: [06](./06_backend_api_contracts.md) §12 | G0's backend half |
 | 2 | **SUB** ✅ **BUILT 2026-07-29** | `inc7/sub` | The `vihara/` app: scaffold, tokens, registry + Zod manifest, renderer skeletons, API client + auth, pre-session screens, certified set + goldens, CI gates. Build notes: [02](./02_stack_and_repo.md) §8 | **G0** |
-| 3 | **WORLD** | `inc7/world` | The walkable estate: 13 world components over the estate read model, day–night, weather, traffic, beacons, tier probe + demotion, L9 sheets | **G1** |
+| 3 | **WORLD** ✅ **BUILT 2026-07-29** *(G1 exit: three owner-side items — [08](./08_device_matrix.md) §9.3)* | `inc7/world` | The walkable estate: territory + weather + traffic + beacons over the estate model and stream, day–night as luminance, tier probe + demotion, seals, L9 toggle. Build notes: [08](./08_device_matrix.md) §9 | **G1** |
 | 4 | **DRIVER** | `inc7/driver` | Trays · Registry Halls · dossiers · Standup · Boardroom · Talent Office · Undercroft · Library · Gallery · **The Study** | **G2** |
 | 5 | **STEWARD** | `inc7/steward` | Pragya present: the WS channel client, presence/focus/narration, materialize, cross-device session, T2/T3 ceremonies, voice | **G3** |
 | 6 | **LINE** | `inc7/line` | The pocket: PWA + service worker, thread, Morning Story, Pocket Desk, biometric certified cards, push client, WhatsApp read-mirror, **its backend (VG-20)** | **G4** |

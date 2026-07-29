@@ -1,7 +1,7 @@
 # Increment 7 / Phase A — D7: Device Matrix & Performance Budgets
 
 > **Deliverable D7** of [01_phase_a_overview.md](./01_phase_a_overview.md). Closes **VG-22**; puts numbers behind spec §12.1's <300ms first-scaffold floor.
-> **Status:** ✅ complete 2026-07-28. Engineering artifact.
+> **Status:** ✅ **WORLD BUILT 2026-07-29 against this contract** (`inc7/world`, W1–W8) — build notes **§9**. Three G1-exit items remain owner-side (§9.3).
 > **Depends on:** [07_surface_wireframes.md](./07_surface_wireframes.md).
 
 ---
@@ -122,8 +122,65 @@ Runtime numbers are **aggregate and tenant-anonymous** — they are platform tel
 
 ---
 
+## 9. Build notes — WORLD, 2026-07-29 (W1–W8 on `inc7/world`)
+
+Gates: **138 vitest** · tsc strict · eslint (the world-dir exemption
+carrying the three.js confinement) · **the bundle proof this document
+exists for: shell 87.3 KB gz (of 220), world chunk 215.5 KB gz (of 600),
+three.js reachable only through the dynamic import behind the tier gate —
+a tier-C device provably never fetches it.**
+
+### 9.1 What shipped
+
+The **pure territory layout** (deterministic from sorted codes — L4's "one
+geography" as a tested property; quarters own fixed sectors; roads run
+gatehouse→hub→district; day–night is one key colour at two intensities).
+The **tier probe** exactly as §2 specifies — probed, never sniffed, tier D
+for reduced-motion/transparency by design, the override in LEARN's
+`surface.*`, capability never gated (the toggle goes both ways). The
+**world renderer** with §13's construction language structurally: floating
+plinths with light beneath, holographic volumes + ghost scaffolds, flat
+surface-printed roads with constant-velocity flow, the energy floor
+light-never-gold, the beacon as the only repeating attention animation
+(~4s breath). The **frame watchdog** (90 slow frames in a 5s window →
+demotion *offered*, with words); the **context-loss switch** (restore
+once; the second loss takes the sheet and echoes *"here's the list"* —
+never a black rectangle). The **SSE stream client** with a pure,
+idempotent reducer over the snapshot-on-connect wire. The **procedural
+seal** (portrait direction C, ratified at R1): deterministic SVG in quiet
+gold-700 — nothing is ever portrait-less. The **keyboard skip-list**
+keeps every district reachable without the canvas (§6).
+
+### 9.2 Deltas
+
+1. **drei is deferred.** Nothing needed it yet, and troika text would have
+   been most of the world chunk. Consequence: **no in-world nameplates** —
+   districts identify by hover halo, click-through and the skip-list.
+   Nameplates land when drei (or a canvas-texture labeller) earns its
+   bytes at G1's visual iteration.
+2. **The terrace mounts from the estate payload directly**, not through
+   the W manifest's component list. The W manifest is contract-tested end
+   to end (SEAM's fixtures, the client ladder), but binding the scene
+   graph through it is a G1-iteration item — recorded so the contract's
+   intent is not assumed done.
+3. **The watchdog approximates §3.2** with frame-delta counting inside a
+   rolling 5s window; real fps histograms belong with the runtime
+   telemetry (§7), which is unwired until LEARN's pooled path gets a
+   client reporter.
+
+### 9.3 What G1's exit still needs — all owner-side
+
+1. **The A-direction portrait rasters** (charter decision 8, pre-G1) —
+   the seal fallback renders everything meanwhile.
+2. **The real-device matrix run** (§8.1) — one physical device per tier;
+   emulated throttling deliberately does not count.
+3. **The walkable-estate look** — spec §13 makes the first walkable demo
+   the design gate's quality proof, and that judgment is the owner's:
+   `./start_services.sh`, port 4044, walk in.
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.1 — **WORLD built against this contract** (§9): the tier probe, the bundle proof (shell 87.3/220, world 215.5/600, tier C never fetches three.js), offered-not-imposed demotion, the context-loss switch, and §13's construction language structurally. Three deltas (drei deferred → no nameplates yet; the terrace mounts from the estate payload; the watchdog approximates §3.2) and three owner-side exit items (§9.3). |
 | 2026-07-28 | v1.0 — four device tiers probed rather than sniffed, per-surface scaffold budgets measured at **p75 on tier B** (a budget met only on the developer's laptop is not a budget), and frame budgets with a demotion rule that is **offered, not imposed** — a map that silently becomes a list has broken the user's model of where things are. The load-bearing rule is the bundle gate: **a tier-C device must never download three.js**, which one careless static import would undo invisibly, so it is a hard build failure with a number rather than a guideline. Runtime telemetry routes into LEARN's pooled store, whose B10 schema guarantee already fits this shape of data exactly. |
