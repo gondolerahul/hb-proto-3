@@ -134,7 +134,7 @@ async def test_after_first_delivery_no_sentence_is_ever_written():
     one — advice appearing under a card the owner already read looks like
     the platform changing its mind after the fact."""
     async def writer(db, company_id, tray):
-        return "late advice"
+        return w.RecommendationDraft(sentence="late advice")
 
     w.install_recommender(writer)
     db, added = _fake_db()
@@ -147,7 +147,8 @@ async def test_after_first_delivery_no_sentence_is_ever_written():
 @pytest.mark.asyncio
 async def test_the_first_delivery_writes_once_and_stores():
     async def writer(db, company_id, tray):
-        return "within band — I'd approve"
+        return w.RecommendationDraft(
+            sentence="within band — I'd approve", model_used="m1")
 
     w.install_recommender(writer)
     db, added = _fake_db()

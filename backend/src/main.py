@@ -155,7 +155,9 @@ from src.common.config import settings as _settings
 @app.on_event("startup")
 async def _start_tray_watcher() -> None:
     if _settings.VIHARA_TRAY_WATCHER_ENABLED:
-        from src.ai.genui.watcher import start_tray_watcher
+        from src.ai.genui.recommendation import recommend_for_tray
+        from src.ai.genui.watcher import install_recommender, start_tray_watcher
+        install_recommender(recommend_for_tray)
         start_tray_watcher(_settings.VIHARA_TRAY_WATCHER_INTERVAL_SECONDS)
 
 @app.on_event("shutdown")

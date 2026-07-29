@@ -56,7 +56,6 @@ def upgrade() -> None:
                   sa.ForeignKey("companies.id"), nullable=False),
         sa.Column("sentence", sa.String(500), nullable=False),
         sa.Column("model_used", sa.String(120), nullable=True),
-        sa.Column("cost_usd", sa.Float(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
     )
     op.create_index(

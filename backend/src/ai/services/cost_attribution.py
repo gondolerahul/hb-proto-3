@@ -80,6 +80,14 @@ class CostAttribution(str, Enum):
     # ordinary browsing must not exhaust the cap that protects tenants *from*
     # platform work (B13).
     MANIFEST_GENERATION = "manifest_generation"
+    # STEWARD (Inc 7) — Pragya's one advisory sentence on a delivered tray
+    # (owner decision 2026-07-29: LLM-written). TENANT-initiated: the card
+    # exists because the tenant's own agent raised it, and the sentence is
+    # part of serving that tenant's approval flow — the RERANK/PRAGYA_TURN
+    # side of B13, so deliberately NOT in PLATFORM_INITIATED_ATTRIBUTIONS.
+    # Written once per tray at first delivery (the watcher's rule), so the
+    # spend is bounded by the number of cards, not by reads.
+    TRAY_RECOMMENDATION = "tray_recommendation"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}

@@ -22,8 +22,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (
-    DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint)
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -149,7 +148,9 @@ class TrayRecommendation(Base):
     company_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
     sentence: Mapped[str] = mapped_column(String(500), nullable=False)
+    #: The model that wrote it. Spend is NOT recorded here — the usage
+    #: ledger (TRAY_RECOMMENDATION attribution) is the one authority on
+    #: cost, and a second copy would drift from it.
     model_used: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow)

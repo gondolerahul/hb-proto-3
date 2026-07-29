@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 
@@ -44,10 +45,22 @@ from src.ai.orm.execution import ExecutionRun, HumanApproval
 
 logger = logging.getLogger(__name__)
 
-#: (db, company_id, tray) -> the sentence, or None. Installed by S2's
+
+@dataclass
+class RecommendationDraft:
+    """What the writer hands back. Spend is deliberately absent — the usage
+    ledger (the TRAY_RECOMMENDATION attribution) is the one authority on
+    cost, and a copy here would drift from it."""
+
+    sentence: str
+    model_used: str | None = None
+
+
+#: (db, company_id, tray) -> a draft, or None. Installed by S2's
 #: recommendation writer at boot; absent, trays deliver without one.
 RecommendFn = Callable[
-    [AsyncSession, uuid.UUID, dict[str, Any]], Awaitable[str | None]]
+    [AsyncSession, uuid.UUID, dict[str, Any]],
+    Awaitable["RecommendationDraft | None"]]
 
 _recommender: RecommendFn | None = None
 
@@ -122,17 +135,18 @@ async def _recommendation_for(
     if not first_delivery or _recommender is None:
         return None
     try:
-        sentence = await _recommender(db, company_id, tray)
+        draft = await _recommender(db, company_id, tray)
     except Exception:  # noqa: BLE001 — a broken writer must not block a tray
         logger.warning(
             "tray recommendation failed for approval %s", approval_id,
             exc_info=True)
         return None
-    if sentence is None:
+    if draft is None:
         return None
     db.add(TrayRecommendation(
-        approval_id=approval_id, company_id=company_id, sentence=sentence))
-    return sentence
+        approval_id=approval_id, company_id=company_id,
+        sentence=draft.sentence, model_used=draft.model_used))
+    return draft.sentence
 
 
 async def sweep_once(

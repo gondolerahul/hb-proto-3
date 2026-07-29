@@ -241,7 +241,7 @@ class TestSweep:
             await w.sweep_once(db)
 
         async def writer(db, company_id, tray):
-            return "late advice"
+            return w.RecommendationDraft(sentence="late advice")
 
         w.install_recommender(writer)
         late = FakeSocket()
