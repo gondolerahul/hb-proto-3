@@ -15144,6 +15144,57 @@
     ]
    }
   },
+  "/api/v1/ai/twin/scenarios/{scenario_id}/run": {
+   "post": {
+    "description": "Queue a rehearsal (GLASS X3, decision 2).\n\n**Not a certified act**, deliberately: a scenario writes only to the\ntwin plane and can reach nothing outside it (X1's binding), so the\nceremony belongs at *promotion*, where a rehearsal becomes a real\nchange \u2014 and there it is one of the two existing certified acts, never\nan eleventh (R5, 14_glass.md \u00a76).\n\nThe estimate must have been acknowledged first. That is not\nbureaucracy: twin spend is tenant-initiated (Inc-6 charter decision\n6), so a tenant learning a what-if's price *afterwards* is exactly the\nfailure the estimate endpoint exists to prevent.",
+    "operationId": "run_scenario_endpoint_api_v1_ai_twin_scenarios__scenario_id__run_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "scenario_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Scenario Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Run Scenario Endpoint Api V1 Ai Twin Scenarios  Scenario Id  Run Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Run Scenario Endpoint",
+    "tags": [
+     "Twin"
+    ]
+   }
+  },
   "/api/v1/ai/twin/scenarios/{scenario_id}/runs": {
    "get": {
     "operationId": "list_runs_api_v1_ai_twin_scenarios__scenario_id__runs_get",

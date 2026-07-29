@@ -1057,6 +1057,24 @@ export interface paths {
      */
     post: operations["estimate_scenario_api_v1_ai_twin_scenarios__scenario_id__estimate_post"];
   };
+  "/api/v1/ai/twin/scenarios/{scenario_id}/run": {
+    /**
+     * Run Scenario Endpoint
+     * @description Queue a rehearsal (GLASS X3, decision 2).
+     *
+     * **Not a certified act**, deliberately: a scenario writes only to the
+     * twin plane and can reach nothing outside it (X1's binding), so the
+     * ceremony belongs at *promotion*, where a rehearsal becomes a real
+     * change — and there it is one of the two existing certified acts, never
+     * an eleventh (R5, 14_glass.md §6).
+     *
+     * The estimate must have been acknowledged first. That is not
+     * bureaucracy: twin spend is tenant-initiated (Inc-6 charter decision
+     * 6), so a tenant learning a what-if's price *afterwards* is exactly the
+     * failure the estimate endpoint exists to prevent.
+     */
+    post: operations["run_scenario_endpoint_api_v1_ai_twin_scenarios__scenario_id__run_post"];
+  };
   "/api/v1/ai/twin/scenarios/{scenario_id}/runs": {
     /** List Runs */
     get: operations["list_runs_api_v1_ai_twin_scenarios__scenario_id__runs_get"];
@@ -8859,6 +8877,44 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Run Scenario Endpoint
+   * @description Queue a rehearsal (GLASS X3, decision 2).
+   *
+   * **Not a certified act**, deliberately: a scenario writes only to the
+   * twin plane and can reach nothing outside it (X1's binding), so the
+   * ceremony belongs at *promotion*, where a rehearsal becomes a real
+   * change — and there it is one of the two existing certified acts, never
+   * an eleventh (R5, 14_glass.md §6).
+   *
+   * The estimate must have been acknowledged first. That is not
+   * bureaucracy: twin spend is tenant-initiated (Inc-6 charter decision
+   * 6), so a tenant learning a what-if's price *afterwards* is exactly the
+   * failure the estimate endpoint exists to prevent.
+   */
+  run_scenario_endpoint_api_v1_ai_twin_scenarios__scenario_id__run_post: {
+    parameters: {
+      path: {
+        scenario_id: string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
         content: {
           "application/json": {
             [key: string]: unknown;

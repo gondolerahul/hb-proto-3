@@ -16,6 +16,7 @@ Both are §6's answer to charter decision 7 making twin spend visible.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -31,6 +32,8 @@ from src.ai.twin.models import ScenarioKind, ScenarioStatus, TwinRun, TwinScenar
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.common.database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai/twin", tags=["Twin"])
 
@@ -255,3 +258,61 @@ async def compare_runs(
             f"better result than a smaller replay."
         ),
     }
+
+
+async def _arq_pool() -> Any:
+    """A short-lived arq pool, the shipped pattern (`ai/service.py`).
+    Returns None when Redis is unreachable so the caller can say so
+    rather than raise a connection error at the tenant."""
+    try:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+
+        return await create_pool(RedisSettings())
+    except Exception:  # noqa: BLE001 — an unreachable queue is a 503, not a 500
+        logger.warning("twin: arq pool unavailable", exc_info=True)
+        return None
+
+
+@router.post("/scenarios/{scenario_id}/run", status_code=202)
+async def run_scenario_endpoint(
+    scenario_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Queue a rehearsal (GLASS X3, decision 2).
+
+    **Not a certified act**, deliberately: a scenario writes only to the
+    twin plane and can reach nothing outside it (X1's binding), so the
+    ceremony belongs at *promotion*, where a rehearsal becomes a real
+    change — and there it is one of the two existing certified acts, never
+    an eleventh (R5, 14_glass.md §6).
+
+    The estimate must have been acknowledged first. That is not
+    bureaucracy: twin spend is tenant-initiated (Inc-6 charter decision
+    6), so a tenant learning a what-if's price *afterwards* is exactly the
+    failure the estimate endpoint exists to prevent.
+    """
+    from src.ai.twin.jobs import enqueue_scenario_run
+
+    company_id = _company_of(user)
+    scenario = await _load_scenario(db, scenario_id, company_id)
+
+    if scenario.acknowledged_estimate_usd is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Price this scenario before running it — a what-if should "
+                "never cost money the owner has not seen first."
+            ),
+        )
+
+    queued = await enqueue_scenario_run(await _arq_pool(), scenario_id)
+    if not queued:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The rehearsal could not be queued — the worker is not "
+                "reachable. Nothing was spent; try again shortly."
+            ),
+        )
+    return {"scenario_id": str(scenario_id), "queued": True}
