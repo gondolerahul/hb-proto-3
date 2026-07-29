@@ -1040,3 +1040,43 @@
   gap: 0.75rem;
   align-items: center;
 }
+
+/* ── the steward's dock (STEWARD S6) ─────────────────────────────────── */
+.vh-steward-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 0.75rem;
+  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border-radius: 0.5rem;
+  background: var(--vh-surface, rgba(24, 24, 24, 0.92));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 20;
+}
+.vh-presence-mark {
+  font-size: 1.1rem;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.6s ease;
+}
+.vh-presence-mark[data-state="listening"] { opacity: 0.75; }
+.vh-presence-mark[data-state="working"] { opacity: 1; }
+.vh-presence-mark[data-state="speaking"] { opacity: 1; }
+.vh-presence-mark[data-state="away"],
+.vh-presence-mark[data-state="off"] { opacity: 0.25; }
+.vh-steward-lines {
+  max-height: 12rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.vh-steward-line { margin: 0; }
+.vh-steward-dock form[data-part="say"] {
+  display: flex;
+  gap: 0.4rem;
+}
+.vh-steward-dock form[data-part="say"] input { flex: 1; }

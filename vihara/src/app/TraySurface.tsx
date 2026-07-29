@@ -33,6 +33,7 @@ import {
 import { useCertifiedAct } from "../components/certified/useCertifiedAct";
 import { SlaCountdown } from "../components/primitive/SlaCountdown";
 import { connectEstateStream } from "../estate/live";
+import { subscribeEstateStream } from "../estate/sharedStream";
 import { assessManifest } from "../manifest/refusals";
 import type { WireComponent, WireScaffold } from "../manifest/schema";
 import { implementationFor } from "../renderers/RenderManifest";
@@ -51,7 +52,7 @@ const REAL: TrayLoaders = {
   trays: fetchTrayList,
   respond: respondToApproval,
   echo: emitEcho,
-  stream: connectEstateStream,
+  stream: subscribeEstateStream,
 };
 
 type State =

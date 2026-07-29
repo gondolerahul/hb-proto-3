@@ -8,7 +8,8 @@ import { useEffect, useState } from "react";
 
 import { fetchEstate } from "../api/genui";
 import type { EstateSnapshot } from "../renderers/world/layout";
-import { applyStreamEvent, connectEstateStream } from "./live";
+import { applyStreamEvent } from "./live";
+import { subscribeEstateStream } from "./sharedStream";
 
 export type LiveEstate =
   | { phase: "loading" }
@@ -27,7 +28,7 @@ export function useLiveEstate(): LiveEstate {
         if (!alive) return;
         setState({ phase: "ready", estate, live: false });
         try {
-          dispose = connectEstateStream((event) => {
+          dispose = subscribeEstateStream((event) => {
             setState((previous) =>
               previous.phase === "ready"
                 ? {

@@ -31,6 +31,7 @@ consumed by STEWARD's turn context. It is never re-broadcast to the client
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from collections import deque
@@ -40,6 +41,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from src.ai.genui.echo import record_echo, validate_echo
 from src.ai.genui.models import UiEcho
+from src.ai.genui.navigation import anchors_from_outcome, navigation_for
 from src.ai.genui.push import send_tray_push
 from src.ai.inward_auth.models import ChannelKind
 from src.ai.inward_auth.sessions import get_or_create_session
@@ -65,6 +67,8 @@ class _SessionState:
         self.depth: int = 0
         self.step_up_hint: dict[str, Any] | None = None
         self.echoes: deque[dict[str, Any]] = deque(maxlen=ECHO_CONTEXT_LIMIT)
+        #: The open voice leg, if any (S4 — ``voice_channel.VoiceLeg``).
+        self.voice: Any | None = None
 
 
 class ChannelHub:
@@ -100,12 +104,39 @@ class ChannelHub:
         session_id = self._by_user.get((company_id, user_id))
         return self._sessions.get(session_id) if session_id else None
 
+    def users_with_open_sockets(self, company_id: uuid.UUID) -> set[uuid.UUID]:
+        """Who in this company is listening right now (STEWARD's watcher asks
+        before composing a tray). A user whose sockets have all left keeps
+        their ``_by_user`` entry — session context survives a disconnect on
+        purpose — so presence is decided by live sockets, not by the map."""
+        listening: set[uuid.UUID] = set()
+        for (cid, uid), session_id in self._by_user.items():
+            if cid != company_id:
+                continue
+            state = self._sessions.get(session_id)
+            if state is not None and state.sockets:
+                listening.add(uid)
+        return listening
+
     # ── the one client-leg writer (rule 4) ────────────────────────────────
     async def _emit(self, state: _SessionState, event: dict[str, Any]) -> int:
         delivered = 0
         for socket in list(state.sockets):
             try:
                 await socket.send_json(event)
+                delivered += 1
+            except Exception:  # noqa: BLE001 — one dead socket must not stop the rest
+                state.sockets.discard(socket)
+        return delivered
+
+    async def _emit_bytes(self, state: _SessionState, data: bytes) -> int:
+        """The audio half of the client leg (S4) — same writer, same rule 4:
+        only Pragya's own modules hold the registry, so only her synthesis
+        can put sound on the wire."""
+        delivered = 0
+        for socket in list(state.sockets):
+            try:
+                await socket.send_bytes(data)
                 delivered += 1
             except Exception:  # noqa: BLE001 — one dead socket must not stop the rest
                 state.sockets.discard(socket)
@@ -171,8 +202,16 @@ async def dispatch_message(
     user_id: uuid.UUID,
     message: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """One client message in, at most one Pragya event out. Unknown types
-    fail visible (an error event), never silent (the repo's standing rule)."""
+    """One client message in, at most one **caller-scoped** reply out.
+    Unknown types fail visible (an error event), never silent (the repo's
+    standing rule).
+
+    The utterance branch is the exception and speaks **to the session**
+    (STEWARD S3): presence → at most one navigation event → the narration —
+    because one session spans devices (rule 1), and an answer only the
+    asking device hears would make "zero repeated context" a per-device
+    promise. Its caller-scoped return is an error, or nothing.
+    """
     kind = message.get("type")
 
     if kind == "viewport":
@@ -204,25 +243,78 @@ async def dispatch_message(
         text = str(message.get("text") or "").strip()
         if not text:
             return {"type": "error", "reason": "an utterance needs text"}
-        from src.ai.pragya.runtime import TurnRequest, run_turn
+        error, _spoken = await handle_utterance(
+            db, state, company_id, user_id, text)
+        return error
 
+    if kind == "mic":
+        from src.ai.genui import voice_channel
+
+        mic_state = message.get("state")
+        if mic_state == "open":
+            return await voice_channel.open_mic(db, state, company_id, user_id)
+        if mic_state == "closed":
+            await voice_channel.close_mic(state)
+            return None
+        return {"type": "error", "reason": f"unknown mic state {mic_state!r}"}
+
+    return {"type": "error", "reason": f"unknown message type {kind!r}"}
+
+
+async def handle_utterance(
+    db: Any,
+    state: _SessionState,
+    company_id: uuid.UUID,
+    user_id: uuid.UUID,
+    text: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """One heard sentence through the one turn loop, told to the session.
+
+    Returns ``(caller_error, spoken_reply)`` — the second is what the voice
+    leg synthesises; the session has already received presence → at most
+    one navigation event → the narration by the time this returns. Shared
+    by the typed path and the voice leg so a spoken command and a typed one
+    are the same turn in every respect but the audio.
+    """
+    from src.ai.pragya.runtime import TurnRequest, run_turn
+
+    await _hub._emit(state, {"type": "presence", "state": "working"})
+    try:
         result = await run_turn(db, TurnRequest(
             company_id=company_id, user_id=user_id, text=text,
             channel_kind=ChannelKind.CONSOLE))
         await db.commit()
-        event: dict[str, Any] = {
-            "type": "narrate", "text": result.reply, "anchors": []}
-        if result.needs_step_up or result.needs_oob:
-            # Reported so the client can open the ceremony — the ceremony
-            # itself runs only through /ai/authn/* (rule 3).
-            event["step_up"] = {
-                "tier": result.tier,
-                "command_ref": result.command_ref,
-                "oob": result.needs_oob,
-            }
-        return event
+    except Exception:  # noqa: BLE001 — she is away, not the channel dead
+        # Presence must not pretend to listen when the runtime cannot run
+        # (§7's honest mapping). The next successful turn's own working →
+        # listening cycle clears it.
+        logger.exception("pragya turn failed on the channel")
+        await _hub._emit(state, {"type": "presence", "state": "away"})
+        return ({
+            "type": "error",
+            "reason": "I can't act on that right now — something failed "
+                      "on my side. Give me a moment and ask again.",
+        }, None)
 
-    return {"type": "error", "reason": f"unknown message type {kind!r}"}
+    navigation = navigation_for(result.command)
+    if navigation is not None:
+        # She walks the map before she speaks — the beam or the surface
+        # arrives, then the words about it.
+        await _hub._emit(state, navigation)
+    event: dict[str, Any] = {
+        "type": "narrate", "text": result.reply,
+        "anchors": anchors_from_outcome(result)}
+    if result.needs_step_up or result.needs_oob:
+        # Reported so the client can open the ceremony — the ceremony
+        # itself runs only through /ai/authn/* (rule 3).
+        event["step_up"] = {
+            "tier": result.tier,
+            "command_ref": result.command_ref,
+            "oob": result.needs_oob,
+        }
+    await _hub._emit(state, event)
+    await _hub._emit(state, {"type": "presence", "state": "listening"})
+    return (None, result.reply)
 
 
 @router.websocket("/channel")
@@ -252,17 +344,35 @@ async def channel_socket(websocket: WebSocket) -> None:
     await _hub._emit(state, {"type": "presence", "state": "listening"})
     try:
         while True:
-            message = await websocket.receive_json()
+            raw = await websocket.receive()
+            if raw.get("type") == "websocket.disconnect":
+                break
+            frame = raw.get("bytes")
+            if frame is not None:
+                # Binary frames are the mic (S4) — straight to the voice
+                # leg's queue, no session, no dispatch.
+                from src.ai.genui import voice_channel
+
+                await voice_channel.feed_audio(state, frame)
+                continue
+            try:
+                message = json.loads(raw.get("text") or "")
+            except ValueError:
+                await websocket.send_json(
+                    {"type": "error", "reason": "not JSON"})
+                continue
             async with AsyncSessionLocal() as db:
-                if message.get("type") == "utterance":
-                    await _hub._emit(state, {"type": "presence", "state": "working"})
+                # Presence transitions live inside dispatch_message (S3) —
+                # the loop only carries caller-scoped replies.
                 reply = await dispatch_message(
                     db, state, company_id, user_id, message)
             if reply is not None:
                 await websocket.send_json(reply)
-            if message.get("type") == "utterance":
-                await _hub._emit(state, {"type": "presence", "state": "listening"})
     except WebSocketDisconnect:
         pass
     finally:
+        from src.ai.genui import voice_channel
+
+        # A disconnect aborts synthesis too — nobody is left to talk to.
+        await voice_channel.close_mic(state, abort=True)
         _hub.leave(session_id, websocket)

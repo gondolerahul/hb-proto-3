@@ -1,11 +1,16 @@
-"""genui/models.py — the two tables SEAM owns (migration ``genui001``).
+"""genui/models.py — the tables the Vihara seams own.
 
-Deliberately only two. The estate, the trays and the manifests are
-projections and caches over other subsystems' truth; what genuinely needs
-rows of its own is the **echo log** (an act that already happened, kept so
-Pragya can learn from it and audit can ask "what was on screen") and the
-**push subscriptions** (L8 — a device token in our own table is what makes
-the single-writer law enforceable in our own code, VG-19).
+SEAM's two (migration ``genui001``): the **echo log** (an act that already
+happened, kept so Pragya can learn from it and audit can ask "what was on
+screen") and the **push subscriptions** (L8 — a device token in our own
+table is what makes the single-writer law enforceable in our own code,
+VG-19).
+
+STEWARD's two (migration ``genui002``): the **delivery ledger** (a tray
+told to a person once and only once, restart-safe — the reason it is a
+table and not a cursor) and the **tray recommendations** (Pragya's one
+generated sentence per tray, written once at delivery so re-renders never
+re-bill).
 
 There is intentionally no ``ui_manifests`` table (D4 §5.1) — what audit
 needs is the certified manifest's hash on the approval and on the echo, and
@@ -23,7 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.common.database import Base
 
-__all__ = ["UiEcho", "PushSubscription"]
+__all__ = ["UiEcho", "PushSubscription", "TrayDelivery", "TrayRecommendation"]
 
 
 class UiEcho(Base):
@@ -88,3 +93,64 @@ class PushSubscription(Base):
     __table_args__ = (
         UniqueConstraint("endpoint", name="uq_push_subscriptions_endpoint"),
     )
+
+
+class TrayDelivery(Base):
+    """One tray reached one person (STEWARD S1, migration ``genui002``).
+
+    The grain is **(approval, user)**, and both directions of it matter: a
+    user reached once is never notified twice for the same card (the row
+    survives a restart, which is why this is not an in-memory cursor), and a
+    user who appears *later* — a new phone subscribes, a first socket opens
+    — still receives a still-pending card on the next sweep, because no row
+    exists for that pair yet. A tray undeliverable today is retried, not
+    marked "nowhere" and forgotten.
+    """
+
+    __tablename__ = "tray_deliveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    approval_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("human_approvals.id"),
+        nullable=False, index=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    #: "socket" | "push" — the door that actually reached the person.
+    via: Mapped[str] = mapped_column(String(16), nullable=False)
+    delivered_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "approval_id", "user_id", name="uq_tray_deliveries_approval_user"),
+    )
+
+
+class TrayRecommendation(Base):
+    """Pragya's one advisory sentence on a tray (STEWARD S2, ``genui002``).
+
+    Written **once, at first delivery**, and never after — a recommendation
+    appearing under a card the owner already read would look like the
+    platform changing its mind after the fact. The primary key is the
+    approval id: one card, one sentence, no history. It sits outside the
+    certified block's hash by construction (D5 §4.2 — the tray is not
+    certified *because of* this field), and nothing anywhere reads it back
+    into an execution path.
+    """
+
+    __tablename__ = "tray_recommendations"
+
+    approval_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("human_approvals.id"), primary_key=True)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    sentence: Mapped[str] = mapped_column(String(500), nullable=False)
+    #: The model that wrote it. Spend is NOT recorded here — the usage
+    #: ledger (TRAY_RECOMMENDATION attribution) is the one authority on
+    #: cost, and a second copy would drift from it.
+    model_used: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow)
