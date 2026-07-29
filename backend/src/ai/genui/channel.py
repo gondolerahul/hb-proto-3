@@ -100,6 +100,20 @@ class ChannelHub:
         session_id = self._by_user.get((company_id, user_id))
         return self._sessions.get(session_id) if session_id else None
 
+    def users_with_open_sockets(self, company_id: uuid.UUID) -> set[uuid.UUID]:
+        """Who in this company is listening right now (STEWARD's watcher asks
+        before composing a tray). A user whose sockets have all left keeps
+        their ``_by_user`` entry — session context survives a disconnect on
+        purpose — so presence is decided by live sockets, not by the map."""
+        listening: set[uuid.UUID] = set()
+        for (cid, uid), session_id in self._by_user.items():
+            if cid != company_id:
+                continue
+            state = self._sessions.get(session_id)
+            if state is not None and state.sockets:
+                listening.add(uid)
+        return listening
+
     # ── the one client-leg writer (rule 4) ────────────────────────────────
     async def _emit(self, state: _SessionState, event: dict[str, Any]) -> int:
         delivered = 0

@@ -146,6 +146,22 @@ from src.ai.genui.channel import echo_fanout, router as pragya_channel_router
 from src.ai.genui.echo import install_echo_fanout
 app.include_router(pragya_channel_router, prefix="/api/v1")
 install_echo_fanout(echo_fanout)
+
+# Inc-7 STEWARD S1 — the approval watcher (the production deliver_tray
+# caller). Lives in THIS process because the socket hub is in-memory here;
+# an arq cron could deliver push but never reach a socket.
+from src.common.config import settings as _settings
+
+@app.on_event("startup")
+async def _start_tray_watcher() -> None:
+    if _settings.VIHARA_TRAY_WATCHER_ENABLED:
+        from src.ai.genui.watcher import start_tray_watcher
+        start_tray_watcher(_settings.VIHARA_TRAY_WATCHER_INTERVAL_SECONDS)
+
+@app.on_event("shutdown")
+async def _stop_tray_watcher() -> None:
+    from src.ai.genui.watcher import stop_tray_watcher
+    await stop_tray_watcher()
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

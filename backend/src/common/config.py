@@ -174,6 +174,12 @@ class Settings(BaseSettings):
     VIHARA_VAPID_PRIVATE_KEY: str = ""
     VIHARA_VAPID_PUBLIC_KEY: str = ""
     VIHARA_VAPID_SUBJECT: str = "mailto:ops@hirebuddha.com"
+    # ── Vihara (Inc-7 STEWARD) ────────────────────────────────────────────
+    # The approval watcher — the production deliver_tray caller. Runs as an
+    # asyncio task inside the API process (the socket hub lives there); the
+    # flag exists so a scripted/test boot can keep the loop out of the way.
+    VIHARA_TRAY_WATCHER_ENABLED: bool = True
+    VIHARA_TRAY_WATCHER_INTERVAL_SECONDS: float = 3.0
 
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.
