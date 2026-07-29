@@ -22,13 +22,20 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date, DateTime, ForeignKey, Index, String, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.common.database import Base
 
-__all__ = ["UiEcho", "PushSubscription", "TrayDelivery", "TrayRecommendation"]
+__all__ = [
+    "UiEcho",
+    "PushSubscription",
+    "TrayDelivery",
+    "TrayRecommendation",
+    "MorningStory",
+]
 
 
 class UiEcho(Base):
@@ -153,4 +160,32 @@ class TrayRecommendation(Base):
     #: cost, and a second copy would drift from it.
     model_used: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MorningStory(Base):
+    """One tenant's morning, told once (LINE L2, migration ``genui003``).
+
+    A store, and deliberately so — the story's *text* is a projection, but
+    decision 2 (12_steward.md's sibling, 13_line.md §2) pre-generates the
+    **audio**, and audio cannot be projected for free. The audio clips live
+    on the row (base64 inside ``cards``) rather than in the artifact store:
+    thirty days ephemeral, per-tenant-private, read through one
+    authenticated endpoint — the artifact store's sharing machinery is the
+    wrong weight. Retention is reaped in the producer's own job (the LIB
+    rule). ``degraded_reason`` names any absence: an empty-wallet morning
+    says so, it does not just go silent.
+    """
+
+    __tablename__ = "morning_stories"
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), primary_key=True)
+    story_date: Mapped[Any] = mapped_column(Date, primary_key=True)
+    #: The composed cards, audio embedded per card or null.
+    cards: Mapped[Any] = mapped_column(JSONB, nullable=False, default=list)
+    #: Why parts are missing, when they are ("wallet", "tts_failed", …).
+    degraded_reason: Mapped[str | None] = mapped_column(
+        String(80), nullable=True)
+    generated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow)

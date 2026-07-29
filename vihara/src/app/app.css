@@ -1080,3 +1080,44 @@
   gap: 0.4rem;
 }
 .vh-steward-dock form[data-part="say"] input { flex: 1; }
+
+/* ── the Line (LINE L5–L8) ───────────────────────────────────────────── */
+.vh-line-frame {
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: 0 0.75rem calc(1rem + env(safe-area-inset-bottom));
+}
+.vh-line-main { padding-top: 0.5rem; }
+.vh-morning-card {
+  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  list-style: none;
+}
+.vh-morning-card header { display: flex; gap: 0.4rem; align-items: baseline; }
+.vh-morning-card audio { width: 100%; margin-top: 0.5rem; }
+.vh-morning-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.vh-desk-vitals {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  position: sticky;
+  top: 0;
+}
+.vh-desk-cards { padding: 0; margin: 0; }
+.vh-thread-scroll {
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.vh-thread-owner { text-align: right; opacity: 0.85; margin: 0; }
+form[data-part="thread-say"] { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+form[data-part="thread-say"] input { flex: 1; }

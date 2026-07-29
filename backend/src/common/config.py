@@ -180,6 +180,11 @@ class Settings(BaseSettings):
     # flag exists so a scripted/test boot can keep the loop out of the way.
     VIHARA_TRAY_WATCHER_ENABLED: bool = True
     VIHARA_TRAY_WATCHER_INTERVAL_SECONDS: float = 3.0
+    # ── Vihara (Inc-7 LINE) ───────────────────────────────────────────────
+    # The WhatsApp read-mirror's provider (the shipped messaging factory's
+    # name: "twilio" | "tata_tele"). The mirror degrades to "not reached"
+    # when the provider is unconfigured — it never blocks the door.
+    VIHARA_WHATSAPP_MIRROR_PROVIDER: str = "twilio"
 
     # ── Voice call guardrails (Kanakia-Leads-01 fixes) ────────────────────
     # Voicemail detection: disconnect instead of pitching to a mailbox.

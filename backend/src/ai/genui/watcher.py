@@ -115,6 +115,30 @@ async def _push_users(
     return set(rows)
 
 
+async def _whatsapp_users(
+    db: AsyncSession, company_id: uuid.UUID,
+) -> set[uuid.UUID]:
+    """Users the mirror could reach (LINE decision 1). Without this set the
+    India-first user — verified WhatsApp, never installed the PWA — would
+    never be a delivery target and the mirror would never fire: the door's
+    third leg only runs for users the sweep decides to reach."""
+    from src.ai.inward_auth.models import ChannelBinding, ChannelKind
+
+    rows = (
+        await db.execute(
+            select(ChannelBinding.user_id)
+            .where(
+                ChannelBinding.company_id == company_id,
+                ChannelBinding.channel_kind == ChannelKind.WHATSAPP,
+                ChannelBinding.verified_at.is_not(None),
+                ChannelBinding.revoked_at.is_(None),
+            )
+            .distinct()
+        )
+    ).scalars().all()
+    return set(rows)
+
+
 async def _recommendation_for(
     db: AsyncSession,
     company_id: uuid.UUID,
@@ -154,6 +178,7 @@ async def sweep_once(
     *,
     now: datetime | None = None,
     push_transport: Any = None,
+    mirror_transport: Any = None,
 ) -> list[TrayDelivery]:
     """One pass: every PENDING approval, every reachable not-yet-reached
     user. Returns the ledger rows written (committed before returning).
@@ -176,8 +201,10 @@ async def sweep_once(
     for approval_id, company_id in pending:
         try:
             if company_id not in push_users_by_company:
-                push_users_by_company[company_id] = await _push_users(
-                    db, company_id)
+                push_users_by_company[company_id] = (
+                    await _push_users(db, company_id)
+                    | await _whatsapp_users(db, company_id)
+                )
             reachable = (
                 channel_hub.users_with_open_sockets(company_id)
                 | push_users_by_company[company_id]
@@ -201,8 +228,9 @@ async def sweep_once(
             for user_id in targets:
                 via = await deliver_tray(
                     db, company_id, user_id, tray,
-                    push_transport=push_transport)
-                if via in ("socket", "push"):
+                    push_transport=push_transport,
+                    mirror_transport=mirror_transport)
+                if via in ("socket", "push", "whatsapp"):
                     row = TrayDelivery(
                         approval_id=approval_id, company_id=company_id,
                         user_id=user_id, via=via, delivered_at=now)

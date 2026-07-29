@@ -74,6 +74,7 @@ from src.ai.library.crons import (
     staleness_sweep,
 )
 from src.ai.voice_loop.crons import voice_deferred_reap, voice_deferred_sweep
+from src.ai.genui.morning_job import morning_story_sweep
 from src.ai.lead_queue_worker import poll_lead_queue_task
 
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
@@ -161,6 +162,10 @@ try:
         # /9: Nightly cost-estimator baseline refresh from
         # telemetry (02:30 UTC — quiet hour, follows the daily aggregate).
         cron(cost_estimator_refresh, hour=2, minute=30),
+        # Inc-7 LINE: the Morning Story (02:25 UTC — after the pooling
+        # job's 02:10 so yesterday is settled; compose · synthesize ·
+        # store · WhatsApp summary; reaper in the same job).
+        cron(morning_story_sweep, hour=2, minute=25),
         # Signal-bus sweeper: every minute — re-dispatch stale PENDING,
         # review PARKED, drive retry backoff (Inc 1 / SIG §18.2–.3).
         cron(signal_sweeper, minute=set(range(60))),
