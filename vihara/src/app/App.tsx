@@ -24,6 +24,7 @@ import { subscribeRibbon } from "./ribbon";
 import { StandupSurface } from "./StandupSurface";
 import { TalentSurface } from "./TalentSurface";
 import { StillSurface } from "./StillSurface";
+import { StudySurface } from "./StudySurface";
 import { TerraceSurface } from "./TerraceSurface";
 import { TraySurface } from "./TraySurface";
 import { UndercroftSurface } from "./UndercroftSurface";
@@ -39,6 +40,7 @@ type Depth =
   | { level: 2; room: "gallery" }
   | { level: 2; room: "library" }
   | { level: 2; room: "bridges" }
+  | { level: 2; room: "study" }
   | { level: 3 };
 
 export function App(): JSX.Element {
@@ -152,6 +154,14 @@ export function App(): JSX.Element {
         </nav>
         <button
           type="button"
+          className="vh-quiet-link"
+          data-part="study-toggle"
+          onClick={() => setDepth({ level: 2, room: "study" })}
+        >
+          study
+        </button>
+        <button
+          type="button"
           className={
             trayCount !== null && trayCount > 0
               ? "vh-beacon-count"
@@ -247,6 +257,9 @@ export function App(): JSX.Element {
         )}
         {depth.level === 2 && "room" in depth && depth.room === "bridges" && (
           <BridgesSurface />
+        )}
+        {depth.level === 2 && "room" in depth && depth.room === "study" && (
+          <StudySurface />
         )}
         {depth.level === 3 && <UndercroftSurface />}
         {depth.level === 2 && "room" in depth && depth.room === "board" && (

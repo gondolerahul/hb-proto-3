@@ -447,6 +447,58 @@ Everything the platform already exposes, in one place, in mono, at operator dens
 
 ---
 
+## 15a. The Study · depth 2 · S — the eighteenth surface (VP-03)
+
+> **Drafted by DRIVER (2026-07-29), per the R2 resolution** (D8 §4) and owner
+> decision 1 (11_driver.md §2): draft-and-build, reviewed at merge. Not a
+> place in the estate — **the desk you sit at**, reachable from the shell
+> (beside the trays toggle), never from the territory.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  The Study                                                           │
+├───────────────────────────────┬──────────────────────────────────────┤
+│  YOU                          │  SECURITY                            │
+│  Rahul · rahul@northwind.co   │  passkeys                            │
+│  Northwind Co.                │  · MacBook Touch ID   added 12 Mar   │
+│                               │  · Pixel 9            added 02 Jun   │
+│  DENSITY                      │  [ add a passkey ]                   │
+│  novice ◉  operator ○         │  A passkey is the key to every       │
+│  (learned: novice, 4 obs)     │  certified act (T2).                 │
+├───────────────────────────────┼──────────────────────────────────────┤
+│  NOTIFICATIONS                │  BILLING & WALLET                    │
+│  push on this device  [on]    │  ₹4,200 credits · Growth             │
+│  morning story        [on]    │  subscription: current               │
+│                               │  (read-only mode is explained HERE   │
+│                               │   when dunning quiets the estate)    │
+└───────────────────────────────┴──────────────────────────────────────┘
+```
+
+| | |
+|---|---|
+| **Composition** | `primitive.record-sheet` (identity) · passkey register · toggle rows (`notify.*`) · density switch · `primitive.figure` (balance) |
+| **Bindings** | `/auth/me` · `/ai/authn/status` + `/ai/authn/webauthn/credentials` · `/ai/learning/preferences` (`notify.*`, `density.*`) + `observe-density` · `/credits/balance` + `/credits/subscriptions` |
+| **Novice** | As drawn — four calm panels, prose explanations |
+| **Operator** | Same panels (this surface has no operator secrets); preference rows show stated-vs-learned |
+| **Echoes** | `added a passkey` · `set density to operator` · `turned morning story off` |
+
+Rules carried from the resolution:
+
+1. **Passkey enrolment lives here and nowhere deeper** — it is the
+   prerequisite for every T2 act, so it must not be at operator depth.
+   Enrolment itself is the WebAuthn ceremony; deleting a passkey is plain
+   (the safe direction is never harder).
+2. **Density is stated here, learned everywhere else** — the switch writes
+   the preference and *clears* the learned value (the store's own rule);
+   the learned state is shown beside it, never hidden.
+3. **Dunning is explicable here.** A tenant in `read-only` sees the ladder
+   stated in words — this is the one surface that must explain why the
+   estate has gone quiet, because everywhere else quiet reads as calm.
+4. **Notification prefs are `notify.*`** — the namespace L8's push
+   preferences already belong to; the Study adds no new store.
+
+---
+
 ## 16–18. The Private Line · C · installable PWA
 
 Three surfaces, one thread (L3).
@@ -510,6 +562,7 @@ Two of these — `time-scrubber` and `divergence-ribbon` — are named in the sp
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.3 — **§15a: The Study drafted** (DRIVER D12, the eighteenth surface). VP-03's resolution drawn before it is built, per owner decision 1 (draft-and-build, review at merge): identity, passkeys (enrolment at depth 2 because it gates every T2 act), `notify.*` preferences, the density switch showing stated-vs-learned, and billing & wallet as the one surface where dunning's read-only state is explained in words. |
 | 2026-07-29 | v1.2 — **R2 PASSED.** The owner accepted all four §21 judgments: the tray as drawn, the Terrace's Three Questions reading as beacons, the dossier reading as a one-on-one, and the density split confirmed presentation-only. The same session resolved **VP-03 to The Study** (see D8 §4) — a depth-2 shell-reachable surface to be added to this inventory as the eighteenth surface when the decomposition's owning workstream drafts it. |
 | 2026-07-28 | v1.1 — **five visual boards linked in** (see the header and the per-surface pointers): the Still Surface, Terrace, District room, Glasshouse and Undercroft now have end-state interactive boards forming the walkable depth ladder, built to the owner's five inspiration references in the brand palette. The owner approved the territory language on the terrace and district boards 2026-07-28; the other three are built to it and reviewed by the same three-lens adversarial pass. The boards are R2's primary review material alongside the layouts below. |
 | 2026-07-28 | v1.0 — all seventeen §5 surfaces drawn at both densities with their L9 equivalents, plus the shell drawn once (and made **app-owned rather than manifest-composed**, so a hostile manifest cannot remove the user's way out). The delta pass added **ten components**, of which two were named in the spec's own prose and missing from its list. The most consequential discovery is `ghost`: the onboarding theatre and the "what's ahead" beacons are the same idea, and building them separately would have produced two visual languages for *not yet real* in a product whose central honesty law is that exact distinction. Three shipped limits are drawn as limits rather than hidden — the unwired scenario runner, the never-populated `credentials_expire_at`, and the KPI series with no backfill. |

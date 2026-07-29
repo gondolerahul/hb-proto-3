@@ -123,3 +123,62 @@ export async function stepUpWithTotp(code: string): Promise<StepUpOutcome> {
   });
   return data;
 }
+
+// ── passkey management (the Study, DRIVER D12) ─────────────────────────
+
+export interface PasskeyCredential {
+  id: string;
+  label: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export async function listPasskeys(): Promise<PasskeyCredential[]> {
+  return (
+    await api.get<PasskeyCredential[]>("/ai/authn/webauthn/credentials")
+  ).data;
+}
+
+/** Plain, deliberately — removing a factor is the safe direction. */
+export async function deletePasskey(credentialRowId: string): Promise<void> {
+  await api.delete(`/ai/authn/webauthn/credentials/${credentialRowId}`);
+}
+
+/** Full registration ceremony: options → authenticator → attestation. */
+export async function registerPasskey(label?: string): Promise<void> {
+  const { data: options } = await api.post<{
+    challenge: string;
+    user: { id: string; [key: string]: unknown };
+    excludeCredentials?: { id: string; type: string }[];
+    [key: string]: unknown;
+  }>("/ai/authn/webauthn/register/begin");
+
+  const created = (await navigator.credentials.create({
+    publicKey: {
+      ...options,
+      challenge: b64urlToBuffer(options.challenge),
+      user: { ...options.user, id: b64urlToBuffer(options.user.id) },
+      excludeCredentials: (options.excludeCredentials ?? []).map((c) => ({
+        ...c,
+        id: b64urlToBuffer(c.id),
+      })),
+    } as PublicKeyCredentialCreationOptions,
+  })) as PublicKeyCredential | null;
+
+  if (created === null) throw new Error("Passkey registration was cancelled");
+  const attestation = created.response as AuthenticatorAttestationResponse;
+
+  await api.post("/ai/authn/webauthn/register/finish", {
+    label: label ?? null,
+    credential: {
+      id: created.id,
+      rawId: bufferToB64url(created.rawId),
+      type: created.type,
+      response: {
+        clientDataJSON: bufferToB64url(attestation.clientDataJSON),
+        attestationObject: bufferToB64url(attestation.attestationObject),
+      },
+      clientExtensionResults: created.getClientExtensionResults(),
+    },
+  });
+}
