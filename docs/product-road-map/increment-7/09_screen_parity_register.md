@@ -104,9 +104,7 @@ The spec's surface inventory (§5) is an inventory of **the estate**. Walking th
 | **Account & security** | `UserSettings` (identity, **passkey enrolment**, channel bindings, notification prefs, density override) | Depth 3 is operator-density by design and is desktop-only. **Passkey enrolment is a prerequisite for every T2 act**, so putting it at depth 3 makes the most important safety surface the hardest to reach — and it is needed on the Line, where depth 3 does not exist |
 | **Billing & wallet** | `BillingSettings`, `WalletPage`, `BillingReport` | Money the tenant owes *the platform* is not estate business. It is also where dunning (`read-only` state) has to be explicable, and a tenant in read-only mode needs to understand why the estate has gone quiet |
 
-**Proposal, for the owner's call at R2 or later:** one depth-2 surface — working name **The Study** — holding identity, security, notifications, density and billing, reachable from the shell rather than from the territory (it is not a place in the estate, it is the desk you sit at). Pre-session surfaces stay conventional and unthemed beyond the brand: a login screen that tries to be an estate is a login screen that is slow.
-
-Not decided here. Recorded, sized, and named — which is what a parity register is for.
+**✅ Decided at R2 (2026-07-29): The Study, as proposed.** One depth-2 surface holding identity, security (passkey enrolment included), notifications, density and billing & wallet, reachable from the shell rather than from the territory (it is not a place in the estate, it is the desk you sit at). Pre-session surfaces stay conventional and unthemed beyond the brand: a login screen that tries to be an estate is a login screen that is slow. The eight VP-03 rows above resolve to the Study (six) and the pre-session set (login, register, reset, login-OAuth callback). The Study joins D6's inventory as the eighteenth surface, drafted by its owning workstream before it is built.
 
 ---
 
@@ -114,4 +112,5 @@ Not decided here. Recorded, sized, and named — which is what a parity register
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.1 — **VP-03 resolved: The Study** (owner decision at R2). The §4 proposal accepted as written; the eight VP-03 rows now have a named home, so the amended cutover criterion's "resolved home for every VP-03 function" clause is met at design level. |
 | 2026-07-28 | v1.0 — all 59 files dispositioned. Two corrections: **"59 screens" is a file count** and five of them are not screens, so the honest denominator is **54**; and cutover parity is **28 of 30 in-scope tenant screens**, not 28 of 59, because 16 are partner/platform-admin consoles ratified as out of scope. Raised **VP-03**: three tenant functions — pre-session, account & security, billing & wallet — have **no Vihara surface**, and passkey enrolment being among them matters, because it is the prerequisite for every T2 act and the spec's only candidate home for it is operator-density and desktop-only. Invisible until this table existed. |

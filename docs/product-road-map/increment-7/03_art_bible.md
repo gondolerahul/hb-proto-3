@@ -1,7 +1,7 @@
 # Increment 7 / Phase A — D2: The Art Bible
 
 > **Deliverable D2** of [01_phase_a_overview.md](./01_phase_a_overview.md). Satisfies spec §13(b) and §14.5.
-> **Status:** 🔍 **AWAITING OWNER REVIEW (checkpoint R1)** — nothing aesthetic ships before this passes. **The territory construction language (§13) is owner-approved as of 2026-07-28** on the terrace and district boards; R1 still owes rulings on §12's eight items.
+> **Status:** ✅ **R1 PASSED 2026-07-29.** All eight §12 rulings approved as written; portrait direction is **A (halftone bust) with C (procedural seal) as the automatic fallback** — the §7.1 recommendation, closing VP-02. The territory construction language (§13) was approved 2026-07-28 on the terrace and district boards.
 > **Supersedes** ratified spec §11 by charter decision 2. Specimens: [art-bible/specimens.html](./art-bible/specimens.html) · five interactive boards: [§13](#13-the-territory-construction-language--built-2026-07-28).
 > **Source of truth for tokens:** [buddha-cognitive-lab-design-system/project/colors_and_type.css](./buddha-cognitive-lab-design-system/project/colors_and_type.css). This document adds only what a *world* needs and the brand has never had to describe.
 
@@ -136,7 +136,7 @@ Direction **C is procedurally generatable in SVG from the entity id**, which mea
 
 The honest counter is that seals are cold, and spec §5's dossier and one-on-one surfaces are built on the premise that you *meet* a colleague. A room of seals is a filing cabinet.
 
-**Raised, not decided** — it is an owner call at R1, and it is genuinely a taste question rather than an engineering one.
+**Resolved at R1 (2026-07-29): the seal stays the fallback, not the floor.** The owner chose direction A as the house style with C as the automatic fallback — the recommendation as written. A colleague with a defined persona gets a halftone bust; everything else gets a seal, so nothing is ever portrait-less and nothing waits on an art pipeline. The raster round for the A busts remains a **pre-G1 obligation** (charter decision 8), blocked on working ADC or the owner's own image tool.
 
 ### 7.2 Rules that hold whichever direction wins
 
@@ -195,7 +195,7 @@ Depth 2 and 3 are dense, readable surfaces; glass over a flat surface is milky a
 * **Gold on near-black** clears AA at `--gold-500` for text ≥18px; certified blocks therefore render their prose in `--fg` and use gold for the seal, the rule and the eyebrow — which is also what §2.1 wants.
 * **Focus is never removed** — the brand's `--focus-ring` on every interactive element, including inside the W renderer, where keyboard teleport must show where it landed.
 
-## 12. What R1 needs from the owner
+## 12. What R1 needs from the owner — ✅ ALL EIGHT RULED 2026-07-29 (approved as proposed)
 
 1. **The gold budget (§2.1)** — the single most consequential rule here. Everything else follows from it.
 2. **Portrait direction** — A / B / C / D, and the VP-02 question of whether the procedural seal should be the floor rather than the fallback.
@@ -245,5 +245,6 @@ Rules the build round earned, now binding:
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.2 — **R1 PASSED.** All eight §12 rulings approved as proposed: the gold budget; no serif; day–night as luminance; the real pane's reserve seam subdued to flat gold-700; the beacon as the only repeating *attention* animation with the ambient world-liveness families sanctioned; the focus ring gold everywhere including the drained plane; depth-3 translucency sanctioned in the Undercroft only. **Portraits: direction A with C as the automatic fallback** (VP-02 resolved — the seal stays the fallback). The A-direction raster round remains a pre-G1 obligation. This document is now binding on every renderer. |
 | 2026-07-28 | v1.1 — **§13 added: the territory construction language, built.** Five interactive boards (still → terrace → district → glasshouse → undercroft) linked into the walkable depth ladder; the owner approved the language on the first two. The construction vocabulary (floating plinths, holographic volumes + ghost scaffolds, flat surface-printed UI with deterministic paint order, concentric halos, the **energy floor** carried from the legacy app and re-keyed to warm-white) is now specified from working artifacts rather than prose. Three adversarial review rounds produced four new binding rules (needs-you dots are flat gold-500; reduced motion is 160ms crossfades; `--fg-faint` never informational; the marker-defs CSS lesson) and **four new R1 rulings** (§12 items 5–8: the real pane's reserve seam, §9's animation scope, the focus ring in the drained plane, depth-3 translucency). |
 | 2026-07-28 | v1.0 — the art bible, superseding spec §11 per charter decision 2. Its load-bearing content is not a palette but the **gold budget**: gold means *this needs you* or *this is certified*, and nothing else, which is what lets a still estate be visibly still. The Glasshouse is solved by **desaturation rather than a second hue** — no new colour, the right metaphor, and un-forgeable because the renderer applies it at the plane boundary. Portraits are proposed as **halftone dot fields**, making the brand's one ornament the medium and letting the artwork itself carry L7's disclosure. Raised **VP-02**: the procedural seal direction has no production cost and cannot drift, which may make it the floor rather than the fallback. |

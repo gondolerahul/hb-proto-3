@@ -1,7 +1,7 @@
 # Increment 7 / Phase A — D6: Surface Wireframes
 
 > **Deliverable D6** of [01_phase_a_overview.md](./01_phase_a_overview.md). Spec §5's inventory, drawn.
-> **Status:** 🔍 **AWAITING OWNER REVIEW (checkpoint R2).**
+> **Status:** ✅ **R2 PASSED 2026-07-29.** All seventeen surfaces pass as drawn — the tray, the Terrace's Three-Questions-as-beacons, the dossier-as-one-on-one and the presentation-only density split all accepted (§21). These layouts are now the build reference for G0–G2.
 > **Depends on:** [03_art_bible.md](./03_art_bible.md) · [04_component_registry.md](./04_component_registry.md). **Writes back into:** D3 §8 — see §20 here.
 > **Visual proof:** [wireframes/spine.html](./wireframes/spine.html) — the spine loop (still surface → terrace → district → tray → approve) at both densities — plus **five high-fidelity visual boards built 2026-07-28, linked into the walkable depth ladder** (each links to the next; ⌘↑/⌘↓ move between levels): [still-visual](./wireframes/still-visual.html) (depth 0) → [estate-visual](./wireframes/estate-visual.html) (depth 1) → [district-visual](./wireframes/district-visual.html) (depth 2) → [glasshouse-visual](./wireframes/glasshouse-visual.html) (depth 2) → [undercroft-visual](./wireframes/undercroft-visual.html) (depth 3). The boards are the **end-state visual reference** — construction language per art bible §13, owner-approved on the first two. The remaining twelve surfaces stay as layouts below; drawing all seventeen in HTML would be building the app, not designing it.
 
@@ -497,7 +497,7 @@ Drawing the surfaces needed **ten components** the registry did not have. Each i
 
 Two of these — `time-scrubber` and `divergence-ribbon` — are named in the spec's own prose and simply missing from its component list. The other eight are genuine discoveries, and `ghost` is the most consequential: **the onboarding theatre and the "what's ahead" beacons are the same idea**, and building them as two components would have produced two visual languages for *not yet real* in a product whose central honesty law is exactly that distinction.
 
-## 21. What R2 needs from the owner
+## 21. What R2 needs from the owner — ✅ PASSED 2026-07-29 (all four judged as drawn)
 
 1. **The tray (§4)** — the most-used surface in the product and the one the zero-training test turns on.
 2. **The Terrace (§3)** — whether the Three Questions read as beacons on a map rather than as a menu.
@@ -510,5 +510,6 @@ Two of these — `time-scrubber` and `divergence-ribbon` — are named in the sp
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.2 — **R2 PASSED.** The owner accepted all four §21 judgments: the tray as drawn, the Terrace's Three Questions reading as beacons, the dossier reading as a one-on-one, and the density split confirmed presentation-only. The same session resolved **VP-03 to The Study** (see D8 §4) — a depth-2 shell-reachable surface to be added to this inventory as the eighteenth surface when the decomposition's owning workstream drafts it. |
 | 2026-07-28 | v1.1 — **five visual boards linked in** (see the header and the per-surface pointers): the Still Surface, Terrace, District room, Glasshouse and Undercroft now have end-state interactive boards forming the walkable depth ladder, built to the owner's five inspiration references in the brand palette. The owner approved the territory language on the terrace and district boards 2026-07-28; the other three are built to it and reviewed by the same three-lens adversarial pass. The boards are R2's primary review material alongside the layouts below. |
 | 2026-07-28 | v1.0 — all seventeen §5 surfaces drawn at both densities with their L9 equivalents, plus the shell drawn once (and made **app-owned rather than manifest-composed**, so a hostile manifest cannot remove the user's way out). The delta pass added **ten components**, of which two were named in the spec's own prose and missing from its list. The most consequential discovery is `ghost`: the onboarding theatre and the "what's ahead" beacons are the same idea, and building them separately would have produced two visual languages for *not yet real* in a product whose central honesty law is that exact distinction. Three shipped limits are drawn as limits rather than hidden — the unwired scenario runner, the never-populated `credentials_expire_at`, and the KPI series with no backfill. |

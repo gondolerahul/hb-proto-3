@@ -1,6 +1,6 @@
 # Increment 7 / Phase A — The Design Phase: Overview & Plan
 
-> **Status:** 🔍 **ALL EIGHT DELIVERABLES WRITTEN 2026-07-28** — awaiting the two blocking owner reviews, **R1** (the art bible) and **R2** (the wireframes). §8 records what the phase found.
+> **Status:** ✅ **PHASE A EXITED 2026-07-29.** All eight deliverables written; **R1 and R2 both PASSED** (art bible all eight rulings; wireframes all seventeen surfaces). Portraits: **A with C fallback** (VP-02 resolved). **VP-03 resolved: The Study.** §8 records what the phase found. Next: the workstream decomposition — [10_workstream_decomposition.md](./10_workstream_decomposition.md).
 > **Goal:** produce what the ratified spec deliberately defers, so that G0 starts against contracts rather than against prose.
 > **Gate:** no G0 code until every deliverable below is complete (charter sequencing decision).
 > **Read next:** [00_charter.md](./00_charter.md) §Decisions · the ratified [genui_design_gate_spec.md](../genui_design_gate_spec.md) · the gap inventory [increment-6/00a](../increment-6/00a_genui_backend_gap_analysis.md).
@@ -92,8 +92,8 @@ Eight deliverables, written 2026-07-28. Each carries its own reasoning; these ar
 | # | Finding | Raised in | State |
 |---|---|---|---|
 | **VP-01** | `localStorage` tokens are a materially worse trade in an app that renders generated UI and drives T2/T3 step-up than in the app that shipped them | D1 §5 | **Resolved** in D5 §9 — access token in memory, refresh token in an `HttpOnly` cookie, legacy path untouched (~half a day of backend work) |
-| **VP-02** | The procedural seal portrait direction has no production cost, needs no ADC and cannot drift from a colleague's versions — it may be the floor rather than the fallback | D2 §7.1 | **Owner call at R1**. Genuinely a taste question |
-| **VP-03** | Three tenant functions have **no Vihara surface at all** — pre-session, account & security, billing & wallet. Passkey enrolment sits inside that gap and is the prerequisite for every T2 act | D8 §4 | **Open.** Proposal: one depth-2 surface (working name *The Study*), reachable from the shell rather than the territory |
+| **VP-02** | The procedural seal portrait direction has no production cost, needs no ADC and cannot drift from a colleague's versions — it may be the floor rather than the fallback | D2 §7.1 | **Resolved at R1 (2026-07-29):** A is the house style, C stays the fallback — the recommendation as written. A-direction rasters remain a pre-G1 obligation |
+| **VP-03** | Three tenant functions have **no Vihara surface at all** — pre-session, account & security, billing & wallet. Passkey enrolment sits inside that gap and is the prerequisite for every T2 act | D8 §4 | **Resolved at R2 (2026-07-29): The Study** — one depth-2 surface reachable from the shell, as proposed; pre-session stays conventional. D8 §4 records the ruling |
 
 ### 8.2 Corrections to shipped documents
 
@@ -120,10 +120,10 @@ Eight deliverables, written 2026-07-28. Each carries its own reasoning; these ar
 | 1 | Every §5 surface drawn with a density variant and a sheet equivalent | ✅ D6, all seventeen |
 | 2 | Every component D6 composes exists in D3; every certified component has a named golden | ✅ D3 §8's delta pass, 35 → 45 |
 | 3 | Every binding D6 draws exists in D5 or is named there as absent with the finding that owns it | ✅ — the named absences are `paths[].cost` (D5 §4.1), VG-18, VG-20 |
-| — | **R1** — the art bible | 🔍 awaiting owner |
-| — | **R2** — the wireframes | 🔍 awaiting owner |
+| — | **R1** — the art bible | ✅ **PASSED 2026-07-29** — all eight §12 rulings approved; portraits A with C fallback |
+| — | **R2** — the wireframes | ✅ **PASSED 2026-07-29** — all four §21 judgments accepted; VP-03 resolved to The Study in the same session |
 
-**Phase A exits when R1 and R2 pass.** The next artifact after that is the Increment-7 workstream decomposition (§5) — deliberately not written yet, because it should be sized against contracts rather than against a spec.
+**Phase A has exited.** The workstream decomposition — sized against these contracts, as §5 required — is [10_workstream_decomposition.md](./10_workstream_decomposition.md).
 
 ---
 
@@ -131,6 +131,7 @@ Eight deliverables, written 2026-07-28. Each carries its own reasoning; these ar
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.3 — **PHASE A EXITED.** R1 passed (all eight art-bible rulings, portraits A+C — VP-02 resolved) and R2 passed (all seventeen surfaces; VP-03 resolved to The Study). Every exit criterion is met. The decomposition ([10](./10_workstream_decomposition.md)) is written as the phase's closing artifact. |
 | 2026-07-28 | v1.2 — **the visual boards are built** (art bible §13, wireframes header): five interactive end-state boards forming the walkable depth ladder, in the brand palette with the legacy app's energy-floor background carried forward. The owner approved the territory construction language on the terrace and district boards, which materially advances **R1** (the language is approved; §12's eight rulings remain) and gives **R2** its primary review material. |
 | 2026-07-28 | v1.1 — all eight deliverables written; §8 added. Three new findings (**VP-01** resolved, **VP-02** for R1, **VP-03** open and the most consequential), four corrections to shipped documents, and six decisions the spec did not make. Exit criteria 1–3 met; the phase now waits on R1 and R2. |
 | 2026-07-28 | v1.0 — Phase A opened. Seven deliverables (the charter's six plus VR-10's parity register), the dependency order with its one deliberate cycle, two blocking owner review checkpoints chosen by the repo's own precedent, and exit criteria written as the three properties whose absence would only surface at G2. |
