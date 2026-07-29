@@ -529,3 +529,119 @@
   border: 1px solid var(--ink-500);
   min-width: 2px;
 }
+
+/* ── the district sheet + dossier (DRIVER D4, D6 §5–6) ────────────────── */
+/* Gold audit: the district adds gold in exactly two places — the raised
+ * hand ◈ (this needs you) and the treasury's protected reserve. */
+.vh-district {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-district h2 {
+  margin: 0;
+}
+.vh-district-panels {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) 2fr;
+  gap: 1rem;
+}
+.vh-plinth {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-plinth output {
+  font-variant-numeric: tabular-nums;
+}
+.vh-treasury {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vh-treasury-bar {
+  display: block;
+  height: 0.6rem;
+  max-width: 8rem;
+  border-radius: 3px;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+}
+.vh-reserve {
+  color: var(--gold-400);
+  font-size: 0.8rem;
+}
+.vh-hand {
+  color: var(--gold-400);
+  font-size: 0.85rem;
+}
+.vh-live-runs ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.vh-district-traffic {
+  color: var(--fg-muted, var(--ink-300));
+  font-size: 0.85rem;
+}
+.vh-dossier {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+  max-width: 44rem;
+}
+.vh-dossier-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+.vh-dossier-header h2 {
+  margin: 0;
+}
+.vh-dossier-line {
+  margin: 0.25rem 0 0;
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-decisions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-trace {
+  background: var(--surface-2);
+  border: 1px solid var(--ink-700);
+  border-radius: 6px;
+  padding: 0.6rem;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  max-height: 18rem;
+}
+.vh-dossier-tell {
+  display: grid;
+  gap: 0.5rem;
+}
+.vh-dossier-tell textarea {
+  width: 100%;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.5rem;
+  color: inherit;
+}
+.vh-dossier-tell button {
+  justify-self: start;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  color: inherit;
+  cursor: pointer;
+}

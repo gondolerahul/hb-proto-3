@@ -12,8 +12,9 @@ import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
 import { fetchTrayList } from "../api/trays";
+import { DistrictSheet } from "./DistrictSheet";
+import { DossierSurface } from "./DossierSurface";
 import { HallsSurface } from "./HallsSurface";
-import { ManifestSurface } from "./ManifestSurface";
 import { PreSession } from "./PreSession";
 import { subscribeRibbon } from "./ribbon";
 import { StillSurface } from "./StillSurface";
@@ -23,7 +24,7 @@ import { TraySurface } from "./TraySurface";
 type Depth =
   | { level: 0 }
   | { level: 1 }
-  | { level: 2; district: string }
+  | { level: 2; district: string; dossier?: { id: string; name: string } }
   | { level: 2; room: "halls" };
 
 export function App(): JSX.Element {
@@ -125,7 +126,31 @@ export function App(): JSX.Element {
           />
         )}
         {depth.level === 2 && "district" in depth && (
-          <ManifestSurface surface={`district.${depth.district}`} />
+          depth.dossier !== undefined ? (
+            <>
+              <button
+                type="button"
+                className="vh-quiet-link"
+                onClick={() =>
+                  setDepth({ level: 2, district: depth.district })
+                }
+              >
+                ← back to {depth.district}
+              </button>
+              <DossierSurface entityId={depth.dossier.id} />
+            </>
+          ) : (
+            <DistrictSheet
+              code={depth.district}
+              onOpenDossier={(colleague) =>
+                setDepth({
+                  level: 2,
+                  district: depth.district,
+                  dossier: colleague,
+                })
+              }
+            />
+          )
         )}
         {depth.level === 2 && "room" in depth && depth.room === "halls" && (
           <HallsSurface />
