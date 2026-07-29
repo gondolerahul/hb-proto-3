@@ -1041,6 +1041,24 @@ export interface paths {
      */
     post: operations["compare_runs_api_v1_ai_twin_compare_post"];
   };
+  "/api/v1/ai/twin/runs/{run_id}/promote": {
+    /**
+     * Promote Run
+     * @description Take a rehearsal to a human (GLASS X4, decision 3).
+     *
+     * **Not a new certified act.** This raises a HITL card on the existing
+     * ``before_self_evolving_code_promotion`` checkpoint; the human approves
+     * it through ``respond_to_approval``, which is already certified endpoint
+     * #1. The certified set stays ten (R5) — see 14_glass.md §6.
+     *
+     * ``propose_promotion``'s two refusals stand in front of this: a refused
+     * run has no result to argue from, and an ``unknown``-graded run is an
+     * illustration. Both answer 422 rather than raising a card, because
+     * putting an illustration in front of an owner as though it were
+     * evidence is how a ceremony stops meaning anything.
+     */
+    post: operations["promote_run_api_v1_ai_twin_runs__run_id__promote_post"];
+  };
   "/api/v1/ai/twin/scenarios": {
     /** List Scenarios */
     get: operations["list_scenarios_api_v1_ai_twin_scenarios_get"];
@@ -1056,6 +1074,24 @@ export interface paths {
      * never learn a what-if's price afterwards.
      */
     post: operations["estimate_scenario_api_v1_ai_twin_scenarios__scenario_id__estimate_post"];
+  };
+  "/api/v1/ai/twin/scenarios/{scenario_id}/run": {
+    /**
+     * Run Scenario Endpoint
+     * @description Queue a rehearsal (GLASS X3, decision 2).
+     *
+     * **Not a certified act**, deliberately: a scenario writes only to the
+     * twin plane and can reach nothing outside it (X1's binding), so the
+     * ceremony belongs at *promotion*, where a rehearsal becomes a real
+     * change — and there it is one of the two existing certified acts, never
+     * an eleventh (R5, 14_glass.md §6).
+     *
+     * The estimate must have been acknowledged first. That is not
+     * bureaucracy: twin spend is tenant-initiated (Inc-6 charter decision
+     * 6), so a tenant learning a what-if's price *afterwards* is exactly the
+     * failure the estimate endpoint exists to prevent.
+     */
+    post: operations["run_scenario_endpoint_api_v1_ai_twin_scenarios__scenario_id__run_post"];
   };
   "/api/v1/ai/twin/scenarios/{scenario_id}/runs": {
     /** List Runs */
@@ -4279,6 +4315,21 @@ export interface components {
       key: string;
       /** Value */
       value: unknown;
+    };
+    /**
+     * PromoteIn
+     * @description What a rehearsal is being used to argue for.
+     */
+    PromoteIn: {
+      /** Addition */
+      addition: string;
+      /**
+       * Entity Id
+       * Format: uuid
+       */
+      entity_id: string;
+      /** Field */
+      field: string;
     };
     /** PushKeys */
     PushKeys: {
@@ -8806,6 +8857,49 @@ export interface operations {
       };
     };
   };
+  /**
+   * Promote Run
+   * @description Take a rehearsal to a human (GLASS X4, decision 3).
+   *
+   * **Not a new certified act.** This raises a HITL card on the existing
+   * ``before_self_evolving_code_promotion`` checkpoint; the human approves
+   * it through ``respond_to_approval``, which is already certified endpoint
+   * #1. The certified set stays ten (R5) — see 14_glass.md §6.
+   *
+   * ``propose_promotion``'s two refusals stand in front of this: a refused
+   * run has no result to argue from, and an ``unknown``-graded run is an
+   * illustration. Both answer 422 rather than raising a card, because
+   * putting an illustration in front of an owner as though it were
+   * evidence is how a ceremony stops meaning anything.
+   */
+  promote_run_api_v1_ai_twin_runs__run_id__promote_post: {
+    parameters: {
+      path: {
+        run_id: string;
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PromoteIn"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   /** List Scenarios */
   list_scenarios_api_v1_ai_twin_scenarios_get: {
     responses: {
@@ -8859,6 +8953,44 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Run Scenario Endpoint
+   * @description Queue a rehearsal (GLASS X3, decision 2).
+   *
+   * **Not a certified act**, deliberately: a scenario writes only to the
+   * twin plane and can reach nothing outside it (X1's binding), so the
+   * ceremony belongs at *promotion*, where a rehearsal becomes a real
+   * change — and there it is one of the two existing certified acts, never
+   * an eleventh (R5, 14_glass.md §6).
+   *
+   * The estimate must have been acknowledged first. That is not
+   * bureaucracy: twin spend is tenant-initiated (Inc-6 charter decision
+   * 6), so a tenant learning a what-if's price *afterwards* is exactly the
+   * failure the estimate endpoint exists to prevent.
+   */
+  run_scenario_endpoint_api_v1_ai_twin_scenarios__scenario_id__run_post: {
+    parameters: {
+      path: {
+        scenario_id: string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
         content: {
           "application/json": {
             [key: string]: unknown;

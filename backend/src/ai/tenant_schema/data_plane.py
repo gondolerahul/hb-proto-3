@@ -123,7 +123,16 @@ class TenantDataPlane:
         to ask for both: the translate map is fixed when the session is built,
         so a twin write has no path to the live schema (§4.1 of the TWIN
         design — the isolation guarantee is the identifier).
+
+        **GLASS X1:** inside a Glasshouse run the plane is forced to TWIN
+        regardless of what the caller asked for. A tool inside a rehearsal
+        must not be able to opt back into reality by passing ``Plane.LIVE``
+        — the plane-level counterpart of substitution's deny-by-default.
+        Outside a run this is a pass-through, pinned by mutation test.
         """
+        from src.ai.twin.binding import effective_plane
+
+        plane = effective_plane(plane)
         await self.ensure_ready(company_id, plane)
         if self._backend == "container":
             async with self._container_session(company_id, plane) as s:

@@ -178,14 +178,31 @@ async def test_a_refused_run_is_refused_as_evidence() -> None:
 def test_twin_owns_no_canary() -> None:
     """Decision 5. A second blast-radius implementation is the one duplication
     B11 cannot survive — a limit enforced in two places is enforced in neither,
-    because the next change only updates one of them."""
+    because the next change only updates one of them.
+
+    **Structural, not a string match** (corrected in GLASS X4). The first
+    version forbade the *substring* ``BlastRadius`` anywhere under
+    ``twin/``, which cannot tell "defines its own" from "imports SEGA's" —
+    so the first module to do exactly what the rule demands, `import
+    BlastRadiusError from evolution`, failed it. The guarantee is about
+    **definitions**, so the test now reads definitions. Verified still to
+    fire: adding ``class BlastRadiusLimits`` under ``twin/`` fails it.
+    """
+    import ast
     import pathlib
 
     twin = pathlib.Path(__file__).resolve().parents[2] / "src" / "ai" / "twin"
-    sources = "\n".join(p.read_text() for p in twin.glob("*.py"))
-    for forbidden in ("class CanaryThresholds", "def assess(", "BlastRadius"):
-        assert forbidden not in sources, (
-            f"TWIN appears to define its own {forbidden!r} — it must call SEGA's")
+    forbidden_defs = {"CanaryThresholds", "assess"}
+    for path in twin.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                assert node.name not in forbidden_defs, (
+                    f"{path.name} defines its own {node.name!r} — "
+                    "TWIN must call SEGA's")
+                assert "BlastRadius" not in node.name, (
+                    f"{path.name} defines its own {node.name!r} — "
+                    "the blast-radius limits live in SEGA and only in SEGA")
 
 
 # ── T11: simulated people ────────────────────────────────────────────

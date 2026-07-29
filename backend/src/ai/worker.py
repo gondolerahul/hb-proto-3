@@ -75,6 +75,7 @@ from src.ai.library.crons import (
 )
 from src.ai.voice_loop.crons import voice_deferred_reap, voice_deferred_sweep
 from src.ai.genui.morning_job import morning_story_sweep
+from src.ai.twin.jobs import twin_scenario_run
 from src.ai.lead_queue_worker import poll_lead_queue_task
 
 # Register Solo Pack agent tools (Inc 2) on worker boot — the agent loop runs here.
@@ -122,6 +123,9 @@ class WorkerSettings:
         dreaming_outcome_trigger,
         # Signal bus (Increment 1 / SIG).
         dispatch_signal,
+        # Inc-7 GLASS: a rehearsal runs the way real work runs — same
+        # queue, same worker, same loop (decision 2).
+        twin_scenario_run,
     ]
     # Register CORTEX scheduled wake-up cron
     cron_jobs = [

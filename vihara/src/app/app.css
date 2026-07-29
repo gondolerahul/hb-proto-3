@@ -1121,3 +1121,38 @@
 .vh-thread-owner { text-align: right; opacity: 0.85; margin: 0; }
 form[data-part="thread-say"] { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
 form[data-part="thread-say"] input { flex: 1; }
+
+/* ── the Glasshouse (GLASS X5, D6 §12) ────────────────────────────────── */
+.vh-glasshouse { display: grid; gap: 1rem; }
+.vh-glass-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 40rem) {
+  .vh-glass-panes { grid-template-columns: 1fr; }
+}
+.vh-glass-panes article {
+  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+/* The twin pane is desaturated BY THE SURFACE (see the module docstring);
+   the ribbon is lifted back out of it — the one thing the eye should find. */
+.vh-divergence-ribbon {
+  filter: none;
+  color: var(--vh-gold, #c9a227);
+  margin-left: 0.4rem;
+}
+.vh-glass-levers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+.vh-glass-shelf article {
+  border-top: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  padding: 0.5rem 0;
+}
+.vh-grade[data-grade="untested"] { opacity: 0.7; }
+.vh-grade[data-grade="unknown"] { font-style: italic; }

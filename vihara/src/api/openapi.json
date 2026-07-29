@@ -5760,6 +5760,35 @@
     "title": "PreferenceWrite",
     "type": "object"
    },
+   "PromoteIn": {
+    "description": "What a rehearsal is being used to argue for.",
+    "properties": {
+     "addition": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Addition",
+      "type": "string"
+     },
+     "entity_id": {
+      "format": "uuid",
+      "title": "Entity Id",
+      "type": "string"
+     },
+     "field": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Field",
+      "type": "string"
+     }
+    },
+    "required": [
+     "entity_id",
+     "field",
+     "addition"
+    ],
+    "title": "PromoteIn",
+    "type": "object"
+   },
    "PushKeys": {
     "properties": {
      "auth": {
@@ -15019,6 +15048,67 @@
     ]
    }
   },
+  "/api/v1/ai/twin/runs/{run_id}/promote": {
+   "post": {
+    "description": "Take a rehearsal to a human (GLASS X4, decision 3).\n\n**Not a new certified act.** This raises a HITL card on the existing\n``before_self_evolving_code_promotion`` checkpoint; the human approves\nit through ``respond_to_approval``, which is already certified endpoint\n#1. The certified set stays ten (R5) \u2014 see 14_glass.md \u00a76.\n\n``propose_promotion``'s two refusals stand in front of this: a refused\nrun has no result to argue from, and an ``unknown``-graded run is an\nillustration. Both answer 422 rather than raising a card, because\nputting an illustration in front of an owner as though it were\nevidence is how a ceremony stops meaning anything.",
+    "operationId": "promote_run_api_v1_ai_twin_runs__run_id__promote_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "run_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Run Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PromoteIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Promote Run Api V1 Ai Twin Runs  Run Id  Promote Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Promote Run",
+    "tags": [
+     "Twin"
+    ]
+   }
+  },
   "/api/v1/ai/twin/scenarios": {
    "get": {
     "operationId": "list_scenarios_api_v1_ai_twin_scenarios_get",
@@ -15139,6 +15229,57 @@
      }
     ],
     "summary": "Estimate Scenario",
+    "tags": [
+     "Twin"
+    ]
+   }
+  },
+  "/api/v1/ai/twin/scenarios/{scenario_id}/run": {
+   "post": {
+    "description": "Queue a rehearsal (GLASS X3, decision 2).\n\n**Not a certified act**, deliberately: a scenario writes only to the\ntwin plane and can reach nothing outside it (X1's binding), so the\nceremony belongs at *promotion*, where a rehearsal becomes a real\nchange \u2014 and there it is one of the two existing certified acts, never\nan eleventh (R5, 14_glass.md \u00a76).\n\nThe estimate must have been acknowledged first. That is not\nbureaucracy: twin spend is tenant-initiated (Inc-6 charter decision\n6), so a tenant learning a what-if's price *afterwards* is exactly the\nfailure the estimate endpoint exists to prevent.",
+    "operationId": "run_scenario_endpoint_api_v1_ai_twin_scenarios__scenario_id__run_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "scenario_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Scenario Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Run Scenario Endpoint Api V1 Ai Twin Scenarios  Scenario Id  Run Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Run Scenario Endpoint",
     "tags": [
      "Twin"
     ]

@@ -18,6 +18,7 @@ import { BridgesSurface } from "./BridgesSurface";
 import { DistrictSheet } from "./DistrictSheet";
 import { DossierSurface } from "./DossierSurface";
 import { GallerySurface } from "./GallerySurface";
+import { GlasshouseSurface } from "./GlasshouseSurface";
 import { HallsSurface } from "./HallsSurface";
 import { LibrarySurface } from "./LibrarySurface";
 import { PreSession } from "./PreSession";
@@ -42,6 +43,7 @@ type Depth =
   | { level: 2; room: "library" }
   | { level: 2; room: "bridges" }
   | { level: 2; room: "study" }
+  | { level: 2; room: "glasshouse" }
   | { level: 3 };
 
 export function App(): JSX.Element {
@@ -168,6 +170,16 @@ export function App(): JSX.Element {
           <button
             type="button"
             className="vh-quiet-link"
+            disabled={
+              depth.level === 2 && "room" in depth && depth.room === "glasshouse"
+            }
+            onClick={() => setDepth({ level: 2, room: "glasshouse" })}
+          >
+            glasshouse
+          </button>
+          <button
+            type="button"
+            className="vh-quiet-link"
             disabled={depth.level === 3}
             onClick={() => setDepth({ level: 3 })}
           >
@@ -285,6 +297,9 @@ export function App(): JSX.Element {
         )}
         {depth.level === 2 && "room" in depth && depth.room === "study" && (
           <StudySurface />
+        )}
+        {depth.level === 2 && "room" in depth && depth.room === "glasshouse" && (
+          <GlasshouseSurface />
         )}
         {depth.level === 3 && <UndercroftSurface />}
         {depth.level === 2 && "room" in depth && depth.room === "board" && (
