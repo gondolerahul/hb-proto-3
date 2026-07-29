@@ -13670,6 +13670,38 @@
     ]
    }
   },
+  "/api/v1/ai/talent/colleagues-past": {
+   "get": {
+    "description": "The Gallery's roster (D6 \u00a711): terminated colleagues, from the\nstamp termination wrote \u2014 a query, never a new table.",
+    "operationId": "colleagues_past_api_v1_ai_talent_colleagues_past_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Colleagues Past Api V1 Ai Talent Colleagues Past Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Colleagues Past",
+    "tags": [
+     "Talent"
+    ]
+   }
+  },
   "/api/v1/ai/talent/colleagues/{entity_id}/terminate": {
    "post": {
     "operationId": "terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post",

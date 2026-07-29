@@ -854,3 +854,37 @@
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* ── the gallery (DRIVER D8, D6 §11) ──────────────────────────────────── */
+/* The past shares a material with the not-yet-real (art bible §7.2):
+ * desaturation, applied by the surface, never by the portrait itself. */
+.vh-gallery {
+  display: grid;
+  gap: 1.25rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-seasons,
+.vh-monuments,
+.vh-past {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-monument details {
+  display: inline-block;
+  margin-left: 0.5rem;
+}
+.vh-ghost p {
+  margin: 0.3rem 0 0;
+}
+.vh-past-colleague {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.vh-desaturated {
+  filter: grayscale(1) opacity(0.75);
+}

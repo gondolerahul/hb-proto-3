@@ -881,6 +881,14 @@ export interface paths {
      */
     get: operations["reviews_due_api_v1_ai_strategy_reviews_due_get"];
   };
+  "/api/v1/ai/talent/colleagues-past": {
+    /**
+     * Colleagues Past
+     * @description The Gallery's roster (D6 §11): terminated colleagues, from the
+     * stamp termination wrote — a query, never a new table.
+     */
+    get: operations["colleagues_past_api_v1_ai_talent_colleagues_past_get"];
+  };
   "/api/v1/ai/talent/colleagues/{entity_id}/terminate": {
     /** Terminate */
     post: operations["terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post"];
@@ -8116,6 +8124,23 @@ export interface operations {
           "application/json": {
             [key: string]: unknown;
           };
+        };
+      };
+    };
+  };
+  /**
+   * Colleagues Past
+   * @description The Gallery's roster (D6 §11): terminated colleagues, from the
+   * stamp termination wrote — a query, never a new table.
+   */
+  colleagues_past_api_v1_ai_talent_colleagues_past_get: {
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+              [key: string]: unknown;
+            }[];
         };
       };
     };
