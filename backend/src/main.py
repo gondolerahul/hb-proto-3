@@ -135,6 +135,9 @@ app.include_router(library_router, prefix="/api/v1")
 # Inc-6 STRAT — adopt (T2 certified), predicted-vs-realized, the reviews tray.
 from src.ai.strategy.api import router as strategy_router
 app.include_router(strategy_router, prefix="/api/v1")
+# Inc-7 SEAM — the Vihara seams: component registry (estate/stream/trays follow).
+from src.ai.genui.router import router as genui_router
+app.include_router(genui_router, prefix="/api/v1")
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

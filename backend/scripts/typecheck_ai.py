@@ -58,6 +58,7 @@ CLEAN_PACKAGES: list[str] = [
     "library",
     "strategy",
     "twin",
+    "genui",
 ]
 
 

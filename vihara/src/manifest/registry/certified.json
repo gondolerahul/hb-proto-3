@@ -1,0 +1,422 @@
+[
+  {
+    "type": "certified.approval",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "approval_id": {"type": "string", "format": "uuid"},
+        "checkpoint_key": {"type": "string"},
+        "summary": {"type": "string"},
+        "tier": {"enum": ["T1", "T2", "T3"]}
+      },
+      "required": ["approval_id", "checkpoint_key", "summary", "tier"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["approval.detail", "approval.sla"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.summary"},
+    "certified": {
+      "intent_kind": "categorised_action",
+      "gate": "POST /api/v1/ai/approvals/{approval_id}/respond",
+      "goldens": [
+        "goldens/certified.approval.v1.S.novice.json",
+        "goldens/certified.approval.v1.S.operator.json",
+        "goldens/certified.approval.v1.C.novice.json",
+        "goldens/certified.approval.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.payment",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "approval_id": {"type": "string", "format": "uuid"},
+        "checkpoint_key": {"type": "string"},
+        "summary": {"type": "string"},
+        "amount": {"type": "number"},
+        "currency": {"type": "string"},
+        "tier": {"enum": ["T2", "T3"]}
+      },
+      "required": ["approval_id", "checkpoint_key", "summary", "amount", "currency", "tier"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["approval.detail", "approval.sla"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.summary"},
+    "certified": {
+      "intent_kind": "categorised_action",
+      "gate": "POST /api/v1/ai/approvals/{approval_id}/respond",
+      "goldens": [
+        "goldens/certified.payment.v1.S.novice.json",
+        "goldens/certified.payment.v1.S.operator.json",
+        "goldens/certified.payment.v1.C.novice.json",
+        "goldens/certified.payment.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.consent",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "channel": {"type": "string"},
+        "purpose": {"type": "string"},
+        "direction": {"enum": ["grant", "revoke"]},
+        "summary": {"type": "string"}
+      },
+      "required": ["channel", "purpose", "direction", "summary"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["consent.state"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.summary"},
+    "certified": {
+      "intent_kind": "binding_change",
+      "gate": "asymmetric: ceremony on grant only — revoke must never be harder than grant",
+      "goldens": [
+        "goldens/certified.consent.v1.S.novice.json",
+        "goldens/certified.consent.v1.S.operator.json",
+        "goldens/certified.consent.v1.C.novice.json",
+        "goldens/certified.consent.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.autonomy-change",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "entity_id": {"type": "string", "format": "uuid"},
+        "entity_name": {"type": "string"},
+        "from_band": {"enum": ["A0", "A1", "A2", "A3", "A4"]},
+        "to_band": {"enum": ["A0", "A1", "A2", "A3", "A4"]},
+        "summary": {"type": "string"}
+      },
+      "required": ["entity_id", "entity_name", "from_band", "to_band", "summary"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["entity.governance"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.summary"},
+    "certified": {
+      "intent_kind": "autonomy_raise",
+      "gate": "PUT /api/v1/ai/entities/{entity_id}",
+      "goldens": [
+        "goldens/certified.autonomy-change.v1.S.novice.json",
+        "goldens/certified.autonomy-change.v1.S.operator.json",
+        "goldens/certified.autonomy-change.v1.C.novice.json",
+        "goldens/certified.autonomy-change.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.connector-binding",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "connector_key": {"type": "string"},
+        "connector_name": {"type": "string"},
+        "summary": {"type": "string"}
+      },
+      "required": ["connector_key", "connector_name", "summary"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["connector.catalog_entry"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.summary"},
+    "certified": {
+      "intent_kind": "connector_binding",
+      "gate": "POST /api/v1/ai/connectors/{connector_id}/bind",
+      "goldens": [
+        "goldens/certified.connector-binding.v1.S.novice.json",
+        "goldens/certified.connector-binding.v1.S.operator.json",
+        "goldens/certified.connector-binding.v1.C.novice.json",
+        "goldens/certified.connector-binding.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.mastering-declaration",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "def_name": {"type": "string"},
+        "connector_key": {"type": "string"},
+        "direction": {"type": "string"},
+        "summary": {"type": "string"}
+      },
+      "required": ["def_name", "connector_key", "direction", "summary"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["connector.mastering_proposal"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.summary"},
+    "certified": {
+      "intent_kind": "connector_binding",
+      "gate": "POST /api/v1/ai/connectors/master/{def_name}/apply",
+      "goldens": [
+        "goldens/certified.mastering-declaration.v1.S.novice.json",
+        "goldens/certified.mastering-declaration.v1.S.operator.json",
+        "goldens/certified.mastering-declaration.v1.C.novice.json",
+        "goldens/certified.mastering-declaration.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.provider-opt-in",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "provider": {"type": "string"},
+        "disclosure_version": {"type": "string"},
+        "summary": {"type": "string"}
+      },
+      "required": ["provider", "disclosure_version", "summary"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["intelligence.provider"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.summary"},
+    "certified": {
+      "intent_kind": "binding_change",
+      "gate": "POST /api/v1/ai/intelligence/providers/{provider}/opt-in",
+      "goldens": [
+        "goldens/certified.provider-opt-in.v1.S.novice.json",
+        "goldens/certified.provider-opt-in.v1.S.operator.json",
+        "goldens/certified.provider-opt-in.v1.C.novice.json",
+        "goldens/certified.provider-opt-in.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.strategy-resolution",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "resolution_id": {"type": "string"},
+        "title": {"type": "string"},
+        "summary": {"type": "string"}
+      },
+      "required": ["resolution_id", "title", "summary"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["strategy.resolution"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.title"},
+    "certified": {
+      "intent_kind": "strategy_resolution",
+      "gate": "POST /api/v1/ai/strategy/adopt",
+      "goldens": [
+        "goldens/certified.strategy-resolution.v1.S.novice.json",
+        "goldens/certified.strategy-resolution.v1.S.operator.json",
+        "goldens/certified.strategy-resolution.v1.C.novice.json",
+        "goldens/certified.strategy-resolution.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.step-up",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "tier": {"enum": ["T2", "T3"]},
+        "command_ref": {"type": "string"},
+        "command_summary": {"type": "string"}
+      },
+      "required": ["tier", "command_ref", "command_summary"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["authn.session"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "dialog", "label_from": "props.command_summary"},
+    "certified": {
+      "intent_kind": null,
+      "ceremony": true,
+      "gate": "renders the tier_refusal of /api/v1/ai/authn/* — the ceremony itself, not an enforce site",
+      "goldens": [
+        "goldens/certified.step-up.v1.S.novice.json",
+        "goldens/certified.step-up.v1.S.operator.json",
+        "goldens/certified.step-up.v1.C.novice.json",
+        "goldens/certified.step-up.v1.C.operator.json"
+      ]
+    }
+  },
+  {
+    "type": "certified.second-channel-wait",
+    "class": "certified",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "command_ref": {"type": "string"},
+        "command_summary": {"type": "string"},
+        "channel": {"type": "string"}
+      },
+      "required": ["command_ref", "command_summary", "channel"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"enum": ["authn.oob_state"]},
+          "params": {"type": "object"}
+        },
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "dialog", "label_from": "props.command_summary"},
+    "certified": {
+      "intent_kind": null,
+      "ceremony": true,
+      "gate": "renders the T3 out-of-band leg of /api/v1/ai/authn/* — the ceremony itself, not an enforce site",
+      "goldens": [
+        "goldens/certified.second-channel-wait.v1.S.novice.json",
+        "goldens/certified.second-channel-wait.v1.S.operator.json",
+        "goldens/certified.second-channel-wait.v1.C.novice.json",
+        "goldens/certified.second-channel-wait.v1.C.operator.json"
+      ]
+    }
+  }
+]

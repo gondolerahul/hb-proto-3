@@ -173,6 +173,17 @@ Two of the ten (`time-scrubber`, `divergence-ribbon`) are named in the spec's ow
 
 **D3 is now final** — D6 is complete (overview §3).
 
+## 9. A correction from the build (SEAM T1, 2026-07-29)
+
+**The inventory headline miscounts its own lists.** §6's named lists sum to
+**38** entries as first drafted (13 + 10 + 10 + 5) and **48** after §8's delta
+(19 + 10 + 13 + 6) — not "35 → 45". The delta of ten is right; both totals are
+three short. Found the day the registry was authored as JSON and a test
+counted it — the same way the STRAT review round caught "seven objects,
+27 → 34" while listing eight. **The named lists are authoritative** and the
+authored registry carries all 48; `test_genui_registry.py` pins the per-class
+counts, so the number is now held by CI rather than by prose.
+
 ---
 
 ## Change Log
