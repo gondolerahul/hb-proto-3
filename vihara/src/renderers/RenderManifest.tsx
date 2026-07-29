@@ -12,6 +12,7 @@
  */
 import type { Assessment, Disposition } from "../manifest/refusals";
 import type { WireComponent, WireScaffold } from "../manifest/schema";
+import { CERTIFIED_IMPLEMENTATIONS } from "../components/certified/certifiedSet";
 import { StillLine } from "../components/narrative/StillLine";
 import {
   EmptyState,
@@ -39,6 +40,9 @@ const IMPLEMENTATIONS: Record<string, ComponentImpl> = {
     />
   ),
   "narrative.still-line": StillLine,
+  // The certified set ships in the shell — never lazy (D7 §3.3): a tray
+  // must not wait on a chunk.
+  ...CERTIFIED_IMPLEMENTATIONS,
 };
 
 export function implementationFor(type: string): ComponentImpl | undefined {

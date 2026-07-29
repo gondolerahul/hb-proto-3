@@ -1,0 +1,81 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`structural goldens > certified.approval · C · novice 1`] = `"<section data-certified-type=certified.approval data-part=certified><header><span></span><span "Approval · T2"></span></header><div><p "a payout approval"></p><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.approval · C · operator 1`] = `"<section data-certified-type=certified.approval data-part=certified><header><span></span><span "Approval · T2"></span></header><div><p "a payout approval"></p><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.approval · S · novice 1`] = `"<section data-certified-type=certified.approval data-part=certified><header><span></span><span "Approval · T2"></span></header><div><p "a payout approval"></p><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.approval · S · operator 1`] = `"<section data-certified-type=certified.approval data-part=certified><header><span></span><span "Approval · T2"></span></header><div><p "a payout approval"></p><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.autonomy-change · C · novice 1`] = `"<section data-certified-type=certified.autonomy-change data-part=certified><header><span></span><span "Autonomy"></span></header><div><p "raise Meera to A3"></p><span "Meera : A2 → A3"></span></div><footer><button data-action=confirm "confirm"></button><button data-action=keep as is "keep as is"></button></footer></section>"`;
+
+exports[`structural goldens > certified.autonomy-change · C · operator 1`] = `"<section data-certified-type=certified.autonomy-change data-part=certified><header><span></span><span "Autonomy"></span></header><div><p "raise Meera to A3"></p><span "Meera : A2 → A3"></span></div><footer><button data-action=confirm "confirm"></button><button data-action=keep as is "keep as is"></button></footer></section>"`;
+
+exports[`structural goldens > certified.autonomy-change · S · novice 1`] = `"<section data-certified-type=certified.autonomy-change data-part=certified><header><span></span><span "Autonomy"></span></header><div><p "raise Meera to A3"></p><span "Meera : A2 → A3"></span></div><footer><button data-action=confirm "confirm"></button><button data-action=keep as is "keep as is"></button></footer></section>"`;
+
+exports[`structural goldens > certified.autonomy-change · S · operator 1`] = `"<section data-certified-type=certified.autonomy-change data-part=certified><header><span></span><span "Autonomy"></span></header><div><p "raise Meera to A3"></p><span "Meera : A2 → A3"></span></div><footer><button data-action=confirm "confirm"></button><button data-action=keep as is "keep as is"></button></footer></section>"`;
+
+exports[`structural goldens > certified.connector-binding · C · novice 1`] = `"<section data-certified-type=certified.connector-binding data-part=certified><header><span></span><span "Connector"></span></header><div><p "bind Zoho Books"></p><span "Zoho Books"></span></div><footer><button data-action=bind "bind"></button></footer></section>"`;
+
+exports[`structural goldens > certified.connector-binding · C · operator 1`] = `"<section data-certified-type=certified.connector-binding data-part=certified><header><span></span><span "Connector"></span></header><div><p "bind Zoho Books"></p><span "Zoho Books"></span></div><footer><button data-action=bind "bind"></button></footer></section>"`;
+
+exports[`structural goldens > certified.connector-binding · S · novice 1`] = `"<section data-certified-type=certified.connector-binding data-part=certified><header><span></span><span "Connector"></span></header><div><p "bind Zoho Books"></p><span "Zoho Books"></span></div><footer><button data-action=bind "bind"></button></footer></section>"`;
+
+exports[`structural goldens > certified.connector-binding · S · operator 1`] = `"<section data-certified-type=certified.connector-binding data-part=certified><header><span></span><span "Connector"></span></header><div><p "bind Zoho Books"></p><span "Zoho Books"></span></div><footer><button data-action=bind "bind"></button></footer></section>"`;
+
+exports[`structural goldens > certified.consent · C · novice 1`] = `"<section data-certified-type=certified.consent data-part=certified><header><span></span><span "Consent"></span></header><div><p "let Meera message customers about orders"></p><span "whatsapp · order updates"></span></div><footer><button data-action=grant "grant"></button></footer></section>"`;
+
+exports[`structural goldens > certified.consent · C · operator 1`] = `"<section data-certified-type=certified.consent data-part=certified><header><span></span><span "Consent"></span></header><div><p "let Meera message customers about orders"></p><span "whatsapp · order updates"></span></div><footer><button data-action=grant "grant"></button></footer></section>"`;
+
+exports[`structural goldens > certified.consent · S · novice 1`] = `"<section data-certified-type=certified.consent data-part=certified><header><span></span><span "Consent"></span></header><div><p "let Meera message customers about orders"></p><span "whatsapp · order updates"></span></div><footer><button data-action=grant "grant"></button></footer></section>"`;
+
+exports[`structural goldens > certified.consent · S · operator 1`] = `"<section data-certified-type=certified.consent data-part=certified><header><span></span><span "Consent"></span></header><div><p "let Meera message customers about orders"></p><span "whatsapp · order updates"></span></div><footer><button data-action=grant "grant"></button></footer></section>"`;
+
+exports[`structural goldens > certified.mastering-declaration · C · novice 1`] = `"<section data-certified-type=certified.mastering-declaration data-part=certified><header><span></span><span "Mastering"></span></header><div><p "Zoho Books masters Invoice"></p><span "Invoice ← zoho_books ( external_masters )"></span></div><footer><button data-action=apply "apply"></button></footer></section>"`;
+
+exports[`structural goldens > certified.mastering-declaration · C · operator 1`] = `"<section data-certified-type=certified.mastering-declaration data-part=certified><header><span></span><span "Mastering"></span></header><div><p "Zoho Books masters Invoice"></p><span "Invoice ← zoho_books ( external_masters )"></span></div><footer><button data-action=apply "apply"></button></footer></section>"`;
+
+exports[`structural goldens > certified.mastering-declaration · S · novice 1`] = `"<section data-certified-type=certified.mastering-declaration data-part=certified><header><span></span><span "Mastering"></span></header><div><p "Zoho Books masters Invoice"></p><span "Invoice ← zoho_books ( external_masters )"></span></div><footer><button data-action=apply "apply"></button></footer></section>"`;
+
+exports[`structural goldens > certified.mastering-declaration · S · operator 1`] = `"<section data-certified-type=certified.mastering-declaration data-part=certified><header><span></span><span "Mastering"></span></header><div><p "Zoho Books masters Invoice"></p><span "Invoice ← zoho_books ( external_masters )"></span></div><footer><button data-action=apply "apply"></button></footer></section>"`;
+
+exports[`structural goldens > certified.payment · C · novice 1`] = `"<section data-certified-type=certified.payment data-part=certified><header><span></span><span "Payment · T2"></span></header><div><p "a payout of consequence"></p><output "84200"></output><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.payment · C · operator 1`] = `"<section data-certified-type=certified.payment data-part=certified><header><span></span><span "Payment · T2"></span></header><div><p "a payout of consequence"></p><output "84200"></output><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.payment · S · novice 1`] = `"<section data-certified-type=certified.payment data-part=certified><header><span></span><span "Payment · T2"></span></header><div><p "a payout of consequence"></p><output "84200"></output><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.payment · S · operator 1`] = `"<section data-certified-type=certified.payment data-part=certified><header><span></span><span "Payment · T2"></span></header><div><p "a payout of consequence"></p><output "84200"></output><span "before_outbound_payout_above_band"></span></div><footer><button data-action=approve "approve"></button><button data-action=decline "decline"></button></footer></section>"`;
+
+exports[`structural goldens > certified.provider-opt-in · C · novice 1`] = `"<section data-certified-type=certified.provider-opt-in data-part=certified><header><span></span><span "Model provider"></span></header><div><p "allow Kimi to serve this workspace"></p><span "kimi · disclosure 2026-07-25"></span></div><footer><button data-action=opt in "opt in"></button></footer></section>"`;
+
+exports[`structural goldens > certified.provider-opt-in · C · operator 1`] = `"<section data-certified-type=certified.provider-opt-in data-part=certified><header><span></span><span "Model provider"></span></header><div><p "allow Kimi to serve this workspace"></p><span "kimi · disclosure 2026-07-25"></span></div><footer><button data-action=opt in "opt in"></button></footer></section>"`;
+
+exports[`structural goldens > certified.provider-opt-in · S · novice 1`] = `"<section data-certified-type=certified.provider-opt-in data-part=certified><header><span></span><span "Model provider"></span></header><div><p "allow Kimi to serve this workspace"></p><span "kimi · disclosure 2026-07-25"></span></div><footer><button data-action=opt in "opt in"></button></footer></section>"`;
+
+exports[`structural goldens > certified.provider-opt-in · S · operator 1`] = `"<section data-certified-type=certified.provider-opt-in data-part=certified><header><span></span><span "Model provider"></span></header><div><p "allow Kimi to serve this workspace"></p><span "kimi · disclosure 2026-07-25"></span></div><footer><button data-action=opt in "opt in"></button></footer></section>"`;
+
+exports[`structural goldens > certified.second-channel-wait · C · novice 1`] = `"<section data-certified-type=certified.second-channel-wait data-part=certified><header><span></span><span "Second channel"></span></header><div><p "approving a payout"></p><span "waiting on whatsapp · approval:1"></span></div></section>"`;
+
+exports[`structural goldens > certified.second-channel-wait · C · operator 1`] = `"<section data-certified-type=certified.second-channel-wait data-part=certified><header><span></span><span "Second channel"></span></header><div><p "approving a payout"></p><span "waiting on whatsapp · approval:1"></span></div></section>"`;
+
+exports[`structural goldens > certified.second-channel-wait · S · novice 1`] = `"<section data-certified-type=certified.second-channel-wait data-part=certified><header><span></span><span "Second channel"></span></header><div><p "approving a payout"></p><span "waiting on whatsapp · approval:1"></span></div></section>"`;
+
+exports[`structural goldens > certified.second-channel-wait · S · operator 1`] = `"<section data-certified-type=certified.second-channel-wait data-part=certified><header><span></span><span "Second channel"></span></header><div><p "approving a payout"></p><span "waiting on whatsapp · approval:1"></span></div></section>"`;
+
+exports[`structural goldens > certified.step-up · C · novice 1`] = `"<section data-certified-type=certified.step-up data-part=certified><header><span></span><span "Prove it is you · T2"></span></header><div><p "approving a payout"></p><span "approval:1"></span></div><footer><button data-action=use passkey "use passkey"></button></footer></section>"`;
+
+exports[`structural goldens > certified.step-up · C · operator 1`] = `"<section data-certified-type=certified.step-up data-part=certified><header><span></span><span "Prove it is you · T2"></span></header><div><p "approving a payout"></p><span "approval:1"></span></div><footer><button data-action=use passkey "use passkey"></button></footer></section>"`;
+
+exports[`structural goldens > certified.step-up · S · novice 1`] = `"<section data-certified-type=certified.step-up data-part=certified><header><span></span><span "Prove it is you · T2"></span></header><div><p "approving a payout"></p><span "approval:1"></span></div><footer><button data-action=use passkey "use passkey"></button></footer></section>"`;
+
+exports[`structural goldens > certified.step-up · S · operator 1`] = `"<section data-certified-type=certified.step-up data-part=certified><header><span></span><span "Prove it is you · T2"></span></header><div><p "approving a payout"></p><span "approval:1"></span></div><footer><button data-action=use passkey "use passkey"></button></footer></section>"`;
+
+exports[`structural goldens > certified.strategy-resolution · C · novice 1`] = `"<section data-certified-type=certified.strategy-resolution data-part=certified><header><span></span><span "Resolution"></span></header><div><h3 "Ship the north-market push"></h3><p "adopt the resolution as tabled"></p></div><footer><button data-action=adopt "adopt"></button></footer></section>"`;
+
+exports[`structural goldens > certified.strategy-resolution · C · operator 1`] = `"<section data-certified-type=certified.strategy-resolution data-part=certified><header><span></span><span "Resolution"></span></header><div><h3 "Ship the north-market push"></h3><p "adopt the resolution as tabled"></p></div><footer><button data-action=adopt "adopt"></button></footer></section>"`;
+
+exports[`structural goldens > certified.strategy-resolution · S · novice 1`] = `"<section data-certified-type=certified.strategy-resolution data-part=certified><header><span></span><span "Resolution"></span></header><div><h3 "Ship the north-market push"></h3><p "adopt the resolution as tabled"></p></div><footer><button data-action=adopt "adopt"></button></footer></section>"`;
+
+exports[`structural goldens > certified.strategy-resolution · S · operator 1`] = `"<section data-certified-type=certified.strategy-resolution data-part=certified><header><span></span><span "Resolution"></span></header><div><h3 "Ship the north-market push"></h3><p "adopt the resolution as tabled"></p></div><footer><button data-action=adopt "adopt"></button></footer></section>"`;
