@@ -13,6 +13,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _twin_resolve(name: str, real: Any) -> Any:
+    """GLASS X1 — the Glasshouse's tool-resolution seam.
+
+    A pass-through outside a twin binding (the overwhelmingly common case,
+    and the one the mutation test pins). Imported lazily so the executor
+    keeps no import-time dependency on the twin package.
+    """
+    from src.ai.twin.binding import resolve_tool
+
+    return resolve_tool(name, real)
+
 # Cache base references for introspection in execute_from_function_calls
 _base_run_typed = _BaseTool.run_typed
 _base_tool_params = _BaseToolParams
@@ -116,7 +128,10 @@ class ToolExecutor:
                         ),
                     )
 
-            tool = ToolRegistry.get_tool(tool_name)
+            # GLASS X1: inside a Glasshouse run this resolves to the
+            # substituted tool (or to nothing); in ordinary life it is a
+            # pass-through. Mutation-tested in both directions.
+            tool = _twin_resolve(tool_name, ToolRegistry.get_tool(tool_name))
 
             if tool:
                 _start = datetime.now(timezone.utc)
@@ -223,7 +238,8 @@ class ToolExecutor:
         Execute tool calls and return results (legacy method, now returns ToolResult).
         """
         async def _one(call: Dict[str, str]) -> ToolResult:
-            tool = ToolRegistry.get_tool(call["tool"])
+            # GLASS X1 — the second of the two resolution sites.
+            tool = _twin_resolve(call["tool"], ToolRegistry.get_tool(call["tool"]))
             _start = datetime.now(timezone.utc)
             if tool:
                 try:
