@@ -11810,6 +11810,35 @@
     ]
    }
   },
+  "/api/v1/ai/genui/line/morning": {
+   "get": {
+    "description": "Today's Morning Story (LINE L1, VG-20). The stored telling when the\njob has run \u2014 its audio aligned to its cards \u2014 else composed fresh,\ntext-only, the absence named.",
+    "operationId": "get_morning_story_api_v1_ai_genui_line_morning_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Morning Story Api V1 Ai Genui Line Morning Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Get Morning Story",
+    "tags": [
+     "Vihara GenUI"
+    ]
+   }
+  },
   "/api/v1/ai/genui/manifest": {
    "get": {
     "description": "A manifest, streamed in two parts (D4 \u00a76): the scaffold line paints,\nthe fill line hydrates. Compositions are pure shapes \u2014 tenant data\narrives only through bindings \u2014 so this endpoint touches no tenant\nstate and the intent-shape cache is shared safely across tenants.",
@@ -11962,6 +11991,35 @@
      }
     ],
     "summary": "Delete Push Subscription",
+    "tags": [
+     "Vihara GenUI"
+    ]
+   }
+  },
+  "/api/v1/ai/genui/push/vapid-public-key": {
+   "get": {
+    "description": "The public half of our VAPID pair (LINE L4) \u2014 the push client needs\nit to subscribe. Public by nature; authenticated anyway because nothing\non this surface answers anonymously.",
+    "operationId": "get_vapid_public_key_api_v1_ai_genui_push_vapid_public_key_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Vapid Public Key Api V1 Ai Genui Push Vapid Public Key Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Get Vapid Public Key",
     "tags": [
      "Vihara GenUI"
     ]

@@ -127,11 +127,14 @@ async def send_morning_summary(
 
 
 async def _default_transport(to: str, message: str) -> bool:
-    """The shipped messaging service. Unconfigured → not reached, honestly."""
+    """The shipped messaging service, on the provider the deployment
+    names. Unconfigured → not reached, honestly."""
     try:
-        from src.voice.whatsapp_messaging import WhatsAppMessagingService
+        from src.common.config import settings
+        from src.voice.whatsapp_messaging import WhatsAppMessagingFactory
 
-        service = WhatsAppMessagingService()
+        service = WhatsAppMessagingFactory.get_service(
+            settings.VIHARA_WHATSAPP_MIRROR_PROVIDER)
         result = await service.send_message(to=to, message=message)
         return bool(result.get("success"))
     except Exception:  # noqa: BLE001 — an unconfigured provider is "not reached"

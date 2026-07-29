@@ -88,6 +88,14 @@ class CostAttribution(str, Enum):
     # Written once per tray at first delivery (the watcher's rule), so the
     # spend is bounded by the number of cards, not by reads.
     TRAY_RECOMMENDATION = "tray_recommendation"
+    # LINE (Inc 7) — the Morning Story's daily audio (owner decision
+    # 2026-07-29: pre-generated). TENANT-initiated despite the schedule: a
+    # standing instruction the tenant can turn off, like a scheduled
+    # campaign — a per-tenant daily benefit must not live on the cap that
+    # protects tenants FROM platform work (B13). The wallet gates
+    # synthesis; speech metering itself is still VG-08's open debt, so
+    # this is registered and waiting, as MANIFEST_GENERATION was.
+    MORNING_STORY = "morning_story"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}

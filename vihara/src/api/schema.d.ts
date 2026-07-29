@@ -548,6 +548,15 @@ export interface paths {
      */
     get: operations["get_district_api_v1_ai_genui_estate_district__process_code__get"];
   };
+  "/api/v1/ai/genui/line/morning": {
+    /**
+     * Get Morning Story
+     * @description Today's Morning Story (LINE L1, VG-20). The stored telling when the
+     * job has run — its audio aligned to its cards — else composed fresh,
+     * text-only, the absence named.
+     */
+    get: operations["get_morning_story_api_v1_ai_genui_line_morning_get"];
+  };
   "/api/v1/ai/genui/manifest": {
     /**
      * Get Manifest
@@ -572,6 +581,15 @@ export interface paths {
      * @description Revoke one of your subscriptions. 404 for unknown and foreign alike.
      */
     delete: operations["delete_push_subscription_api_v1_ai_genui_push_subscriptions__subscription_id__delete"];
+  };
+  "/api/v1/ai/genui/push/vapid-public-key": {
+    /**
+     * Get Vapid Public Key
+     * @description The public half of our VAPID pair (LINE L4) — the push client needs
+     * it to subscribe. Public by nature; authenticated anyway because nothing
+     * on this surface answers anonymously.
+     */
+    get: operations["get_vapid_public_key_api_v1_ai_genui_push_vapid_public_key_get"];
   };
   "/api/v1/ai/genui/registry": {
     /**
@@ -7115,6 +7133,24 @@ export interface operations {
     };
   };
   /**
+   * Get Morning Story
+   * @description Today's Morning Story (LINE L1, VG-20). The stored telling when the
+   * job has run — its audio aligned to its cards — else composed fresh,
+   * text-only, the absence named.
+   */
+  get_morning_story_api_v1_ai_genui_line_morning_get: {
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  /**
    * Get Manifest
    * @description A manifest, streamed in two parts (D4 §6): the scaffold line paints,
    * the fill line hydrates. Compositions are pure shapes — tenant data
@@ -7191,6 +7227,24 @@ export interface operations {
       422: {
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Get Vapid Public Key
+   * @description The public half of our VAPID pair (LINE L4) — the push client needs
+   * it to subscribe. Public by nature; authenticated anyway because nothing
+   * on this surface answers anonymously.
+   */
+  get_vapid_public_key_api_v1_ai_genui_push_vapid_public_key_get: {
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
         };
       };
     };
