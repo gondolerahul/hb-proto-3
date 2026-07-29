@@ -1,6 +1,6 @@
 # Increment 7 / Phase B — STEWARD: The Steward Present (G3)
 
-> **Status:** ✍️ workstream opened 2026-07-29, branch `inc7/steward`.
+> **Status:** ✅ **BUILT 2026-07-29** (S0–S10 on `inc7/steward`) — G3's exit met at the test level; the live legs (§8) stay owner-side. Build notes: §9.
 > **Read first:** [10_workstream_decomposition.md](./10_workstream_decomposition.md) §6 (the scope) · [06_backend_api_contracts.md](./06_backend_api_contracts.md) §5 (VG-07, the channel contract) + §12 (SEAM build notes — what the channel already does) · [11_driver.md](./11_driver.md) §6.3 (the honest limits STEWARD inherits) · [00a_voice_go_live_plan.md](./00a_voice_go_live_plan.md) §8 (the live call that gates G3's *exit*).
 
 ---
@@ -101,8 +101,112 @@ The live call (00a §8 — config items done, the call itself owner-side) and a 
 
 ---
 
+## 9. § Build notes — ✅ BUILT 2026-07-29, S0–S10 (branch `inc7/steward`)
+
+A commit per task, gates green throughout. Final measures: mypy `--strict`
+**338 files** · layout lint · **2188 unit** (+2 skipped) · 16 parity/eval ·
+integration green on live PG (including the new `test_genui_watcher_db`) ·
+migration head **`genui002`** (applies / rolls back / re-applies) · Vitest
+**230** · shell **110.6 KB gz** of the 220 hard budget (the dock cost ~3.5
+KB) · world chunk untouched · `npm run lint` and `tsc --noEmit` clean.
+**The certified set is still ten** — STEWARD added no `enforce_*` call
+site, and R5's correspondence test exits the workstream byte-identical.
+
+### 9.1 What shipped, per task
+
+* **S1 — the watcher** (`genui/watcher.py`, migration `genui002`): the
+  production `deliver_tray` caller, an asyncio lifespan task in the API
+  process. The ledger's (approval, user) grain does once-only *and*
+  late-arrival. The loop survives a raising sweep, pinned by the tripwire
+  test.
+* **S2 — the recommendation writer** (`genui/recommendation.py`):
+  LLM-written per owner decision, `TRAY_RECOMMENDATION` attribution
+  classified tenant-side of B13 by a named test, prompt built from the
+  gate's own telling, every failure `None` — advice lost, never work.
+* **S3 — navigation + presence semantics** (`genui/navigation.py` +
+  channel rework): a read materializes, an act focuses, at most one event
+  per turn; the utterance branch now speaks **to the session**; a failed
+  turn is presence `away`, never a dead channel.
+* **S4 — the browser voice leg** (`genui/voice_channel.py`): the same
+  Chirp/Gemini adapters with the μ-law conversions off; a heard final goes
+  through `handle_utterance`; barge-in client-signalled, synthesis stops
+  at the next chunk; **no ceiling** — pinned by AST (the module may not
+  import `voice_loop`).
+* **S5–S8 — the client** (`vihara/src/steward/` + `estate/sharedStream.ts`):
+  the reconnecting channel client with typed senders; the pure reducer;
+  the dock (presence mark, narration with anchors, typed + spoken input);
+  ceremonies over the channel through the **same** `StepUpCeremony`, retry
+  whole exactly once; **the T3 second-channel leg driven end to end**
+  (issue → nonce on the second channel → typed back); PCM16 mic capture
+  with client VAD; the butt-joining PCM player; viewport on every depth
+  change; and the one-SSE-per-app consolidation DRIVER's notes promised.
+
+### 9.2 § Delta log — where the build corrected the design
+
+1. **Materialize names the surface; the manifest rides the client's one
+   manifest path** (delta against D5 §5's `materialize(manifest)`). The
+   cache, the refusal ladder and VG-23's taint rule already live on the
+   fetch path — a second manifest-delivery channel would be a second thing
+   to keep certified-safe.
+2. **The narration is session-wide, not caller-scoped.** D5 §5 shaped the
+   reply as a response to the asking socket; rule 1 (one session across
+   devices) makes that wrong — an answer only the asking device hears
+   makes "zero repeated context" a per-device promise. `dispatch_message`
+   returns only errors; presence → navigation → narration `_emit` to the
+   session.
+3. **A graceful mic close must not wait for the reply** — the defect the
+   tests found. The first cut awaited the drive task on mic-close, which
+   blocked the socket loop for the whole spoken reply: the client could
+   not barge in, structurally. Close now marks the stream ended and
+   returns; the drive clears itself; a re-open while she is replying is
+   the interrupt *and* opens a fresh leg (the old frame stream has ended).
+4. **Delivery and teardown are different closes.** `closed` (the human
+   finished talking — exactly when she speaks) must not stop synthesis;
+   only `interrupted` may. Disconnect passes `abort=True`, which does both.
+5. **The readiness check lives with the default builders.** `voice_ready`
+   is a property of resolving real registry rows; an injected fake has no
+   row to be ready about — checking before injection made every unit test
+   need a database for a question it wasn't asking.
+6. **`cost_usd` was cut from `tray_recommendations`.** `LLMResponse`
+   carries no computed cost; the usage ledger is the one authority on
+   spend, and a never-populated column is LIB T8's mistake made twice.
+7. **The T2 hint on the tray recommendation** (`RecommendationDraft`)
+   replaced the bare-string seam mid-S2 — the row wants `model_used`, and
+   widening a `str` seam later would have touched every caller.
+
+### 9.3 Honest limits (each deliberate, none silent)
+
+* **The live legs are owner-side and gate G3's exit**: the phone call
+  (00a §8) and a real browser mic/speaker run against live transports.
+  Neither live transport has still ever executed — the browser leg added
+  no new live-transport code at all.
+* **`focus` navigates; it does not yet fly the W camera.** The shell
+  opens the district (the S path — correct with W disabled); the
+  in-territory beam flight binds when the W renderer exposes a focus
+  hook. The event contract already carries everything it needs.
+* **Speech minutes are not usage-logged on either voice leg** (browser
+  mirrors phone — VG-08's own limit). `run_turn` meters the LLM part.
+* **Anchors are v1-small**: the raised tray and the touched district.
+  Delegations and record refs anchor when their refs are stable.
+* **The navigation table is heuristic** and covers estate words + process
+  codes; everything else stays still with her text answer. The LLM
+  composer (SEAM's honest limit) is still absent — nothing here changed
+  that.
+* **The watcher delivers to socket-open and push-subscribed users only.**
+  A user with neither hears nothing until they open the app — where the
+  terrace's own beacons and the tray panel already show the card (the SSE
+  mirror is unchanged).
+* **`away` covers hard turn failure**, not suspension or credit
+  exhaustion — those speak in words through the runtime's own refusal
+  replies, which is better than a silent quarter-moon.
+* **One session's mic**: any device's disconnect aborts the session's
+  voice leg; per-device legs are LINE-adjacent work if ever needed.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.1 — **BUILT, S0–S10.** Build notes §9 with the seven-delta log and honest limits. The deltas that matter: materialize names the surface (one manifest path); the narration is session-wide (rule 1 beats the reply-shape); a graceful mic close must not wait for the reply (the barge-in was structurally impossible in the first cut); delivery and teardown are different closes. The T3 second-channel leg went end to end, closing the ceremony's on-screen caveat. Certified set still ten. |
 | 2026-07-29 | v1.0 — workstream opened. Four owner decisions locked (§2): voice now as a tested seam · the recommendation is LLM-written (with the §5 cost/persistence/failure design that choice obligates) · platform voice stays parked · STEWARD only this session. The designs that needed writing before code: the watcher is an API-process lifespan task because the socket hub is in-memory (and the arq worker is a known single point of failure); the delivery ledger's grain is (approval, user) so late-arriving devices still hear about still-pending cards; the recommendation is written once at delivery and never after; browser voice is an input method, not a channel — console tier rules, no T1 ceiling; barge-in is client-side on this leg. |
