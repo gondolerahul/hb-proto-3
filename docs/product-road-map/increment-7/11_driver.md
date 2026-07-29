@@ -1,7 +1,7 @@
 # Increment 7 / Phase B — DRIVER: The Daily Driver (G2)
 
 > **Workstream 4** of [10_workstream_decomposition.md](./10_workstream_decomposition.md) §5. Branch **`inc7/driver`**.
-> **Status:** ✍️ opened 2026-07-29, the session after WORLD merged. Decisions locked the same day (§2).
+> **Status:** ✅ **BUILT 2026-07-29** — D0–D13, build notes §6. G2's exit met at the test level; the pilot walkthrough is owner-side (§6.3).
 > **Builds against:** [07 wireframes](./07_surface_wireframes.md) (the layouts, R2-passed as drawn) · [04 registry](./04_component_registry.md) · [05 manifest](./05_manifest_contract.md) · [06 backend contracts](./06_backend_api_contracts.md) (D5 — every seam shipped by SEAM).
 > **Exits:** **G2** — a pilot tenant runs a business day entirely in Vihara: approves from the tray, edits a record in a hall, reads a dossier, adopts nothing without a ceremony.
 
@@ -68,9 +68,130 @@ Spec §5's sentence: *"Termination = exit interview + handover memo; portrait mo
 
 Backend placement is decided at the code face (wherever entity lifecycle actually lives — likely beside the Meta-Agent Board's service) and recorded in §6; the design constraint is only that `ai/genui/` stays projection-only, so the workflow does **not** live there.
 
-## 6. § Build notes
+## 6. § Build notes — ✅ BUILT 2026-07-29, D0–D13 (branch `inc7/driver`)
 
-*(appended task-by-task; delta log at merge)*
+All thirteen tasks, one session, gates green throughout. Vihara **213**
+vitest (was 145) · shell **107.1 KB gz** of the 220 hard budget (world
+chunk untouched at 215.5) · backend **2145 unit** (+18) · **334 files**
+mypy `--strict` (new package `ai/talent/`) · parity/eval **16** · new
+integration suites for cost, bulk and termination. OpenAPI re-exported
+both sides three times (bulk · talent · document provenance) with the
+drift gate proving each.
+
+### 6.1 What shipped, in one paragraph each
+
+**D1 The Tray** — the C-composed tray over `GET /genui/trays` +
+`tray.delivered`, with the four D6 §4 rules each pinned by a test: the
+certified block renders through `implementationFor` (the SAME dispatch
+manifests use) *and* through the refusal ladder, so a poisoned block
+renders a refusal, never a lookalike; the countdown is a quiet timer; a
+null cost is no line; the block renders whole. `useCertifiedAct` is the
+legacy console's retry-whole-exactly-once closure rebuilt storage-pinned,
+and `StepUpCeremony` drives `/ai/authn/*` (passkey, TOTP fallback, T3
+rendered as the second-channel-wait state honestly deferred to STEWARD).
+Every path echoes, including asking. The shell gained its two pieces of
+tray chrome: the gold "N waiting" affordance (absent at zero) and the
+echo ribbon.
+
+**D2 The estimator** — `genui/cost.py` per §4's design: company-scoped
+median of post-approval run spend, 90-day window, five-observation floor,
+zero-spend approvals in the sample, decline never estimated, the gate's
+own amount always winning, bases never summed. No migration, no cron, no
+new attribution; parity stayed 16.
+
+**D3 Registry Halls** — schema-derived CRUD over the shipped tenant API;
+◧ from pending `object.change_proposed` signals with the delta takeable
+into the draft; ⊛ from the new `sor`/`synced` fields on `_record_out`;
+CAS conflicts said plainly. **Bulk became the seventh gated call site**:
+`POST /ai/tenant/records/bulk` with `enforce_kind(bulk_data_operation)`
+in the handler body, mutation-tested (refuses un-elevated before any
+write; applies elevated; ghosts reported).
+
+**D4–D5** — the district sheet App promised itself (colleagues, reserve,
+weather, live runs) with the dossier as a one-on-one (work *told* as
+sentences, trace one flip away, feedback echoed with the honest note
+that the charter fold-in is SEGA's proposal path at G3); the Standup as
+a pure composition over three shipped reads, waiting-first, quiet days
+told rather than blank.
+
+**D6 The Boardroom** — **STRAT's honest limit closes**: raising a
+Proposition and opening Minutes are now producible acts, born
+`untested`; UNTESTED renders as its own words distinct from UNKNOWN;
+adoption drives the T2 certified endpoint; take-to-Glasshouse drawn and
+honestly disabled until GLASS.
+
+**D7 Talent + VG-18** — `ai/talent/` per §5's design: termination
+refuses over live runs, files a deterministic handover memo as a real
+artifact, stamps the Gallery record in `metadata_extensions`, soft
+deletes, touches no audit, adds no `enforce_*`. Hire lands at A1 no
+matter what the template says. The interview honestly disabled until G5.
+
+**D8–D11** — the Gallery (seasons, mandates' predicted-vs-realized with
+`not_measurable` as words + its `missing` list, colleagues past
+desaturated by the twin's rule); the Library (provenance columns added
+to `DocumentResponse` additively; the influence sentence binds
+`questions_answered`, pinned against `retrievals`; the viewer is the
+passage read); the Undercroft (mono, operator by decree, plus the
+**manifest inspector** over a client-side log of every manifest asked
+for, rejections included); Bridges & Gates (expiry-less credentials say
+"not checked"; `sync.conflict` as a dispute keeping the losing delta;
+binding through the ceremony).
+
+**D12 The Study** — drafted into D6 §15a first (decision 1), then built
+shell-reachable: identity, passkey enrolment (the depth-2 placement is
+the point), density stated-vs-learned, `notify.*` toggles, and dunning
+explained in words on the one surface where quiet must not read as calm.
+
+### 6.2 § Delta log — where the build corrected the designs
+
+1. **R5 gained a second exception family** (`CEREMONY_ONLY_GATES` in
+   `genui/registry.py`): a gate whose certified surface is the generic
+   step-up rather than a component of its own (bulk, per D6 §7 as
+   drawn). Counted by the R5 test, not exempted — an unlisted
+   `enforce_*` site still fails CI. The certified set stays **ten**.
+2. **Termination's "park the triggers" step dissolved**: triggers are
+   per-PROCESS rows; an agent has none, and roster removal is the
+   stop-new-work step. (§5's other four steps shipped as designed.)
+3. **Three additive read-shape changes** where a surface needed what the
+   platform already knew: `_record_out` gained `sor`/`synced` (the ⊛),
+   `DocumentResponse` gained the LIB provenance columns, and the talent
+   router gained `GET /colleagues-past` (a query over the stamp).
+4. **The manifest inspector lives client-side** — an in-memory log in
+   the API client, capped at 50. Consistent with Phase A's "no
+   `ui_manifests` table" ruling; what audit needs is still the hash on
+   the approval record.
+5. **The tray composer takes `observed_cost` as a parameter** rather
+   than the estimator being called inside `compose_tray` — composition
+   stays pure and the DB read stays at the two call sites.
+6. **The shell nav grew room links** (halls · standup · board · talent ·
+   gallery · library · bridges · undercroft · study) — a pragmatic
+   stand-in until STEWARD's ⌘K palette, which D6 §1 makes the real
+   navigation. Recorded so nobody mistakes the buttons for the design.
+
+### 6.3 Honest limits (each deliberate, none silent)
+
+* **The tray panel opens its own SSE connection** while open (beside the
+  terrace's). One-connection-per-session consolidation lands with
+  STEWARD's channel client, which needs a shared stream anyway.
+* **Hall proposals are read off recent signals**, and "take into the
+  draft" applies the delta as a front-door write — the signal itself is
+  not consumed; a proposal store with acceptance state is not built
+  anywhere.
+* **The analytics flip counts loaded records client-side** (≤200) — a
+  register lens, not a query room.
+* **No per-colleague SLO is measured**; the dossier says so. Feedback
+  echoes but nothing yet files a charter proposal from it.
+* **Mastering declarations and consent grants have no board UI yet** —
+  the certified endpoints and components exist; the Bridges board
+  renders masters from the catalog and says what it cannot read.
+* **The estimator fills only amountless checkpoints**, currency stays
+  null everywhere, and its cache is per-process.
+* **The Study's identity panel is read-only**; channel bindings and TOTP
+  enrolment stay in the legacy console this increment.
+* **G2's exit demo is met at the test level** — approve from the tray,
+  edit in a hall, read a dossier, adopt nothing without a ceremony, all
+  built and tested; the pilot-tenant walkthrough is owner-side, like
+  G1's two items.
 
 ---
 
@@ -78,4 +199,5 @@ Backend placement is decided at the code face (wherever entity lifecycle actuall
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.1 — **BUILT, D0–D13.** Build notes §6 with the six-delta log (R5's ceremony-only gates; the trigger step dissolving; three additive read shapes; the client-side manifest inspector; the composer's `observed_cost` parameter; the stand-in shell nav) and the honest-limits list. The Study drafted (D6 §15a) and built the same session. VG-18 closed; bulk became the seventh gated call site with the certified set still ten. |
 | 2026-07-29 | v1.0 — workstream opened. Three owner decisions locked (§2): the Study draft-and-build; the cost estimator designed **and built** here; termination a plain governed act (certified set stays ten). Scope correction recorded: the Bridges & Gates board, unassigned in the decomposition table, is DRIVER's. Two backend designs written before code (§4, §5): the estimator answers only "what has yes cost before" with observed medians and a 5-observation floor, and termination is a ceremony over soft-delete — parks triggers, refuses over live runs, files a handover memo to the Library, stamps the Gallery record — with governance untouched. |
