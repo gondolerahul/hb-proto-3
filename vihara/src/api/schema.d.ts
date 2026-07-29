@@ -881,6 +881,10 @@ export interface paths {
      */
     get: operations["reviews_due_api_v1_ai_strategy_reviews_due_get"];
   };
+  "/api/v1/ai/talent/colleagues/{entity_id}/terminate": {
+    /** Terminate */
+    post: operations["terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post"];
+  };
   "/api/v1/ai/templates": {
     /** List Templates */
     get: operations["list_templates_api_v1_ai_templates_get"];
@@ -8112,6 +8116,30 @@ export interface operations {
           "application/json": {
             [key: string]: unknown;
           };
+        };
+      };
+    };
+  };
+  /** Terminate */
+  terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post: {
+    parameters: {
+      path: {
+        entity_id: string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

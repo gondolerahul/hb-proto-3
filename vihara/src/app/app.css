@@ -782,3 +782,75 @@
   flex: 1;
   min-width: 10rem;
 }
+
+/* ── the talent office (DRIVER D7, D6 §9) ─────────────────────────────── */
+.vh-talent {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-candidate {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.vh-candidate header {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.vh-candidate h4,
+.vh-candidate p {
+  margin: 0;
+}
+.vh-candidate footer {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.vh-candidate footer button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-candidate footer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vh-hire-form {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vh-hire-form input,
+.vh-hire-form select {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  color: inherit;
+}
+.vh-colleagues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.vh-colleague {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}

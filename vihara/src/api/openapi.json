@@ -13670,6 +13670,56 @@
     ]
    }
   },
+  "/api/v1/ai/talent/colleagues/{entity_id}/terminate": {
+   "post": {
+    "operationId": "terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "entity_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Entity Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Terminate Api V1 Ai Talent Colleagues  Entity Id  Terminate Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Terminate",
+    "tags": [
+     "Talent"
+    ]
+   }
+  },
   "/api/v1/ai/templates": {
    "get": {
     "operationId": "list_templates_api_v1_ai_templates_get",

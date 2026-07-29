@@ -19,6 +19,7 @@ import { HallsSurface } from "./HallsSurface";
 import { PreSession } from "./PreSession";
 import { subscribeRibbon } from "./ribbon";
 import { StandupSurface } from "./StandupSurface";
+import { TalentSurface } from "./TalentSurface";
 import { StillSurface } from "./StillSurface";
 import { TerraceSurface } from "./TerraceSurface";
 import { TraySurface } from "./TraySurface";
@@ -29,7 +30,8 @@ type Depth =
   | { level: 1; room: "standup" }
   | { level: 2; district: string; dossier?: { id: string; name: string } }
   | { level: 2; room: "halls"; module?: string }
-  | { level: 2; room: "board" };
+  | { level: 2; room: "board" }
+  | { level: 2; room: "talent" };
 
 export function App(): JSX.Element {
   const [inSession, setInSession] = useState(getAccessToken() !== null);
@@ -95,6 +97,14 @@ export function App(): JSX.Element {
             onClick={() => setDepth({ level: 2, room: "board" })}
           >
             board
+          </button>
+          <button
+            type="button"
+            className="vh-quiet-link"
+            disabled={depth.level === 2 && "room" in depth && depth.room === "talent"}
+            onClick={() => setDepth({ level: 2, room: "talent" })}
+          >
+            talent
           </button>
           {depth.level === 2 && "district" in depth && (
             <span className="vh-quiet">{depth.district}</span>
@@ -185,6 +195,9 @@ export function App(): JSX.Element {
         )}
         {depth.level === 2 && "room" in depth && depth.room === "halls" && (
           <HallsSurface initialModule={depth.module} />
+        )}
+        {depth.level === 2 && "room" in depth && depth.room === "talent" && (
+          <TalentSurface />
         )}
         {depth.level === 2 && "room" in depth && depth.room === "board" && (
           <BoardroomSurface
