@@ -1,6 +1,6 @@
 # Increment 7 / Phase B — POLISH: Launch Quality (G6)
 
-> **Status:** 🚧 **IN BUILD** (P0 written 2026-07-29, branch `inc7/polish`). The last workstream of the increment.
+> **Status:** ✅ **BUILT 2026-07-29** (P0–P12 on `inc7/polish`) — G6's buildable half met at the test level; **every owner-side leg is consolidated into one run-sheet document, [15a_launch_protocols.md](./15a_launch_protocols.md)**, and G6's *exit* (the zero-training pass, the parallel run) is owner-side by nature. Build notes: §9.
 > **Read first:** [10_workstream_decomposition.md](./10_workstream_decomposition.md) §9 (the scope) · [03_art_bible.md](./03_art_bible.md) (the rules this workstream applies and is checked against) · [07_surface_wireframes.md](./07_surface_wireframes.md) + `wireframes/*-visual.html` (the look the owner approved at R2) · [08_device_matrix.md](./08_device_matrix.md) (D7 — the tiers and the p75 floor VG-22 must prove).
 
 ---
@@ -106,4 +106,26 @@ No new surfaces and no new backend: the nine-stage engagement (Pragya's Inc-3 st
 
 ## 9. § Build notes — the delta log
 
-*(appended per task as built)*
+All of P0–P12 built 2026-07-29 on `inc7/polish`, one commit per task. **Vitest 288** (SUB's 247 + 41) · tsc · eslint · budgets **shell 120.4 · line 3.5 · world 218.9 KB gz** (the bloom passes joined the world chunk) · backend untouched and re-measured green at merge.
+
+### 9.1 Deltas — where the build corrected the design
+
+1. **The GL floor lives in `renderers/world/AtmosphereFloor.tsx`, not `atmosphere/gl/`** (§4 sketched the latter). The eslint boundary allows three.js in exactly two trees, and widening a security-shaped rule for a background was the wrong trade — the atmosphere reaches it by dynamic import, so the chunk discipline is identical and the boundary stays narrow.
+2. **GL is shell-only, and that is now a *rule*, not a placement** (§4 said "tier A/B"). A login must not spend the 219 KB world chunk before auth, and the pocket must stay phone-light — `chooseEngine` refuses GL for `presession` and `line` contexts outright, pinned by test, whatever the tier.
+3. **The DS's reduced-motion collapse would have silently killed the beacon's glow.** The mirrored `styles.css` zeroes every animation duration; the breath at duration ~0 rests at its *zero-glow* keyframe. Vihara pins the beacon to **full glow** under reduced motion — the art bible's "loses atmosphere, never information", which the brand's blanket rule gets wrong for exactly this one element. The motion test counts `infinite` in the CSS and requires exactly one.
+4. **The stage-9 gate fails OPEN, stated and tested** (§7 implied but never said it). It is a sequencing rule, not a security control: an unreadable engagement must never lock a working estate out of its own front door. The reverse failure costs one click.
+5. **jsdom's canvas returns null, and the floor treats that as a feature** — the 2D painter degrades to silence (the vignette stands, nothing throws), which is also the honest behaviour on a canvas-starved browser.
+6. **P9's numbers are a canary, not the proof, and the file says so in its docstring.** Measured p75 over 25 runs in the harness: still scaffold **10.5ms** / 120 budget · terrace sheet **16.5ms** / 200 · tray whole **10.2ms** / 250. The real p75-on-tier-B row lives in [15a](./15a_launch_protocols.md) §3 with the eight numbers to be recorded back here.
+
+### 9.2 What each task shipped (one line each)
+
+P0 doc · **P1** `--vh-*` drift dead + `styles.css` mirrored under the two-copies gate + fonts self-hosted (canonical DS edit, latin+latin-ext carries ₹) · **P2** the atmosphere layer (vignette · Canvas-2D energy floor · dotted-B watermark · day–night luminance · depth dimming · one-GL-context pause) · **P3** the legacy three.js background ported whole and re-keyed (no blue, no gold, warm-light family; context-loss ×2 / FPS-breach / no-WebGL → 2D in place) · **P4** glass per the §10 placement map with the reduced-transparency correspondence test · **P5** the §9 motion table + the ribbon's 400ms leave as a tested hook · **P6** the shared idiom pass (interaction grammar, still-visual composition at depth 0, mono eyebrows, display figures, metallic seal, card idiom, chips) · **P7** onboarding staged in the world (depth 0 = stage 9's reward) · **P8** the computed §11 contrast table + axe over the wire-free surfaces · **P9** the p75 canary · **P10** register v1.3 with two named residuals (password reset · login OAuth) · **P11** [15a](./15a_launch_protocols.md) · **P12** this close-out.
+
+### 9.3 Honest limits — each named, none silent
+
+* **No pixel has been seen by human eyes this session.** The entire pass is spec-and-test-driven; the walkable-look judgement is G1's owner review and §3 of the run sheet. The per-surface *fine* pass (P6's tail) rides that review — the shared idiom is applied everywhere, but taste calls need a screen.
+* **The GL floor has never executed** — written from the legacy component and three.js contracts, like every injected-transport seam this repo ships; its first run is the device-matrix sitting.
+* **axe ran on two surfaces** (the wire-free harnesses); the other sixteen ride their fixture harnesses and the browser leg (15a §3).
+* **The §10.4 zero-training test and the 30-day parallel run are G6's actual exit** and cannot be run from this VM — scripts ready in 15a §1–§2.
+* **Two parity residuals** (register §5): password reset and login OAuth are backend-first absences, named, non-blocking for the parallel run.
+* The Line's atmosphere is the 2D floor by rule (battery); if the pocket ever earns GL it is a new decision, not a default.
