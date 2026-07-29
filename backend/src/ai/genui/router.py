@@ -15,10 +15,17 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.ai.genui.echo import record_echo, validate_echo
 from src.ai.genui.estate import district_view, estate_view
+from src.ai.genui.manifest import (
+    ManifestRefused,
+    UnknownSurface,
+    cached_compose,
+    stream_manifest,
+)
 from src.ai.genui.registry import registry_payload, registry_version
 from src.ai.genui.trays import tray_detail, tray_list
 from src.auth.dependencies import get_current_user
@@ -102,6 +109,37 @@ async def get_tray(
     if tray is None:
         raise HTTPException(status_code=404, detail="Tray not found")
     return tray
+
+
+@router.get("/manifest")
+async def get_manifest(
+    surface: str,
+    renderer: str = "S",
+    density: str = "novice",
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """A manifest, streamed in two parts (D4 §6): the scaffold line paints,
+    the fill line hydrates. Compositions are pure shapes — tenant data
+    arrives only through bindings — so this endpoint touches no tenant
+    state and the intent-shape cache is shared safely across tenants."""
+    if renderer not in ("S", "C", "W"):
+        raise HTTPException(status_code=422, detail="renderer must be S, C or W")
+    if density not in ("novice", "operator"):
+        raise HTTPException(status_code=422, detail="unknown density")
+    try:
+        manifest, was_cached = await cached_compose(
+            surface, renderer=renderer, density=density)
+    except UnknownSurface:
+        raise HTTPException(status_code=404, detail="Unknown surface")
+    except ManifestRefused as refusal:
+        # Our own composition failed its own validation — fail loudly, never
+        # emit what a renderer would have to discover (D3 §7).
+        raise HTTPException(status_code=500, detail=str(refusal))
+    return StreamingResponse(
+        stream_manifest(manifest),
+        media_type="application/x-ndjson",
+        headers={"X-Manifest-Cache": "hit" if was_cached else "miss"},
+    )
 
 
 class EchoBody(BaseModel):

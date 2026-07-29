@@ -73,6 +73,13 @@ class CostAttribution(str, Enum):
     # costs money is one people use less) is answered by TWIN §6's bounded
     # windows, cached baselines and estimate-before-spend, not by reclassifying.
     TWIN_RUN         = "twin_run"
+    # SEAM (Inc 7) — generating a Vihara manifest for a novel intent shape
+    # (a cached shape costs nothing — D4 §5 makes the cache the cost control).
+    # TENANT-initiated (a user asked for a surface), so deliberately NOT in
+    # PLATFORM_INITIATED_ATTRIBUTIONS — the RERANK/PRAGYA_TURN/TWIN_RUN rule:
+    # ordinary browsing must not exhaust the cap that protects tenants *from*
+    # platform work (B13).
+    MANIFEST_GENERATION = "manifest_generation"
 
 
 VALID_ATTRIBUTIONS: set[str] = {a.value for a in CostAttribution}

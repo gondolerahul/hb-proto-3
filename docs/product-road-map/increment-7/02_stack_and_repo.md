@@ -116,8 +116,8 @@ Vihara's auth **contract** is identical to the shipped one — bearer access tok
 
 | | Legacy | Vihara |
 |---|---|---|
-| Dev port | 3000 | **3001** |
-| Vhost | `app.hirebuddha.com` → `:3000` | **`vihara.hirebuddha.com`** → `:3001` (dev) / static build (prod) |
+| Dev port | 3000 | **4044** *(owner decision 2026-07-29; was 3001 in v1.0)* |
+| Vhost | `app.hirebuddha.com` → `:3000` | **`vihara.hirebuddha.com`** → `:4044` (dev) / static build (prod) |
 | Prod shape | Apache `ProxyPass` | Apache serving the built bundle; **HTTPS required** — a service worker and Web Push do not exist without it |
 
 Both run **in parallel**, which is not a convenience: spec §12 makes a **30-day parallel run with pilot tenants** a cutover criterion, so two live surfaces against one backend is the designed end state of this increment, not a transitional mess.
@@ -138,4 +138,5 @@ Both run **in parallel**, which is not a convenience: spec §12 makes a **30-day
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.1 — **Vihara's dev port is 4044** (owner decision), replacing v1.0's 3001; the §6 table updated in place. SUB's scaffold and the `start_services.sh` step must use 4044. |
 | 2026-07-28 | v1.0 — stack and repo ratified. `vihara/` as a separate app in one repo, with a lint-enforced import boundary (a convenience import is how a boundary dies). The Line-as-PWA collapses spec §12's shared token *package* into a module, because platform WebAuthn already serves an installed PWA. Golden renders specified as structural snapshots plus a cross-context assertion rather than pixel diffs, with the reason stated. Raised **VP-01**: `localStorage` tokens are a worse trade in an app that renders generated UI and drives step-up than in the app that shipped them. |
