@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
 import { fetchTrayList } from "../api/trays";
+import { BoardroomSurface } from "./BoardroomSurface";
 import { DistrictSheet } from "./DistrictSheet";
 import { DossierSurface } from "./DossierSurface";
 import { HallsSurface } from "./HallsSurface";
@@ -27,7 +28,8 @@ type Depth =
   | { level: 1 }
   | { level: 1; room: "standup" }
   | { level: 2; district: string; dossier?: { id: string; name: string } }
-  | { level: 2; room: "halls" };
+  | { level: 2; room: "halls"; module?: string }
+  | { level: 2; room: "board" };
 
 export function App(): JSX.Element {
   const [inSession, setInSession] = useState(getAccessToken() !== null);
@@ -85,6 +87,14 @@ export function App(): JSX.Element {
             onClick={() => setDepth({ level: 1, room: "standup" })}
           >
             standup
+          </button>
+          <button
+            type="button"
+            className="vh-quiet-link"
+            disabled={depth.level === 2 && "room" in depth && depth.room === "board"}
+            onClick={() => setDepth({ level: 2, room: "board" })}
+          >
+            board
           </button>
           {depth.level === 2 && "district" in depth && (
             <span className="vh-quiet">{depth.district}</span>
@@ -174,7 +184,14 @@ export function App(): JSX.Element {
           )
         )}
         {depth.level === 2 && "room" in depth && depth.room === "halls" && (
-          <HallsSurface />
+          <HallsSurface initialModule={depth.module} />
+        )}
+        {depth.level === 2 && "room" in depth && depth.room === "board" && (
+          <BoardroomSurface
+            onOpenPlanningHall={() =>
+              setDepth({ level: 2, room: "halls", module: "Planning" })
+            }
+          />
         )}
       </main>
       {traysOpen && (

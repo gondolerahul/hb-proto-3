@@ -359,13 +359,15 @@ function AnalyticsFlip({
 export function HallsSurface({
   density = "novice",
   loaders = REAL,
+  initialModule,
 }: {
   density?: "novice" | "operator";
   loaders?: HallLoaders;
+  initialModule?: string;
 }): JSX.Element {
   const [defs, setDefs] = useState<EntityDef[] | null>(null);
   const [failed, setFailed] = useState(false);
-  const [module, setModule] = useState<string | null>(null);
+  const [module, setModule] = useState<string | null>(initialModule ?? null);
   const [defName, setDefName] = useState<string | null>(null);
   const [records, setRecords] = useState<TenantRecordOut[]>([]);
   const [proposals, setProposals] = useState<RecordProposal[]>([]);

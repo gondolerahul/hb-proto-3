@@ -686,3 +686,99 @@
   color: inherit;
   cursor: pointer;
 }
+
+/* ── the boardroom (DRIVER D6, D6 §8) ─────────────────────────────────── */
+/* Gold audit: the only gold in this room is the certified frame of the
+ * adoption ceremony. Grades are words in muted fg — a grade rendered as
+ * an ornament would soften the honesty it exists to carry. */
+.vh-board {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-board-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.vh-board-header h2 {
+  margin: 0;
+}
+.vh-board-columns {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+}
+.vh-board-agenda ul,
+.vh-board-minutes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.vh-proposition {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.vh-proposition header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.vh-proposition h4,
+.vh-proposition p {
+  margin: 0;
+}
+.vh-grade {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted, var(--ink-300));
+}
+/* UNTESTED must not read like UNKNOWN: never-tried renders hollow. */
+.vh-proposition[data-grade="untested"] .vh-grade {
+  font-style: italic;
+  opacity: 0.85;
+}
+.vh-proposition footer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vh-proposition footer button,
+.vh-board-raise button,
+.vh-board-minutes button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-proposition footer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vh-board-raise {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+.vh-board-raise input {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  color: inherit;
+  flex: 1;
+  min-width: 10rem;
+}
