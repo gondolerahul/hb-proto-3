@@ -26,7 +26,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      input: { main: "index.html" },
+      // The Line (LINE L5) is a second entry sharing the C renderer and
+      // the certified set — and never the world (the eslint boundary +
+      // the line budget in check_bundle_budget.mjs hold it).
+      input: { main: "index.html", line: "line.html" },
       output: {
         manualChunks(id: string) {
           if (
