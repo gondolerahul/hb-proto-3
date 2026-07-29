@@ -17,6 +17,7 @@ import { DossierSurface } from "./DossierSurface";
 import { HallsSurface } from "./HallsSurface";
 import { PreSession } from "./PreSession";
 import { subscribeRibbon } from "./ribbon";
+import { StandupSurface } from "./StandupSurface";
 import { StillSurface } from "./StillSurface";
 import { TerraceSurface } from "./TerraceSurface";
 import { TraySurface } from "./TraySurface";
@@ -24,6 +25,7 @@ import { TraySurface } from "./TraySurface";
 type Depth =
   | { level: 0 }
   | { level: 1 }
+  | { level: 1; room: "standup" }
   | { level: 2; district: string; dossier?: { id: string; name: string } }
   | { level: 2; room: "halls" };
 
@@ -76,6 +78,14 @@ export function App(): JSX.Element {
           >
             halls
           </button>
+          <button
+            type="button"
+            className="vh-quiet-link"
+            disabled={depth.level === 1 && "room" in depth}
+            onClick={() => setDepth({ level: 1, room: "standup" })}
+          >
+            standup
+          </button>
           {depth.level === 2 && "district" in depth && (
             <span className="vh-quiet">{depth.district}</span>
           )}
@@ -120,9 +130,20 @@ export function App(): JSX.Element {
             </button>
           </>
         )}
-        {depth.level === 1 && (
+        {depth.level === 1 && !("room" in depth) && (
           <TerraceSurface
             onEnterDistrict={(district) => setDepth({ level: 2, district })}
+          />
+        )}
+        {depth.level === 1 && "room" in depth && (
+          <StandupSurface
+            onOpenDossier={(colleague) =>
+              setDepth({
+                level: 2,
+                district: colleague.district,
+                dossier: { id: colleague.id, name: colleague.name },
+              })
+            }
           />
         )}
         {depth.level === 2 && "district" in depth && (
