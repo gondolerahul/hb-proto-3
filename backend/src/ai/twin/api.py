@@ -316,3 +316,58 @@ async def run_scenario_endpoint(
             ),
         )
     return {"scenario_id": str(scenario_id), "queued": True}
+
+
+class PromoteIn(BaseModel):
+    """What a rehearsal is being used to argue for."""
+
+    entity_id: uuid.UUID
+    field: str = Field(min_length=1, max_length=80)
+    addition: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/runs/{run_id}/promote", status_code=201)
+async def promote_run(
+    run_id: uuid.UUID,
+    payload: PromoteIn,
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Take a rehearsal to a human (GLASS X4, decision 3).
+
+    **Not a new certified act.** This raises a HITL card on the existing
+    ``before_self_evolving_code_promotion`` checkpoint; the human approves
+    it through ``respond_to_approval``, which is already certified endpoint
+    #1. The certified set stays ten (R5) — see 14_glass.md §6.
+
+    ``propose_promotion``'s two refusals stand in front of this: a refused
+    run has no result to argue from, and an ``unknown``-graded run is an
+    illustration. Both answer 422 rather than raising a card, because
+    putting an illustration in front of an owner as though it were
+    evidence is how a ceremony stops meaning anything.
+    """
+    from src.ai.twin.promotion import EvidenceTooWeak, propose_promotion
+    from src.ai.twin.promotion_chain import raise_promotion_approval
+
+    company_id = _company_of(user)
+    run = (await db.execute(
+        select(TwinRun).where(
+            TwinRun.id == run_id, TwinRun.company_id == company_id)
+    )).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    try:
+        evidence = await propose_promotion(db, run)
+    except EvidenceTooWeak as weak:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(weak)) from weak
+
+    approval = await raise_promotion_approval(
+        db, company_id=company_id, entity_id=payload.entity_id,
+        evidence=evidence, field=payload.field, addition=payload.addition)
+    await db.commit()
+    return {
+        "approval_id": str(approval.id),
+        "checkpoint_key": approval.checkpoint_key,
+        "awaiting": "a human decision — nothing has changed yet",
+    }
