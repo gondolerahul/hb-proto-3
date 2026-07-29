@@ -1,8 +1,7 @@
 # Increment 7 / Phase A — D1: Stack & Repo Ratification
 
 > **Deliverable D1** of [01_phase_a_overview.md](./01_phase_a_overview.md). Closes charter open question 1; records decisions 4, 5 and 6 as an engineering specification.
-> **Status:** ✅ complete 2026-07-28. Engineering artifact — reported, not owner-ratified.
-> **Nothing here is built.** This specifies the app; the scaffold is G0's first task.
+> **Status:** ✅ **BUILT 2026-07-29 — SUB (`inc7/sub`, T1–T8) scaffolded and shipped the substrate.** Build notes + deltas: **§8**. G0's exit is met at the test level; the live browser walk is the owner's.
 
 ---
 
@@ -134,9 +133,67 @@ Both run **in parallel**, which is not a convenience: spec §12 makes a **30-day
 
 ---
 
+## 8. Build notes — SUB, 2026-07-29 (T1–T8 on `inc7/sub`)
+
+Eight tasks, a commit per task (T1+T2 shared one — the build needs the
+tokens). Final measures: **117 vitest** (7 files) including **40 structural
+goldens** · `tsc --noEmit` strict with `noUncheckedIndexedAccess` · eslint
+with both boundary rules · **shell 84.7 KB gz against the 220 KB hard gate**,
+world chunk 0 (three.js is not yet a dependency) · backend suite **2132
+unit** (+5: the OpenAPI drift gate and the four wire-fixture gates).
+
+### 8.1 What shipped
+
+`vihara/` — scaffold on **port 4044** · the brand tokens mirrored
+byte-for-byte with a sync gate · the client manifest layer (registry
+resolver, Zod wire schemas, identity-fixed fill merge, the D4 §7 refusal
+ladder) · the API client (in-memory access token, cookie-mode refresh with
+CSRF echo, a storage pin over all of `src/`) · the Sheet/Card region engine
+with the v1 primitives + `still-line` · **the ten certified components**,
+golden-rendered with the cross-context assertion and two mutation refusals
+each · pre-session screens + the app-owned shell + the Still Surface round
+trip. `start_services.sh` gained its Vihara step.
+
+### 8.2 Deltas worth keeping
+
+1. **The wire contract is pinned cross-language.** Beyond §5's `gen:api`
+   types, the backend captures its composer's exact NDJSON into
+   `vihara/tests/fixtures/` (gate-tested against drift on the backend side)
+   and the client suite parses those real bytes through its own ladder,
+   asserting zero placeholders. If either end of D4 drifts, one suite goes
+   red in the same commit range.
+2. **The OpenAPI drift gate is a backend unit test**, not an npm CI step —
+   regenerating needs the backend anyway, and a failing test that names the
+   two regeneration commands beats a red pipeline step nobody can run
+   locally.
+3. **Password reset is a named absence** on the pre-session screen: the
+   backend ships no reset endpoint (only email verification), so the screen
+   says "ask your administrator" instead of pretending. The endpoint
+   belongs to DRIVER's Study.
+4. **three.js is deliberately not installed yet.** The W renderer is a
+   stub that hands off to its L9 sheet; the `manualChunks` quarantine and
+   the eslint confinement rule are already in place, so WORLD adds the
+   dependency into a cage that predates it.
+5. **The consent asymmetry is rendered, not just registered** (D3 §3.4):
+   `certified.consent` with `direction: grant` wears the ceremony frame;
+   `revoke` renders deliberately plain — pinned by test.
+
+### 8.3 Honest limits
+
+Registered-but-unimplemented components (`register`, `record-sheet`,
+`chart-set`, `kanban`, …) render **named placeholders** — visible, and
+exactly the list DRIVER owes. Certified components render their decisions
+but do not yet drive their gates (the `/respond` wiring is DRIVER's; the
+step-up ceremony is STEWARD's). There is **no SSE client yet** — the stream's
+first consumer is WORLD's territory, so the EventSource wrapper lands there.
+The Line entry (`line.html`) is LINE's first task. And the G0 demo is proven
+by tests and captured wire fixtures, not by a browser walk — both dev
+servers exist (`./start_services.sh`), and the walk is the owner's to take.
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.2 — **BUILT.** SUB T1–T8 shipped the substrate (§8 build notes): the app on 4044, tokens mirrored with a sync gate, the client manifest layer with the refusal ladder, the memory-only-token API client, the S/C region engine, the certified set with 40 goldens + cross-context + per-component mutation refusals, pre-session, and the Still Surface round trip — proven cross-language by captured wire fixtures. Shell 84.7 KB gz of the 220 budget. |
 | 2026-07-29 | v1.1 — **Vihara's dev port is 4044** (owner decision), replacing v1.0's 3001; the §6 table updated in place. SUB's scaffold and the `start_services.sh` step must use 4044. |
 | 2026-07-28 | v1.0 — stack and repo ratified. `vihara/` as a separate app in one repo, with a lint-enforced import boundary (a convenience import is how a boundary dies). The Line-as-PWA collapses spec §12's shared token *package* into a module, because platform WebAuthn already serves an installed PWA. Golden renders specified as structural snapshots plus a cross-context assertion rather than pixel diffs, with the reason stated. Raised **VP-01**: `localStorage` tokens are a worse trade in an app that renders generated UI and drives step-up than in the app that shipped them. |

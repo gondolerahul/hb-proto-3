@@ -15,6 +15,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
+VIHARA_DIR="$SCRIPT_DIR/vihara"
 
 # Log file directory
 LOG_DIR="$SCRIPT_DIR/logs"
@@ -150,6 +151,18 @@ else
     echo $FRONTEND_PID > "$LOG_DIR/frontend.pid"
     echo -e "${GREEN}✓ Frontend started (PID: $FRONTEND_PID)${NC}"
     wait_for_service "Frontend" 3000
+fi
+
+# Vihara (Inc 7) — the new tenant surface, dev port 4044 (D1 §6).
+if check_port 4044; then
+    echo -e "${YELLOW}Port 4044 already in use. Skipping Vihara startup.${NC}"
+else
+    cd "$VIHARA_DIR"
+    nohup npm run dev -- --host 0.0.0.0 > "$LOG_DIR/vihara.log" 2>&1 &
+    VIHARA_PID=$!
+    echo $VIHARA_PID > "$LOG_DIR/vihara.pid"
+    echo -e "${GREEN}✓ Vihara started (PID: $VIHARA_PID)${NC}"
+    wait_for_service "Vihara" 4044
 fi
 
 # Final Summary
