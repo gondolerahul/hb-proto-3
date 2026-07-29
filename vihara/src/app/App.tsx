@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
 import { fetchTrayList } from "../api/trays";
+import { Atmosphere } from "../atmosphere/Atmosphere";
 import { StewardDock, type Navigation } from "../steward/StewardDock";
 import { BoardroomSurface } from "./BoardroomSurface";
 import { BridgesSurface } from "./BridgesSurface";
@@ -21,8 +22,14 @@ import { GallerySurface } from "./GallerySurface";
 import { GlasshouseSurface } from "./GlasshouseSurface";
 import { HallsSurface } from "./HallsSurface";
 import { LibrarySurface } from "./LibrarySurface";
+import {
+  fetchEngagementStage,
+  gateFromStage,
+  STILL_LOCKED_SENTENCE,
+  type OnboardingGate,
+} from "./onboarding";
 import { PreSession } from "./PreSession";
-import { subscribeRibbon } from "./ribbon";
+import { announce, useRibbon } from "./ribbon";
 import { StandupSurface } from "./StandupSurface";
 import { TalentSurface } from "./TalentSurface";
 import { StillSurface } from "./StillSurface";
@@ -51,9 +58,8 @@ export function App(): JSX.Element {
   const [depth, setDepth] = useState<Depth>({ level: 0 });
   const [traysOpen, setTraysOpen] = useState(false);
   const [trayCount, setTrayCount] = useState<number | null>(null);
-  const [ribbon, setRibbon] = useState<string | null>(null);
-
-  useEffect(() => subscribeRibbon(setRibbon), []);
+  // 120ms in, 4s dwell, 400ms out (art bible §9) — the hook holds the leave.
+  const { sentence: ribbon, leaving: ribbonLeaving } = useRibbon();
 
   useEffect(() => {
     if (!inSession) return;
@@ -61,6 +67,36 @@ export function App(): JSX.Element {
       .then((trays) => setTrayCount(trays.length))
       .catch(() => setTrayCount(null));
   }, [inSession]);
+
+  // Onboarding staged in the world (P7): depth 0 is the reward at stage
+  // 9 — before that a session opens onto the Terrace's ghost estate.
+  const [gate, setGate] = useState<OnboardingGate>({
+    stillLocked: false,
+    stage: null,
+  });
+  useEffect(() => {
+    if (!inSession) return;
+    void fetchEngagementStage().then((stage) => {
+      const next = gateFromStage(stage);
+      setGate(next);
+      if (next.stillLocked) setDepth({ level: 1 });
+    });
+  }, [inSession]);
+
+  const goStill = (): void => {
+    if (!gate.stillLocked) {
+      setDepth({ level: 0 });
+      return;
+    }
+    // The stage may have advanced since the session opened — re-ask
+    // before refusing, and refuse with the reason said out loud.
+    void fetchEngagementStage().then((stage) => {
+      const next = gateFromStage(stage);
+      setGate(next);
+      if (next.stillLocked) announce(STILL_LOCKED_SENTENCE);
+      else setDepth({ level: 0 });
+    });
+  };
 
   if (!inSession) {
     return <PreSession onEntered={() => setInSession(true)} />;
@@ -90,8 +126,20 @@ export function App(): JSX.Element {
         ? { kind: "room", id: depth.room }
         : { kind: "estate", id: null };
 
+  // One key per place on the ladder: a depth change remounts <main>, and
+  // the 320ms crossfade-and-rise (art bible §9) runs on arrival.
+  const depthKey =
+    depth.level === 2 && "district" in depth
+      ? `2:${depth.district}:${depth.dossier?.id ?? ""}`
+      : depth.level === 2 && "room" in depth
+        ? `2:${depth.room}`
+        : depth.level === 1 && "room" in depth
+          ? "1:standup"
+          : String(depth.level);
+
   return (
     <div className="vihara-shell-frame">
+      <Atmosphere context="shell" depthLevel={depth.level} />
       <header className="vh-shell-bar" data-part="shell">
         <span className="vihara-wordmark-small">Vihara</span>
         <nav className="vh-depth-dial" aria-label="depth">
@@ -99,7 +147,9 @@ export function App(): JSX.Element {
             type="button"
             className="vh-quiet-link"
             disabled={depth.level === 0}
-            onClick={() => setDepth({ level: 0 })}
+            data-locked={gate.stillLocked}
+            title={gate.stillLocked ? STILL_LOCKED_SENTENCE : undefined}
+            onClick={goStill}
           >
             still
           </button>
@@ -223,7 +273,7 @@ export function App(): JSX.Element {
           leave
         </button>
       </header>
-      <main className={depth.level === 0 ? "vh-depth0" : "vh-depthN"}>
+      <main key={depthKey} className={depth.level === 0 ? "vh-depth0" : "vh-depthN"}>
         {depth.level === 0 && (
           <>
             <StillSurface />
@@ -326,7 +376,12 @@ export function App(): JSX.Element {
       />
 
       {ribbon !== null && (
-        <footer className="vh-echo-ribbon" role="status" data-part="echo-ribbon">
+        <footer
+          className="vh-echo-ribbon"
+          role="status"
+          data-part="echo-ribbon"
+          data-leaving={ribbonLeaving}
+        >
           {ribbon}
         </footer>
       )}

@@ -9,6 +9,7 @@
 import { useState, type FormEvent } from "react";
 
 import { login, register } from "../api/client";
+import { Atmosphere } from "../atmosphere/Atmosphere";
 
 export function PreSession({
   onEntered,
@@ -43,6 +44,7 @@ export function PreSession({
 
   return (
     <main className="vh-presession" data-part="pre-session">
+      <Atmosphere context="presession" />
       <h1 className="vihara-wordmark">Vihara</h1>
       <form onSubmit={(e) => void submit(e)}>
         {mode === "register" && (

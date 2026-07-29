@@ -18,7 +18,15 @@ const target = path.join(here, "..", "src", "tokens");
 await fs.copyFile(
   path.join(source, "colors_and_type.css"),
   path.join(target, "colors_and_type.css"));
+await fs.copyFile(
+  path.join(source, "styles.css"),
+  path.join(target, "styles.css"));
 await fs.cp(
   path.join(source, "fonts"), path.join(target, "fonts"),
   { recursive: true });
+// The dotted-B watermark (POLISH P2) — served from public/ so both
+// entries share one cached asset; same two-copies gate as the tokens.
+await fs.copyFile(
+  path.join(source, "assets", "logo-mark-gold.svg"),
+  path.join(here, "..", "public", "brand-mark.svg"));
 console.log("tokens synced from the design system");

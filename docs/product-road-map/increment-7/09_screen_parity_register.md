@@ -108,10 +108,22 @@ The spec's surface inventory (§5) is an inventory of **the estate**. Walking th
 
 ---
 
+## 5. The G6 reckoning (POLISH P10, 2026-07-29)
+
+The amended §3 criterion, walked against the **shipped** app rather than against build notes:
+
+* **All 28 ⇢ rows have their Vihara surface live** — verified by opening each named home in the built app's source and its structural goldens: Still/Terrace (1, 44, 45) · Bridges & Gates (2, 58) · Library (3, 15, 16, 30, 31) · Undercroft (11, 21, 22, 49, 59) · Talent Office + Gallery (17, 20, 26) · district rooms + halls (19, 23, 41, 52, 53, 56, 57) · dossier/trace (27, 54) · **the Tray (24)**.
+* **Both ✂ rows are now retired in fact, not only on paper.** Onboarding is staged in the world at the shell level (P7 — depth 0 unreachable before stage 9; the wizard screen has no Vihara counterpart and never will), and Pragya has no place of her own — she is the still line, the dock, the thread and the channel (STEWARD).
+* **VP-03: six of eight rows closed by the Study** (8, 36, 37, 48, and the settings halves of 33) — identity, passkeys, notifications, density, billing & wallet, all reachable from the shell and inside the structural goldens. **Pre-session closes login and register (32, 35).**
+* **Two named residuals, neither silent:** **password reset (34)** — the backend ships no reset endpoint, and the pre-session screen says so instead of pretending (its docstring records the absence); and **login OAuth (33's login half)** — no Vihara home and no backend contract yet. Both are backend-first work and neither blocks the parallel run: the legacy React login continues to serve both paths for the 30-day overlap.
+
+**Verdict: the amended cutover criterion is met except for the two named residuals above**, which are recorded here rather than discovered at the vhost flip.
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.3 — **the G6 reckoning** (§5, POLISH P10): all 28 ⇢ rows verified live, both ✂ rows retired in fact (onboarding staged in the world at shell level), VP-03 six-of-eight closed by the Study + two by pre-session, and **two named residuals** — password reset and login OAuth — recorded as backend-first work that does not block the parallel run. |
 | 2026-07-29 | v1.2 — **DRIVER built** ([11_driver.md](./11_driver.md) §6). Of the ⇢ rows: the Tray (row 24 — the most consequential replacement), Registry Halls (incl. rows 52–53's analytics flip in v1 form), dossier/trace rows, the Boardroom, Talent Office (17/20/26), Gallery, Library (3/15/16/30/31), Undercroft (11/21/22/49/59), Bridges & Gates (2/58) now have working Vihara surfaces; the **Study is drafted and built**, resolving the six VP-03 Study rows at build level (pre-session was SUB's). District rooms (19/23/56/57) have their furnished sheets; their W rooms are WORLD's. |
 | 2026-07-29 | v1.1 — **VP-03 resolved: The Study** (owner decision at R2). The §4 proposal accepted as written; the eight VP-03 rows now have a named home, so the amended cutover criterion's "resolved home for every VP-03 function" clause is met at design level. |
 | 2026-07-28 | v1.0 — all 59 files dispositioned. Two corrections: **"59 screens" is a file count** and five of them are not screens, so the honest denominator is **54**; and cutover parity is **28 of 30 in-scope tenant screens**, not 28 of 59, because 16 are partner/platform-admin consoles ratified as out of scope. Raised **VP-03**: three tenant functions — pre-session, account & security, billing & wallet — have **no Vihara surface**, and passkey enrolment being among them matters, because it is the prerequisite for every T2 act and the spec's only candidate home for it is operator-density and desktop-only. Invisible until this table existed. |

@@ -9,27 +9,127 @@
   flex-direction: column;
 }
 
+/* ── glass where things float (POLISH P4, art bible §10) ──────────────
+ * Glass is used where something floats OVER the world — the shell bar,
+ * the tray, the dock, the ribbon, the standup's cards, the Line's
+ * pinned vitals, pre-session — never inside a sheet. Every selector
+ * that declares a backdrop-filter here MUST also appear in the
+ * prefers-reduced-transparency block at the end of this section; a
+ * test holds that correspondence. */
 .vh-shell-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid var(--ink-700);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--glass-tint-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
 }
 
+/* The shell's mark: the still-visual HUD — a gradient-gold dot beside
+ * the name. Sanctioned gold (the mark and wordmark are the brand's). */
 .vihara-wordmark-small {
   font-family: var(--font-display, "Space Grotesk", sans-serif);
   font-weight: 600;
   letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.vihara-wordmark-small::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--gradient-gold, var(--gold-500));
+  flex: none;
 }
 
+/* Sheet-scale headings: rooms are dense working surfaces, not landing
+ * pages — the display face carries the title, the hero sizes stay at
+ * depth 0. The DS scale is sized for marketing pages. */
+.vihara-shell-frame h2 {
+  font-size: var(--text-xl);
+}
+.vihara-shell-frame h3 {
+  font-size: var(--text-md);
+}
+
+/* Primary prose stays --fg: the DS mutes bare <p> for long-form copy,
+ * but these lines ARE the surface (art bible §11 — prose in fg). */
+.vh-still-line,
+.vh-tray-happened,
+.vh-steward-line,
+.vh-thread-owner {
+  color: var(--fg);
+}
+
+/* ── interaction grammar (POLISH P6) ──────────────────────────────────
+ * Brand easing on every control; the focus ring is never removed (art
+ * bible §11); hover borrows the DS secondary-button grammar. The gold
+ * budget is untouched: hover is user-caused, not a resting state. */
+.vihara-shell-frame button,
+.vihara-shell-frame input,
+.vihara-shell-frame select,
+.vihara-shell-frame textarea,
+.vh-presession button,
+.vh-presession input {
+  transition:
+    background var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out);
+}
+.vihara-shell-frame button:focus-visible,
+.vihara-shell-frame input:focus-visible,
+.vihara-shell-frame select:focus-visible,
+.vihara-shell-frame textarea:focus-visible,
+.vh-presession button:focus-visible,
+.vh-presession input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.vihara-shell-frame button:hover:not(:disabled) {
+  border-color: var(--border-gold);
+  color: var(--fg);
+}
+.vihara-shell-frame input:focus,
+.vihara-shell-frame select:focus,
+.vihara-shell-frame textarea:focus,
+.vh-presession input:focus {
+  border-color: var(--border-gold);
+}
+/* The depth dial's disabled entry is "you are here", never greyed out. */
+.vh-depth-dial .vh-quiet-link:disabled {
+  color: var(--fg);
+}
+
+/* Depth 0 composes like still-visual.html: lines set left on a clamp
+ * measure, air around them, the estate's floor behind. */
 .vh-depth0 {
   flex: 1;
-  display: grid;
-  place-content: center;
-  gap: 1rem;
-  text-align: center;
-  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.7rem;
+  text-align: left;
+  padding: 2rem 2rem 2rem clamp(32px, 12vw, 220px);
+}
+.vh-depth0 .vh-beacon-count {
+  align-self: flex-start;
+}
+.vh-depth0 [data-part="walk-in"] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin-top: 2rem;
 }
 
 /* ── pre-session: conventional on purpose ─────────────────────────────── */
@@ -45,6 +145,13 @@
   gap: 0.75rem;
   min-width: 20rem;
   text-align: left;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-radius: var(--r-xl);
+  padding: 1.5rem;
 }
 .vh-presession label {
   display: grid;
@@ -81,8 +188,47 @@
 .vh-problem {
   color: var(--ink-50);
   background: var(--surface-3);
-  border-left: 2px solid var(--ink-500);
+  border-left: 2px solid var(--negative, #d4664f);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
   padding: 0.5rem 0.75rem;
+}
+
+/* ── the motion language (POLISH P5, art bible §9) ────────────────────
+ * Brand easing, no bounce, no overshoot, no spin. Motion communicates
+ * causality: the tray slides from the edge Pragya occupies, a depth
+ * change rises 12px along the one axis, the ribbon murmurs in and
+ * fades out. The DS's reduced-motion rule collapses every duration to
+ * .001ms; the beacon's full-glow rest state is pinned separately below
+ * because losing the breath must not lose the glow. */
+.vh-depth0,
+.vh-depthN {
+  animation: vh-depth-arrive 320ms var(--ease-out);
+}
+@keyframes vh-depth-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.vh-tray-panel {
+  animation: vh-tray-arrive 240ms var(--ease-out);
+}
+@keyframes vh-tray-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+.vh-record-sheet,
+.vh-doc-pane,
+.vh-dossier {
+  animation: vh-sheet-open 200ms var(--ease-out);
+}
+@keyframes vh-sheet-open {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 /* ── surfaces ─────────────────────────────────────────────────────────── */
@@ -104,8 +250,11 @@
   font-weight: 500;
 }
 .vh-figure {
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: 1.4rem;
+  font-family: var(--font-display, "Space Grotesk", sans-serif);
+  font-weight: 600;
+  font-size: 1.5rem;
+  letter-spacing: var(--track-tight, -0.02em);
+  font-variant-numeric: tabular-nums;
 }
 .vh-mono {
   font-family: var(--font-mono, "JetBrains Mono", monospace);
@@ -140,13 +289,20 @@
   background: var(--white);
 }
 
+/* The narrative register is Hanken at a relaxed measure (art bible §6)
+ * — a display face here would be a second personality. */
 .vh-still-line {
-  font-family: var(--font-display, "Space Grotesk", sans-serif);
-  font-size: 1.3rem;
+  font-family: var(--font-body, "Hanken Grotesk", sans-serif);
+  font-weight: 300;
+  font-size: clamp(19px, 2.2vw, 24px);
+  line-height: 1.55;
+  max-width: 36ch;
   margin: 0;
 }
 
-/* "This needs you" — one of gold's two meanings. */
+/* "This needs you" — one of gold's two meanings. The raise is 640ms —
+ * the slowest thing in the product — and the breath (~4s) is the ONLY
+ * repeating attention animation anywhere (art bible §9). */
 .vh-beacon-count {
   justify-self: center;
   background: var(--accent-quiet);
@@ -156,6 +312,32 @@
   padding: 0.4rem 1rem;
   cursor: pointer;
   font: inherit;
+  animation:
+    vh-beacon-raise 640ms var(--ease-out),
+    vh-beacon-breath 4s var(--ease-in-out) 640ms infinite;
+}
+@keyframes vh-beacon-raise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes vh-beacon-breath {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(237, 171, 72, 0);
+  }
+  50% {
+    box-shadow: 0 0 18px -2px rgba(237, 171, 72, 0.45);
+  }
+}
+/* Reduced motion stops the breath but keeps the beacon at FULL glow —
+ * the art bible's rule: reduced motion loses atmosphere, never signal. */
+@media (prefers-reduced-motion: reduce) {
+  .vh-beacon-count {
+    animation: none;
+    box-shadow: 0 0 18px -2px rgba(237, 171, 72, 0.45);
+  }
 }
 
 /* ── the certified frame — gold's other meaning ───────────────────────── */
@@ -178,11 +360,14 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+/* The seal takes the metallic conic — the medallion treatment the DS
+ * reserves for exactly this kind of thing. */
 .vh-certified-seal {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: var(--gradient-gold, var(--gold-500));
+  background: var(--gradient-gold-conic, var(--gold-500));
+  box-shadow: 0 0 6px rgba(237, 171, 72, 0.35);
 }
 .vh-certified-body p {
   margin: 0;
@@ -210,8 +395,9 @@
 
 .vh-refused,
 .vh-world-stub {
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
   padding: 1rem;
 }
 
@@ -232,9 +418,10 @@
 .vh-world-frame {
   flex: 1;
   min-height: 420px;
-  border: 1px solid var(--ink-700);
-  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-lg);
 }
 .vh-terrace-controls {
   display: flex;
@@ -244,9 +431,12 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: var(--surface-2);
-  border: 1px solid var(--ink-500);
-  border-radius: 8px;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-radius: var(--r-pill);
   padding: 0.5rem 0.75rem;
 }
 .vh-demotion-offer button {
@@ -262,13 +452,19 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+/* District hop-list as chips — the DS's own small-navigation idiom. */
 .vh-district-skiplist button {
-  background: var(--surface-2);
-  border: 1px solid var(--ink-700);
-  border-radius: 6px;
-  padding: 0.3rem 0.7rem;
-  color: inherit;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 5px 11px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  color: var(--fg-muted);
   cursor: pointer;
+}
+.vh-district-skiplist button:hover {
+  color: var(--fg);
 }
 .vh-depth-dial {
   display: flex;
@@ -288,9 +484,12 @@
   bottom: 3rem;
   width: min(30rem, calc(100vw - 2rem));
   overflow-y: auto;
-  background: var(--surface-2);
-  border: 1px solid var(--ink-700);
-  border-radius: 10px;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--glass-edge);
   padding: 1rem;
 }
 .vh-tray-stack {
@@ -299,8 +498,9 @@
 }
 .vh-tray {
   background: var(--surface);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
   padding: 1rem;
   display: grid;
   gap: 0.75rem;
@@ -312,9 +512,12 @@
   align-items: baseline;
   gap: 0.5rem;
 }
+/* Eyebrows are UPPERCASE mono at wide tracking (art bible §6) — gold
+ * only when the eyebrow labels a certified block. */
 .vh-eyebrow {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--track-eyebrow, 0.16em);
   text-transform: uppercase;
   color: var(--fg-muted, var(--ink-300));
 }
@@ -381,9 +584,12 @@
   left: 50%;
   transform: translateX(-50%);
   bottom: 0.75rem;
-  background: var(--surface-3);
-  border: 1px solid var(--ink-700);
-  border-radius: 999px;
+  background: var(--glass-tint-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-radius: var(--r-pill);
   padding: 0.35rem 1rem;
   font-size: 0.85rem;
   animation: vh-ribbon-in 120ms ease-out;
@@ -391,6 +597,16 @@
 @keyframes vh-ribbon-in {
   from { opacity: 0; transform: translateX(-50%) translateY(4px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+/* 120ms in (above), 4s dwell (ribbon.ts), 400ms out (art bible §9). */
+.vh-echo-ribbon[data-leaving="true"] {
+  animation: vh-ribbon-out 400ms var(--ease-out) forwards;
+}
+@keyframes vh-ribbon-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
 }
 
 /* ── the registry halls (DRIVER D3, D6 §7) ────────────────────────────── */
@@ -412,6 +628,16 @@
 .vh-hall-modules {
   display: flex;
   gap: 0.5rem;
+}
+.vh-hall-modules button {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 5px 11px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  color: var(--fg-muted);
+  cursor: pointer;
 }
 .vh-hall-header select,
 .vh-hall-header input,
@@ -474,8 +700,9 @@
 }
 .vh-record-sheet {
   background: var(--surface);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
   padding: 1rem;
   display: grid;
   gap: 0.75rem;
@@ -656,9 +883,12 @@
   outline: none;
 }
 .vh-standup-card {
-  background: var(--surface);
-  border: 1px solid var(--ink-700);
-  border-radius: 10px;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-radius: var(--r-xl);
   padding: 1.25rem;
   width: min(26rem, 90vw);
   display: grid;
@@ -720,8 +950,9 @@
 }
 .vh-proposition {
   background: var(--surface);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
   padding: 0.9rem;
   display: grid;
   gap: 0.5rem;
@@ -793,8 +1024,9 @@
 }
 .vh-candidate {
   background: var(--surface);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
   padding: 0.9rem;
   display: grid;
   gap: 0.5rem;
@@ -923,8 +1155,9 @@
 }
 .vh-doc-pane {
   background: var(--surface);
-  border: 1px solid var(--ink-700);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
   padding: 1rem;
   display: grid;
   gap: 0.75rem;
@@ -1048,9 +1281,12 @@
   bottom: 1rem;
   width: min(22rem, calc(100vw - 2rem));
   padding: 0.75rem;
-  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
-  border-radius: 0.5rem;
-  background: var(--vh-surface, rgba(24, 24, 24, 0.92));
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-radius: var(--r-lg);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1089,9 +1325,11 @@
 }
 .vh-line-main { padding-top: 0.5rem; }
 .vh-morning-card {
-  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
-  border-radius: 0.5rem;
-  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 0.85rem;
   margin: 0.5rem 0;
   list-style: none;
 }
@@ -1106,9 +1344,16 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
   position: sticky;
   top: 0;
+  z-index: 5;
+  background: var(--glass-tint-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-edge);
 }
 .vh-desk-cards { padding: 0; margin: 0; }
 .vh-thread-scroll {
@@ -1133,7 +1378,7 @@ form[data-part="thread-say"] input { flex: 1; }
   .vh-glass-panes { grid-template-columns: 1fr; }
 }
 .vh-glass-panes article {
-  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border-strong);
   border-radius: 0.5rem;
   padding: 0.75rem;
 }
@@ -1141,7 +1386,7 @@ form[data-part="thread-say"] input { flex: 1; }
    the ribbon is lifted back out of it — the one thing the eye should find. */
 .vh-divergence-ribbon {
   filter: none;
-  color: var(--vh-gold, #c9a227);
+  color: var(--gold-500);
   margin-left: 0.4rem;
 }
 .vh-glass-levers {
@@ -1151,8 +1396,27 @@ form[data-part="thread-say"] input { flex: 1; }
   align-items: baseline;
 }
 .vh-glass-shelf article {
-  border-top: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border-top: 1px solid var(--border-strong);
   padding: 0.5rem 0;
 }
 .vh-grade[data-grade="untested"] { opacity: 0.7; }
 .vh-grade[data-grade="unknown"] { font-style: italic; }
+
+/* ── the glass fallback (POLISH P4) — the brand's own rule: under
+ * prefers-reduced-transparency every glass surface goes solid. Every
+ * selector above that declares a backdrop-filter must appear here; a
+ * vitest holds the correspondence. */
+@media (prefers-reduced-transparency: reduce) {
+  .vh-shell-bar,
+  .vh-presession form,
+  .vh-tray-panel,
+  .vh-echo-ribbon,
+  .vh-demotion-offer,
+  .vh-standup-card,
+  .vh-steward-dock,
+  .vh-desk-vitals {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--surface);
+  }
+}

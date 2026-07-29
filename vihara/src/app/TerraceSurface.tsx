@@ -13,6 +13,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 
 import { emitEcho } from "../api/genui";
+import { setWorldCanvasActive } from "../atmosphere/worldActive";
 import { decideTier, storeTierOverride, type DeviceTier } from "./tier";
 import { useLiveEstate } from "../estate/useLiveEstate";
 import { ManifestSurface } from "./ManifestSurface";
@@ -39,6 +40,14 @@ export function TerraceSurface({
     });
   }, []);
 
+  // The one-GL-context rule (POLISH P2): while the map is up, the shell's
+  // atmosphere pauses — the terrace draws its own energy floor.
+  const wantsMap = mode === "map" && (tier === "A" || tier === "B");
+  useEffect(() => {
+    setWorldCanvasActive(wantsMap);
+    return () => setWorldCanvasActive(false);
+  }, [wantsMap]);
+
   if (tier === null || live.phase === "loading") {
     return <p className="vh-quiet">…</p>;
   }
@@ -49,8 +58,6 @@ export function TerraceSurface({
       </p>
     );
   }
-
-  const wantsMap = mode === "map" && (tier === "A" || tier === "B");
 
   return (
     <div className="vh-terrace" data-part="terrace" data-tier={tier}>
