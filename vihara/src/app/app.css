@@ -963,3 +963,39 @@
   gap: 0.6rem;
   flex-wrap: wrap;
 }
+
+/* ── bridges & gates (DRIVER D11, D6 §14) ─────────────────────────────── */
+.vh-bridges {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 1.5rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-bridge-list,
+.vh-gate-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.vh-bridge-line {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vh-bridge-line button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-gate-list li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+}
