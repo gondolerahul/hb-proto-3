@@ -1,6 +1,6 @@
 # Increment 7 / Phase B — LINE: The Pocket (G4)
 
-> **Status:** ✍️ workstream opened 2026-07-29, branch `inc7/line`.
+> **Status:** ✅ **BUILT 2026-07-29** (L0–L10 on `inc7/line`) — G4's exit met at the test level; the real-device legs (§7) stay owner-side. Build notes: §8.
 > **Read first:** [10_workstream_decomposition.md](./10_workstream_decomposition.md) §7 (the scope) · [07_surface_wireframes.md](./07_surface_wireframes.md) §16–18 (the three Line surfaces) · [06_backend_api_contracts.md](./06_backend_api_contracts.md) §7 (push, VG-19) · [increment-6/00a](../increment-6/00a_genui_backend_gap_analysis.md) VG-20 · [12_steward.md](./12_steward.md) (the channel client and voice seam LINE reuses).
 
 ---
@@ -74,8 +74,95 @@ Real devices: installed on a real Android and a real iPhone, a push arriving as 
 
 ---
 
+## 8. § Build notes — ✅ BUILT 2026-07-29, L0–L10 (branch `inc7/line`)
+
+A commit per task, gates green throughout. Final measures: mypy `--strict`
+**341 files** · layout lint · **2208 unit** (+2 skipped) · 16 parity/eval ·
+integration green on live PG (new suite: genui morning) · migration head
+**`genui003`** (applies / rolls back / re-applies) · Vitest **236** ·
+bundle gate **shell 111.9 · line 3.5 · world 215.5 KB gz** (line has its
+own hard 220 budget) · `tsc` + eslint clean · OpenAPI + `gen:api`
+regenerated (two new endpoints). Certified set **still ten**.
+
+### 8.1 What shipped, per task
+
+* **L1** — `genui/morning.py`: the Standup's composition ported
+  server-side (pure, shared by job and endpoint so they cannot count
+  differently) · `GET /ai/genui/line/morning` · the `morning_stories`
+  store (**`genui003`** — it exists because pre-generated audio cannot be
+  projected for free) · `GET /ai/genui/push/vapid-public-key`.
+* **L2** — `genui/morning_job.py`: the 02:25 UTC cron — compose ·
+  synthesize (WAV-wrapped 24 kHz PCM through the shipped `GeminiSpeaker`,
+  conversion off) · store · WhatsApp summary; the reaper in the same job;
+  `CostAttribution.MORNING_STORY` classified tenant-side of B13 by a
+  named test; the wallet gates synthesis; every failure degrades to text
+  with its reason on the row.
+* **L3** — `genui/whatsapp_mirror.py`: the door's third leg (socket →
+  push → WhatsApp → nowhere), verified-binding-or-nothing, preference-
+  silenceable, two single-writer import boundaries (the L8 pattern
+  applied twice), injectable transport throughout.
+* **L5–L9** — the pocket app: `line.html` second entry + web manifest +
+  service worker (push → notification → open; offline shell; **no
+  background sync, no offline queue** — an offline approval would be a
+  certified act with no server) · the Thread (history + live channel +
+  **TraySurface itself** as the certified section) · the swipeable
+  Morning Story with per-card audio and named degradation · the Pocket
+  Desk (pins in `surface.line_pins`, vitals never pinnable away) · the
+  push client with the iOS ceiling *stated*.
+
+### 8.2 § Delta log — where the build corrected the design
+
+1. **VG-20 shrank on contact with the code** (§1's assessment, confirmed
+   by building): no narrative store, no thread table, no attestation
+   store, no new send stack. The one genuinely new thing is the
+   `morning_stories` row — and it exists only because of owner decision 2.
+2. **The India-first leg would never have fired.** The mirror was built
+   as the door's last resort — but the delivery sweep only reaches users
+   it considers reachable, and a WhatsApp-only user was in no recipient
+   set. `_whatsapp_users` joined the sweep's reachable set; the case the
+   leg exists for is now integration-tested. (The repo's "nothing
+   happened" rule finds another one.)
+3. **The line budget counts entry chunks, shared chunks ride the shell.**
+   The Line's own graph is 3.5 KB gz because everything heavy is shared
+   with (and cached by) the desk app — the budget script says so rather
+   than double-counting.
+4. **`spoken_text` is the written text, verbatim.** Her spoken and
+   written telling are the same telling — no generation, no
+   summarisation, so the audio can never contradict the card it voices.
+5. **A re-render clobbered the thread's `say`** — the ref-assignment
+   pattern copied from the dock overwrote the channel's own closure with
+   `undefined` on every render when no `onSay` prop was given. Guarded;
+   the test that caught it pins it.
+
+### 8.3 Honest limits (each deliberate, none silent)
+
+* **The real-device legs are owner-side and gate G4's exit**: installed
+  on a real Android and iPhone, a push arriving as a tray, a fingerprint
+  approving a payment, the iOS ceiling demonstrated. No live WhatsApp
+  send and no live TTS call has been made — both transports stay
+  injected (the standing precedent), so the daily job's first live
+  morning is production's.
+* **Speech minutes are not metered on any leg** (VG-08's debt,
+  unchanged): `MORNING_STORY` is registered, classified and
+  wallet-gated, but the meter itself is still absent.
+* **`notify.morning_audio` is not yet consulted** — the wallet is the
+  only per-tenant synthesis gate today; the preference key waits on a
+  place in the Study to set it.
+* **Audio rides the row as base64** — right at 30-day/private/one-reader
+  weight; if clips outgrow it, that is a measured migration, not a guess.
+* **The morning summary is per-verified-binding, not per-preference-set**
+  beyond the mirror switch; finer notify.* granularity (which mornings,
+  what hour, local timezone) is POLISH-adjacent. `VIHARA_ESTATE_TIMEZONE`
+  still sets the estate clock deployment-wide, so "morning" is the
+  deployment's morning, not yet the tenant's.
+* **The PWA icon is a placeholder SVG**; real icons (and iOS PNG sizes)
+  are an owner-side asset pass.
+
+---
+
 ## Change Log
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.1 — **BUILT, L0–L10.** Build notes §8 with the five-delta log and honest limits. The deltas that matter: VG-20 shrank on contact with the code (one new table, and only because of decision 2); the India-first mirror leg was unreachable until `_whatsapp_users` joined the sweep's recipient set (the "nothing happened" rule finds another one); her spoken and written telling are the same telling, verbatim. Certified set still ten; migration head `genui003`. |
 | 2026-07-29 | v1.0 — workstream opened. Three owner decisions locked (§2): the WhatsApp mirror is the one door's last resort · the Morning Story ships with **pre-generated daily audio** (the ambitious option, its obligations — store, cost class, text-degrade — owned in §5) · the daily WhatsApp morning summary ships now. The assessment shrank VG-20: the story is a projection (the Standup ported), the thread already persists (`pragya_turns`), outbound WhatsApp exists, and the passkey is the device registration. |
