@@ -452,13 +452,19 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+/* District hop-list as chips — the DS's own small-navigation idiom. */
 .vh-district-skiplist button {
-  background: var(--surface-2);
-  border: 1px solid var(--ink-700);
-  border-radius: 6px;
-  padding: 0.3rem 0.7rem;
-  color: inherit;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 5px 11px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  color: var(--fg-muted);
   cursor: pointer;
+}
+.vh-district-skiplist button:hover {
+  color: var(--fg);
 }
 .vh-depth-dial {
   display: flex;
@@ -622,6 +628,16 @@
 .vh-hall-modules {
   display: flex;
   gap: 0.5rem;
+}
+.vh-hall-modules button {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 5px 11px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  color: var(--fg-muted);
+  cursor: pointer;
 }
 .vh-hall-header select,
 .vh-hall-header input,
