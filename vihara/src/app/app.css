@@ -124,6 +124,44 @@
   padding: 0.5rem 0.75rem;
 }
 
+/* ── the motion language (POLISH P5, art bible §9) ────────────────────
+ * Brand easing, no bounce, no overshoot, no spin. Motion communicates
+ * causality: the tray slides from the edge Pragya occupies, a depth
+ * change rises 12px along the one axis, the ribbon murmurs in and
+ * fades out. The DS's reduced-motion rule collapses every duration to
+ * .001ms; the beacon's full-glow rest state is pinned separately below
+ * because losing the breath must not lose the glow. */
+.vh-depth0,
+.vh-depthN {
+  animation: vh-depth-arrive 320ms var(--ease-out);
+}
+@keyframes vh-depth-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.vh-tray-panel {
+  animation: vh-tray-arrive 240ms var(--ease-out);
+}
+@keyframes vh-tray-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+.vh-record-sheet,
+.vh-doc-pane,
+.vh-dossier {
+  animation: vh-sheet-open 200ms var(--ease-out);
+}
+@keyframes vh-sheet-open {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
 /* ── surfaces ─────────────────────────────────────────────────────────── */
 .vh-sheet-surface,
 .vh-card-surface {
@@ -185,7 +223,9 @@
   margin: 0;
 }
 
-/* "This needs you" — one of gold's two meanings. */
+/* "This needs you" — one of gold's two meanings. The raise is 640ms —
+ * the slowest thing in the product — and the breath (~4s) is the ONLY
+ * repeating attention animation anywhere (art bible §9). */
 .vh-beacon-count {
   justify-self: center;
   background: var(--accent-quiet);
@@ -195,6 +235,32 @@
   padding: 0.4rem 1rem;
   cursor: pointer;
   font: inherit;
+  animation:
+    vh-beacon-raise 640ms var(--ease-out),
+    vh-beacon-breath 4s var(--ease-in-out) 640ms infinite;
+}
+@keyframes vh-beacon-raise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes vh-beacon-breath {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(237, 171, 72, 0);
+  }
+  50% {
+    box-shadow: 0 0 18px -2px rgba(237, 171, 72, 0.45);
+  }
+}
+/* Reduced motion stops the breath but keeps the beacon at FULL glow —
+ * the art bible's rule: reduced motion loses atmosphere, never signal. */
+@media (prefers-reduced-motion: reduce) {
+  .vh-beacon-count {
+    animation: none;
+    box-shadow: 0 0 18px -2px rgba(237, 171, 72, 0.45);
+  }
 }
 
 /* ── the certified frame — gold's other meaning ───────────────────────── */
@@ -439,6 +505,16 @@
 @keyframes vh-ribbon-in {
   from { opacity: 0; transform: translateX(-50%) translateY(4px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+/* 120ms in (above), 4s dwell (ribbon.ts), 400ms out (art bible §9). */
+.vh-echo-ribbon[data-leaving="true"] {
+  animation: vh-ribbon-out 400ms var(--ease-out) forwards;
+}
+@keyframes vh-ribbon-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
 }
 
 /* ── the registry halls (DRIVER D3, D6 §7) ────────────────────────────── */

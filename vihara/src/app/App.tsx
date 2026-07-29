@@ -23,7 +23,7 @@ import { GlasshouseSurface } from "./GlasshouseSurface";
 import { HallsSurface } from "./HallsSurface";
 import { LibrarySurface } from "./LibrarySurface";
 import { PreSession } from "./PreSession";
-import { subscribeRibbon } from "./ribbon";
+import { useRibbon } from "./ribbon";
 import { StandupSurface } from "./StandupSurface";
 import { TalentSurface } from "./TalentSurface";
 import { StillSurface } from "./StillSurface";
@@ -52,9 +52,8 @@ export function App(): JSX.Element {
   const [depth, setDepth] = useState<Depth>({ level: 0 });
   const [traysOpen, setTraysOpen] = useState(false);
   const [trayCount, setTrayCount] = useState<number | null>(null);
-  const [ribbon, setRibbon] = useState<string | null>(null);
-
-  useEffect(() => subscribeRibbon(setRibbon), []);
+  // 120ms in, 4s dwell, 400ms out (art bible §9) — the hook holds the leave.
+  const { sentence: ribbon, leaving: ribbonLeaving } = useRibbon();
 
   useEffect(() => {
     if (!inSession) return;
@@ -90,6 +89,17 @@ export function App(): JSX.Element {
       : depth.level === 2 && "room" in depth
         ? { kind: "room", id: depth.room }
         : { kind: "estate", id: null };
+
+  // One key per place on the ladder: a depth change remounts <main>, and
+  // the 320ms crossfade-and-rise (art bible §9) runs on arrival.
+  const depthKey =
+    depth.level === 2 && "district" in depth
+      ? `2:${depth.district}:${depth.dossier?.id ?? ""}`
+      : depth.level === 2 && "room" in depth
+        ? `2:${depth.room}`
+        : depth.level === 1 && "room" in depth
+          ? "1:standup"
+          : String(depth.level);
 
   return (
     <div className="vihara-shell-frame">
@@ -225,7 +235,7 @@ export function App(): JSX.Element {
           leave
         </button>
       </header>
-      <main className={depth.level === 0 ? "vh-depth0" : "vh-depthN"}>
+      <main key={depthKey} className={depth.level === 0 ? "vh-depth0" : "vh-depthN"}>
         {depth.level === 0 && (
           <>
             <StillSurface />
@@ -328,7 +338,12 @@ export function App(): JSX.Element {
       />
 
       {ribbon !== null && (
-        <footer className="vh-echo-ribbon" role="status" data-part="echo-ribbon">
+        <footer
+          className="vh-echo-ribbon"
+          role="status"
+          data-part="echo-ribbon"
+          data-leaving={ribbonLeaving}
+        >
           {ribbon}
         </footer>
       )}
