@@ -12,7 +12,7 @@ The spec's G0–G6 are **proof points**, not units of work: G0's "substrate stan
 
 | WS | Name | Branch | Builds | Exits |
 |---|---|---|---|---|
-| 1 | **SEAM** | `inc7/seam` | `backend/src/ai/genui/` — every D5 endpoint, the manifest service, migration `genui001`, VP-01 | G0's backend half |
+| 1 | **SEAM** ✅ **BUILT 2026-07-29** | `inc7/seam` | `backend/src/ai/genui/` — every D5 endpoint, the manifest service, migration `genui001`, VP-01. Build notes: [06](./06_backend_api_contracts.md) §12 | G0's backend half |
 | 2 | **SUB** | `inc7/sub` | The `vihara/` app: scaffold, tokens, registry + Zod manifest, renderer skeletons, API client + auth, pre-session screens, certified set + goldens, CI gates | **G0** |
 | 3 | **WORLD** | `inc7/world` | The walkable estate: 13 world components over the estate read model, day–night, weather, traffic, beacons, tier probe + demotion, L9 sheets | **G1** |
 | 4 | **DRIVER** | `inc7/driver` | Trays · Registry Halls · dossiers · Standup · Boardroom · Talent Office · Undercroft · Library · Gallery · **The Study** | **G2** |
