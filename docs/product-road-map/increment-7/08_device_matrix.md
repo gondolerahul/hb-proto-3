@@ -168,10 +168,12 @@ keeps every district reachable without the canvas (§6).
    telemetry (§7), which is unwired until LEARN's pooled path gets a
    client reporter.
 
-### 9.3 What G1's exit still needs — all owner-side
+### 9.3 What G1's exit still needs — owner-side
 
-1. **The A-direction portrait rasters** (charter decision 8, pre-G1) —
-   the seal fallback renders everything meanwhile.
+1. ~~**The A-direction portrait rasters**~~ — ✅ **DONE 2026-07-29**
+   (art bible §7.1a): Imagen 4 via ADC, owner picked **T4 luminous**,
+   ten busts promoted as SVG dot geometry, `Portrait` component with the
+   seal fallback shipped.
 2. **The real-device matrix run** (§8.1) — one physical device per tier;
    emulated throttling deliberately does not count.
 3. **The walkable-estate look** — spec §13 makes the first walkable demo

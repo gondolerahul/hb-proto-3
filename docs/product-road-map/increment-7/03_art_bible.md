@@ -138,6 +138,35 @@ The honest counter is that seals are cold, and spec §5's dossier and one-on-one
 
 **Resolved at R1 (2026-07-29): the seal stays the fallback, not the floor.** The owner chose direction A as the house style with C as the automatic fallback — the recommendation as written. A colleague with a defined persona gets a halftone bust; everything else gets a seal, so nothing is ever portrait-less and nothing waits on an art pipeline. The raster round for the A busts remains a **pre-G1 obligation** (charter decision 8), blocked on working ADC or the owner's own image tool.
 
+### 7.1a The busts are BUILT (2026-07-29) — the production record
+
+The brainstorm round (owner, 2026-07-29) settled the four operational
+questions and the set shipped the same day:
+
+* **Pipeline: fully model-generated.** Vertex **Imagen 4**
+  (`imagen-4.0-generate-001`, ADC — the blocker charter decision 8 named
+  is gone) renders the final look from **one locked style block** + a
+  reviewed persona line each. `backend/scripts/generate_portraits.py` is
+  the whole pipeline: generate → trace → promote.
+* **Roster: Pragya + the nine Wave-0 agents.** Gateways and Sheel keep
+  seals, as proposed.
+* **Personas: ten one-liners, owner-approved as drafted** — they live in
+  the script as the reviewed source; editing one is a reviewed act.
+* **Format: SVG dot geometry by trace.** The trace resamples the
+  artwork's light onto a 96×96 dot lattice in the three-step gold ramp —
+  no style opinion; a gamma lift (0.62) keeps the print's luminosity. The
+  shipped SVGs are pure circle geometry (a test pins: gold ramp + ground
+  only, no embeds, >500 dots each). A useful side-effect: the trace
+  softens the model's facial definition into the lattice, pulling every
+  bust further inside "implied, never drawn."
+* **Two style rounds ran.** Round 1: four treatment candidates of Pragya
+  (fine-grain · bold print · stipple · luminous); **the owner picked T4
+  — luminous**. Round 2: the nine agents in T4; promoted to
+  `vihara/public/portraits/` with the manifest the `Portrait` component
+  consults (bust if promoted, seal otherwise — nothing is ever
+  portrait-less). **Frozen once published**: regeneration is a reviewed
+  act. Source PNGs stay in `vihara/portraits-staging/`.
+
 ### 7.2 Rules that hold whichever direction wins
 
 * One style for **every** colleague. A mixed roster reads as a bug.
@@ -245,6 +274,7 @@ Rules the build round earned, now binding:
 
 | Date | Change |
 |---|---|
+| 2026-07-29 | v1.3 — **the A-direction busts are BUILT** (§7.1a): Imagen 4 via ADC, one locked style block, ten owner-approved personas, two style rounds with the owner picking **T4 (luminous)**, SVG dot geometry by a no-opinion trace, promoted with a frozen-once-published manifest. Charter decision 8's pre-G1 obligation is closed. |
 | 2026-07-29 | v1.2 — **R1 PASSED.** All eight §12 rulings approved as proposed: the gold budget; no serif; day–night as luminance; the real pane's reserve seam subdued to flat gold-700; the beacon as the only repeating *attention* animation with the ambient world-liveness families sanctioned; the focus ring gold everywhere including the drained plane; depth-3 translucency sanctioned in the Undercroft only. **Portraits: direction A with C as the automatic fallback** (VP-02 resolved — the seal stays the fallback). The A-direction raster round remains a pre-G1 obligation. This document is now binding on every renderer. |
 | 2026-07-28 | v1.1 — **§13 added: the territory construction language, built.** Five interactive boards (still → terrace → district → glasshouse → undercroft) linked into the walkable depth ladder; the owner approved the language on the first two. The construction vocabulary (floating plinths, holographic volumes + ghost scaffolds, flat surface-printed UI with deterministic paint order, concentric halos, the **energy floor** carried from the legacy app and re-keyed to warm-white) is now specified from working artifacts rather than prose. Three adversarial review rounds produced four new binding rules (needs-you dots are flat gold-500; reduced motion is 160ms crossfades; `--fg-faint` never informational; the marker-defs CSS lesson) and **four new R1 rulings** (§12 items 5–8: the real pane's reserve seam, §9's animation scope, the focus ring in the drained plane, depth-3 translucency). |
 | 2026-07-28 | v1.0 — the art bible, superseding spec §11 per charter decision 2. Its load-bearing content is not a palette but the **gold budget**: gold means *this needs you* or *this is certified*, and nothing else, which is what lets a still estate be visibly still. The Glasshouse is solved by **desaturation rather than a second hue** — no new colour, the right metaphor, and un-forgeable because the renderer applies it at the plane boundary. Portraits are proposed as **halftone dot fields**, making the brand's one ornament the medium and letting the artwork itself carry L7's disclosure. Raised **VP-02**: the procedural seal direction has no production cost and cannot drift, which may make it the floor rather than the fallback. |
