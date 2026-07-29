@@ -881,6 +881,18 @@ export interface paths {
      */
     get: operations["reviews_due_api_v1_ai_strategy_reviews_due_get"];
   };
+  "/api/v1/ai/talent/colleagues-past": {
+    /**
+     * Colleagues Past
+     * @description The Gallery's roster (D6 §11): terminated colleagues, from the
+     * stamp termination wrote — a query, never a new table.
+     */
+    get: operations["colleagues_past_api_v1_ai_talent_colleagues_past_get"];
+  };
+  "/api/v1/ai/talent/colleagues/{entity_id}/terminate": {
+    /** Terminate */
+    post: operations["terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post"];
+  };
   "/api/v1/ai/templates": {
     /** List Templates */
     get: operations["list_templates_api_v1_ai_templates_get"];
@@ -915,6 +927,25 @@ export interface paths {
     get: operations["list_records_api_v1_ai_tenant_records_get"];
     /** Create Record */
     post: operations["create_record_api_v1_ai_tenant_records_post"];
+  };
+  "/api/v1/ai/tenant/records/bulk": {
+    /**
+     * Bulk Records
+     * @description Bulk update/soft-delete — a **certified endpoint** (DRIVER D3).
+     *
+     * ``bulk_data_operation`` is T2 in the §20 matrix, and D6 §7 draws the
+     * hall's bulk button opening ``certified.step-up`` rather than a confirm
+     * dialog — so the gate is here, in the handler body (the VG-05 rule), and
+     * the ceremony is the generic step-up: the act carries no domain block of
+     * its own, which is why this call site is a *ceremony-only gate* in R5's
+     * correspondence table rather than an eleventh certified component.
+     *
+     * Bulk deliberately overrides per-record CAS: the human said "set these
+     * N now", and a version race inside the loop resolves to the human's
+     * write — each record is re-read under the same session before its
+     * update, and per-record failures are reported, never silently skipped.
+     */
+    post: operations["bulk_records_api_v1_ai_tenant_records_bulk_post"];
   };
   "/api/v1/ai/tenant/records/{record_id}": {
     /** Get Record */
@@ -2092,6 +2123,19 @@ export interface components {
       envelope_ref?: string | null;
       [key: string]: unknown;
     };
+    /** BulkRequest */
+    BulkRequest: {
+      /** Data */
+      data?: {
+        [key: string]: unknown;
+      } | null;
+      /** Def Name */
+      def_name: string;
+      /** Op */
+      op: string;
+      /** Record Ids */
+      record_ids: string[];
+    };
     /**
      * CSATRequest
      * @description A +1/-1 CSAT rating on a completed run (Phase 12 `07` §6, P-O2).
@@ -2726,6 +2770,8 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      /** Effective From */
+      effective_from?: string | null;
       /** Entity Id */
       entity_id: string | null;
       /** File Size */
@@ -2739,6 +2785,18 @@ export interface components {
        * Format: uuid
        */
       id: string;
+      /** Memory Domain */
+      memory_domain?: string | null;
+      /** Source Kind */
+      source_kind?: string | null;
+      /** Source Uri */
+      source_uri?: string | null;
+      /** Staleness Reason */
+      staleness_reason?: string | null;
+      /** Staleness State */
+      staleness_state?: string | null;
+      /** Superseded By Id */
+      superseded_by_id?: string | null;
       /**
        * Updated At
        * Format: date-time
@@ -8084,6 +8142,47 @@ export interface operations {
       };
     };
   };
+  /**
+   * Colleagues Past
+   * @description The Gallery's roster (D6 §11): terminated colleagues, from the
+   * stamp termination wrote — a query, never a new table.
+   */
+  colleagues_past_api_v1_ai_talent_colleagues_past_get: {
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+              [key: string]: unknown;
+            }[];
+        };
+      };
+    };
+  };
+  /** Terminate */
+  terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post: {
+    parameters: {
+      path: {
+        entity_id: string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   /** List Templates */
   list_templates_api_v1_ai_templates_get: {
     parameters: {
@@ -8285,6 +8384,45 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       201: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Bulk Records
+   * @description Bulk update/soft-delete — a **certified endpoint** (DRIVER D3).
+   *
+   * ``bulk_data_operation`` is T2 in the §20 matrix, and D6 §7 draws the
+   * hall's bulk button opening ``certified.step-up`` rather than a confirm
+   * dialog — so the gate is here, in the handler body (the VG-05 rule), and
+   * the ceremony is the generic step-up: the act carries no domain block of
+   * its own, which is why this call site is a *ceremony-only gate* in R5's
+   * correspondence table rather than an eleventh certified component.
+   *
+   * Bulk deliberately overrides per-record CAS: the human said "set these
+   * N now", and a version race inside the loop resolves to the human's
+   * write — each record is re-read under the same session before its
+   * update, and per-record failures are reported, never silently skipped.
+   */
+  bulk_records_api_v1_ai_tenant_records_bulk_post: {
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
         content: {
           "application/json": {
             [key: string]: unknown;

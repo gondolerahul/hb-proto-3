@@ -50,6 +50,37 @@ export interface FetchedManifest {
   assessment: Assessment;
 }
 
+/**
+ * The manifest inspector's memory (DRIVER D10, D6 §15): every manifest
+ * this session fetched, with what the inspector needs to answer "why did
+ * she show me that" — surface, intent shape, verdict, issue time and TTL
+ * (cache age is computed at read). In-memory only, newest first, capped.
+ */
+export interface ManifestLogEntry {
+  surface: string;
+  renderer: string;
+  density: string;
+  verdict: "render" | "reject" | "wire-reject";
+  reason?: string;
+  issued_at?: string;
+  ttl_seconds?: number;
+  manifest_version?: number;
+  component_count?: number;
+  fetched_at: string;
+}
+
+const manifestLog: ManifestLogEntry[] = [];
+const MANIFEST_LOG_CAP = 50;
+
+export function readManifestLog(): readonly ManifestLogEntry[] {
+  return manifestLog;
+}
+
+function recordManifest(entry: ManifestLogEntry): void {
+  manifestLog.unshift(entry);
+  if (manifestLog.length > MANIFEST_LOG_CAP) manifestLog.pop();
+}
+
 export async function fetchManifest(
   surface: string,
   renderer: "S" | "C" | "W",
@@ -61,8 +92,32 @@ export async function fetchManifest(
     transformResponse: (data: string) => data,
   });
   const parsed = parseManifestStream(response.data);
-  if (parsed.kind === "rejected") return parsed;
-  return { manifest: parsed.manifest, assessment: assessManifest(parsed.manifest) };
+  const fetchedAt = new Date().toISOString();
+  if (parsed.kind === "rejected") {
+    recordManifest({
+      surface,
+      renderer,
+      density,
+      verdict: "wire-reject",
+      reason: parsed.reason,
+      fetched_at: fetchedAt,
+    });
+    return parsed;
+  }
+  const assessment = assessManifest(parsed.manifest);
+  recordManifest({
+    surface,
+    renderer,
+    density,
+    verdict: assessment.verdict === "reject" ? "reject" : "render",
+    reason: assessment.verdict === "reject" ? assessment.reason : undefined,
+    issued_at: parsed.manifest.issued_at,
+    ttl_seconds: parsed.manifest.ttl_seconds,
+    manifest_version: parsed.manifest.manifest_version,
+    component_count: parsed.manifest.components.length,
+    fetched_at: fetchedAt,
+  });
+  return { manifest: parsed.manifest, assessment };
 }
 
 export async function fetchEstate(): Promise<Record<string, unknown>> {

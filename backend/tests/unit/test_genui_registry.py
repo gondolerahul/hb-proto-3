@@ -22,6 +22,7 @@ from types import SimpleNamespace
 import pytest
 
 from src.ai.genui.registry import (
+    CEREMONY_ONLY_GATES,
     CERTIFIED_GATE_MAP,
     REGISTRY_DIR,
     _check_entry,
@@ -100,6 +101,11 @@ def test_certified_set_corresponds_to_the_enforce_call_sites():
         declared[file_part] = declared.get(file_part, 0) + 1
     # approval and payment share one call site (respond_to_approval): collapse.
     declared["src/ai/router.py"] -= 1
+    # Ceremony-only gates (DRIVER D3): the act's certified surface is the
+    # generic step-up, not a component of its own — counted, not exempted.
+    for gate in CEREMONY_ONLY_GATES:
+        file_part = gate.split("::")[0]
+        declared[file_part] = declared.get(file_part, 0) + 1
     actual = _actual_enforce_sites()
     assert actual == declared, (
         "enforce_* call sites and CERTIFIED_GATE_MAP disagree.\n"

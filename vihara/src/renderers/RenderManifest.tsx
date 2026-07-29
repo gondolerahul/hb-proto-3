@@ -23,6 +23,7 @@ import {
   Timeline,
   type ComponentProps,
 } from "../components/primitive/basics";
+import { SlaCountdownComponent } from "../components/primitive/SlaCountdown";
 
 type ComponentImpl = (props: ComponentProps) => JSX.Element;
 
@@ -40,6 +41,7 @@ const IMPLEMENTATIONS: Record<string, ComponentImpl> = {
     />
   ),
   "narrative.still-line": StillLine,
+  "primitive.sla-countdown": (props) => <SlaCountdownComponent {...props} />,
   // The certified set ships in the shell — never lazy (D7 §3.3): a tray
   // must not wait on a chunk.
   ...CERTIFIED_IMPLEMENTATIONS,

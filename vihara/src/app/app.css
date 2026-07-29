@@ -275,3 +275,768 @@
   gap: 0.75rem;
   align-items: center;
 }
+
+/* ── the tray (DRIVER D1, D6 §4) ──────────────────────────────────────── */
+/* Gold audit: the tray adds NO gold of its own — the certified frame
+ * inside it carries gold's ceremony meaning, and the shell's waiting
+ * count carries "this needs you". The countdown is deliberately quiet:
+ * fg-muted, no animation, and nothing here may ever turn it red. */
+.vh-tray-panel {
+  position: fixed;
+  top: 3.5rem;
+  right: 1rem;
+  bottom: 3rem;
+  width: min(30rem, calc(100vw - 2rem));
+  overflow-y: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  padding: 1rem;
+}
+.vh-tray-stack {
+  display: grid;
+  gap: 1rem;
+}
+.vh-tray {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+}
+.vh-tray-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.vh-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-sla {
+  font-size: 0.8rem;
+  color: var(--fg-muted, var(--ink-300));
+  font-variant-numeric: tabular-nums;
+}
+.vh-tray-happened {
+  margin: 0;
+}
+.vh-tray-recommendation p {
+  margin: 0;
+}
+.vh-tray-recommendation details summary {
+  cursor: pointer;
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-tray-paths {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+.vh-tray-cost {
+  display: block;
+  color: var(--fg-muted, var(--ink-300));
+  font-variant-numeric: tabular-nums;
+}
+.vh-ceremony {
+  display: grid;
+  gap: 0.75rem;
+}
+.vh-ceremony-fallback {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+}
+.vh-ceremony-fallback label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.vh-ceremony-fallback input {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  color: inherit;
+  width: 8rem;
+}
+.vh-ceremony-fallback button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-echo-ribbon {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0.75rem;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-700);
+  border-radius: 999px;
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+  animation: vh-ribbon-in 120ms ease-out;
+}
+@keyframes vh-ribbon-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── the registry halls (DRIVER D3, D6 §7) ────────────────────────────── */
+/* Gold audit: nothing in the hall is gold — the seal ⊛ and the tracked
+ * mark ◧ are structural glyphs in muted fg, and the only gold a bulk act
+ * meets is the certified step-up ceremony's own frame. */
+.vh-hall {
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-hall-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.vh-hall-modules {
+  display: flex;
+  gap: 0.5rem;
+}
+.vh-hall-header select,
+.vh-hall-header input,
+.vh-sheet-fields select,
+.vh-sheet-fields input {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  color: inherit;
+}
+.vh-register {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.vh-register th {
+  text-align: left;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted, var(--ink-300));
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--ink-700);
+}
+.vh-register td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--ink-800, var(--ink-700));
+}
+.vh-register tbody tr {
+  cursor: pointer;
+}
+.vh-register tbody tr:hover {
+  background: var(--surface-2);
+}
+.vh-seal,
+.vh-tracked {
+  color: var(--fg-muted, var(--ink-300));
+  margin-left: 0.3rem;
+}
+.vh-hall-footer {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.vh-hall-footer button,
+.vh-record-sheet footer button,
+.vh-proposal button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-bulk-bar {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.vh-record-sheet {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.vh-record-sheet header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.vh-record-sheet h3 {
+  margin: 0;
+}
+.vh-sheet-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.6rem;
+}
+.vh-sheet-fields label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.vh-proposals {
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-proposal {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.vh-analytics ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.vh-analytics li {
+  display: grid;
+  grid-template-columns: 8rem 1fr 3rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+.vh-bar {
+  display: block;
+  height: 0.6rem;
+  border-radius: 3px;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  min-width: 2px;
+}
+
+/* ── the district sheet + dossier (DRIVER D4, D6 §5–6) ────────────────── */
+/* Gold audit: the district adds gold in exactly two places — the raised
+ * hand ◈ (this needs you) and the treasury's protected reserve. */
+.vh-district {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-district h2 {
+  margin: 0;
+}
+.vh-district-panels {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) 2fr;
+  gap: 1rem;
+}
+.vh-plinth {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-plinth output {
+  font-variant-numeric: tabular-nums;
+}
+.vh-treasury {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vh-treasury-bar {
+  display: block;
+  height: 0.6rem;
+  max-width: 8rem;
+  border-radius: 3px;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+}
+.vh-reserve {
+  color: var(--gold-400);
+  font-size: 0.8rem;
+}
+.vh-hand {
+  color: var(--gold-400);
+  font-size: 0.85rem;
+}
+.vh-live-runs ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.vh-district-traffic {
+  color: var(--fg-muted, var(--ink-300));
+  font-size: 0.85rem;
+}
+.vh-dossier {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+  max-width: 44rem;
+}
+.vh-dossier-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+.vh-dossier-header h2 {
+  margin: 0;
+}
+.vh-dossier-line {
+  margin: 0.25rem 0 0;
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-decisions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-trace {
+  background: var(--surface-2);
+  border: 1px solid var(--ink-700);
+  border-radius: 6px;
+  padding: 0.6rem;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  max-height: 18rem;
+}
+.vh-dossier-tell {
+  display: grid;
+  gap: 0.5rem;
+}
+.vh-dossier-tell textarea {
+  width: 100%;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.5rem;
+  color: inherit;
+}
+.vh-dossier-tell button {
+  justify-self: start;
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* ── the standup (DRIVER D5, D6 §10) ──────────────────────────────────── */
+/* Gold audit: the only gold is ◈ on a card whose colleague is waiting. */
+.vh-standup {
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  padding: 1.5rem;
+  outline: none;
+}
+.vh-standup-card {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 10px;
+  padding: 1.25rem;
+  width: min(26rem, 90vw);
+  display: grid;
+  gap: 0.6rem;
+  text-align: left;
+}
+.vh-standup-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.vh-standup-card p {
+  margin: 0;
+}
+.vh-standup-nav {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.vh-standup-nav button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.3rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* ── the boardroom (DRIVER D6, D6 §8) ─────────────────────────────────── */
+/* Gold audit: the only gold in this room is the certified frame of the
+ * adoption ceremony. Grades are words in muted fg — a grade rendered as
+ * an ornament would soften the honesty it exists to carry. */
+.vh-board {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-board-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.vh-board-header h2 {
+  margin: 0;
+}
+.vh-board-columns {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+}
+.vh-board-agenda ul,
+.vh-board-minutes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.vh-proposition {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.vh-proposition header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.vh-proposition h4,
+.vh-proposition p {
+  margin: 0;
+}
+.vh-grade {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted, var(--ink-300));
+}
+/* UNTESTED must not read like UNKNOWN: never-tried renders hollow. */
+.vh-proposition[data-grade="untested"] .vh-grade {
+  font-style: italic;
+  opacity: 0.85;
+}
+.vh-proposition footer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vh-proposition footer button,
+.vh-board-raise button,
+.vh-board-minutes button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-proposition footer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vh-board-raise {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+.vh-board-raise input {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  color: inherit;
+  flex: 1;
+  min-width: 10rem;
+}
+
+/* ── the talent office (DRIVER D7, D6 §9) ─────────────────────────────── */
+.vh-talent {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-candidate {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.vh-candidate header {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.vh-candidate h4,
+.vh-candidate p {
+  margin: 0;
+}
+.vh-candidate footer {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.vh-candidate footer button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-candidate footer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.vh-hire-form {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vh-hire-form input,
+.vh-hire-form select {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  color: inherit;
+}
+.vh-colleagues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.vh-colleague {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── the gallery (DRIVER D8, D6 §11) ──────────────────────────────────── */
+/* The past shares a material with the not-yet-real (art bible §7.2):
+ * desaturation, applied by the surface, never by the portrait itself. */
+.vh-gallery {
+  display: grid;
+  gap: 1.25rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-seasons,
+.vh-monuments,
+.vh-past {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-monument details {
+  display: inline-block;
+  margin-left: 0.5rem;
+}
+.vh-ghost p {
+  margin: 0.3rem 0 0;
+}
+.vh-past-colleague {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.vh-desaturated {
+  filter: grayscale(1) opacity(0.75);
+}
+
+/* ── the library (DRIVER D9, D6 §13) ──────────────────────────────────── */
+.vh-library {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-library-header {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+}
+.vh-library-header h2 {
+  margin: 0;
+}
+.vh-library-header nav {
+  display: flex;
+  gap: 0.6rem;
+}
+.vh-library-body {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 2fr;
+  gap: 1rem;
+}
+.vh-shelf {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+.vh-doc-pane {
+  background: var(--surface);
+  border: 1px solid var(--ink-700);
+  border-radius: 8px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.vh-doc-pane h3,
+.vh-doc-pane p {
+  margin: 0;
+}
+.vh-staleness {
+  color: var(--fg-muted, var(--ink-300));
+}
+.vh-passage blockquote {
+  margin: 0.5rem 0 0;
+  border-left: 2px solid var(--ink-500);
+  padding-left: 0.75rem;
+}
+.vh-passage cite {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--fg-muted, var(--ink-300));
+}
+
+/* ── the undercroft (DRIVER D10, D6 §15) ──────────────────────────────── */
+/* Mono, dense, operator regardless of the learned value (art bible §6).
+ * Gold audit: none. Nothing down here needs you; it explains. */
+.vh-undercroft {
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+  padding: 1rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85rem;
+}
+.vh-undercroft-nav {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* ── bridges & gates (DRIVER D11, D6 §14) ─────────────────────────────── */
+.vh-bridges {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 1.5rem;
+  text-align: left;
+  padding: 1rem;
+}
+.vh-bridge-list,
+.vh-gate-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.vh-bridge-line {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vh-bridge-line button {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  color: inherit;
+  cursor: pointer;
+}
+.vh-gate-list li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+
+/* ── the study (DRIVER D12, D6 §15a) ──────────────────────────────────── */
+/* Gold audit: none. The desk explains; nothing here needs you. */
+.vh-study {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.25rem;
+  text-align: left;
+  padding: 1rem;
+  max-width: 56rem;
+}
+.vh-study p {
+  margin: 0.25rem 0;
+}
+.vh-passkeys {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.vh-passkeys li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+.vh-study button[data-part="add-passkey"] {
+  background: var(--surface-3);
+  border: 1px solid var(--ink-500);
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  color: inherit;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+.vh-study [role="radiogroup"],
+.vh-notify-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}

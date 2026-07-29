@@ -135,6 +135,9 @@ app.include_router(library_router, prefix="/api/v1")
 # Inc-6 STRAT — adopt (T2 certified), predicted-vs-realized, the reviews tray.
 from src.ai.strategy.api import router as strategy_router
 app.include_router(strategy_router, prefix="/api/v1")
+# Inc-7 DRIVER D7 — VG-18: termination as workflow (a plain governed act).
+from src.ai.talent.router import router as talent_router
+app.include_router(talent_router, prefix="/api/v1")
 # Inc-7 SEAM — the Vihara seams: registry, estate, stream, manifests, trays,
 # echo, push; plus Pragya's event channel (VG-07) and its echo fan-out.
 from src.ai.genui.router import router as genui_router

@@ -710,6 +710,45 @@
     "title": "BudgetRef",
     "type": "object"
    },
+   "BulkRequest": {
+    "properties": {
+     "data": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Data"
+     },
+     "def_name": {
+      "title": "Def Name",
+      "type": "string"
+     },
+     "op": {
+      "title": "Op",
+      "type": "string"
+     },
+     "record_ids": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "title": "Record Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "def_name",
+     "op",
+     "record_ids"
+    ],
+    "title": "BulkRequest",
+    "type": "object"
+   },
    "CSATRequest": {
     "description": "A +1/-1 CSAT rating on a completed run (Phase 12 `07` \u00a76, P-O2).",
     "properties": {
@@ -2094,6 +2133,18 @@
       "title": "Created At",
       "type": "string"
      },
+     "effective_from": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Effective From"
+     },
      "entity_id": {
       "anyOf": [
        {
@@ -2129,6 +2180,73 @@
       "format": "uuid",
       "title": "Id",
       "type": "string"
+     },
+     "memory_domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Memory Domain"
+     },
+     "source_kind": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Kind"
+     },
+     "source_uri": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Uri"
+     },
+     "staleness_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Staleness Reason"
+     },
+     "staleness_state": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Staleness State"
+     },
+     "superseded_by_id": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Superseded By Id"
      },
      "updated_at": {
       "format": "date-time",
@@ -13631,6 +13749,88 @@
     ]
    }
   },
+  "/api/v1/ai/talent/colleagues-past": {
+   "get": {
+    "description": "The Gallery's roster (D6 \u00a711): terminated colleagues, from the\nstamp termination wrote \u2014 a query, never a new table.",
+    "operationId": "colleagues_past_api_v1_ai_talent_colleagues_past_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Colleagues Past Api V1 Ai Talent Colleagues Past Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Colleagues Past",
+    "tags": [
+     "Talent"
+    ]
+   }
+  },
+  "/api/v1/ai/talent/colleagues/{entity_id}/terminate": {
+   "post": {
+    "operationId": "terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "entity_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Entity Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Terminate Api V1 Ai Talent Colleagues  Entity Id  Terminate Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Terminate",
+    "tags": [
+     "Talent"
+    ]
+   }
+  },
   "/api/v1/ai/templates": {
    "get": {
     "operationId": "list_templates_api_v1_ai_templates_get",
@@ -14092,6 +14292,55 @@
      }
     ],
     "summary": "Create Record",
+    "tags": [
+     "Tenant Schema"
+    ]
+   }
+  },
+  "/api/v1/ai/tenant/records/bulk": {
+   "post": {
+    "description": "Bulk update/soft-delete \u2014 a **certified endpoint** (DRIVER D3).\n\n``bulk_data_operation`` is T2 in the \u00a720 matrix, and D6 \u00a77 draws the\nhall's bulk button opening ``certified.step-up`` rather than a confirm\ndialog \u2014 so the gate is here, in the handler body (the VG-05 rule), and\nthe ceremony is the generic step-up: the act carries no domain block of\nits own, which is why this call site is a *ceremony-only gate* in R5's\ncorrespondence table rather than an eleventh certified component.\n\nBulk deliberately overrides per-record CAS: the human said \"set these\nN now\", and a version race inside the loop resolves to the human's\nwrite \u2014 each record is re-read under the same session before its\nupdate, and per-record failures are reported, never silently skipped.",
+    "operationId": "bulk_records_api_v1_ai_tenant_records_bulk_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BulkRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Bulk Records Api V1 Ai Tenant Records Bulk Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Bulk Records",
     "tags": [
      "Tenant Schema"
     ]
