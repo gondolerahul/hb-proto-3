@@ -135,9 +135,14 @@ app.include_router(library_router, prefix="/api/v1")
 # Inc-6 STRAT — adopt (T2 certified), predicted-vs-realized, the reviews tray.
 from src.ai.strategy.api import router as strategy_router
 app.include_router(strategy_router, prefix="/api/v1")
-# Inc-7 SEAM — the Vihara seams: component registry (estate/stream/trays follow).
+# Inc-7 SEAM — the Vihara seams: registry, estate, stream, manifests, trays,
+# echo, push; plus Pragya's event channel (VG-07) and its echo fan-out.
 from src.ai.genui.router import router as genui_router
 app.include_router(genui_router, prefix="/api/v1")
+from src.ai.genui.channel import echo_fanout, router as pragya_channel_router
+from src.ai.genui.echo import install_echo_fanout
+app.include_router(pragya_channel_router, prefix="/api/v1")
+install_echo_fanout(echo_fanout)
 app.include_router(kernel_admin_router, prefix="/api/v1")
 from src.ai.campaign_router import router as campaign_router
 app.include_router(campaign_router, prefix="/api/v1")

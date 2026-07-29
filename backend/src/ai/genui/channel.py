@@ -1,0 +1,268 @@
+"""genui/channel.py — Pragya's event channel (VG-07, D5 §5).
+
+A WebSocket, because the contract is genuinely bidirectional; the shipped
+chat endpoints stay (the legacy console uses them) and this is additive.
+
+The four rules, from the contract, and where each lives:
+
+1. **One session across devices.** The socket attaches to the existing
+   ``account_manager_sessions`` row — the same row voice and the console
+   share. A second device joins the same session's group; it does not open
+   a second one, or "zero repeated context" becomes a per-device promise.
+2. **``viewport`` is what makes conversation contextual.** The hub keeps
+   the session's current viewport and depth; a steward who has to ask
+   "which invoice?" while it is on screen has failed §10.2.
+3. **The channel may never elevate.** ``step_up_result`` is *cached* here
+   as a hint and nothing more — elevation happens only through
+   ``/ai/authn/*`` (a failure must count against the lockout), and the gate
+   re-checks the real tier on every act. Nothing in this module touches
+   ``auth_level``; a test pins that.
+4. **Only Pragya writes the client leg (L2).** The socket registry is
+   module-private; the two writers are the handler's own replies and
+   ``deliver_tray`` — and ``deliver_tray`` is also the **single permitted
+   caller** of ``push.send_tray_push``, so the pocket and the socket share
+   one delivery door. No socket open → the tray goes to push; a device
+   asleep in a pocket is still reached (L8).
+
+Echo fan-out: ``install_echo_fanout`` wires the echo bus here at boot; an
+echo lands in the session's context buffer (what Pragya "saw the user do"),
+consumed by STEWARD's turn context. It is never re-broadcast to the client
+— the client did the act.
+"""
+from __future__ import annotations
+
+import logging
+import uuid
+from collections import deque
+from typing import Any, Protocol
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from src.ai.genui.echo import record_echo, validate_echo
+from src.ai.genui.models import UiEcho
+from src.ai.genui.push import send_tray_push
+from src.ai.inward_auth.models import ChannelKind
+from src.ai.inward_auth.sessions import get_or_create_session
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/ai/pragya", tags=["Pragya Channel"])
+
+ECHO_CONTEXT_LIMIT = 50
+
+
+class SocketLike(Protocol):
+    """What the hub needs from a socket — a real WebSocket satisfies it, and
+    tests drive the protocol with a fake."""
+
+    async def send_json(self, data: dict[str, Any]) -> None: ...
+
+
+class _SessionState:
+    def __init__(self) -> None:
+        self.sockets: set[Any] = set()
+        self.viewport: dict[str, Any] | None = None
+        self.depth: int = 0
+        self.step_up_hint: dict[str, Any] | None = None
+        self.echoes: deque[dict[str, Any]] = deque(maxlen=ECHO_CONTEXT_LIMIT)
+
+
+class ChannelHub:
+    """In-memory socket registry, one entry per account-manager session."""
+
+    def __init__(self) -> None:
+        self._sessions: dict[uuid.UUID, _SessionState] = {}
+        self._by_user: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID] = {}
+
+    # ── membership ────────────────────────────────────────────────────────
+    def join(
+        self, session_id: uuid.UUID,
+        company_id: uuid.UUID, user_id: uuid.UUID, socket: Any,
+    ) -> _SessionState:
+        state = self._sessions.setdefault(session_id, _SessionState())
+        state.sockets.add(socket)
+        self._by_user[(company_id, user_id)] = session_id
+        return state
+
+    def leave(self, session_id: uuid.UUID, socket: Any) -> None:
+        state = self._sessions.get(session_id)
+        if state is None:
+            return
+        state.sockets.discard(socket)
+        if not state.sockets:
+            # Context survives a disconnect on purpose: the session is the
+            # unit of memory, not the socket.
+            pass
+
+    def state_for_user(
+        self, company_id: uuid.UUID, user_id: uuid.UUID,
+    ) -> _SessionState | None:
+        session_id = self._by_user.get((company_id, user_id))
+        return self._sessions.get(session_id) if session_id else None
+
+    # ── the one client-leg writer (rule 4) ────────────────────────────────
+    async def _emit(self, state: _SessionState, event: dict[str, Any]) -> int:
+        delivered = 0
+        for socket in list(state.sockets):
+            try:
+                await socket.send_json(event)
+                delivered += 1
+            except Exception:  # noqa: BLE001 — one dead socket must not stop the rest
+                state.sockets.discard(socket)
+        return delivered
+
+
+_hub = ChannelHub()
+
+
+def hub() -> ChannelHub:
+    return _hub
+
+
+# ── the single delivery door (L8) ────────────────────────────────────────────
+
+async def deliver_tray(
+    db: Any,
+    company_id: uuid.UUID,
+    user_id: uuid.UUID,
+    tray: dict[str, Any],
+    *,
+    push_transport: Any = None,
+) -> str:
+    """Deliver one tray: sockets first, push when nobody is listening.
+    Returns "socket" | "push" | "nowhere" — the caller may care, the user
+    always gets at most one path (no double-notification)."""
+    state = _hub.state_for_user(company_id, user_id)
+    if state is not None and state.sockets:
+        delivered = await _hub._emit(state, {"type": "deliver_tray", "tray": tray})
+        if delivered:
+            return "socket"
+    sentence = (tray.get("what_happened") or {}).get(
+        "sentence") or "A decision is waiting for you."
+    reached = await send_tray_push(
+        db, company_id, user_id,
+        tray_id=str(tray.get("tray_id")), one_sentence=str(sentence),
+        transport=push_transport)
+    return "push" if reached else "nowhere"
+
+
+# ── echo fan-out (installed at boot) ─────────────────────────────────────────
+
+async def echo_fanout(echo: UiEcho) -> None:
+    """What Pragya saw the user do — into the session's context buffer,
+    never back to the client."""
+    if echo.user_id is None:
+        return
+    state = _hub.state_for_user(echo.company_id, echo.user_id)
+    if state is not None:
+        state.echoes.append({
+            "sentence": echo.sentence,
+            "action_ref": echo.action_ref,
+            "occurred_at": echo.occurred_at.isoformat(),
+        })
+
+
+# ── the protocol ─────────────────────────────────────────────────────────────
+
+async def dispatch_message(
+    db: Any,
+    state: _SessionState,
+    company_id: uuid.UUID,
+    user_id: uuid.UUID,
+    message: dict[str, Any],
+) -> dict[str, Any] | None:
+    """One client message in, at most one Pragya event out. Unknown types
+    fail visible (an error event), never silent (the repo's standing rule)."""
+    kind = message.get("type")
+
+    if kind == "viewport":
+        state.viewport = message.get("context_ref")
+        return None
+    if kind == "depth_change":
+        state.depth = int(message.get("level", 0))
+        return None
+    if kind == "step_up_result":
+        # Rule 3: a *hint* for presence only. The session row is untouched;
+        # the tier gate re-checks on every act.
+        state.step_up_hint = {
+            "tier": message.get("tier"), "ok": bool(message.get("ok"))}
+        return None
+    if kind == "action_echo":
+        payload = {
+            "sentence": message.get("sentence"),
+            "action_ref": message.get("action_ref"),
+            "manifest_hash": message.get("manifest_hash"),
+            "component_id": message.get("component_id"),
+            "occurred_at": message.get("occurred_at"),
+        }
+        problem = validate_echo(payload)
+        if problem is not None:
+            return {"type": "error", "reason": problem}
+        echo = await record_echo(db, company_id, user_id, payload)
+        return {"type": "echo_ack", "echo_id": str(echo.id)}
+    if kind == "utterance":
+        text = str(message.get("text") or "").strip()
+        if not text:
+            return {"type": "error", "reason": "an utterance needs text"}
+        from src.ai.pragya.runtime import TurnRequest, run_turn
+
+        result = await run_turn(db, TurnRequest(
+            company_id=company_id, user_id=user_id, text=text,
+            channel_kind=ChannelKind.CONSOLE))
+        await db.commit()
+        event: dict[str, Any] = {
+            "type": "narrate", "text": result.reply, "anchors": []}
+        if result.needs_step_up or result.needs_oob:
+            # Reported so the client can open the ceremony — the ceremony
+            # itself runs only through /ai/authn/* (rule 3).
+            event["step_up"] = {
+                "tier": result.tier,
+                "command_ref": result.command_ref,
+                "oob": result.needs_oob,
+            }
+        return event
+
+    return {"type": "error", "reason": f"unknown message type {kind!r}"}
+
+
+@router.websocket("/channel")
+async def channel_socket(websocket: WebSocket) -> None:
+    """VG-07. Token in the query (the browser cannot set WS headers); the
+    same JWT the REST surface takes."""
+    from src.auth.dependencies import _authenticate_user
+    from src.common.database import AsyncSessionLocal
+
+    token = websocket.query_params.get("token")
+    async with AsyncSessionLocal() as db:
+        try:
+            user = await _authenticate_user(token, db)
+        except Exception:  # noqa: BLE001 — an unauthenticated socket gets no detail
+            await websocket.close(code=4401)
+            return
+        company_id = user.company_id
+        user_id = user.id
+        session = await get_or_create_session(
+            db, company_id=company_id,
+            channel_kind=ChannelKind.CONSOLE, user_id=user_id)
+        session_id = session.id
+        await db.commit()
+
+    await websocket.accept()
+    state = _hub.join(session_id, company_id, user_id, websocket)
+    await _hub._emit(state, {"type": "presence", "state": "listening"})
+    try:
+        while True:
+            message = await websocket.receive_json()
+            async with AsyncSessionLocal() as db:
+                if message.get("type") == "utterance":
+                    await _hub._emit(state, {"type": "presence", "state": "working"})
+                reply = await dispatch_message(
+                    db, state, company_id, user_id, message)
+            if reply is not None:
+                await websocket.send_json(reply)
+            if message.get("type") == "utterance":
+                await _hub._emit(state, {"type": "presence", "state": "listening"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _hub.leave(session_id, websocket)
