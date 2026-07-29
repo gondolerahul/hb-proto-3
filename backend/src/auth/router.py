@@ -8,6 +8,13 @@ from src.auth import service
 import httpx
 import os
 from src.auth import service
+from src.auth.token_delivery import (
+    cookie_refresh_token,
+    csrf_ok,
+    set_cookie_mode_cookies,
+    token_body,
+    wants_cookie_delivery,
+)
 from src.common.security import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -21,6 +28,12 @@ async def register(user: UserCreate, request: Request, response: Response, db: A
     access_token = create_access_token(data={"sub": new_user.email, "company_id": str(new_user.company_id)})
     refresh_token = await service.create_refresh_token(db, new_user.id)
 
+    # VP-01 (Inc-7 SEAM T9): X-Token-Delivery: cookie → Strict cookies, no
+    # refresh token in the body. No header → the shipped behaviour, untouched.
+    if wants_cookie_delivery(request):
+        set_cookie_mode_cookies(response, refresh_token)
+        return token_body(access_token, refresh_token, cookie_mode=True)
+
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -33,7 +46,7 @@ async def register(user: UserCreate, request: Request, response: Response, db: A
     return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
 
 @router.post("/login", response_model=Token)
-async def login(response: Response, login_data: UserLogin, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, response: Response, login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     user = await service.authenticate_user(db, login_data)
     if not user:
         raise HTTPException(
@@ -43,7 +56,13 @@ async def login(response: Response, login_data: UserLogin, db: AsyncSession = De
         )
     access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
     refresh_token = await service.create_refresh_token(db, user.id)
-    
+
+    # VP-01: cookie mode omits the refresh token from the body (that copy is
+    # the one localStorage keeps) and tightens the cookie to Strict.
+    if wants_cookie_delivery(request):
+        set_cookie_mode_cookies(response, refresh_token)
+        return token_body(access_token, refresh_token, cookie_mode=True)
+
     # Set HttpOnly cookie
     response.set_cookie(
         key="refresh_token",
@@ -53,7 +72,7 @@ async def login(response: Response, login_data: UserLogin, db: AsyncSession = De
         samesite="lax",
         max_age=7 * 24 * 60 * 60 # 7 days
     )
-    
+
     return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
 
 # Support for OAuth2PasswordRequestForm for Swagger UI
@@ -82,15 +101,34 @@ async def admin_only():
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
+    request: Request,
     response: Response,
-    request: RefreshTokenRequest,
+    body: RefreshTokenRequest | None = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
-    new_refresh_token = await service.rotate_refresh_token(db, request.refresh_token)
+    # VP-01 cookie mode: the token arrives in the HttpOnly cookie and the
+    # caller proves same-origin with the CSRF double-submit. An attacker's
+    # cross-site form can make the browser SEND the cookie, but cannot READ
+    # the csrf_token cookie to echo it in the header.
+    if wants_cookie_delivery(request):
+        if not csrf_ok(request):
+            raise HTTPException(status_code=403, detail="CSRF check failed")
+        presented = cookie_refresh_token(request)
+        if not presented:
+            raise HTTPException(status_code=401, detail="No refresh cookie")
+        new_refresh_token = await service.rotate_refresh_token(db, presented)
+        user = await service.verify_refresh_token(db, new_refresh_token)
+        access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
+        set_cookie_mode_cookies(response, new_refresh_token)
+        return token_body(access_token, new_refresh_token, cookie_mode=True)
+
+    if body is None or not body.refresh_token:
+        raise HTTPException(status_code=422, detail="refresh_token required")
+    new_refresh_token = await service.rotate_refresh_token(db, body.refresh_token)
     user = await service.verify_refresh_token(db, new_refresh_token)
-    
+
     access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
-    
+
     response.set_cookie(
         key="refresh_token",
         value=new_refresh_token,
@@ -99,7 +137,7 @@ async def refresh_token(
         samesite="lax",
         max_age=7 * 24 * 60 * 60
     )
-    
+
     return {"access_token": access_token, "token_type": "bearer", "refresh_token": new_refresh_token}
 
 @router.post("/oauth/{provider}", response_model=Token)
@@ -107,6 +145,7 @@ async def oauth_login(
     provider: str,
     request: OAuthRequest,
     response: Response,
+    http_request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     if provider == "google":
@@ -161,10 +200,15 @@ async def oauth_login(
         raise HTTPException(status_code=400, detail="Could not retrieve email from provider")
 
     user = await service.get_or_create_oauth_user(db, email, name)
-    
+
     access_token = create_access_token(data={"sub": user.email, "company_id": str(user.company_id)})
     refresh_token = await service.create_refresh_token(db, user.id)
-    
+
+    # VP-01: Vihara's login-OAuth callback is a login path like any other.
+    if wants_cookie_delivery(http_request):
+        set_cookie_mode_cookies(response, refresh_token)
+        return token_body(access_token, refresh_token, cookie_mode=True)
+
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -173,7 +217,7 @@ async def oauth_login(
         samesite="lax",
         max_age=7 * 24 * 60 * 60
     )
-    
+
     return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
 
 @router.get("/verify-email")
