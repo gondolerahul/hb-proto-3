@@ -946,3 +946,20 @@
   font-size: 0.75rem;
   color: var(--fg-muted, var(--ink-300));
 }
+
+/* ── the undercroft (DRIVER D10, D6 §15) ──────────────────────────────── */
+/* Mono, dense, operator regardless of the learned value (art bible §6).
+ * Gold audit: none. Nothing down here needs you; it explains. */
+.vh-undercroft {
+  display: grid;
+  gap: 0.75rem;
+  text-align: left;
+  padding: 1rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85rem;
+}
+.vh-undercroft-nav {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}

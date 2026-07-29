@@ -25,6 +25,7 @@ import { TalentSurface } from "./TalentSurface";
 import { StillSurface } from "./StillSurface";
 import { TerraceSurface } from "./TerraceSurface";
 import { TraySurface } from "./TraySurface";
+import { UndercroftSurface } from "./UndercroftSurface";
 
 type Depth =
   | { level: 0 }
@@ -35,7 +36,8 @@ type Depth =
   | { level: 2; room: "board" }
   | { level: 2; room: "talent" }
   | { level: 2; room: "gallery" }
-  | { level: 2; room: "library" };
+  | { level: 2; room: "library" }
+  | { level: 3 };
 
 export function App(): JSX.Element {
   const [inSession, setInSession] = useState(getAccessToken() !== null);
@@ -125,6 +127,14 @@ export function App(): JSX.Element {
             onClick={() => setDepth({ level: 2, room: "library" })}
           >
             library
+          </button>
+          <button
+            type="button"
+            className="vh-quiet-link"
+            disabled={depth.level === 3}
+            onClick={() => setDepth({ level: 3 })}
+          >
+            undercroft
           </button>
           {depth.level === 2 && "district" in depth && (
             <span className="vh-quiet">{depth.district}</span>
@@ -225,6 +235,7 @@ export function App(): JSX.Element {
         {depth.level === 2 && "room" in depth && depth.room === "library" && (
           <LibrarySurface />
         )}
+        {depth.level === 3 && <UndercroftSurface />}
         {depth.level === 2 && "room" in depth && depth.room === "board" && (
           <BoardroomSurface
             onOpenPlanningHall={() =>
