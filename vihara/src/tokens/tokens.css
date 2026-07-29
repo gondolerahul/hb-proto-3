@@ -1,17 +1,19 @@
-/* Vihara's token entry (D2 / SUB T2).
+/* Vihara's token entry (D2 / SUB T2; POLISH P1 adopted the material layer).
  *
- * colors_and_type.css is a MIRROR of the design-system source of truth
- * (docs/product-road-map/increment-7/buddha-cognitive-lab-design-system/
- * project/colors_and_type.css) — never edited here. scripts/sync_tokens.mjs
- * re-copies it; a vitest asserts byte-equality, the same two-copies gate
- * the component registry uses.
+ * colors_and_type.css AND styles.css are MIRRORS of the design-system
+ * source of truth (docs/product-road-map/increment-7/
+ * buddha-cognitive-lab-design-system/project/) — never edited here.
+ * scripts/sync_tokens.mjs re-copies both; a vitest asserts byte-equality,
+ * the same two-copies gate the component registry uses. styles.css
+ * imports colors_and_type.css itself, so one import brings the tokens,
+ * the semantic type scale and the liquid-glass utilities together.
  *
  * What Vihara ADDS lives below the import: the handful of world-facing
  * roles the art bible defines that the brand never needed — and nothing
  * else. The gold budget (art bible §2.1) is enforced by usage, not by new
  * variables: gold means "this needs you" or "this is certified".
  */
-@import "./colors_and_type.css";
+@import "./styles.css";
 
 :root {
   /* The Glasshouse drains at the plane boundary (art bible §5): the

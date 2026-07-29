@@ -18,6 +18,9 @@ const target = path.join(here, "..", "src", "tokens");
 await fs.copyFile(
   path.join(source, "colors_and_type.css"),
   path.join(target, "colors_and_type.css"));
+await fs.copyFile(
+  path.join(source, "styles.css"),
+  path.join(target, "styles.css"));
 await fs.cp(
   path.join(source, "fonts"), path.join(target, "fonts"),
   { recursive: true });

@@ -23,6 +23,25 @@
   letter-spacing: 0.04em;
 }
 
+/* Sheet-scale headings: rooms are dense working surfaces, not landing
+ * pages — the display face carries the title, the hero sizes stay at
+ * depth 0. The DS scale is sized for marketing pages. */
+.vihara-shell-frame h2 {
+  font-size: var(--text-xl);
+}
+.vihara-shell-frame h3 {
+  font-size: var(--text-md);
+}
+
+/* Primary prose stays --fg: the DS mutes bare <p> for long-form copy,
+ * but these lines ARE the surface (art bible §11 — prose in fg). */
+.vh-still-line,
+.vh-tray-happened,
+.vh-steward-line,
+.vh-thread-owner {
+  color: var(--fg);
+}
+
 .vh-depth0 {
   flex: 1;
   display: grid;
@@ -1048,9 +1067,9 @@
   bottom: 1rem;
   width: min(22rem, calc(100vw - 2rem));
   padding: 0.75rem;
-  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border-strong);
   border-radius: 0.5rem;
-  background: var(--vh-surface, rgba(24, 24, 24, 0.92));
+  background: var(--surface-2);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1089,7 +1108,7 @@
 }
 .vh-line-main { padding-top: 0.5rem; }
 .vh-morning-card {
-  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border-strong);
   border-radius: 0.5rem;
   padding: 0.75rem;
   margin: 0.5rem 0;
@@ -1133,7 +1152,7 @@ form[data-part="thread-say"] input { flex: 1; }
   .vh-glass-panes { grid-template-columns: 1fr; }
 }
 .vh-glass-panes article {
-  border: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border: 1px solid var(--border-strong);
   border-radius: 0.5rem;
   padding: 0.75rem;
 }
@@ -1141,7 +1160,7 @@ form[data-part="thread-say"] input { flex: 1; }
    the ribbon is lifted back out of it — the one thing the eye should find. */
 .vh-divergence-ribbon {
   filter: none;
-  color: var(--vh-gold, #c9a227);
+  color: var(--gold-500);
   margin-left: 0.4rem;
 }
 .vh-glass-levers {
@@ -1151,7 +1170,7 @@ form[data-part="thread-say"] input { flex: 1; }
   align-items: baseline;
 }
 .vh-glass-shelf article {
-  border-top: 1px solid var(--vh-line, rgba(128, 128, 128, 0.3));
+  border-top: 1px solid var(--border-strong);
   padding: 0.5rem 0;
 }
 .vh-grade[data-grade="untested"] { opacity: 0.7; }
