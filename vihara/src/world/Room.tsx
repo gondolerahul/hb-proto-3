@@ -118,8 +118,12 @@ function layoutRoom(items: RoomItem[]) {
         item,
         slab,
         volumes,
-        // The label sits on clear floor in front of its structure.
-        labelAt: { x: cx - w / 2, z: z + d / 2 + 1.1 },
+        /* The label sits on clear floor in front of its structure, and alternate
+           items are stepped back a line. A flat label runs several units along
+           +x — often further than the spacing between two structures — so
+           neighbours sharing one baseline collide. Staggering by row parity costs
+           nothing and makes collision impossible regardless of label length. */
+        labelAt: { x: cx - w / 2, z: z + d / 2 + 1.1 + (i % 2) * 1.5 },
         anchorEnd: false,
       };
     });
@@ -171,12 +175,23 @@ export function Room({
   hoveredKey,
   onHover,
   onSelect,
+  /**
+   * The twin plane (art bible §5). Not recoloured — **drained**: the same room
+   * with the life taken out of it. A blue twin would say "different place"; a
+   * drained twin says "not yet real".
+   *
+   * Applied by the renderer at the plane boundary rather than chosen per item, so
+   * a twin-derived room cannot be styled to look real. L6 asks the manifest layer
+   * to enforce that honesty; this makes the *material* enforce it too.
+   */
+  drained = false,
 }: {
   items: RoomItem[];
   selectedKey?: string | null;
   hoveredKey?: string | null;
   onHover?: (key: string | null) => void;
   onSelect?: (key: string) => void;
+  drained?: boolean;
 }) {
   const { placed, floor, view } = useMemo(() => layoutRoom(items), [items]);
   const floorFaces = boxFaces(floor);
@@ -186,6 +201,7 @@ export function Room({
       className="rm-svg"
       viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       preserveAspectRatio="xMidYMid meet"
+      data-drained={drained || undefined}
       role="presentation"
     >
       <defs>

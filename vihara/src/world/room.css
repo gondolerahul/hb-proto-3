@@ -152,3 +152,47 @@
   text-transform: uppercase;
   fill: rgba(246, 241, 233, 0.82);
 }
+
+/* ==========================================================================
+   THE TWIN PLANE — art bible §5.
+
+   The twin is the real, DRAINED. Not recoloured: a saturation filter applied by
+   the renderer at the plane boundary, plus a cool-neutral edge. A blue twin
+   would say "different place"; a drained twin says "not yet real".
+
+   It is a filter on the whole plane rather than a per-item choice, deliberately:
+   a twin-derived room cannot be styled to look real. L6 asks the manifest layer
+   to enforce that honesty — this makes the material enforce it too.
+
+   Gold inside the twin is reserved for exactly two things: the divergence ribbon
+   and certified seals on the promotion pipeline. So the one thing your eye finds
+   in a simulation is the thing that differs from reality, which is the only
+   reason to be in there.
+   ======================================================================== */
+
+.rm-svg[data-drained] {
+  filter: saturate(0.15) brightness(0.92);
+}
+
+.rm-svg[data-drained] .rm-face {
+  stroke: rgba(228, 232, 236, 0.28);
+}
+
+.rm-svg[data-drained] .rm-volume-top {
+  stroke: rgba(228, 232, 236, 0.42);
+}
+
+.rm-svg[data-drained] .rm-label-head {
+  fill: #dfe3e7;
+}
+
+.rm-svg[data-drained] .rm-label-line {
+  fill: rgba(223, 227, 231, 0.66);
+}
+
+/* A twin has no lamplight and no beacons — nothing in it is asking for anything,
+   because nothing in it has happened. */
+.rm-svg[data-drained] .rm-lamp-pool,
+.rm-svg[data-drained] .rm-beacon {
+  display: none;
+}

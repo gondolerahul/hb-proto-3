@@ -8,6 +8,7 @@ import { DossierSurface } from "../surfaces/DossierSurface";
 import { BoardroomSurface } from "../surfaces/BoardroomSurface";
 import { StandupSurface } from "../surfaces/StandupSurface";
 import { StudySurface } from "../surfaces/StudySurface";
+import { GlasshouseSurface } from "../surfaces/GlasshouseSurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
 import { BackgroundPick } from "../boards/BackgroundPick";
@@ -40,6 +41,7 @@ type SurfaceId =
   | "boardroom"
   | "standup"
   | "study"
+  | "glasshouse"
   | "tray"
   | "hall"
   | "bg";
@@ -52,6 +54,7 @@ const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
   boardroom: 2,
   standup: 1,
   study: 2,
+  glasshouse: 2,
   tray: 2,
   hall: 2,
   bg: 1,
@@ -65,6 +68,7 @@ const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
   { id: "boardroom", label: "Boardroom", note: "brainstorm · review D" },
   { id: "standup", label: "The Standup", note: "one voice · L2" },
   { id: "study", label: "The Study", note: "your desk · VP-03" },
+  { id: "glasshouse", label: "The Glasshouse", note: "drained twin · L6" },
   { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
   { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
   { id: "bg", label: "Background pick", note: "decision D2 · closed" },
@@ -94,6 +98,10 @@ const BREADCRUMBS: Partial<
   ],
   // No district above it: the Study is the desk, not a place in the estate.
   study: () => [{ label: "The Study" }],
+  glasshouse: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "The Glasshouse" },
+  ],
   tray: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
     { label: "The Tray" },
@@ -177,6 +185,7 @@ export function Prototype() {
           {surface === "dossier" && <DossierSurface onEcho={showEcho} />}
           {surface === "boardroom" && <BoardroomSurface onEcho={showEcho} />}
           {surface === "study" && <StudySurface onEcho={showEcho} />}
+          {surface === "glasshouse" && <GlasshouseSurface onEcho={showEcho} />}
           {surface === "standup" && (
             <StandupSurface
               onOpenTray={() => setSurface("tray")}
