@@ -14,9 +14,27 @@
 > * **§5's "R-4 is a data-source swap" understated it by six prerequisites.** Charter **D5** restates R-4 as one round of nine parts — see [06_r4_wiring.md](./06_r4_wiring.md).
 > * **§6's rendered-gap table is stale on three of seven rows** — they now draw a *false* absence over backend contracts that shipped. Marked inline below.
 >
-> Also: **fifteen of eighteen** surfaces stand, not fifteen of fifteen. The Private
-> Line was never rebuilt; charter **D6** rebuilds it as
-> [R-3c](./05_r3c_private_line.md), which runs **before** R-4.
+> Also: **fifteen of eighteen** surfaces stood, not fifteen of fifteen. The Private
+> Line was never rebuilt; charter **D6** rebuilt it as
+> [R-3c](./05_r3c_private_line.md).
+>
+> ### ✅ Since then, two rounds have landed
+>
+> * **R-4 part G — the gates are honest again.** Both red gates green, the three
+>   missing gate scripts restored, and **CI exists** (`.github/workflows/gates.yml`)
+>   — which is the actual fix, because nothing had ever run a gate unless a human
+>   typed it. Lint went green by moving the three.js modules to the path the rule
+>   names, not by widening the rule.
+> * **R-3c — the eighteen are complete.** Thread, Morning Story and Pocket Desk
+>   built; the PWA shell, service worker and second entry carried across.
+>
+> **Now measured, all green:** tsc · lint · **vitest 65** · **sweep 19/19** ·
+> build with **two entries** (index 139.5 KB gz, line 87.8 KB gz, 220 each) ·
+> `gen:api` no drift · token mirror · backend **2242** unit + 2 parity ·
+> typecheck 345.
+>
+> **Next: R-4 parts A · N · L · C · W · P · S, and the E backend track**
+> ([06_r4_wiring.md](./06_r4_wiring.md)). Part G is done.
 
 ---
 
