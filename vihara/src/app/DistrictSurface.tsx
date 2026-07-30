@@ -126,7 +126,13 @@ export function DistrictSurface({
           >
             <DistrictRoom
               district={district}
-              phase={estate?.estate.phase === "night" ? "night" : "day"}
+              phase={((): "day" | "night" => {
+                const override = new URLSearchParams(
+                  window.location.search,
+                ).get("phase");
+                if (override === "day" || override === "night") return override;
+                return estate?.estate.phase === "night" ? "night" : "day";
+              })()}
               quality={tier === "A" ? "full" : "reduced"}
               onOpenDossier={onOpenDossier}
               onSustainedBreach={() => {

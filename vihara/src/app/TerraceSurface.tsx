@@ -48,6 +48,10 @@ export function TerraceSurface({
     return () => setWorldCanvasActive(false);
   }, [wantsMap]);
 
+  // The review knob (G1's walkable look needs both hours): ?phase=day|night
+  // overrides the projected phase, presentation-only.
+  const phaseOverride = new URLSearchParams(window.location.search).get("phase");
+
   if (tier === null || live.phase === "loading") {
     return <p className="vh-quiet">…</p>;
   }
@@ -111,7 +115,14 @@ export function TerraceSurface({
           <Suspense fallback={<p className="vh-quiet">raising the territory…</p>}>
             <div className="vh-world-frame" data-part="world-frame">
               <WorldTerrace
-                estate={live.estate}
+                estate={
+                  phaseOverride === "day" || phaseOverride === "night"
+                    ? {
+                        ...live.estate,
+                        estate: { ...live.estate.estate, phase: phaseOverride },
+                      }
+                    : live.estate
+                }
                 quality={tier === "A" ? "full" : "reduced"}
                 onEnterDistrict={(code) => {
                   const district = live.estate.districts.find(

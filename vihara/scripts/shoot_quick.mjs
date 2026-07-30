@@ -23,23 +23,25 @@ const shot = async (name, ms = 1200) => {
   console.log("shot", name);
 };
 
-await page.goto("http://localhost:4044/", { waitUntil: "networkidle0" });
-await shot("q-presession", 1800);
+const phase = process.argv[3] ?? "";
+await page.goto(`http://localhost:4044/${phase ? `?phase=${phase}` : ""}`, { waitUntil: "networkidle0" });
+const tag = phase ? `-${phase}` : "";
+await shot(`q-presession${tag}`, 1800);
 await page.type('input[type="email"]', "design.review@gochillaao.com");
 await page.type('input[type="password"]', "Polish!2026review");
 await page.click('button[type="submit"]');
 await page.waitForSelector('[data-part="shell"]', { timeout: 15000 });
-await shot("q-still", 2500);
+await shot(`q-still${tag}`, 2500);
 await page.click('[data-part="walk-in"]');
-await shot("q-terrace", 6000);
+await shot(`q-terrace${tag}`, 6000);
 await page.evaluate(() => {
   const chip = [...document.querySelectorAll(".vh-district-skiplist button")].find(
     (b) => b.textContent.includes("Order-to-Cash"),
   );
   chip?.click();
 });
-await shot("q-district", 5000);
+await shot(`q-district${tag}`, 5000);
 await page.click('[data-part="places-toggle"]');
-await shot("q-places", 800);
+await shot(`q-places${tag}`, 800);
 await browser.close();
 console.log("done");

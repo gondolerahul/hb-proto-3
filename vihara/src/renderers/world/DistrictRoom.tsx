@@ -15,7 +15,12 @@ import { useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import type { EstateDistrict } from "./layout";
-import { useNamePlate } from "./plates";
+import {
+  starPositions,
+  useGlowTexture,
+  useNamePlate,
+  useStripeTexture,
+} from "./plates";
 import { FrameWatchdog } from "./WorldTerrace";
 
 const GOLD = "#edab48";
@@ -68,6 +73,7 @@ function Workplace({
   onOpen: () => void;
 }): JSX.Element {
   const [hover, setHover] = useState(false);
+  const stripes = useStripeTexture();
   const height = 0.7 + autonomyLevel(colleague.autonomy) * 0.3;
   const edges = useMemo(
     () => new THREE.EdgesGeometry(new THREE.BoxGeometry(1.15, height, 1.15)),
@@ -111,6 +117,17 @@ function Workplace({
           depthWrite={false}
         />
       </mesh>
+      {stripes !== null && (
+        <mesh position={[0, height / 2, 0]} scale={1.003}>
+          <boxGeometry args={[1.15, height, 1.15]} />
+          <meshBasicMaterial
+            map={stripes}
+            transparent
+            opacity={0.5}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
       <lineSegments position={[0, height / 2, 0]} geometry={edges}>
         <lineBasicMaterial
           color={WARM_WHITE}
@@ -165,6 +182,41 @@ function Workplace({
         </>
       )}
     </group>
+  );
+}
+
+function UnderGlow(): JSX.Element | null {
+  const glow = useGlowTexture();
+  if (glow === null) return null;
+  return (
+    <mesh position={[0, -1.35, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[20, 15]} />
+      <meshBasicMaterial
+        map={glow}
+        transparent
+        opacity={0.5}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  );
+}
+
+function Stars(): JSX.Element {
+  const stars = useMemo(() => starPositions(140, 13), []);
+  return (
+    <points>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[stars, 3]} />
+      </bufferGeometry>
+      <pointsMaterial
+        color={WARM_WHITE}
+        size={0.09}
+        transparent
+        opacity={0.5}
+        sizeAttenuation
+      />
+    </points>
   );
 }
 
@@ -250,13 +302,15 @@ export default function DistrictRoom({
         />
       </gridHelper>
 
-      {/* Light beneath sells the float (§13). */}
+      {/* Light beneath sells the float (§13) — the visible pool. */}
       <pointLight
         position={[0, -0.4, 0]}
         intensity={1.1}
         color={WARM_WHITE}
         distance={12}
       />
+      <UnderGlow />
+      {phase === "night" && <Stars />}
 
       {/* The plate. */}
       <mesh position={[0, PLATE_Y, 0]}>
