@@ -1,6 +1,7 @@
 # Increment 7 / Redesign — Charter
 
 > **Status:** ✍️ opened **2026-07-30** by owner decision: the built Vihara frontend was **reviewed and rejected on design**. Backend seams stand; the tenant-facing app is redesigned and rebuilt from the visual layer up.
+> **Resuming in a fresh session? Read [03_resume.md](./03_resume.md) first** — this charter is the *why*; that is the *how*.
 > **Parent:** [00_charter.md](../00_charter.md) · [10_workstream_decomposition.md](../10_workstream_decomposition.md).
 > **What this does not touch:** `backend/src/ai/genui/` (the SEAM workstream), the D5 API contracts, the manifest contract, the entity ontology, the depth ladder, or the parity register's denominators.
 
@@ -72,7 +73,7 @@ This replaces R1/R2's format for the redesign. It does not replace their *ruling
 | **R-2** | The design foundation: tokens, self-hosted faces, the glass and metal material system, elevation, motion language, icon set | The shared substrate every board consumes |
 | **R-3a** ✅ | Shell · Still surface · the Tray · Registry Hall — [02_prototype_r3a.md](./02_prototype_r3a.md) | The design language, judgeable |
 | **R-3b** ✅ | **All fifteen product surfaces + the shell stand.** Owner review round 1 implemented (A1–A4, B, C, D), then the Glasshouse, Undercroft, Library, Bridges & Gates, Talent Office and Gallery. Gates: tsc · vitest 28 · sweep 16/16 · build. See [02](./02_prototype_r3a.md) §5a–§5e | **Owner review** — D4's gate, now open |
-| **R-4** | Fixtures swapped for the salvaged API client; review scaffold deleted | Live |
+| **R-4** ◀ **NEXT** | Fixtures swapped for the salvaged API client; `PrototypeNav` deleted; `gen:api` drift gate re-run. Mechanical, not a rebuild — see [03_resume.md](./03_resume.md) §5 | Live |
 
 R-1 and R-2 ran together. R-3 does not begin on a surface until R-2's material system can render it at final quality.
 
