@@ -12,6 +12,7 @@ import { GlasshouseSurface } from "../surfaces/GlasshouseSurface";
 import { UndercroftSurface } from "../surfaces/UndercroftSurface";
 import { LibrarySurface } from "../surfaces/LibrarySurface";
 import { BridgesSurface } from "../surfaces/BridgesSurface";
+import { TalentSurface } from "../surfaces/TalentSurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
 import { BackgroundPick } from "../boards/BackgroundPick";
@@ -48,6 +49,7 @@ type SurfaceId =
   | "undercroft"
   | "library"
   | "bridges"
+  | "talent"
   | "tray"
   | "hall"
   | "bg";
@@ -64,6 +66,7 @@ const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
   undercroft: 3,
   library: 2,
   bridges: 2,
+  talent: 2,
   tray: 2,
   hall: 2,
   bg: 1,
@@ -81,6 +84,7 @@ const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
   { id: "undercroft", label: "The Undercroft", note: "depth 3 · manifest" },
   { id: "library", label: "The Library", note: "provenance · influence" },
   { id: "bridges", label: "Bridges & Gates", note: "conflicts · consent" },
+  { id: "talent", label: "Talent Office", note: "hire at A1 · VG-18" },
   { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
   { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
   { id: "bg", label: "Background pick", note: "decision D2 · closed" },
@@ -125,6 +129,10 @@ const BREADCRUMBS: Partial<
   bridges: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
     { label: "Bridges & Gates" },
+  ],
+  talent: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "Talent Office" },
   ],
   tray: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
@@ -173,7 +181,7 @@ export function Prototype() {
   const intensity =
     surface === "still" || surface === "terrace"
       ? "full"
-      : surface === "hall" || surface === "dossier" || surface === "standup" || surface === "study" || surface === "undercroft" || surface === "library" || surface === "bridges"
+      : surface === "hall" || surface === "dossier" || surface === "standup" || surface === "study" || surface === "undercroft" || surface === "library" || surface === "bridges" || surface === "talent"
         ? "hushed"
         : "quiet";
 
@@ -213,6 +221,7 @@ export function Prototype() {
           {surface === "undercroft" && <UndercroftSurface onEcho={showEcho} />}
           {surface === "library" && <LibrarySurface onEcho={showEcho} />}
           {surface === "bridges" && <BridgesSurface onEcho={showEcho} />}
+          {surface === "talent" && <TalentSurface onEcho={showEcho} />}
           {surface === "standup" && (
             <StandupSurface
               onOpenTray={() => setSurface("tray")}
