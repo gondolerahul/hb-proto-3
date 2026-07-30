@@ -71,14 +71,14 @@ This replaces R1/R2's format for the redesign. It does not replace their *ruling
 | **R-1** | The background ported verbatim + the brand re-key, both live | **Owner pick** — D2's open half |
 | **R-2** | The design foundation: tokens, self-hosted faces, the glass and metal material system, elevation, motion language, icon set | The shared substrate every board consumes |
 | **R-3a** ✅ | Shell · Still surface · the Tray · Registry Hall — [02_prototype_r3a.md](./02_prototype_r3a.md) | The design language, judgeable |
-| **R-3b** | The World surfaces (Terrace, district room, Glasshouse) + the remaining nine Sheet surfaces | **Owner review**, D4's gate |
+| **R-3b** ◐ | Terrace · district room · dossier · Boardroom **done**; Glasshouse + 7 Sheet surfaces remain — [02](./02_prototype_r3a.md) §5a | **Owner review**, D4's gate |
 | **R-4** | Fixtures swapped for the salvaged API client; review scaffold deleted | Live |
 
 R-1 and R-2 ran together. R-3 does not begin on a surface until R-2's material system can render it at final quality.
 
 **Plan change recorded at R-3a:** because D4's prototype is built as *real code* rather than as a mockup, **R-4 is no longer a rebuild.** The prototype is the app in mock mode; R-4 swaps `src/fixtures/` for the salvaged API client and deletes the review scaffold. This is strictly better than the original plan — it removes a translation step, and a translation step between an approved design and shipped code is exactly where the first build lost its look.
 
-**R-3b is gated on the owner's background pick**, because the atmosphere every remaining surface is composed against is the open half of D2.
+~~**R-3b is gated on the owner's background pick**~~ — **closed 2026-07-30: the brand re-key.** It is the default everywhere; art bible §2.1a amends the gold budget for the atmosphere layer and takes on the beacon-contrast measurement obligation.
 
 ## 6. Standing risks
 

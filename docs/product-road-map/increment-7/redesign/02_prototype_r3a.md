@@ -73,6 +73,37 @@ A grid of approvals invites scanning; a column invites reading. Every card here 
 
 **The 404 in the console** is the missing favicon. Cosmetic, fixed when the brand mark is cut to an icon.
 
+## 5a. R-3b progress — 2026-07-30
+
+**Decision D2 closed: the owner picked the brand re-key.** It is the default everywhere. The consequence — gold in the atmosphere — is handled by an explicit amendment to the gold budget, [03_art_bible.md](../03_art_bible.md) §2.1a, not by silence. §2.1a also takes on an obligation: beacon-against-atmosphere contrast is measured on real hardware before R-3b closes.
+
+**Three more surfaces stand** (six plus the shell in total):
+
+| Surface | What it settled |
+|---|---|
+| **The Terrace** · depth 1 · W | **RD-1 and RD-2, structurally.** `world/iso.ts` + `world/Territory.tsx` draw geometry only — not one glyph in the SVG — and every label is DOM in screen space. Solid lit volumes on plinths under one warm key; gold spent solely on beacon shafts |
+| **District room** · depth 2 · W+S | The same `Territory` in single-plot mode. Entering a district changes *distance*, not rendering technology |
+| **Dossier** · depth 2 · S | Art bible §7 direction **C** ships — a deterministic dot-lattice seal from the entity id, from the *deep* half of the gold ramp so a portrait cannot compete with a raised hand |
+| **Boardroom** · depth 2 · S | The four honesty grades told apart by **form, not hue** — replay struck, forecast dashed, unknown slashed, untested a hollow **circle** with no strip. The circle-vs-square split survives greyscale |
+
+### The RD-1/RD-2 fix, stated once
+
+The territory is no longer a scene that happens to contain text. **Geometry is drawn; text is DOM.** Labels are positioned by projecting each plot's anchor through the same isometric transform, in `viewBox` percentages, so they track the SVG's fit with no resize observer and no per-frame projection. They are upright, selectable, and in the accessibility tree at every zoom. `buildTerritory()` is the single model both the drawing and the label layer read, so a label cannot drift from the plot it names.
+
+That split also means **the Terrace needs no WebGL to be correct** — the SVG territory is the tier-C path and the L9 sheet equivalent simultaneously, at full quality rather than as a fallback.
+
+### What the screenshots caught, and it was worth doing
+
+Four rounds of render-and-look on the Terrace alone. The `viewBox` pad was in world units while sized as if it were pixels, shrinking the estate to a third of the frame. Lamp pools at 0.3 alpha merged into one wash that drowned the geometry. Beacon tips read as cartoon bulbs. The district ring entered the gatehouse row and their labels collided. Roads outshouted the buildings they connect. **Every one of these was invisible in the code and obvious in the image** — which is the whole argument for D4.
+
+### Honest note on provenance
+
+`DossierSurface` and `BoardroomSurface` came from a parallel workflow whose agents died mid-run — first on API 529s, then on a usage limit. They had written the TSX but not the CSS, and a concurrent write destroyed the people fixture. Both stylesheets were then written against the exact class and data-attribute lists the surfaces use, and `people.ts` was reconstructed to the exact contract `DossierSurface` consumes. Recorded because the two surfaces have a different authorship path from the rest, not because it changes their status.
+
+### Still outstanding
+
+**Six Sheet surfaces:** Talent Office, Gallery, Standup, Library, Bridges & Gates, Undercroft, The Study. **One World surface:** the Glasshouse. `src/fixtures/decisions.ts` already carries the Standup's data.
+
 ## 6. What R-3b needs
 
 1. **The owner's background pick** ([01](./01_background_port.md) §2.1) — it changes the atmosphere every remaining surface is composed against.
