@@ -1,0 +1,154 @@
+/* A room, at room scale. Shares the estate's grammar deliberately — same
+   projection, same three-face box, same flat ground labels — because descending
+   a level should change the scale of what you are looking at and nothing else. */
+
+/* `overflow: visible` here let the drawing spill out of its stage instead of
+   being fitted by preserveAspectRatio — the room rendered oversized and clipped
+   by the page. The SVG box must equal the stage box for `meet` to mean anything;
+   the caller pins it (see `.di-stage > svg`). */
+.rm-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* -------------------------------------------------------------------- faces */
+
+.rm-face {
+  stroke: rgba(255, 244, 226, 0.15);
+  stroke-width: 0.06;
+  vector-effect: non-scaling-stroke;
+}
+
+.rm-volume-top {
+  stroke: rgba(255, 246, 232, 0.34);
+  stroke-width: 0.1;
+}
+
+.rm-slab-top {
+  stroke: rgba(255, 246, 232, 0.2);
+  stroke-width: 0.09;
+}
+
+/* The floor's own edge is quieter than anything standing on it. */
+.rm-floor-top {
+  stroke: rgba(255, 246, 232, 0.12);
+  stroke-width: 0.08;
+}
+
+.rm-contact {
+  fill: rgba(0, 0, 0, 0.6);
+}
+
+.rm-lamp-pool,
+.rm-beacon {
+  pointer-events: none;
+}
+
+.rm-beacon-tip {
+  fill: rgba(253, 200, 113, 0.92);
+}
+
+.rm-beacon {
+  animation: rm-breathe 3.4s var(--ease-in-out) infinite;
+}
+
+@keyframes rm-breathe {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The protected reserve. The one gold thing in the room (art bible §2.1) — the
+   seam that never drains, struck across the vault's lit face. */
+.rm-seam {
+  fill: url(#tv-beacon);
+  fill: var(--gold-600);
+  stroke: var(--gold-300);
+  stroke-width: 0.06;
+  vector-effect: non-scaling-stroke;
+}
+
+/* -------------------------------------------------------------------- items */
+
+.rm-item {
+  cursor: pointer;
+  transition: opacity var(--dur-base) var(--ease-settle);
+}
+
+.rm-item:focus {
+  outline: none;
+}
+
+/* Attention is subtractive: the selected thing stays as it is and everything
+   else steps back. Lighting the target would need a colour, and the only colour
+   available is gold — which must not mean "your pointer is here". */
+.rm-item[data-dimmed] {
+  opacity: 0.34;
+}
+
+.rm-select {
+  fill: none;
+  stroke: rgba(255, 246, 232, 0);
+  stroke-width: 0.16;
+  vector-effect: non-scaling-stroke;
+  transition: stroke var(--dur-base) var(--ease-settle);
+}
+
+.rm-item:hover .rm-select,
+.rm-item:focus-visible .rm-select {
+  stroke: rgba(255, 246, 232, 0.5);
+}
+
+.rm-item[data-selected] .rm-select {
+  stroke: rgba(255, 246, 232, 0.85);
+  stroke-width: 0.22;
+}
+
+/* -------------------------------------------------------------- flat labels */
+
+.rm-label {
+  pointer-events: none;
+  paint-order: stroke fill;
+  stroke: rgba(6, 5, 4, 0.85);
+  stroke-linejoin: round;
+}
+
+.rm-label-head {
+  font-family: var(--font-display);
+  font-size: 1.05px;
+  font-weight: 500;
+  fill: var(--white);
+  stroke-width: 0.26px;
+}
+
+.rm-label-line {
+  font-family: var(--font-mono);
+  font-size: 0.66px;
+  letter-spacing: 0.015px;
+  fill: rgba(246, 241, 233, 0.7);
+  stroke-width: 0.2px;
+}
+
+.rm-label-callout {
+  font-family: var(--font-mono);
+  font-size: 0.66px;
+  letter-spacing: 0.02px;
+  fill: var(--gold-300);
+  stroke-width: 0.2px;
+}
+
+/* A fixture is a reading you consult; its label is quieter than a colleague's
+   name, because a person in the room outranks an instrument in it. */
+.rm-item[data-kind="fixture"] .rm-label-head {
+  font-family: var(--font-mono);
+  font-size: 0.82px;
+  font-weight: 400;
+  letter-spacing: 0.06px;
+  text-transform: uppercase;
+  fill: rgba(246, 241, 233, 0.82);
+}

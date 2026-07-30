@@ -156,6 +156,7 @@ export function Prototype() {
             <DistrictSurface
               code="P08"
               onOpenHall={() => setSurface("hall")}
+              onOpenDossier={() => setSurface("dossier")}
               onEcho={showEcho}
             />
           )}

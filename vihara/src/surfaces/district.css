@@ -1,5 +1,5 @@
-/* The district room. The place on the left, the work on the right, traffic at
-   the foot — the D6 §5 grid, built from the shared material system. */
+/* The district room. Owner review B: the Terrace's structure at room scale —
+   the place fills the surface, and detail opens on the structure you click. */
 
 .di {
   display: grid;
@@ -14,62 +14,241 @@
 .di-head {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--s-5);
+  gap: var(--s-6);
+  flex-wrap: wrap;
+}
+
+.di-head-lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
 }
 
 .di-title {
-  margin-top: var(--s-2);
   font-size: var(--text-2xl);
+}
+
+.di-head-weather {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding-bottom: 3px;
+}
+
+.di-weather-mark {
+  width: 28px;
+  height: 28px;
+}
+
+.di-weather-sentence {
+  font-family: var(--font-body);
+  font-weight: 340;
+  font-size: var(--text-sm);
+  font-style: italic;
+  color: var(--fg-muted);
+}
+
+.di-head-hall {
+  margin-left: auto;
+  margin-bottom: 2px;
 }
 
 /* -------------------------------------------------------------------- body */
 
 .di-body {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 26rem);
   gap: var(--s-4);
   min-height: 0;
 }
 
-.di-place,
-.di-work {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
+/* The stage pins the drawing to its own box. Without this the SVG's height:100%
+   resolves against nothing definite and the room draws at its natural size. */
+.di-stage {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+}
+
+.di-stage > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ------------------------------------------------------------- the reveal */
+
+.di-reveal {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-/* ----------------------------------------------------------------- diorama
-   The W half: the district's own plinth, drawn by the same Territory that
-   draws the estate. Sunken, so the room looks INTO the world rather than at a
-   picture of it. */
+.di-panel,
+.di-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  border-radius: var(--r-lg);
+  /* Glass: the panel floats over the room rather than replacing part of it. */
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-edge), var(--contact-md);
+}
 
-.di-diorama {
+.di-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.di-panel-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.di-panel-title {
+  font-size: var(--text-lg);
+  color: var(--fg);
+}
+
+.di-panel-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--fg-subtle);
   flex: none;
-  height: 230px;
-  padding: var(--s-3);
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 
-.di-diorama .tv-svg {
-  overflow: hidden;
+.di-panel-close:hover {
+  background: var(--surface-3);
+  color: var(--fg);
 }
 
-/* --------------------------------------------------------------------- KPI */
+.di-panel-body {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+}
 
-.di-kpi {
+.di-panel-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+}
+
+.di-panel-acts {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------- the legend */
+
+.di-legend-body {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+}
+
+.di-legend-list {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
 }
+
+.di-legend-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+}
+
+.di-legend-val {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+
+.di-legend-foot {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+/* ------------------------------------------------------------ the colleague */
+
+.di-who {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.di-who-portrait {
+  width: 84px;
+  height: 84px;
+}
+
+.di-who-facts {
+  display: flex;
+  flex-direction: column;
+}
+
+.di-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-2) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.di-fact:last-child {
+  box-shadow: none;
+}
+
+.di-fact-val {
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+
+.di-state {
+  padding: var(--s-3) var(--s-4);
+}
+
+.di-state-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+.di-state-gold {
+  color: var(--gold-300);
+}
+
+/* ------------------------------------------------------------------- the KPI */
 
 .di-kpi-row {
   display: flex;
   align-items: baseline;
   gap: var(--s-4);
+  flex-wrap: wrap;
 }
 
 .di-kpi-drift {
@@ -78,7 +257,6 @@
   gap: var(--s-2);
 }
 
-/* The meter: track is the target, overrun is terracotta past the tick. */
 .di-meter {
   position: relative;
   height: 8px;
@@ -115,24 +293,6 @@
 
 /* ---------------------------------------------------------------- treasury */
 
-.di-treasury {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
-}
-
-.di-treasury-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-4);
-}
-
-.di-treasury-figures {
-  color: var(--fg);
-}
-
 .di-gauge {
   position: relative;
   height: 12px;
@@ -149,8 +309,8 @@
   background: linear-gradient(180deg, rgba(255, 246, 230, 0.3), rgba(255, 246, 230, 0.18));
 }
 
-/* The protected reserve — the ONE gold thing on this gauge (art bible §2.1).
-   Pinned to the cap end: it is the last money, and it never drains. */
+/* The protected reserve — the one gold thing on this gauge (art bible §2.1),
+   pinned to the cap end because it is the last money and never drains. */
 .di-gauge-reserve {
   position: absolute;
   top: 0;
@@ -160,11 +320,8 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
-.di-treasury-note {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  color: var(--fg-subtle);
+.di-treasury-facts {
+  margin-top: calc(var(--s-1) * -1);
 }
 
 .di-reserve-key {
@@ -173,124 +330,7 @@
   border-radius: var(--r-pill);
   background: var(--gradient-gold-metallic);
   flex: none;
-}
-
-/* ----------------------------------------------------------------- weather */
-
-.di-weather {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: 0 var(--s-2);
-}
-
-.di-weather-mark {
-  width: 30px;
-  height: 30px;
-}
-
-.di-weather-sentence {
-  font-family: var(--font-body);
-  font-weight: 340;
-  font-size: var(--text-sm);
-  font-style: italic;
-  color: var(--fg-muted);
-}
-
-/* -------------------------------------------------------------- colleagues */
-
-.di-colleagues,
-.di-runs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
-}
-
-/* Panels are their content's height. A stretched panel with a top-aligned list
-   inside reads as a panel that failed to load; empty space *below* a finished
-   column just reads as room to grow. */
-.di-colleagues,
-.di-runs {
-  flex: none;
-}
-
-.di-crew {
-  display: flex;
-  flex-direction: column;
-}
-
-.di-colleague {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto minmax(0, auto) 14px;
-  align-items: center;
-  gap: var(--s-3);
-  width: 100%;
-  padding: var(--s-3) var(--s-2);
-  border-radius: var(--r-sm);
-  text-align: left;
-  box-shadow: inset 0 -1px 0 var(--rule-faint);
-  transition: background var(--dur) var(--ease-out);
-}
-
-.di-crew li:last-child .di-colleague {
-  box-shadow: none;
-}
-
-.di-colleague:hover {
-  background: rgba(255, 246, 230, 0.03);
-}
-
-.di-colleague-plinth {
-  width: 34px;
-  font-size: 12px;
-}
-
-.di-colleague-who {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.di-colleague-name {
-  font-size: var(--text-sm);
-  color: var(--fg);
-}
-
-.di-colleague-meta {
-  font-size: 10px;
-  color: var(--fg-subtle);
-}
-
-.di-colleague-autonomy {
-  height: 22px;
-  padding: 0 var(--s-2);
-  font-size: 10px;
-}
-
-.di-colleague-state {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  justify-content: flex-end;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.di-colleague-state .t-mono {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.di-colleague-hand {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--gold-300);
-}
-
-.di-colleague-caret {
-  color: var(--fg-faint);
+  translate: 0 4px;
 }
 
 /* ---------------------------------------------------------------- live runs */
@@ -370,6 +410,7 @@
 
 .di-traffic {
   display: flex;
+  align-items: center;
   gap: var(--s-2);
 }
 
@@ -393,21 +434,30 @@
   color: var(--fg);
 }
 
+.di-traffic-hint {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
 /* --------------------------------------------------------------- responsive */
 
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
   .di-body {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 1fr) auto;
     overflow-y: auto;
   }
-  .di-place,
-  .di-work {
+  .di-reveal {
     overflow: visible;
   }
-  .di-diorama {
-    height: 150px;
+  .di-head-hall {
+    margin-left: 0;
   }
   .di-traffic {
     flex-wrap: wrap;
+  }
+  .di-traffic-hint {
+    display: none;
   }
 }
