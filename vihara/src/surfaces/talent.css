@@ -525,9 +525,11 @@
   align-items: center;
 }
 
+/* A candidate IS this surface's subject, so the face gets room: the traced
+   lattice greys out below ~56px, where its dots fall under a device pixel. */
 .ta-card-face {
-  width: 52px;
-  height: 52px;
+  width: 80px;
+  height: 80px;
 }
 
 .ta-card-ident {

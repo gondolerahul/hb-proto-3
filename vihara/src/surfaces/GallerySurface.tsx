@@ -282,7 +282,7 @@ export function GallerySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                 <span className="m-portrait-well ga-alum-well">
                   <Portrait
                     id={a.id}
-                    size={52}
+                    size={68}
                     drained
                     title={`${a.name} — a generated portrait, not a photograph`}
                   />
@@ -309,7 +309,7 @@ export function GallerySurface({ onEcho }: { onEcho: (msg: string) => void }) {
             <span className="m-portrait-well ga-alum-well">
               <Portrait
                 id={STILL_SERVING.id}
-                size={52}
+                size={68}
                 title={`${STILL_SERVING.name} — a generated portrait, not a photograph`}
               />
             </span>

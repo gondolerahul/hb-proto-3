@@ -85,7 +85,7 @@ export function DossierSurface({ onEcho }: { onEcho: (msg: string) => void }) {
             data-selected={d.id === dossier.id || undefined}
             onClick={() => setActiveId(d.id)}
           >
-            <Portrait id={d.id} size={34} />
+            <Portrait id={d.id} size={52} />
             <span className="do-roster-name">{d.name}</span>
           </button>
         ))}

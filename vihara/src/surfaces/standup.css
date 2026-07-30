@@ -125,13 +125,13 @@
 }
 
 .su-portrait {
-  width: 48px;
-  height: 48px;
+  width: 66px;
+  height: 66px;
 }
 
 .su-card[data-expanded] .su-portrait {
-  width: 66px;
-  height: 66px;
+  width: 90px;
+  height: 90px;
 }
 
 .su-who-text {

@@ -23,7 +23,20 @@ const PATHS = {
   filter: "M3 5h18M6 12h12M10 19h4",
   // objects
   record: "M4 4h11l5 5v11H4zM15 4v5h5",
+  /* `record` is a filed thing (the corner is a clip); `document` is a thing
+     someone wrote. The Library needs both in one list, so they differ in
+     silhouette as well as detail — 12×18 against record's 16×16. */
+  document: "M6 3h12v18H6zM9 7.5h6M9 12h6M9 16.5h4",
   ledger: "M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2zM9 3v18",
+  spreadsheet: "M4 4h16v16H4zM4 9h16M4 14.5h16M12 4v16",
+  /* One tall lobe and one low one, not two of a height: the step between them is
+     the whole silhouette, and two even lobes collapse into an oval by 14px. */
+  drive: "M9.7 18h7a3.6 3.6 0 1 0-1.09-7.03A6 6 0 1 0 9.7 18Z",
+  /* Two bubbles, not one: a thread is turns. The second one's open ends land on
+     the first one's stroke rather than crossing it — at 1.6 on a 24 grid a
+     crossed outline reads as noise long before it reads as depth. */
+  thread:
+    "M3 17V6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H7zM16 10h3a2 2 0 0 1 2 2v8l-3.5-3.5H11a2 2 0 0 1-2-2v-1.5",
   district: "M3 20h18M6 20V9l6-4 6 4v11M10 20v-5h4v5",
   colleague: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 21a7 7 0 0 1 14 0",
   key: "M15 3a6 6 0 1 1-4.2 10.3L9 15H7v2H5v2H2v-3l8.8-8.8A6 6 0 0 1 15 3ZM16.5 7.5h.01",

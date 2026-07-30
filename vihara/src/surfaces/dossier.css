@@ -32,7 +32,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--s-2);
-  width: 62px;
+  width: 74px;
   padding: var(--s-2) var(--s-1);
   border-radius: var(--r-md);
   transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);

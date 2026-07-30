@@ -66,11 +66,10 @@ const COUNTER_MEANS: Record<(typeof COUNTER_ORDER)[number], string> = {
   retrievals: "rows returned, every passage every time",
 };
 
-/** No "document"/"thread" glyph exists in PATHS, so the nearest honest one. */
 function markFor(format: string) {
-  if (format === "Spreadsheet") return "ledger" as const;
-  if (format === "Extracted thread") return "colleague" as const;
-  return "record" as const;
+  if (format === "Spreadsheet") return "spreadsheet" as const;
+  if (format === "Extracted thread") return "thread" as const;
+  return "document" as const;
 }
 
 function HeadingPath({ path }: { path: string[] }) {

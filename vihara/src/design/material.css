@@ -703,3 +703,19 @@ button.m-chip:hover {
 .do-seal[data-drained] .do-seal-d2 {
   fill: #5b6167;
 }
+
+/* A generated portrait is an <img>, so the drained treatment cannot recolour its
+   dots the way it can the procedural bust's fills. A filter does the same job for
+   the same reason (art bible §5, §7.2): the past and the not-yet-real share a
+   material, because neither is currently true. */
+.vh-portrait-img {
+  display: block;
+  border-radius: inherit;
+  /* The lattice is drawn on the brand canvas, so its ground matches whatever it
+     sits in and no edge appears between artwork and well. */
+  background: var(--ink-950);
+}
+
+.vh-portrait-img[data-drained] {
+  filter: saturate(0.12) brightness(0.9);
+}

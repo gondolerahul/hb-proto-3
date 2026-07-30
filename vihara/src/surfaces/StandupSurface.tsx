@@ -206,7 +206,7 @@ function StandupCard({
           aria-label={`Open ${line.who.name}’s dossier`}
         >
           <div className="m-portrait-well su-portrait">
-            <Portrait id={line.who.id} size={expanded ? 60 : 42} />
+            <Portrait id={line.who.id} size={expanded ? 84 : 60} />
           </div>
           <span className="su-who-text">
             <span className="su-who-name t-display">{line.who.name}</span>

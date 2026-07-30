@@ -1,16 +1,25 @@
 /**
- * The colleague portrait — art bible §7 direction **A**, generated.
+ * The colleague portrait — art bible §7 direction **A**.
  *
- * R1 chose direction A (halftone gold-dot bust) as the house style with C (the
- * abstract seal) as the automatic fallback, and made the A rasters a pre-G1
- * obligation blocked on an image pipeline. Owner review C (2026-07-30) asked for
- * agents to be **more personified** than the seal.
+ * Two layers, and the order matters:
  *
- * This is direction A without the pipeline: a shoulder-up figure whose form is
- * carried by **dot density**, sampled on a hex lattice and generated
- * deterministically from the entity id. No raster, no ADC, no asset store, no
- * drift between a colleague's portrait and its versions, and a colleague
- * terminated two years ago still renders.
+ *  1. **A generated portrait**, if the id has one. `scripts/portraits.py` draws it
+ *     on Vertex Imagen 4 from one locked style block plus a one-line persona, then
+ *     traces the artwork onto a 112-dot lattice. These are real faces — a person,
+ *     not a figure — and they are what §7.1 direction A always specified.
+ *  2. **The procedural bust**, for every id that does not. Deterministic from the
+ *     entity id, so nothing is ever portrait-less and adding a colleague can never
+ *     break a surface while it waits for an art run.
+ *
+ * Owner review, 2026-07-30: the procedural bust alone was not personified enough.
+ * It read as a *figure*; it did not read as a *person*. Correct — a generic
+ * silhouette cannot carry a name. The bust stays as the floor precisely because it
+ * is the thing that lets the ceiling be optional.
+ *
+ * Why the generated portrait is an `<img>` rather than inlined: a traced lattice is
+ * ~180-270 KB of `<circle>` elements. Inlining twelve of those would put ~2.5 MB
+ * into the JS bundle and thousands of nodes into the DOM; as a file it is cached,
+ * fetched only when displayed, and never touches the bundle at all.
  *
  * ## Why this satisfies L7 rather than skirting it
  *
@@ -162,6 +171,36 @@ function buildBust(id: string): { dots: Dot[]; label: string } {
 
 const cache = new Map<string, { dots: Dot[]; label: string }>();
 
+/**
+ * The ids with a generated portrait promoted into `public/portraits/`.
+ *
+ * A literal rather than a fetch of `manifest.json`: the set is known at build
+ * time, and fetching it would make every portrait wait a round trip to find out
+ * whether it has a face. The manifest file remains the record of what was drawn
+ * and by which persona — `scripts/portraits.py` writes both.
+ *
+ * An id missing from here is not an error; it falls through to the procedural
+ * bust, which is the whole point of having one.
+ */
+const GENERATED = new Set([
+  "pragya",
+  "agt-013",
+  "agt-021",
+  "agt-038",
+  "agt-041",
+  "agt-046",
+  "agt-055",
+  "agt-092",
+  "cand-8801",
+  "cand-8814",
+  "cand-8822",
+  "cand-8830",
+]);
+
+/** Ids are cased inconsistently across fixtures (`AGT-046` vs `cand-8801`). */
+const assetFor = (id: string): string | null =>
+  GENERATED.has(id.toLowerCase()) ? `/portraits/${id.toLowerCase()}.svg` : null;
+
 export function Portrait({
   id,
   size = 44,
@@ -177,6 +216,25 @@ export function Portrait({
   className?: string;
   title?: string;
 }) {
+  const asset = assetFor(id);
+  const label = title ?? `${id} — a generated portrait, not a photograph`;
+
+  if (asset) {
+    return (
+      <img
+        className={className ? `vh-portrait vh-portrait-img ${className}` : "vh-portrait vh-portrait-img"}
+        src={asset}
+        width={size}
+        height={size}
+        alt={label}
+        data-drained={drained || undefined}
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+      />
+    );
+  }
+
   // ~700 dots per bust and portraits recur in every list; the field is a pure
   // function of the id, so it is computed once per identity per session.
   let bust = cache.get(id);
@@ -193,7 +251,7 @@ export function Portrait({
       viewBox="0 0 100 100"
       data-drained={drained || undefined}
       role="img"
-      aria-label={title ?? bust.label}
+      aria-label={label}
       style={{ flex: "none" }}
     >
       {bust.dots.map((d, i) => (

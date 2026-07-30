@@ -47,3 +47,8 @@ deploy/backup/logs/
 # Vihara review artifacts
 vihara/shots/
 vihara/dist/
+
+# Portrait rasters: ~12 MB of Imagen output. The traced SVGs in
+# vihara/public/portraits/ are what ships; the rasters are regenerable from
+# vihara/scripts/portraits.py and are staging, not source.
+vihara/portraits-staging/

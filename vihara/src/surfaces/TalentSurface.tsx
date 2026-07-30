@@ -279,7 +279,7 @@ export function TalentSurface({ onEcho }: { onEcho: (msg: string) => void }) {
                       <span className="m-portrait-well ta-card-face">
                         <Portrait
                           id={c.id}
-                          size={44}
+                          size={72}
                           title={`${c.name} — a generated portrait of a candidate, not a photograph`}
                         />
                       </span>
