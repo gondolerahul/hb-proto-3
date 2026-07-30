@@ -1,0 +1,138 @@
+name: gates
+
+# The gates nobody was running. A red backend suite and a red vihara lint both
+# survived a full workstream and two review rounds, because until now the only
+# machine that ever ran them was a developer's — and a developer who is deep in
+# a change does not re-run the suite they are not currently thinking about.
+#
+# Deliberately no `paths:` filter, unlike cortex-memory.yml: that workflow scopes
+# itself to a package that is on its way out of this repo, whereas this one is
+# the whole-repo answer to "how did that stay red for two weeks".
+#
+# Everything here is hermetic — no Postgres, no Redis, no browser, no API keys.
+# The two checks that need live infrastructure are named at the bottom of the job
+# they belong to, so their absence is a recorded decision rather than an omission.
+#
+# The jobs are independent on purpose: vihara going red must not stop the backend
+# gate from reporting, which is exactly the masking that let this happen.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  vihara:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vihara
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: vihara/package-lock.json
+
+      - name: Install (from the lockfile)
+        # puppeteer is a devDependency of the screenshot/sweep tooling only, and
+        # none of that runs here (see the note at the end of this job), so the
+        # ~150 MB Chrome download would be pure runner time. The npm package
+        # still installs; only the browser binary is skipped.
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint (boundary rules, --max-warnings 0)
+        run: npm run lint
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build (runs the bundle budget gate)
+        run: npm run build
+
+      - name: API contract drift (schema.d.ts is generated, never hand-edited)
+        # `gen:api` reads the checked-in src/api/openapi.json, so this needs no
+        # backend. It catches the half of the drift gate the backend cannot see:
+        # `export_openapi.py` alone turns the backend green while schema.d.ts
+        # silently goes stale, because nothing else regenerates it.
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/api/schema.d.ts
+
+      - name: Design-token mirror
+        # The tokens are a mirror of the design system, not a source. A hand-edit
+        # to the mirror is drift that nothing else would report.
+        run: npm run check:tokens
+
+      # Not run here: `node scripts/sweep.mjs`. It drives a live dev server on
+      # :4044 with puppeteer/Chrome, and the surfaces it visits are WebGL — on a
+      # GPU-less runner they render black, so the sweep would either fail or,
+      # worse, pass while proving nothing. It stays a local gate: `npm run dev`
+      # in one terminal, `node scripts/sweep.mjs` in another.
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Before setup-python, because `cache: poetry` shells out to poetry to find
+      # the virtualenv it is caching. Pinned to the version the dev boxes run —
+      # poetry.lock is lock-version 2.1 and needs Poetry >= 2.0 to read at all.
+      - name: Install Poetry
+        run: pipx install poetry==2.3.3
+
+      - uses: actions/setup-python@v5
+        with:
+          # pyproject declares python = "^3.11" (>=3.11,<4.0); 3.12 is what
+          # backend/.venv and the deployed VM actually run, so the gate checks
+          # the interpreter people ship on rather than the floor of the range.
+          python-version: "3.12"
+          cache: poetry
+          cache-dependency-path: backend/poetry.lock
+
+      - name: Install deps (from poetry.lock)
+        # --no-root: pyproject declares readme = "README.md" and backend/ has no
+        # README, so installing the root package fails on the metadata build.
+        # Nothing here needs it — pytest's rootdir puts backend/ on sys.path, so
+        # `src.*` and `tests.*` import the working tree, which is what we want to
+        # be testing anyway.
+        run: poetry install --no-root
+
+      - name: Settings file
+        # src/common/config.py builds `Settings()` at import time and
+        # DATABASE_URL / REDIS_URL / SECRET_KEY have no defaults, so without a
+        # .env every `import src.*` dies at collection. This is the same first
+        # step the setup docs hand a human (QUICK_START.md), and the example's
+        # localhost URLs are right for a runner with no services: the hermetic
+        # suites never dial out, and the DB-bound fixtures want a connection that
+        # refuses so they can skip.
+        run: cp .env.example .env
+
+      - name: Type gate (mypy --strict over the clean packages)
+        run: poetry run python scripts/typecheck_ai.py
+
+      - name: Unit tests
+        run: poetry run pytest tests/unit
+
+      - name: Parity suite
+        # Hermetic by construction (tests/parity/README.md): goldens on disk and
+        # a deterministic LLM adapter, no keys, no network. Its DB/Redis fixtures
+        # skip cleanly when nothing answers on localhost.
+        run: poetry run pytest tests/parity
+
+      # Not run here: `pytest tests/integration`. Those carry needs_db /
+      # needs_redis and want a real Postgres and Redis; this workflow starts no
+      # services, and a suite that silently skips its way to green is worse than
+      # one that is honestly absent. They stay a local/deploy gate —
+      # `scripts/run_ci_matrix.sh fast` against a box with the dev DB up.

@@ -9,7 +9,16 @@ import "./background.css";
  * `"brand"` is the default and the product's only background. `"legacy"` stays
  * selectable — it is the artifact the pick was made against, and keeping it
  * runnable is what keeps the verbatim test meaningful rather than decorative.
- * The two differ in exactly four colour values; see `hexField.ts`.
+ * The two differ in exactly four colour values; see `renderers/world/hexField.ts`.
+ *
+ * ## Why the scene lives in `renderers/world/` and this file does not
+ *
+ * D1 §3's class directories are what make D7 §3.3's rule *lintable*: only
+ * `components/world/` and `renderers/world/` may name three.js. So the scene
+ * sits there and this component — which every surface mounts — stays in the
+ * shell's half of the boundary, where the lint would catch a static import.
+ * A rule that named `background/` instead would be describing where the code
+ * happened to be rather than constraining where three.js may go.
  *
  * ## Why the scene is loaded, not imported
  *
@@ -49,13 +58,15 @@ export function Background({
     let cancelled = false;
 
     // The one place three.js enters the graph, and it is asynchronous by design.
-    void import("./hexField").then(({ createHexField, BRAND_PALETTE, LEGACY_PALETTE }) => {
-      if (cancelled || !ref.current) return;
-      teardown = createHexField(
-        ref.current,
-        variant === "brand" ? BRAND_PALETTE : LEGACY_PALETTE,
-      );
-    });
+    void import("../renderers/world/hexField").then(
+      ({ createHexField, BRAND_PALETTE, LEGACY_PALETTE }) => {
+        if (cancelled || !ref.current) return;
+        teardown = createHexField(
+          ref.current,
+          variant === "brand" ? BRAND_PALETTE : LEGACY_PALETTE,
+        );
+      },
+    );
 
     return () => {
       cancelled = true;

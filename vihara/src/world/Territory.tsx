@@ -394,8 +394,15 @@ function useCamera(
   const [panning, setPanning] = useState(false);
   const drag = useRef<{ px: number; py: number; box: typeof base } | null>(null);
 
-  // A new estate (different districts) reframes rather than keeping a stale pan.
-  useEffect(() => setBox(base), [base.x, base.y, base.w, base.h]);
+  /* A new estate (different districts) reframes rather than keeping a stale pan
+     — but by *value*, not by identity. `view` is rebuilt whenever `districts`
+     changes identity, so depending on the frame object would throw the user's
+     pan away on any parent render that merely re-created the array. Pulling the
+     four numbers out is what lets the dependency list say exactly that. */
+  const { x: baseX, y: baseY, w: baseW, h: baseH } = base;
+  useEffect(() => {
+    setBox({ x: baseX, y: baseY, w: baseW, h: baseH });
+  }, [baseX, baseY, baseW, baseH]);
 
   const MIN = 0.35; // deepest zoom-in, as a fraction of the framed estate
   const MAX = 1.8; // furthest out
@@ -410,10 +417,10 @@ function useCamera(
       const rect = svg.getBoundingClientRect();
       setBox((b) => {
         const factor = Math.exp(e.deltaY * 0.0014);
-        const scale = b.w / base.w;
+        const scale = b.w / baseW;
         const next = Math.min(MAX, Math.max(MIN, scale * factor));
-        const w = base.w * next;
-        const h = base.h * next;
+        const w = baseW * next;
+        const h = baseH * next;
 
         /* Anchor on the pointer. `preserveAspectRatio="xMidYMid meet"` letterboxes,
            so the mapping from client pixels to user units has to account for the
@@ -431,7 +438,7 @@ function useCamera(
         return { x: ux - kx * w, y: uy - ky * h, w, h };
       });
     },
-    [enabled, base.w, base.h],
+    [enabled, baseW, baseH],
   );
 
   // Non-passive, because a passive wheel listener cannot preventDefault and the

@@ -7,10 +7,13 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
+    "lint": "eslint src tests --ext .ts,.tsx --max-warnings 0",
     "test": "vitest run",
-    "build": "vite build",
-    "preview": "vite preview --port 4045 --strictPort"
+    "build": "vite build && node scripts/check_bundle_budget.mjs",
+    "preview": "vite preview --port 4045 --strictPort",
+    "gen:api": "node scripts/gen_api.mjs",
+    "sync:tokens": "node scripts/sync_tokens.mjs",
+    "check:tokens": "node scripts/sync_tokens.mjs --check"
   },
   "dependencies": {
     "axios": "^1.19.0",
@@ -28,9 +31,11 @@
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "axe-core": "^4.12.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "jsdom": "^24.0.0",
+    "openapi-typescript": "^6.7.6",
     "puppeteer": "^24.43.1",
     "typescript": "^5.2.2",
     "vite": "^5.0.8",

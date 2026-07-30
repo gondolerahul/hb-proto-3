@@ -18,11 +18,11 @@ const legacySource = readFileSync(
   "utf8",
 );
 const portSource = readFileSync(
-  path.join(ROOT, "vihara/src/background/LegacyBackground.tsx"),
+  path.join(ROOT, "vihara/src/renderers/world/LegacyBackground.tsx"),
   "utf8",
 );
 const hexFieldSource = readFileSync(
-  path.join(ROOT, "vihara/src/background/hexField.ts"),
+  path.join(ROOT, "vihara/src/renderers/world/hexField.ts"),
   "utf8",
 );
 
