@@ -196,6 +196,13 @@
   gap: var(--s-3);
 }
 
+/* An eyebrow and the thing it labels, as one unit. */
+.ta-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
 .ta-note {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -866,6 +873,12 @@
 .ta-diff tbody tr:last-child th,
 .ta-diff tbody tr:last-child td {
   box-shadow: none;
+}
+
+.ta-diff-rowhead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
 }
 
 .ta-diff-mark {

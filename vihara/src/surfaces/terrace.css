@@ -1,5 +1,8 @@
-/* The Terrace. Every glyph on this surface lives in this stylesheet, not in the
-   drawing — finding RD-1's architectural fix. */
+/* The Terrace — chrome only.
+
+   Every glyph on the territory lives in the DRAWING now, as flat SVG text styled
+   in world/territory.css (owner review A2). This file styles what surrounds it:
+   the weather sentence, the stage the drawing sits in, and the footer. */
 
 .te {
   display: grid;
@@ -55,9 +58,8 @@
   place-items: center;
 }
 
-/* The plane is the shared coordinate space: the SVG fills it, and the label
-   layer is positioned in percentages of the same box. That is what keeps labels
-   pinned to their plots with no resize observer and no per-frame projection. */
+/* The drawing's box. The SVG fills it; labels are inside the drawing now, so
+   nothing here has to stay in sync with a projection. */
 .te-plane {
   position: relative;
   width: 100%;
@@ -65,170 +67,15 @@
   max-width: 1320px;
 }
 
-.te-labels {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
+/* The label layer that used to live here is gone. Owner review A2 moved every
+   glyph into the drawing as flat SVG text (see world/territory.css), so the DOM
+   layer, its percentage positioning, its side-switching and its hover card are
+   all deleted rather than left as unreachable rules. ~170 lines removed.
 
-.te-label {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  /* Anchored above its plot's crown, centred on it. */
-  translate: -50% calc(-100% - 10px);
-  text-align: left;
-  white-space: nowrap;
-  pointer-events: auto;
-}
-
-/* Near-edge plots have their free space BELOW them — the model says which
-   (anchor.side), so a ring of labels never piles onto the estate's centre. */
-.te-label[data-side="below"] {
-  translate: -50% 12px;
-}
-
-/* ------------------------------------------------------- the district label */
-
-.te-label-district {
-  gap: var(--s-1);
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
-  /* Glass, so the territory stays visible through the label rather than being
-     punched out by it. */
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  backdrop-filter: blur(14px) saturate(150%);
-  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-md);
-  transition:
-    opacity var(--dur-base) var(--ease-settle),
-    box-shadow var(--dur-base) var(--ease-settle),
-    translate var(--dur-base) var(--ease-settle);
-}
-
-.te-label-district[data-dimmed] {
-  opacity: 0.38;
-}
-
-.te-label-district[data-hovered] {
-  translate: -50% calc(-100% - 14px);
-  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-lg), var(--shadow-md);
-}
-
-.te-label-district[data-side="below"][data-hovered] {
-  translate: -50% 16px;
-}
-
-.te-label-name {
-  font-size: var(--text-md);
-  color: var(--fg);
-}
-
-.te-label-kpi {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-3);
-  margin-top: 2px;
-}
-
-.te-label-figure {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: var(--text-xl);
-  line-height: 1;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  color: var(--white);
-}
-
-.te-label-drift {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--fg-subtle);
-}
-
-.te-label-drift[data-drift="behind"] {
-  color: var(--negative);
-}
-
-.te-label-drift[data-drift="ahead"] {
-  color: var(--positive);
-}
-
-.te-label-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: 10px;
-  color: var(--fg-subtle);
-}
-
-.te-label-hand {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  padding-left: var(--s-2);
-  margin-left: var(--s-1);
-  border-left: 1px solid var(--rule);
-  color: var(--gold-300);
-}
-
-.te-label-enter {
-  position: absolute;
-  top: var(--s-3);
-  right: var(--s-3);
-  color: var(--fg-faint);
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease-out), translate var(--dur) var(--ease-out);
-}
-
-.te-label-district[data-hovered] .te-label-enter {
-  opacity: 1;
-  translate: 2px 0;
-}
-
-/* ------------------------------------------------------- the quieter labels */
-
-.te-label-gate,
-.te-label-twin,
-.te-label-sheel {
-  gap: 2px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-}
-
-.te-label-gate-name {
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--fg-muted);
-}
-
-.te-label-twin .te-label-name {
-  /* Drained, by the same rule as the twin itself (art bible §5). */
-  color: #dfe3e7;
-  font-size: var(--text-sm);
-}
-
-.te-label-sub {
-  font-size: 9px;
-  color: var(--fg-faint);
-}
-
-.te-label-sheel {
-  translate: -50% calc(-100% - 4px);
-  align-items: center;
-}
-
-.te-label-sheel-name {
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  letter-spacing: 0.02em;
-  color: var(--fg-muted);
-}
+   The responsive rule that hid `.te-labels` below 900px is deleted with them, and
+   it is not replaced: SVG text scales with the viewBox, so the labels stay
+   proportionate and legible at 720px. Verified with scripts/shoot_variants.mjs
+   rather than assumed — which is how the dead rule was found in the first place. */
 
 /* --------------------------------------------------------------- the footer */
 
@@ -254,14 +101,11 @@
 }
 
 /* --------------------------------------------------------------- responsive
-   Below 900px the labels would collide, so the territory becomes a picture and
-   the hop-list becomes the navigation. The estate is still *seen*; it is just no
-   longer clicked. That is the L9 promise holding at the small end. */
+   The territory keeps its labels at every width — SVG text scales with the
+   viewBox. What changes is the chrome: the hop-list goes full width so the
+   estate stays clickable by name when plots are small. */
 
 @media (max-width: 900px) {
-  .te-labels {
-    display: none;
-  }
   .te-foot-hops {
     width: 100%;
   }
