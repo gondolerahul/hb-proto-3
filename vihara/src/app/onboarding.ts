@@ -23,22 +23,50 @@ export interface OnboardingGate {
   stage: number | null;
 }
 
+export interface EstateStanding {
+  /** Solo-pack activation — the estate exists. Null = unreadable. */
+  activated: boolean | null;
+  stage: number | null;
+}
+
 export const STILL_LOCKED_SENTENCE =
   "The still surface arrives with stage 9 — the estate is still being raised.";
 
-/** Pure — the sequencing rule, fail-open. */
-export function gateFromStage(stage: number | null): OnboardingGate {
-  if (stage === null) return { stillLocked: false, stage: null };
-  return { stillLocked: stage < 9, stage };
+/**
+ * Pure — the sequencing rule, fail-open, with the correction the first
+ * screenshot round forced (2026-07-30): **an activated estate is an
+ * estate.** A long-active tenant whose owner never touched the Pragya
+ * engagement sits at stage 1 forever, and the first version of this gate
+ * locked such a tenant's front door permanently. Activation outranks the
+ * stage; the stage rule bites only while the estate is genuinely unbuilt.
+ */
+export function gateFromStanding(standing: EstateStanding): OnboardingGate {
+  if (standing.activated === true) {
+    return { stillLocked: false, stage: standing.stage };
+  }
+  if (standing.stage === null) {
+    return { stillLocked: false, stage: null };
+  }
+  return { stillLocked: standing.stage < 9, stage: standing.stage };
 }
 
-/** Reads the engagement's stage; null on any failure (the gate fails open). */
-export async function fetchEngagementStage(): Promise<number | null> {
-  try {
-    const response = await api.get<{ stage?: unknown }>("/ai/pragya/engagement");
-    const stage = response.data.stage;
-    return typeof stage === "number" ? stage : null;
-  } catch {
-    return null;
-  }
+/** Reads activation + stage; nulls on any failure (the gate fails open). */
+export async function fetchEstateStanding(): Promise<EstateStanding> {
+  const [activated, stage] = await Promise.all([
+    api
+      .get<{ activated?: unknown }>("/ai/onboarding/status")
+      .then((response) =>
+        typeof response.data.activated === "boolean"
+          ? response.data.activated
+          : null,
+      )
+      .catch(() => null),
+    api
+      .get<{ stage?: unknown }>("/ai/pragya/engagement")
+      .then((response) =>
+        typeof response.data.stage === "number" ? response.data.stage : null,
+      )
+      .catch(() => null),
+  ]);
+  return { activated, stage };
 }

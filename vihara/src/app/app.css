@@ -10,12 +10,14 @@
 }
 
 /* ── glass where things float (POLISH P4, art bible §10) ──────────────
- * Glass is used where something floats OVER the world — the shell bar,
- * the tray, the dock, the ribbon, the standup's cards, the Line's
- * pinned vitals, pre-session — never inside a sheet. Every selector
- * that declares a backdrop-filter here MUST also appear in the
+ * Glass is used where something floats OVER the world — the tray, the
+ * dock, the ribbon, the standup's cards, the Line's pinned vitals,
+ * pre-session, the Places palette — never inside a sheet. Every
+ * selector that declares a backdrop-filter here MUST also appear in the
  * prefers-reduced-transparency block at the end of this section; a
  * test holds that correspondence. */
+
+/* The Line's pocket tab bar keeps the old sticky-glass idiom. */
 .vh-shell-bar {
   display: flex;
   justify-content: space-between;
@@ -28,6 +30,132 @@
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--glass-border);
+}
+
+/* ── the HUD (POLISH L3 — the wireframes' chrome, not a nav bar) ─────
+ * Transparent, floats over everything, and only its controls take the
+ * pointer. Gold audit: the mark (sanctioned) and the waiting pill
+ * ("this needs you"). */
+.vh-hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 22px;
+  pointer-events: none;
+}
+.vh-hud > * {
+  pointer-events: auto;
+}
+.vh-hud-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-display, "Space Grotesk", sans-serif);
+  font-weight: 500;
+  font-size: 15px;
+}
+.vh-hud-mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--gradient-gold, var(--gold-500));
+  flex: none;
+}
+.vh-hud-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.vh-hud-link {
+  background: transparent;
+  border: 0;
+  color: var(--fg-muted);
+  font-family: var(--font-body, sans-serif);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.vh-hud-link:hover {
+  color: var(--fg);
+  background: rgba(255, 253, 249, 0.06);
+}
+.vh-kbd {
+  font-family: var(--font-mono, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--fg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: 4px;
+}
+
+/* The Places palette — glass, because it floats over the world. */
+.vh-places {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-radius: var(--r-lg);
+  padding: 0.4rem;
+  display: grid;
+  gap: 2px;
+  animation: vh-sheet-open 200ms var(--ease-out);
+}
+.vh-place {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.55rem 0.8rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+}
+.vh-place:hover,
+.vh-place:focus-visible {
+  background: rgba(255, 253, 249, 0.06);
+}
+.vh-place small {
+  color: var(--fg-subtle);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* The mono depth path, bottom-left (still-visual's credit line idiom). */
+.vh-depth-path {
+  position: fixed;
+  left: 22px;
+  bottom: 14px;
+  z-index: 30;
+  font-family: var(--font-mono, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  pointer-events: none;
 }
 
 /* The shell's mark: the still-visual HUD — a gradient-gold dot beside
@@ -406,7 +534,8 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 1rem;
+  /* Clear the fixed HUD. */
+  padding: 64px 1.25rem 2.5rem;
   gap: 0.75rem;
 }
 .vh-terrace {
@@ -418,10 +547,21 @@
 .vh-world-frame {
   flex: 1;
   min-height: 420px;
+  position: relative;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
   overflow: hidden;
   box-shadow: var(--shadow-lg);
+}
+/* r3f's injected wrapper carries INLINE position:relative and
+ * height:100%; a percentage against a flex-derived (indefinite) height
+ * resolves to AUTO, so the canvas collapsed to its intrinsic 150px and
+ * the whole territory rendered as a squashed band (found by probe,
+ * 2026-07-30). Absolute-fill is the fix, and !important is the only
+ * thing that outranks an inline style. */
+.vh-world-frame > div {
+  position: absolute !important;
+  inset: 0;
 }
 .vh-terrace-controls {
   display: flex;
@@ -481,7 +621,9 @@
   position: fixed;
   top: 3.5rem;
   right: 1rem;
-  bottom: 3rem;
+  /* Hugs its content — an empty tray list is one quiet line, not a
+   * full-height empty pane. */
+  max-height: calc(100vh - 7rem);
   width: min(30rem, calc(100vw - 2rem));
   overflow-y: auto;
   background: var(--glass-tint);
@@ -1315,7 +1457,31 @@
   display: flex;
   gap: 0.4rem;
 }
-.vh-steward-dock form[data-part="say"] input { flex: 1; }
+.vh-steward-dock form[data-part="say"] input {
+  flex: 1;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  padding: 0.45rem 0.85rem;
+  color: inherit;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.vh-steward-dock form[data-part="say"] input::placeholder {
+  color: var(--fg-subtle);
+}
+.vh-steward-dock button {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 0.4rem 0.85rem;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.vh-steward-dock button:hover {
+  color: var(--fg);
+}
 
 /* ── the Line (LINE L5–L8) ───────────────────────────────────────────── */
 .vh-line-frame {
@@ -1414,7 +1580,8 @@ form[data-part="thread-say"] input { flex: 1; }
   .vh-demotion-offer,
   .vh-standup-card,
   .vh-steward-dock,
-  .vh-desk-vitals {
+  .vh-desk-vitals,
+  .vh-places {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: var(--surface);

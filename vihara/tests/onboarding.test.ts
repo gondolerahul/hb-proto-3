@@ -1,41 +1,78 @@
 /**
- * POLISH P7 — onboarding staged in the world: the one sequencing rule
- * the wireframes call un-get-wrongable (depth 0 is the reward at stage
- * 9), and the gate's deliberate fail-open on an unreadable engagement.
+ * POLISH P7 (amended by the 2026-07-30 screenshot round) — onboarding
+ * staged in the world. Two rules, both learned the hard way:
+ *
+ * 1. Depth 0 is the reward at stage 9 — while the estate is genuinely
+ *    unbuilt.
+ * 2. **An activated estate is an estate.** A long-active tenant whose
+ *    owner never touched the engagement sits at stage 1 forever, and the
+ *    first version of this gate locked such a tenant's front door
+ *    permanently — found the moment a screenshot was taken with a real
+ *    seeded tenant. Activation outranks the stage.
+ *
+ * Plus the standing rule: the gate FAILS OPEN on anything unreadable.
  */
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 vi.mock("../src/api/client", () => ({ api: { get: vi.fn() } }));
 
 import { api } from "../src/api/client";
-import { fetchEngagementStage, gateFromStage } from "../src/app/onboarding";
+import { fetchEstateStanding, gateFromStanding } from "../src/app/onboarding";
 
-describe("the stage-9 gate (P7)", () => {
-  it("locks the still surface at every stage before 9", () => {
+describe("the stage-9 gate (P7, amended)", () => {
+  it("locks the still surface at every stage before 9 while unactivated", () => {
     for (let stage = 1; stage <= 8; stage++) {
-      expect(gateFromStage(stage)).toEqual({ stillLocked: true, stage });
+      expect(gateFromStanding({ activated: false, stage })).toEqual({
+        stillLocked: true,
+        stage,
+      });
     }
   });
 
   it("stage 9 earns the silence", () => {
-    expect(gateFromStage(9)).toEqual({ stillLocked: false, stage: 9 });
+    expect(gateFromStanding({ activated: false, stage: 9 })).toEqual({
+      stillLocked: false,
+      stage: 9,
+    });
   });
 
-  it("fails OPEN on an unreadable engagement — a sequencing rule must never lock the front door", () => {
-    expect(gateFromStage(null)).toEqual({ stillLocked: false, stage: null });
+  it("an ACTIVATED estate is never locked, whatever its engagement row says", () => {
+    for (const stage of [1, 4, 8, null]) {
+      expect(gateFromStanding({ activated: true, stage }).stillLocked).toBe(
+        false,
+      );
+    }
+  });
+
+  it("fails OPEN on an unreadable standing — a sequencing rule must never lock the front door", () => {
+    expect(gateFromStanding({ activated: null, stage: null })).toEqual({
+      stillLocked: false,
+      stage: null,
+    });
+    expect(
+      gateFromStanding({ activated: false, stage: null }).stillLocked,
+    ).toBe(false);
   });
 });
 
-describe("reading the stage", () => {
-  it("returns the engagement's stage", async () => {
-    (api.get as Mock).mockResolvedValueOnce({ data: { stage: 4 } });
-    expect(await fetchEngagementStage()).toBe(4);
+describe("reading the standing", () => {
+  it("returns activation and stage together", async () => {
+    (api.get as Mock).mockImplementation(async (path: string) =>
+      path.includes("onboarding")
+        ? { data: { activated: true } }
+        : { data: { stage: 4 } },
+    );
+    expect(await fetchEstateStanding()).toEqual({ activated: true, stage: 4 });
   });
 
-  it("returns null on a malformed body and on a failed request", async () => {
-    (api.get as Mock).mockResolvedValueOnce({ data: {} });
-    expect(await fetchEngagementStage()).toBeNull();
-    (api.get as Mock).mockRejectedValueOnce(new Error("down"));
-    expect(await fetchEngagementStage()).toBeNull();
+  it("each leg degrades to null independently", async () => {
+    (api.get as Mock).mockImplementation(async (path: string) => {
+      if (path.includes("onboarding")) throw new Error("down");
+      return { data: {} };
+    });
+    expect(await fetchEstateStanding()).toEqual({
+      activated: null,
+      stage: null,
+    });
   });
 });

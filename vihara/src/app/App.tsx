@@ -7,10 +7,18 @@
  * DRIVER D1 adds the two pieces of chrome the tray needs: the "waiting"
  * affordance (gold — this needs you — and absent at zero, art bible §2.1)
  * and the echo ribbon (L10's human-facing copy).
+ *
+ * POLISH L3 (2026-07-30, after the screenshot round): the chrome is the
+ * wireframes' HUD, not a nav bar — the tenant's name and the gold mark
+ * top-left, quiet controls top-right, a glass Places palette (⌘K) for
+ * every room, Escape rising one depth, the mono depth path bottom-left.
+ * Eleven permanent room links read as a dev scaffold; a HUD reads as a
+ * product. Navigation stays complete: palette + terrace + skiplist.
  */
 import { useEffect, useState } from "react";
 
 import { getAccessToken, logout } from "../api/client";
+import { fetchCompanyName } from "../api/identity";
 import { fetchTrayList } from "../api/trays";
 import { Atmosphere } from "../atmosphere/Atmosphere";
 import { StewardDock, type Navigation } from "../steward/StewardDock";
@@ -23,8 +31,8 @@ import { GlasshouseSurface } from "./GlasshouseSurface";
 import { HallsSurface } from "./HallsSurface";
 import { LibrarySurface } from "./LibrarySurface";
 import {
-  fetchEngagementStage,
-  gateFromStage,
+  fetchEstateStanding,
+  gateFromStanding,
   STILL_LOCKED_SENTENCE,
   type OnboardingGate,
 } from "./onboarding";
@@ -76,8 +84,8 @@ export function App(): JSX.Element {
   });
   useEffect(() => {
     if (!inSession) return;
-    void fetchEngagementStage().then((stage) => {
-      const next = gateFromStage(stage);
+    void fetchEstateStanding().then((standing) => {
+      const next = gateFromStanding(standing);
       setGate(next);
       if (next.stillLocked) setDepth({ level: 1 });
     });
@@ -88,15 +96,54 @@ export function App(): JSX.Element {
       setDepth({ level: 0 });
       return;
     }
-    // The stage may have advanced since the session opened — re-ask
+    // The standing may have changed since the session opened — re-ask
     // before refusing, and refuse with the reason said out loud.
-    void fetchEngagementStage().then((stage) => {
-      const next = gateFromStage(stage);
+    void fetchEstateStanding().then((standing) => {
+      const next = gateFromStanding(standing);
       setGate(next);
       if (next.stillLocked) announce(STILL_LOCKED_SENTENCE);
       else setDepth({ level: 0 });
     });
   };
+
+  // ── the HUD's identity + the Places palette (POLISH L3) ──────────────
+  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [placesOpen, setPlacesOpen] = useState(false);
+
+  useEffect(() => {
+    if (!inSession) return;
+    void fetchCompanyName().then(setCompanyName);
+  }, [inSession]);
+
+  // Escape rises one depth (the ladder is one axis); ⌘K opens the palette.
+  const rise = (): void => {
+    if (depth.level === 3) setDepth({ level: 1 });
+    else if (depth.level === 2 && "district" in depth && depth.dossier) {
+      setDepth({ level: 2, district: depth.district });
+    } else if (depth.level === 2) setDepth({ level: 1 });
+    else if (depth.level === 1) {
+      if ("room" in depth) setDepth({ level: 1 });
+      else if (!gate.stillLocked) setDepth({ level: 0 });
+    }
+  };
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPlacesOpen((open) => !open);
+        return;
+      }
+      if (event.key === "Escape") {
+        if (placesOpen) setPlacesOpen(false);
+        else if (traysOpen) setTraysOpen(false);
+        else rise();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
 
   if (!inSession) {
     return <PreSession onEntered={() => setInSession(true)} />;
@@ -119,6 +166,31 @@ export function App(): JSX.Element {
     }
   };
 
+  const PLACES: { label: string; whisper: string; go: () => void }[] = [
+    { label: "the terrace", whisper: "the estate, walkable", go: () => setDepth({ level: 1 }) },
+    { label: "the standup", whisper: "yesterday, colleague by colleague", go: () => setDepth({ level: 1, room: "standup" }) },
+    { label: "registry halls", whisper: "every record, by module", go: () => setDepth({ level: 2, room: "halls" }) },
+    { label: "the boardroom", whisper: "propositions and minutes", go: () => setDepth({ level: 2, room: "board" }) },
+    { label: "the talent office", whisper: "hire, and part ways", go: () => setDepth({ level: 2, room: "talent" }) },
+    { label: "the gallery", whisper: "seasons and monuments", go: () => setDepth({ level: 2, room: "gallery" }) },
+    { label: "the library", whisper: "what the estate knows", go: () => setDepth({ level: 2, room: "library" }) },
+    { label: "bridges & gates", whisper: "connections and channels", go: () => setDepth({ level: 2, room: "bridges" }) },
+    { label: "the glasshouse", whisper: "rehearse without consequence", go: () => setDepth({ level: 2, room: "glasshouse" }) },
+    { label: "the undercroft", whisper: "the engine room", go: () => setDepth({ level: 3 }) },
+    { label: "the study", whisper: "you — keys, notices, billing", go: () => setDepth({ level: 2, room: "study" }) },
+  ];
+
+  const depthPath =
+    depth.level === 0
+      ? "vihara · still surface · depth 0"
+      : depth.level === 1
+        ? `vihara · ${"room" in depth ? "the standup" : "the terrace"} · depth 1`
+        : depth.level === 2 && "district" in depth
+          ? `vihara · ${depth.district}${depth.dossier ? " · dossier" : ""} · depth 2`
+          : depth.level === 2 && "room" in depth
+            ? `vihara · ${depth.room} · depth 2`
+            : "vihara · the undercroft · depth 3";
+
   const contextRef: Record<string, unknown> =
     depth.level === 2 && "district" in depth
       ? { kind: "district", id: depth.district }
@@ -140,140 +212,98 @@ export function App(): JSX.Element {
   return (
     <div className="vihara-shell-frame">
       <Atmosphere context="shell" depthLevel={depth.level} />
-      <header className="vh-shell-bar" data-part="shell">
-        <span className="vihara-wordmark-small">Vihara</span>
-        <nav className="vh-depth-dial" aria-label="depth">
+      <header className="vh-hud" data-part="shell">
+        <span className="vh-hud-left">
+          <span className="vh-hud-mark" aria-hidden="true" />
+          <span className="vh-hud-co">{companyName ?? "Vihara"}</span>
+        </span>
+        <nav className="vh-hud-right" aria-label="shell">
           <button
             type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 0}
-            data-locked={gate.stillLocked}
-            title={gate.stillLocked ? STILL_LOCKED_SENTENCE : undefined}
-            onClick={goStill}
-          >
-            still
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 1}
-            onClick={() => setDepth({ level: 1 })}
-          >
-            terrace
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 2 && "room" in depth}
-            onClick={() => setDepth({ level: 2, room: "halls" })}
-          >
-            halls
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 1 && "room" in depth}
-            onClick={() => setDepth({ level: 1, room: "standup" })}
-          >
-            standup
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 2 && "room" in depth && depth.room === "board"}
-            onClick={() => setDepth({ level: 2, room: "board" })}
-          >
-            board
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 2 && "room" in depth && depth.room === "talent"}
-            onClick={() => setDepth({ level: 2, room: "talent" })}
-          >
-            talent
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 2 && "room" in depth && depth.room === "gallery"}
-            onClick={() => setDepth({ level: 2, room: "gallery" })}
-          >
-            gallery
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 2 && "room" in depth && depth.room === "library"}
-            onClick={() => setDepth({ level: 2, room: "library" })}
-          >
-            library
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 2 && "room" in depth && depth.room === "bridges"}
-            onClick={() => setDepth({ level: 2, room: "bridges" })}
-          >
-            bridges
-          </button>
-          <button
-            type="button"
-            className="vh-quiet-link"
-            disabled={
-              depth.level === 2 && "room" in depth && depth.room === "glasshouse"
+            className={
+              trayCount !== null && trayCount > 0
+                ? "vh-beacon-count"
+                : "vh-hud-link"
             }
-            onClick={() => setDepth({ level: 2, room: "glasshouse" })}
+            data-part="trays-toggle"
+            onClick={() => setTraysOpen((open) => !open)}
           >
-            glasshouse
+            {trayCount !== null && trayCount > 0
+              ? `${trayCount} waiting`
+              : "trays"}
           </button>
           <button
             type="button"
-            className="vh-quiet-link"
-            disabled={depth.level === 3}
-            onClick={() => setDepth({ level: 3 })}
+            className="vh-hud-link"
+            data-part="places-toggle"
+            aria-expanded={placesOpen}
+            onClick={() => setPlacesOpen((open) => !open)}
           >
-            undercroft
+            places <kbd className="vh-kbd">⌘K</kbd>
           </button>
-          {depth.level === 2 && "district" in depth && (
-            <span className="vh-quiet">{depth.district}</span>
-          )}
+          <button
+            type="button"
+            className="vh-hud-link"
+            data-part="study-toggle"
+            onClick={() => setDepth({ level: 2, room: "study" })}
+          >
+            study
+          </button>
+          <button
+            type="button"
+            className="vh-hud-link"
+            onClick={() => {
+              logout();
+              setInSession(false);
+              setDepth({ level: 0 });
+            }}
+          >
+            leave
+          </button>
         </nav>
-        <button
-          type="button"
-          className="vh-quiet-link"
-          data-part="study-toggle"
-          onClick={() => setDepth({ level: 2, room: "study" })}
-        >
-          study
-        </button>
-        <button
-          type="button"
-          className={
-            trayCount !== null && trayCount > 0
-              ? "vh-beacon-count"
-              : "vh-quiet-link"
-          }
-          data-part="trays-toggle"
-          onClick={() => setTraysOpen((open) => !open)}
-        >
-          {trayCount !== null && trayCount > 0
-            ? `${trayCount} waiting`
-            : "trays"}
-        </button>
-        <button
-          type="button"
-          className="vh-quiet-link"
-          onClick={() => {
-            logout();
-            setInSession(false);
-            setDepth({ level: 0 });
-          }}
-        >
-          leave
-        </button>
       </header>
-      <main key={depthKey} className={depth.level === 0 ? "vh-depth0" : "vh-depthN"}>
+      {placesOpen && (
+        <nav className="vh-places" data-part="places" aria-label="places">
+          {!gate.stillLocked && depth.level !== 0 && (
+            <button
+              type="button"
+              className="vh-place"
+              onClick={() => {
+                setPlacesOpen(false);
+                goStill();
+              }}
+            >
+              <span>the still surface</span>
+              <small>silence, earned</small>
+            </button>
+          )}
+          {PLACES.map((place) => (
+            <button
+              key={place.label}
+              type="button"
+              className="vh-place"
+              onClick={() => {
+                setPlacesOpen(false);
+                place.go();
+              }}
+            >
+              <span>{place.label}</span>
+              <small>{place.whisper}</small>
+            </button>
+          ))}
+        </nav>
+      )}
+      <main
+        key={depthKey}
+        className={depth.level === 0 ? "vh-depth0" : "vh-depthN"}
+        onClick={(event) => {
+          // The wireframe's rule: at depth 0, "go deeper · click anywhere"
+          // — anywhere that is not itself a control.
+          if (depth.level !== 0) return;
+          if ((event.target as HTMLElement).closest("button, a, input")) return;
+          setDepth({ level: 1 });
+        }}
+      >
         {depth.level === 0 && (
           <>
             <StillSurface />
@@ -283,7 +313,7 @@ export function App(): JSX.Element {
               data-part="walk-in"
               onClick={() => setDepth({ level: 1 })}
             >
-              walk the estate
+              go deeper · click anywhere
             </button>
           </>
         )}
@@ -374,6 +404,10 @@ export function App(): JSX.Element {
         depthLevel={depth.level}
         contextRef={contextRef}
       />
+
+      <span className="vh-depth-path" aria-hidden="true">
+        {depthPath}
+      </span>
 
       {ribbon !== null && (
         <footer

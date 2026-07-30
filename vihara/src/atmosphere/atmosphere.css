@@ -51,10 +51,26 @@
   display: block;
 }
 
-/* The GL floor draws its own perspective — no CSS transform. */
+/* The GL floor draws its own perspective — no CSS transform — and
+ * occupies the lower band of the viewport like the wireframes'
+ * floorwrap, its fogged far edge dissolving into the vignette. */
 .vh-glfloor {
   position: absolute;
+  inset: 42% 0 0 0;
+}
+/* The wireframes' own fog: the band's top dissolves into the vignette
+ * instead of showing the scene's cut edge. */
+.vh-glfloor::after {
+  content: "";
+  position: absolute;
   inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    rgba(6, 5, 5, 0.45) 45%,
+    #060505 92%
+  );
 }
 .vh-glfloor canvas {
   display: block;
