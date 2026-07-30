@@ -20,7 +20,12 @@ import { useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 
-import { useNamePlate } from "./plates";
+import {
+  starPositions,
+  useGlowTexture,
+  useNamePlate,
+  useStripeTexture,
+} from "./plates";
 import type { EstateSnapshot, PlacedGatehouse } from "./layout";
 import { placeTerritory, type PlacedDistrict, type Road } from "./layout";
 
@@ -80,7 +85,8 @@ export default function WorldTerrace({
         color={layout.lighting.keyColor}
         castShadow={quality === "full"}
       />
-      <EnergyFloor bounds={layout.bounds} />
+      <EnergyFloor bounds={layout.bounds} phase={layout.lighting.phase} />
+      <QuarterLabels districts={layout.districts} />
       {/* Sheel — the hub's pulse: a soft pool of light where the roads
           meet. Light, never gold (§13). */}
       <pointLight
@@ -147,26 +153,114 @@ export function FrameWatchdog({
   return null;
 }
 
-function EnergyFloor({ bounds }: { bounds: number }): JSX.Element {
+/** The estate stands on a BOUNDED plot (estate-visual's .ground): a
+ * slightly lifted slab with a fine grid and a lit rim, darkness and
+ * stars beyond it — not an infinite grid into void. */
+function EnergyFloor({ bounds, phase }: { bounds: number; phase: string }): JSX.Element {
+  const slab = bounds * 2.3;
+  const slabEdges = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(slab, 0.22, slab * 0.78)),
+    [slab],
+  );
+  const stars = useMemo(() => starPositions(), []);
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
-        <planeGeometry args={[bounds * 4, bounds * 4]} />
-        <meshStandardMaterial color={INK} />
+      {/* The dark beyond the plot. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.55, 0]}>
+        <planeGeometry args={[bounds * 8, bounds * 8]} />
+        <meshBasicMaterial color="#060505" />
       </mesh>
-      {/* The glow is light, never gold (§13) — a warm-white grid, faint. */}
+      {phase === "night" && (
+        <points>
+          <bufferGeometry>
+            <bufferAttribute
+              attach="attributes-position"
+              args={[stars, 3]}
+            />
+          </bufferGeometry>
+          <pointsMaterial
+            color={WARM_WHITE}
+            size={0.09}
+            transparent
+            opacity={0.55}
+            sizeAttenuation
+          />
+        </points>
+      )}
+      {/* The plot. */}
+      <mesh position={[0, -0.16, 0]} receiveShadow>
+        <boxGeometry args={[slab, 0.22, slab * 0.78]} />
+        <meshStandardMaterial color="#0d0b09" />
+      </mesh>
+      <lineSegments position={[0, -0.16, 0]} geometry={slabEdges}>
+        <lineBasicMaterial color={WARM_WHITE} transparent opacity={0.3} />
+      </lineSegments>
       <gridHelper
-        args={[bounds * 4, 96, WARM_WHITE, WARM_WHITE]}
+        args={[slab * 0.99, 44, WARM_WHITE, WARM_WHITE]}
         position={[0, -0.04, 0]}
       >
         <meshBasicMaterial
           attach="material"
           color={WARM_WHITE}
           transparent
-          opacity={0.1}
+          opacity={0.12}
         />
       </gridHelper>
     </group>
+  );
+}
+
+/** Quarter names in mega-type, printed on the plot (estate-visual's
+ * ground labels) — geography you can read from the air. */
+function QuarterLabels({
+  districts,
+}: {
+  districts: PlacedDistrict[];
+}): JSX.Element {
+  const quarters = useMemo(() => {
+    const grouped = new Map<string, { x: number; z: number; n: number }>();
+    for (const district of districts) {
+      const entry = grouped.get(district.quarter) ?? { x: 0, z: 0, n: 0 };
+      entry.x += district.position[0];
+      entry.z += district.position[1];
+      entry.n += 1;
+      grouped.set(district.quarter, entry);
+    }
+    return [...grouped.entries()].map(([name, sum]) => ({
+      name,
+      x: sum.x / sum.n,
+      z: sum.z / sum.n + 2.6,
+    }));
+  }, [districts]);
+  return (
+    <>
+      {quarters.map((quarter) => (
+        <QuarterLabel key={quarter.name} {...quarter} />
+      ))}
+    </>
+  );
+}
+
+function QuarterLabel({
+  name,
+  x,
+  z,
+}: {
+  name: string;
+  x: number;
+  z: number;
+}): JSX.Element | null {
+  const plate = useNamePlate(name, {
+    px: 120,
+    weight: 500,
+    color: "rgba(246, 241, 233, 0.09)",
+  });
+  if (plate === null) return null;
+  return (
+    <mesh position={[x, 0.005, z]} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[6.5, 0.85]} />
+      <meshBasicMaterial map={plate} transparent depthWrite={false} />
+    </mesh>
   );
 }
 
@@ -184,6 +278,19 @@ function DistrictSite({
   const [x, z] = district.position;
   const float = hover ? 0.55 : 0.35;
   const namePlate = useNamePlate(district.name);
+  const hands = district.colleagues.filter(
+    (colleague) => colleague.hand_raised,
+  ).length;
+  const subPlate = useNamePlate(
+    `${district.colleagues.length} colleagues${hands > 0 ? ` · ${hands} waiting` : ""}`,
+    {
+      px: 38,
+      color:
+        hands > 0 ? "rgba(237, 171, 72, 0.85)" : "rgba(246, 241, 233, 0.4)",
+    },
+  );
+  const stripes = useStripeTexture();
+  const glow = useGlowTexture();
 
   // The wireframe look is carried by EDGES, not faces: a lit hairline
   // around the plinth and the volume reads at night where a translucent
@@ -199,13 +306,25 @@ function DistrictSite({
 
   return (
     <group position={[x, 0, z]}>
-      {/* Light beneath sells the float (§13). */}
+      {/* Light beneath sells the float (§13) — now a VISIBLE pool. */}
       <pointLight
         position={[0, 0.12, 0]}
         intensity={hover ? 1.1 : 0.6}
         color={WARM_WHITE}
         distance={3.6}
       />
+      {glow !== null && (
+        <mesh position={[0, 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[4.6, 4.6]} />
+          <meshBasicMaterial
+            map={glow}
+            transparent
+            opacity={hover ? 0.75 : 0.5}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+      )}
       {lampIntensity > 0.5 && (
         <pointLight
           position={[0, height + 1.2, 0]}
@@ -244,6 +363,18 @@ function DistrictSite({
           depthWrite={false}
         />
       </mesh>
+      {/* … with the wireframes' striped walls … */}
+      {stripes !== null && (
+        <mesh position={[0, float + 0.15 + height / 2, 0]} scale={1.002}>
+          <boxGeometry args={[2.1, height, 2.1]} />
+          <meshBasicMaterial
+            map={stripes}
+            transparent
+            opacity={0.5}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
       <lineSegments
         position={[0, float + 0.15 + height / 2, 0]}
         geometry={volumeEdges}
@@ -267,6 +398,17 @@ function DistrictSite({
             map={namePlate}
             transparent
             opacity={hover ? 0.95 : 0.75}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+      {subPlate !== null && (
+        <mesh position={[0, 0.02, 2.55]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[3.2, 0.24]} />
+          <meshBasicMaterial
+            map={subPlate}
+            transparent
+            opacity={0.85}
             depthWrite={false}
           />
         </mesh>
