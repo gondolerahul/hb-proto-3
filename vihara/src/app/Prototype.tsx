@@ -3,6 +3,9 @@ import { Background } from "../background/Background";
 import { Shell, type Depth } from "../shell/Shell";
 import { StillSurface } from "../surfaces/StillSurface";
 import { TerraceSurface } from "../surfaces/TerraceSurface";
+import { DistrictSurface } from "../surfaces/DistrictSurface";
+import { DossierSurface } from "../surfaces/DossierSurface";
+import { BoardroomSurface } from "../surfaces/BoardroomSurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
 import { BackgroundPick } from "../boards/BackgroundPick";
@@ -27,11 +30,22 @@ import "./prototype.css";
  * built as fallbacks, plus depth 0, which RD-4 says was left empty.
  */
 
-type SurfaceId = "still" | "terrace" | "tray" | "hall" | "bg";
+type SurfaceId =
+  | "still"
+  | "terrace"
+  | "district"
+  | "dossier"
+  | "boardroom"
+  | "tray"
+  | "hall"
+  | "bg";
 
 const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
   still: 0,
   terrace: 1,
+  district: 2,
+  dossier: 2,
+  boardroom: 2,
   tray: 2,
   hall: 2,
   bg: 1,
@@ -40,6 +54,9 @@ const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
 const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
   { id: "still", label: "Still surface", note: "depth 0 · finding RD-4" },
   { id: "terrace", label: "The Terrace", note: "depth 1 · findings RD-1/RD-2" },
+  { id: "district", label: "District room", note: "depth 2 · W+S" },
+  { id: "dossier", label: "Dossier", note: "one-on-one · seals" },
+  { id: "boardroom", label: "Boardroom", note: "four honesty grades" },
   { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
   { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
   { id: "bg", label: "Background pick", note: "decision D2 · closed" },
@@ -50,6 +67,19 @@ const BREADCRUMBS: Partial<
   Record<SurfaceId, (go: (s: SurfaceId) => void) => { label: string; onClick?: () => void }[]>
 > = {
   terrace: (go) => [{ label: "Terrace", onClick: () => go("still") }],
+  district: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "Collections" },
+  ],
+  dossier: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "Collections", onClick: () => go("district") },
+    { label: "Meera" },
+  ],
+  boardroom: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "The Boardroom" },
+  ],
   tray: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
     { label: "The Tray" },
@@ -95,7 +125,11 @@ export function Prototype() {
   const depth = SURFACE_DEPTH[surface];
   // Atmosphere per surface — the addition R-1 §5 describes.
   const intensity =
-    surface === "still" || surface === "terrace" ? "full" : surface === "hall" ? "hushed" : "quiet";
+    surface === "still" || surface === "terrace"
+      ? "full"
+      : surface === "hall" || surface === "dossier"
+        ? "hushed"
+        : "quiet";
 
   return (
     <>
@@ -116,8 +150,17 @@ export function Prototype() {
           onUndo={() => showEcho("undone")}
         >
           {surface === "terrace" && (
-            <TerraceSurface onOpenDistrict={() => setSurface("hall")} onEcho={showEcho} />
+            <TerraceSurface onOpenDistrict={() => setSurface("district")} onEcho={showEcho} />
           )}
+          {surface === "district" && (
+            <DistrictSurface
+              code="P08"
+              onOpenHall={() => setSurface("hall")}
+              onEcho={showEcho}
+            />
+          )}
+          {surface === "dossier" && <DossierSurface onEcho={showEcho} />}
+          {surface === "boardroom" && <BoardroomSurface onEcho={showEcho} />}
           {surface === "tray" && <TraySurface onEcho={showEcho} />}
           {surface === "hall" && <HallSurface onEcho={showEcho} />}
         </Shell>

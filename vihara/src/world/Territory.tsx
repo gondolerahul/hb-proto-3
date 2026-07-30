@@ -35,6 +35,8 @@ export interface TerritoryProps {
   gatehouses: string[];
   /** Adds the twin plane at the estate's edge (art bible §5). */
   glasshouse?: boolean;
+  /** The Sheel and its roads. Off for the district room's single-plot diorama. */
+  sheel?: boolean;
   hoveredKey?: string | null;
   onHover?: (key: string | null) => void;
   onOpen?: (key: string) => void;
@@ -45,14 +47,15 @@ export function Territory({
   districts,
   gatehouses,
   glasshouse = true,
+  sheel = true,
   hoveredKey,
   onHover,
   onOpen,
   night = true,
 }: TerritoryProps) {
   const model = useMemo(
-    () => buildTerritory(districts, gatehouses, glasshouse),
-    [districts, gatehouses, glasshouse],
+    () => buildTerritory(districts, gatehouses, glasshouse, sheel),
+    [districts, gatehouses, glasshouse, sheel],
   );
 
   const { view } = model;
@@ -134,7 +137,7 @@ export function Territory({
           Drawn first so built form always occludes them. Warm-white ramp, never
           gold — a road is not asking for anything. */}
       <g className="tv-roads">
-        {model.plots.filter((p) => p.key !== "sheel").map((p) => (
+        {sheel && model.plots.filter((p) => p.key !== "sheel").map((p) => (
           <Fragment key={`road-${p.key}`}>
             <path className="tv-road" d={road(SHEEL.gate, p.gate)} data-twin={p.twin || undefined} />
             {p.traffic > 0 && <Traffic path={road(SHEEL.gate, p.gate)} rate={p.traffic} plotKey={p.key} />}

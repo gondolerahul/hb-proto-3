@@ -1,0 +1,646 @@
+/* The colleague dossier — a one-on-one, not a record view.
+
+   The layout decision that carries the surface: a **single measured column**,
+   like the Tray. A one-on-one is read, not scanned. The only wide element is the
+   charter / competencies / SLO band, because that is reference material rather
+   than prose and benefits from being side by side. */
+
+.do {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-5);
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-8);
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- the roster
+   A rail of seals. Vertical, narrow, and quiet — switching colleague is a
+   sidestep, not a navigation. */
+
+.do-roster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-top: var(--s-2);
+  flex: none;
+  overflow-y: auto;
+}
+
+.do-roster-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  width: 62px;
+  padding: var(--s-2) var(--s-1);
+  border-radius: var(--r-md);
+  transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+
+.do-roster-item:hover {
+  background: rgba(255, 246, 230, 0.04);
+}
+
+.do-roster-item[data-selected] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim);
+}
+
+.do-roster-name {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.do-roster-item[data-selected] .do-roster-name {
+  color: var(--fg);
+}
+
+/* ----------------------------------------------------------------- the sheet */
+
+.do-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: var(--s-2);
+}
+
+/* ------------------------------------------------------------------ the head */
+
+.do-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-5);
+  padding: var(--s-5) var(--s-6);
+}
+
+.do-head-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.do-name {
+  font-size: var(--text-3xl);
+  line-height: 1;
+  color: var(--white);
+}
+
+.do-head-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+/* The band and what it means, always together — "A2" alone is engineer-speak
+   on a page a business owner reads. */
+.do-autonomy {
+  margin-top: var(--s-2);
+  color: var(--fg-muted);
+}
+
+.do-head-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-3);
+  flex: none;
+}
+
+.do-id {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.do-hand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gold-300);
+  white-space: nowrap;
+}
+
+.do-doing {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+/* Her own words. The register the whole surface is set in. */
+.do-words {
+  grid-column: 2 / -1;
+  margin-top: var(--s-2);
+}
+
+.do-words .t-narrative {
+  font-size: var(--text-md);
+  font-style: italic;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+/* --------------------------------------------------------------- probation
+   A status, not a warning. Probation is a normal stage, so it is stated
+   plainly and never in terracotta. */
+
+.do-probation {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+/* -------------------------------------------------------------- the band
+   Charter / competencies / SLO. Reference material, so it is the one wide
+   region on the surface. */
+
+.do-band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.do-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  min-width: 0;
+}
+
+.do-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+/* Charter -------------------------------------------------------------- */
+
+.do-charter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.do-clause {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.do-clause dd {
+  font-family: var(--font-body);
+  font-weight: 340;
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 56ch;
+}
+
+.do-gov-well {
+  padding: var(--s-3) var(--s-4);
+  overflow-x: auto;
+}
+
+.do-gov {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--fg-muted);
+  white-space: pre;
+}
+
+/* Competencies --------------------------------------------------------- */
+
+.do-comps {
+  display: flex;
+  flex-direction: column;
+}
+
+.do-comp {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.do-comp:last-child {
+  box-shadow: none;
+}
+
+.do-comp-name {
+  font-size: var(--text-xs);
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.do-comp-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  min-width: 0;
+}
+
+.do-comp-kind,
+.do-comp-withheld {
+  font-size: 9px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+/* Withheld is dimmed AND struck AND labelled — never dimming alone, which
+   would be indistinguishable from "disabled". */
+.do-comp[data-withheld] .do-comp-name {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-faint);
+}
+
+.do-comp-withheld {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--negative);
+}
+
+/* SLO dials ------------------------------------------------------------ */
+
+.do-slos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.do-slo {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.do-slo-dial {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.do-slo-dial svg {
+  display: block;
+  transform: rotate(0deg);
+}
+
+.do-slo-track,
+.do-slo-fill {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.do-slo-track {
+  stroke: rgba(255, 240, 220, 0.08);
+}
+
+/* Warm-white, not gold: a healthy KPI is explicitly not gold (§2.1). */
+.do-slo-fill {
+  stroke: rgba(246, 241, 233, 0.6);
+}
+
+.do-slo-tick {
+  stroke: var(--fg-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.do-slo-reading {
+  position: absolute;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-md);
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.do-slo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.do-slo-verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+.do-slo-basis {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* ------------------------------------------------------------- section heads */
+
+.do-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.do-section-rule {
+  flex: 1;
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, var(--rule-strong), transparent);
+}
+
+/* ---------------------------------------------------------------- decisions
+   Told, not listed. Each is a paragraph with the trace one flip away. */
+
+.do-decisions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.do-decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+}
+
+.do-decision-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.do-decision-ref {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.do-decision-told {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.do-decision-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.do-decision-cost {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.do-flip-caret {
+  transition: rotate var(--dur-base) var(--ease-settle);
+}
+
+.do-flip-caret[data-open] {
+  rotate: 90deg;
+}
+
+/* The trace, one flip away. */
+.do-trace {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-3) var(--s-4);
+}
+
+.do-trace-step {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: 3px 0;
+}
+
+.do-trace-at {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.do-trace-what {
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+
+/* ---------------------------------------------------------------- proposals */
+
+.do-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.do-proposal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.do-proposal {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
+}
+
+.do-proposal-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.do-proposal-asks {
+  font-family: var(--font-body);
+  font-weight: 340;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg);
+  max-width: 68ch;
+}
+
+.do-proposal-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.do-proposal-state {
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--fg-subtle);
+}
+
+/* Pending is gold — it is literally "this needs you" (§2.1). */
+.do-proposal-state[data-state="pending"] {
+  color: var(--gold-300);
+}
+
+.do-proposal-state[data-state="certified"] {
+  color: var(--positive);
+}
+
+.do-proposal-state[data-state="declined"] {
+  color: var(--fg-faint);
+}
+
+.do-empty {
+  padding: var(--s-4) 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg-subtle);
+  max-width: 62ch;
+}
+
+/* ------------------------------------------------------------ tell her
+   Feedback is an echo AND an input. What is typed here becomes a proposal —
+   never a direct write — and the note says so, because that is a correctness
+   statement rather than copy. */
+
+.do-tell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.do-tell-row {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.do-tell-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.do-tell-input::placeholder {
+  color: var(--fg-faint);
+}
+
+.do-tell-speak {
+  flex: none;
+}
+
+.do-tell-note {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .do {
+    grid-template-columns: 1fr;
+    padding: var(--s-4) var(--s-4) var(--s-9);
+    overflow-y: auto;
+  }
+  .do-roster {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: var(--s-2);
+  }
+  .do-sheet {
+    overflow: visible;
+  }
+  .do-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .do-head-side {
+    grid-column: 1 / -1;
+    align-items: flex-start;
+  }
+  .do-words {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ==========================================================================
+   THE SEAL — art bible §7 direction C, the procedural portrait.
+
+   The three tones map to the *deep half* of the gold ramp, because §2.1a keeps
+   portraits un-glowing at rest: the seal is gold as MATERIAL — a struck mark —
+   never gold as light. Only the signature ring reaches --gold-400, and even
+   that stays below the luminance a beacon uses, so a colleague's portrait can
+   never compete with a raised hand.
+   ======================================================================== */
+
+.do-seal {
+  display: block;
+  flex: none;
+}
+
+/* 0 — the signature ring: one per identity, the brightest thing in the mark. */
+.do-seal-d0 {
+  fill: var(--gold-400);
+}
+
+/* 1 — mid. */
+.do-seal-d1 {
+  fill: var(--gold-700);
+}
+
+/* 2 — deep. Reads as the shadowed side of a struck impression. */
+.do-seal-d2 {
+  fill: var(--gold-800);
+}
+
+/* Drained — the Gallery and the twin. The past and the not-yet-real share a
+   material, because neither is currently true (art bible §5, §7.2). */
+.do-seal[data-drained] .do-seal-d0 {
+  fill: #cfd4d8;
+}
+.do-seal[data-drained] .do-seal-d1 {
+  fill: #8b9298;
+}
+.do-seal[data-drained] .do-seal-d2 {
+  fill: #5b6167;
+}

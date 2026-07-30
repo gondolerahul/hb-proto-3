@@ -85,9 +85,7 @@ export function TerraceSurface({
           One sentence. Spec §4 wants weather readable identically day and night,
           and a sentence is the only form that is. */}
       <header className="te-weather">
-        <div className="te-weather-mark" data-state={weather} aria-hidden="true">
-          <span className="te-weather-texture" />
-        </div>
+        <div className="m-weather te-weather-mark" data-state={weather} aria-hidden="true" />
         <div className="te-weather-text">
           <span className="t-eyebrow">
             THE ESTATE · {WEATHER[weather].label.toUpperCase()} ·{" "}

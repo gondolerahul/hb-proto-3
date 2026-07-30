@@ -203,6 +203,7 @@ export function buildTerritory(
   districts: PlotSeed[],
   gatehouses: string[],
   glasshouse = true,
+  sheel = true,
 ): TerritoryModel {
   const ring = ringPlots(districts);
   const gates = gatehousePlots(gatehouses);
@@ -218,7 +219,9 @@ export function buildTerritory(
       }).map((p) => ({ ...p, twin: true as const }))
     : [];
 
-  const plots = [SHEEL, ...ring, ...gates, ...twin];
+  // `sheel: false` is the district room's diorama — one plot, no centre, no
+  // roads. The room shows a place, not the estate.
+  const plots = sheel ? [SHEEL, ...ring, ...gates, ...twin] : [...ring, ...gates, ...twin];
 
   const corners: Pt[] = plots.flatMap((p) => {
     const [x, y, z] = p.slab.at;

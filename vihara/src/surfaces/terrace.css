@@ -17,74 +17,10 @@
   gap: var(--s-4);
 }
 
-/* The weather mark is texture + motion, never a hue — spec §4 needs it to read
-   identically day and night, and under one accent a coloured icon cannot. */
+/* Size only — the mark itself is the shared .m-weather material. */
 .te-weather-mark {
-  position: relative;
   width: 38px;
   height: 38px;
-  border-radius: var(--r-sm);
-  overflow: hidden;
-  background: var(--ink-900);
-  box-shadow: var(--edge-line), var(--edge-rim), var(--ao-well);
-  flex: none;
-}
-
-.te-weather-texture {
-  position: absolute;
-  inset: 0;
-}
-
-/* clear — a still, even field */
-.te-weather-mark[data-state="clear"] .te-weather-texture {
-  background: linear-gradient(180deg, rgba(255, 246, 230, 0.1), transparent 70%);
-}
-
-/* busy — dense diagonal hatch, moving */
-.te-weather-mark[data-state="busy"] .te-weather-texture {
-  background: repeating-linear-gradient(
-    58deg,
-    rgba(255, 246, 230, 0.16) 0 1px,
-    transparent 1px 5px
-  );
-  animation: te-drift 2.4s linear infinite;
-}
-
-/* fog — soft horizontal bands, slow */
-.te-weather-mark[data-state="fog"] .te-weather-texture {
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(255, 246, 230, 0.13) 0 2px,
-    transparent 2px 7px
-  );
-  filter: blur(1.4px);
-  animation: te-drift 7s linear infinite;
-}
-
-/* storm — steep, tight, fast. The busiest texture, for the worst state. */
-.te-weather-mark[data-state="storm"] .te-weather-texture {
-  background: repeating-linear-gradient(
-    76deg,
-    rgba(255, 246, 230, 0.24) 0 1px,
-    transparent 1px 4px
-  );
-  animation: te-drift 1.1s linear infinite;
-}
-
-/* frost — a crystalline cross-hatch, entirely still */
-.te-weather-mark[data-state="frost"] .te-weather-texture {
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 246, 230, 0.11) 0 1px, transparent 1px 6px),
-    repeating-linear-gradient(-45deg, rgba(255, 246, 230, 0.11) 0 1px, transparent 1px 6px);
-}
-
-@keyframes te-drift {
-  from {
-    translate: 0 0;
-  }
-  to {
-    translate: 0 -8px;
-  }
 }
 
 .te-weather-text {

@@ -163,3 +163,41 @@ export const INVOICES: RecordRow[] = [
   { id: "INV-4455", party: "Coromandel Garments", amount: "₹3,08,900", age: 39, state: "overdue", owner: "AGT-041", updated: "2 days ago" },
   { id: "INV-4451", party: "Nilgiri Fabrics", amount: "₹41,600", age: 5, state: "open", owner: "AGT-046", updated: "2 days ago" },
 ];
+
+// ============================================================================
+// The district room (D6 §5) — what `estate/district/{code}` + the stream carry.
+// ============================================================================
+
+export interface LiveRun {
+  id: string;
+  doing: string;
+  elapsed: string;
+  state: "running" | "queued";
+}
+
+export interface DistrictRoom {
+  code: string;
+  /** The KPI as numbers, so gauges are computed rather than asserted. */
+  measure: { value: number; target: number; unit: string };
+  /** The budget envelope. Reserve is the protected seam — the one gold thing
+      on the gauge (spec §4, art bible §2.1). */
+  treasury: { spentINR: number; capINR: number; reserveINR: number };
+  weather: { state: "clear" | "busy" | "fog" | "storm" | "frost"; sentence: string };
+  runs: LiveRun[];
+  traffic: { inPerHour: number; outPerHour: number; parked: number };
+}
+
+export const DISTRICT_ROOMS: Record<string, DistrictRoom> = {
+  P08: {
+    code: "P08",
+    measure: { value: 38, target: 30, unit: "d" },
+    treasury: { spentINR: 18_000, capINR: 30_000, reserveINR: 4_000 },
+    weather: { state: "storm", sentence: "Below target for nine days." },
+    runs: [
+      { id: "4f2a", doing: "chase KT-2291", elapsed: "00:04", state: "running" },
+      { id: "9c11", doing: "reconcile 14 invoices", elapsed: "00:31", state: "running" },
+      { id: "b207", doing: "draft reminder for Ashoka Retail", elapsed: "—", state: "queued" },
+    ],
+    traffic: { inPerHour: 42, outPerHour: 37, parked: 3 },
+  },
+};
