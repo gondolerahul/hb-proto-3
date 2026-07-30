@@ -372,6 +372,12 @@ export const GATES: Gate[] = [
  */
 export const EXPIRY_GAP = {
   eyebrow: "CREDENTIAL EXPIRY · WHAT WE DO NOT KNOW",
+  /**
+   * The sweep is real and its last run is a real fact, so it is shown as one.
+   * Placed *beside* the caveat rather than instead of it: "the job ran and found
+   * nothing" is exactly the sentence a tenant would otherwise read as safety.
+   */
+  sweep: { ranAt: "03:00 today", found: "nothing to find" },
   body:
     "Every binding below has a field for when its credential expires, and nothing has ever written one. The nightly sweep is real, it runs, and it correctly finds nothing — because there is nothing there to find.",
   consequence:

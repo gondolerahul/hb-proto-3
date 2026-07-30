@@ -146,6 +146,18 @@ export function BridgesSurface({ onEcho }: { onEcho: (msg: string) => void }) {
 
         <div className="m-rule-v bg-edge-div" />
 
+        {/* The sweep's last run is a real fact and is shown as one. It sits
+            immediately before the caveat, because on its own it is the sentence
+            a tenant would read as reassurance. */}
+        <div className="bg-edge-item">
+          <dt className="t-eyebrow">EXPIRY SWEEP</dt>
+          <dd className="bg-edge-val">
+            ran {EXPIRY_GAP.sweep.ranAt} · {EXPIRY_GAP.sweep.found}
+          </dd>
+        </div>
+
+        <div className="m-rule-v bg-edge-div" />
+
         {/* The gap, stated in the summary strip. There is no figure to give here
             and none is invented — the cell is a sentence. */}
         <div className="bg-edge-item" data-wide>
@@ -391,8 +403,10 @@ function BridgeCard({
                   </th>
                   <td>
                     {masterName !== undefined ? (
+                      /* No lamp here on purpose: which system masters an object
+                         is not a state, and a lamp that lights for everything
+                         teaches a person to stop reading lamps. */
                       <span className="bg-obj-master">
-                        <span className="m-lamp" />
                         <span className={elsewhere ? "bg-obj-elsewhere" : undefined}>
                           {masterName}
                           {elsewhere ? " — mastered elsewhere" : ""}

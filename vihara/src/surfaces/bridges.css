@@ -82,10 +82,12 @@
 }
 
 /* The expiry cell is prose, not a figure, because there is no figure to give.
-   It gets the width it needs and the rest of the strip yields to it. */
+   It is pushed to the far end of the strip rather than allowed to grow, so the
+   three counts read as a gauge cluster and the sentence reads as a caveat set
+   against them — and the measure rule still applies inside an instrument. */
 .bg-edge-item[data-wide] {
   flex: 1 1 34ch;
-  max-width: 58ch; /* the measure rule applies inside an instrument strip too */
+  max-width: 58ch;
 }
 
 .bg-edge-item[data-wide] .bg-edge-val {
@@ -814,6 +816,12 @@
   font-size: var(--text-sm);
   color: var(--fg);
   flex-wrap: wrap;
+}
+
+/* t-mono ships at --fg-muted; inside a fact value the figure is the point, so it
+   comes back up to full contrast rather than sitting under its own caption. */
+.bg-fact-val .t-mono {
+  color: var(--fg);
 }
 
 .bg-fact-why {
