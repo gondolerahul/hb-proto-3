@@ -1,0 +1,359 @@
+/* The Undercroft. Depth 3, mono throughout, operator density always.
+
+   The register: an INSTRUMENT, not a dashboard. Dense and cheap are different
+   things — this surface is allowed to look technical and is not allowed to look
+   unfinished. So: wells and hairlines rather than cards, tabular figures
+   everywhere, no rounded panels of prose, no decoration. */
+
+.uc {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: var(--s-3);
+  height: 100%;
+  padding: var(--s-4) var(--s-5) var(--s-4);
+  min-height: 0;
+  /* Mono throughout (art bible §6). Set once here rather than per element, so a
+     new bay cannot accidentally arrive in the body face. */
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------------- rail */
+
+.uc-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-2) var(--s-3);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.uc-rail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 var(--s-2);
+}
+
+.uc-rail-note {
+  font-size: 9px;
+  color: var(--fg-faint);
+}
+
+.uc-bays {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.uc-bay {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-2);
+  border-radius: var(--r-xs);
+  text-align: left;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+
+.uc-bay:hover {
+  background: rgba(255, 246, 230, 0.04);
+  color: var(--fg-muted);
+}
+
+/* Selected is a left marker plus surface, never gold — choosing a bay is not a
+   request (§2.1). */
+.uc-bay[data-active] {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--fg-muted);
+  color: var(--fg);
+}
+
+/* The manifest inspector is the bay that makes the rest debuggable, so it is
+   marked as the primary one rather than sitting as an equal in a list. */
+.uc-bay[data-primary] {
+  margin-bottom: var(--s-2);
+  padding-bottom: var(--s-3);
+  box-shadow: inset 0 -1px 0 var(--rule);
+  color: var(--fg-muted);
+}
+
+.uc-bay[data-primary][data-active] {
+  box-shadow: inset 2px 0 0 var(--fg-muted), inset 0 -1px 0 var(--rule);
+}
+
+.uc-bay-count {
+  font-size: 9px;
+  color: var(--fg-faint);
+}
+
+/* -------------------------------------------------------------------- pane */
+
+.uc-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--s-3);
+  min-height: 0;
+  min-width: 0;
+}
+
+.uc-pane-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--s-3);
+  box-shadow: inset 0 -1px 0 var(--rule);
+}
+
+.uc-pane-title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+}
+
+.uc-pane-purpose {
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+}
+
+/* Where the data came from. A surface that shows a number without saying which
+   endpoint answered turns an operator into a detective. */
+.uc-source {
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-xs);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+  font-size: 10px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.uc-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--s-8);
+}
+
+.uc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+.uc-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.uc-note {
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 82ch;
+}
+
+.uc-note strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.uc-note code {
+  color: var(--fg-muted);
+}
+
+/* ------------------------------------------------------- the manifest cells */
+
+.uc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--s-2);
+}
+
+.uc-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+
+.uc-cell-val {
+  font-size: var(--text-sm);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.uc-key {
+  display: block;
+  padding: var(--s-3) var(--s-4);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--gold-300);
+  overflow-wrap: anywhere;
+}
+
+/* The cache key is the one gold string in the Undercroft, and it earns it: it is
+   the security property this bay exists to let you verify. Everything else here
+   is ramp. */
+
+.uc-json {
+  padding: var(--s-4);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--fg-muted);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.uc-caret {
+  transition: rotate var(--dur-base) var(--ease-settle);
+}
+
+.uc-caret[data-open] {
+  rotate: 90deg;
+}
+
+/* ------------------------------------------------------------------ tables
+   Set into a well, opaque sticky header, interior 5% rules. Same construction as
+   the Registry Hall — one table idiom in the product, not two. */
+
+.uc-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.uc-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  font-weight: 400;
+  font-size: 9px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--fg-subtle);
+  /* Opaque: rows scroll beneath it. */
+  background: var(--ink-800);
+  box-shadow: inset 0 -1px 0 var(--rule-strong);
+}
+
+.uc-table tbody td {
+  padding: var(--s-3) var(--s-4);
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+  color: var(--fg-muted);
+  vertical-align: top;
+}
+
+.uc-table tbody tr:last-child td {
+  box-shadow: none;
+}
+
+.uc-table tbody tr:hover td {
+  background: rgba(255, 246, 230, 0.028);
+}
+
+.uc-num {
+  text-align: right;
+}
+
+.uc-table thead th.uc-num {
+  text-align: right;
+}
+
+.uc-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  white-space: nowrap;
+}
+
+.uc-why {
+  color: var(--fg-subtle);
+  max-width: 44ch;
+}
+
+/* --------------------------------------------------------------- refusals */
+
+.uc-refusals {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-2) var(--s-3);
+}
+
+.uc-refusal {
+  display: grid;
+  grid-template-columns: 6px 62px minmax(0, auto) minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: var(--s-2) 0;
+  font-size: 10px;
+}
+
+.uc-refusal-at {
+  color: var(--fg-faint);
+}
+
+.uc-refusal-what {
+  color: var(--fg);
+}
+
+.uc-refusal-why {
+  color: var(--fg-subtle);
+}
+
+/* ---------------------------------------------------------------- unbuilt */
+
+.uc-unbuilt {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-4) var(--s-5);
+  max-width: 88ch;
+}
+
+.uc-unbuilt-line {
+  margin-bottom: var(--s-2);
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1000px) {
+  .uc {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .uc-rail {
+    max-height: 30vh;
+  }
+  .uc-bays {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .uc-bay {
+    width: auto;
+  }
+  .uc-bay[data-primary] {
+    margin-bottom: 0;
+    padding-bottom: var(--s-2);
+    box-shadow: inset 0 -2px 0 var(--rule-strong);
+  }
+}

@@ -1,0 +1,1031 @@
+/* The Library — what the estate knows.
+
+   Three columns, three materials, one reading order: you pick a collection
+   across the top, a document on the left shelf, and everything the estate can
+   *say* about that document is on the right. The middle is the document, and it
+   is the honest part of the surface — there are no page images anywhere in the
+   platform, so the viewer renders the structure retrieval actually projects
+   (heading path, chunk index, page) and the passages it actually returned. It is
+   built to read as an instrument (corner ticks, a page gutter, hairlines) rather
+   than as a preview that failed to load. */
+
+.li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  height: 100%;
+  min-height: 0;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  overflow: hidden;
+}
+
+/* ----------------------------------------------------------------- the head */
+
+.li-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  flex: none;
+}
+
+.li-head-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+}
+
+.li-title {
+  margin-top: var(--s-2);
+  font-size: var(--text-2xl);
+}
+
+.li-head-count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding-bottom: 4px;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+}
+
+/* -------------------------------------------------------- the collections
+   A register across the top, four cards wide. Each one says where its documents
+   came from, because "generated" and "from conversations" are otherwise a guess
+   about provenance — and provenance is the whole subject of this room. */
+
+.li-collections {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+
+.li-coll {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  text-align: left;
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
+  transition:
+    background var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out);
+}
+
+.li-coll:hover {
+  background: var(--surface-2);
+}
+
+/* Chosen is surface + a strong edge. Not gold: a chosen filter is neither
+   "this needs you" nor "this is certified" (§2.1). */
+.li-coll[data-selected] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-md);
+}
+
+.li-coll-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  width: 100%;
+}
+
+.li-coll-label {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.li-coll[data-selected] .li-coll-label {
+  color: var(--fg);
+}
+
+.li-coll-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.li-coll-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+
+/* ----------------------------------------------------------------- the body */
+
+.li-body {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr) 376px;
+  gap: var(--s-4);
+  flex: 1;
+  min-height: 0;
+}
+
+.li-shelf,
+.li-viewer,
+.li-prov {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.li-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex: none;
+  padding: var(--s-4) var(--s-4) var(--s-3);
+}
+
+.li-panel-count {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* ---------------------------------------------------------------- the shelf */
+
+.li-search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+  margin: 0 var(--s-4) var(--s-3);
+  padding: 0 var(--s-3);
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+  color: var(--fg-subtle);
+}
+
+.li-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: none;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+
+.li-search input::placeholder {
+  color: var(--fg-subtle);
+}
+
+.li-search input:focus {
+  outline: none;
+}
+
+.li-search:focus-within {
+  box-shadow: var(--edge-line-strong), var(--ao-well), 0 0 0 2px var(--border-gold);
+}
+
+.li-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--s-2) var(--s-3);
+}
+
+.li-doc {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition:
+    background var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out);
+}
+
+.li-doc:hover {
+  background: rgba(255, 246, 230, 0.035);
+}
+
+.li-doc[data-selected] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim);
+}
+
+.li-doc-mark {
+  width: 34px;
+  color: var(--fg-subtle);
+}
+
+.li-doc[data-selected] .li-doc-mark {
+  color: var(--fg-muted);
+}
+
+.li-doc-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* Filenames are real filenames — long, parenthesised, with a customer's full
+   registered name in them. They wrap; they are never truncated, because the
+   tail of a filename is where the version lives. */
+.li-doc-name {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  line-height: var(--lh-snug);
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.li-doc[data-selected] .li-doc-name {
+  color: var(--fg);
+}
+
+.li-doc-meta {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* Staleness: lamp plus word, everywhere it appears. */
+.li-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- the viewer */
+
+.li-viewer {
+  padding-bottom: var(--s-3);
+}
+
+.li-view-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  flex: none;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+}
+
+.li-view-name {
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.li-view-facts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.li-view-fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.li-view-fact dd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* The stand-in's own disclosure. It sits above the outline rather than under it,
+   because a reader must know what they are looking at before they read it. */
+.li-standin {
+  flex: none;
+  margin: 0 var(--s-5) var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-xs);
+  background: rgba(255, 246, 230, 0.022);
+  box-shadow: inset 2px 0 0 var(--rule-strong);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--fg-subtle);
+  max-width: 72ch;
+}
+
+.li-outline-well {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 var(--s-5);
+  padding: var(--s-2) 0;
+}
+
+.li-outline {
+  display: flex;
+  flex-direction: column;
+}
+
+.li-sec {
+  display: flex;
+  flex-direction: column;
+}
+
+.li-sec-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: start;
+  width: 100%;
+  text-align: left;
+  padding: var(--s-3) var(--s-4) var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.li-sec:last-child > .li-sec-row {
+  box-shadow: none;
+}
+
+button.li-sec-row:hover {
+  background: rgba(255, 246, 230, 0.03);
+}
+
+/* Where a citation landed. The marker is a bright left bar and a lifted ground,
+   never gold — landing on a passage is "you clicked this", which §2.1 puts
+   outside the budget. The specificity comes from the page and the chunk index
+   printed beside it, not from colour. */
+.li-sec[data-open] > .li-sec-row {
+  background: rgba(255, 246, 230, 0.055);
+}
+
+/* The page gutter — a real gutter, with its own hairline. This is the single
+   device that makes the outline read as a document rather than as a list. */
+.li-sec-page {
+  padding-left: var(--s-4);
+  font-size: 10px;
+  color: var(--fg-subtle);
+  box-shadow: inset -1px 0 0 var(--rule-faint);
+  align-self: stretch;
+  padding-top: 2px;
+}
+
+.li-sec[data-open] > .li-sec-row .li-sec-page {
+  color: var(--fg);
+  box-shadow: inset -2px 0 0 var(--border-strong);
+}
+
+.li-sec-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding-left: var(--s-4);
+}
+
+/* The heading path, as a path. Segments in mono with a chevron between them; the
+   leaf is the bright one, because the leaf is what a citation names. */
+.li-path {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.li-path-sep {
+  color: var(--fg-faint);
+}
+
+.li-path-leaf {
+  color: var(--fg);
+}
+
+.li-sec-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.li-sec-cited {
+  height: 19px;
+  padding: 0 var(--s-2);
+  font-size: 9px;
+  color: var(--fg-muted);
+}
+
+/* ---------------------------------------------------------------- a passage
+   The landing. A deeper well inside the outline, so it reads as opened *inside*
+   the document rather than as a panel that appeared over it. */
+
+.li-passage {
+  /* Indented to the gutter, so the passage hangs off the page marker it belongs
+     to rather than off the panel's edge. */
+  margin: var(--s-1) var(--s-4) var(--s-4) 58px;
+  padding: var(--s-4);
+}
+
+.li-passage-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-3);
+}
+
+.li-passage-ref {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.li-passage-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  border-radius: 50%;
+  color: var(--fg-subtle);
+  transition:
+    background var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out);
+}
+
+.li-passage-close:hover {
+  background: var(--surface-3);
+  color: var(--fg);
+}
+
+.li-passage-text {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg);
+  max-width: 68ch;
+}
+
+.li-passage-foot {
+  margin-top: var(--s-3);
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.li-viewer-foot {
+  flex: none;
+  margin: var(--s-3) var(--s-5) 0;
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 72ch;
+}
+
+/* Nothing on the shelf, or nothing indexed. Prose, never an empty frame. */
+.li-empty {
+  margin: 0 var(--s-5) var(--s-5);
+  padding: var(--s-5);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 62ch;
+}
+
+.li-shelf-empty {
+  margin: 0 var(--s-4) var(--s-4);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  color: var(--fg-subtle);
+}
+
+/* ----------------------------------------------------------- the provenance */
+
+.li-prov {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.li-prov-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  padding: 0 var(--s-4) var(--s-5);
+}
+
+.li-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.li-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.li-facts {
+  display: flex;
+  flex-direction: column;
+}
+
+.li-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-2) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.li-fact:last-child {
+  box-shadow: none;
+}
+
+.li-fact dd {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg);
+  text-align: right;
+}
+
+/* Who put it here. A colleague gets a Portrait, a connector gets a Seal, and the
+   tenant gets neither — the halftone is an L7 AI disclosure and putting one on a
+   person would say the opposite of what the medium means. */
+.li-origin {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--ao-well);
+}
+
+.li-origin[data-noface] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.li-origin-well {
+  width: 38px;
+  height: 38px;
+}
+
+.li-origin-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.li-origin-name {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.li-origin-how {
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+
+/* ------------------------------------------------------------- staleness */
+
+.li-staleness {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--edge-rim);
+}
+
+.li-staleness-word {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.li-staleness-what {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-muted);
+  max-width: 60ch;
+}
+
+.li-staleness[data-state="superseded"] {
+  box-shadow: var(--edge-line), var(--edge-rim), inset 3px 0 0 var(--negative);
+}
+
+.li-staleness[data-state="expiring"] {
+  box-shadow: var(--edge-line), var(--edge-rim), inset 3px 0 0 var(--ink-500);
+}
+
+/* ------------------------------------------------------------- needs you
+   The surface's one gold spend, and it earns it: colleagues are still answering
+   customers out of a price list that stopped being true on 2 July. That is
+   exactly "this needs you" (§2.1), which is the only thing besides certification
+   gold is allowed to mean. Lamp plus the words, never the lamp alone. */
+
+.li-needs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border-radius: var(--r-sm);
+  background:
+    linear-gradient(180deg, rgba(237, 171, 72, 0.075) 0%, transparent 70%),
+    var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim), var(--contact-sm);
+}
+
+.li-needs-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.li-needs-word {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.li-needs-what {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  color: var(--fg);
+  max-width: 60ch;
+}
+
+/* ------------------------------------------------------------- influence */
+
+.li-infl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.li-gauge-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+/* Six segments, per the wireframe's ▮▮▮▮▮▯. Warm white at two alphas plus a
+   carved track — not a hue, and not gold: a healthy value is not a beacon. */
+.li-gauge {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--r-xs);
+  background: var(--ink-950);
+  box-shadow: var(--edge-line), var(--ao-well);
+}
+
+.li-seg {
+  width: 15px;
+  height: 16px;
+  border-radius: 2px; /* optical: a 2px radius on a 15px bar reads machined */
+  background: rgba(255, 246, 230, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.05);
+}
+
+.li-seg[data-filled] {
+  background: linear-gradient(180deg, rgba(246, 241, 233, 0.6), rgba(246, 241, 233, 0.34));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 253, 249, 0.5),
+    0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.li-gauge-read {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* The sentence. This is the influence figure a novice reads, and it binds
+   distinct_queries — see the fixture. */
+.li-infl-sentence {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--fg);
+  max-width: 56ch;
+}
+
+.li-infl-sentence strong {
+  font-weight: 600;
+}
+
+.li-infl-basis {
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 60ch;
+}
+
+/* ------------------------------------------------------------- counters
+   All three, with the bound one named. The operator detail that stops the next
+   reader from printing a row count as a question count. */
+
+.li-counters {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-2) var(--s-3);
+}
+
+.li-counter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.li-counter:last-of-type {
+  box-shadow: none;
+}
+
+.li-counter dt {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.li-counter dd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+}
+
+.li-counter[data-bound] dt,
+.li-counter[data-bound] dd {
+  color: var(--fg);
+}
+
+.li-counter-bound {
+  font-size: 9px;
+  color: var(--fg-muted);
+  height: 17px;
+  padding: 0 var(--s-2);
+}
+
+.li-counters-why {
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
+  box-shadow: inset 0 1px 0 var(--rule-faint);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--fg-subtle);
+  max-width: 62ch;
+}
+
+/* ------------------------------------------------------------- cited by */
+
+.li-cited-by {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.li-citer {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.li-citer-well {
+  width: 30px;
+  height: 30px;
+}
+
+.li-citer-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.li-citer-who {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+
+.li-citer-role {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--fg-subtle);
+}
+
+.li-citer-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* ------------------------------------------------------------- citations */
+
+.li-cites {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* A citation is a place, so it is shaped like one: the heading path on top, the
+   page and chunk index beneath, and a caret that says it goes somewhere. */
+.li-cite {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  text-align: left;
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
+  transition:
+    background var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    translate 120ms var(--ease-out);
+}
+
+.li-cite:hover {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-md);
+  translate: 1px 0;
+}
+
+.li-cite[data-open] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-sm);
+}
+
+.li-cite-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.li-cite-q {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.li-cite[data-open] .li-cite-q {
+  color: var(--fg);
+}
+
+.li-cite-where {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--fg-subtle);
+}
+
+.li-cite-caret {
+  color: var(--fg-subtle);
+}
+
+/* A citation dated after the supersede. Marked with the negative rim and the
+   word, so the needs-you block above has something to point at. */
+.li-cite[data-after] {
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm), inset 3px 0 0 var(--negative);
+}
+
+.li-cite-after {
+  color: var(--negative);
+}
+
+/* ------------------------------------------------------------- read by */
+
+.li-districts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.li-districts .m-chip {
+  height: 24px;
+  font-size: 10px;
+}
+
+/* ------------------------------------------------------------- the acts */
+
+.li-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.li-acts .m-btn {
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  font-size: var(--text-xs);
+}
+
+/* ------------------------------------------------------------- the gap
+   The absence, stated. Mono and quiet, because it is a note about the platform
+   and not a warning about this document. */
+
+.li-gap {
+  padding-top: var(--s-3);
+  box-shadow: inset 0 1px 0 var(--rule-faint);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--fg-subtle);
+  max-width: 64ch;
+}
+
+.li-gap code {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1280px) {
+  .li-body {
+    grid-template-columns: 240px minmax(0, 1fr) 330px;
+  }
+  .li-collections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1000px) {
+  /* One column, and the page scrolls instead of three panes. Below this width
+     three independently scrolling columns are worse than a long page. */
+  .li {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+  .li-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .li-shelf,
+  .li-viewer,
+  .li-prov,
+  .li-docs,
+  .li-outline-well {
+    overflow: visible;
+    max-height: none;
+  }
+  .li-docs {
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .li-collections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .li-sec-row {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .li-passage {
+    margin-left: 44px;
+  }
+}

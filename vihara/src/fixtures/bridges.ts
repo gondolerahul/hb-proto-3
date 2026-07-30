@@ -107,9 +107,17 @@ export interface Gate {
     /** What the posture covers, in the registry's own words. */
     scope: string;
     recordedOn: string | null;
+    /**
+     * Whether promotional traffic is in scope on this gate *at all*. False on a
+     * transactional-only gate, and the `consent@1` act is not offered there —
+     * a button to revoke a consent that was never claimed is a lie about what
+     * the gate does.
+     */
+    promotional: boolean;
     note: string;
   };
-  dnc: { listed: number; enforcedAt: string };
+  /** `listed: null` on a gate that broadcasts rather than contacts. Not 0. */
+  dnc: { listed: number | null; enforcedAt: string };
   volume: {
     /** Trailing seven days. `null` where the count is not ours to report. */
     sevenDay: number | null;
@@ -283,6 +291,7 @@ export const GATES: Gate[] = [
       posture: "opt-in",
       scope: "transactional and promotional",
       recordedOn: "at first reply, per contact",
+      promotional: true,
       note: "Opt-in is per contact and stored against the contact, not against this gate. A contact who never replied is never messaged.",
     },
     dnc: { listed: 1284, enforcedAt: "before every send, and again at dispatch" },
@@ -297,6 +306,7 @@ export const GATES: Gate[] = [
       posture: "legitimate-interest",
       scope: "transactional only — invoices, reminders, statements",
       recordedOn: null,
+      promotional: false,
       note: "No opt-in is recorded because none is claimed. Anything promotional on this gate would need one, and the gate refuses promotional intents outright.",
     },
     dnc: { listed: 46, enforcedAt: "before every send" },
@@ -311,6 +321,7 @@ export const GATES: Gate[] = [
       posture: "opt-in",
       scope: "transactional templates registered on DLT",
       recordedOn: "9 February 2026",
+      promotional: false,
       note: "Only the six registered templates can leave this gate. An unregistered body is refused by the carrier, not by us.",
     },
     dnc: { listed: 1284, enforcedAt: "TRAI DND scrub, then our own list" },
@@ -325,6 +336,7 @@ export const GATES: Gate[] = [
       posture: "opt-in",
       scope: "collections calls to parties with an open invoice",
       recordedOn: "at contract, per party",
+      promotional: false,
       note: "Every call is announced as automated in its first sentence, and the recording notice is read before anything is asked.",
     },
     dnc: { listed: 1284, enforcedAt: "before dialling" },
@@ -340,9 +352,10 @@ export const GATES: Gate[] = [
       posture: "revoked",
       scope: "promotions — revoked 9 July 2026",
       recordedOn: "9 July 2026",
+      promotional: true,
       note: "Company updates still post. Nothing promotional goes out on this gate until you restore it, and no colleague can override that.",
     },
-    dnc: { listed: 0, enforcedAt: "not applicable — this gate broadcasts, it does not contact" },
+    dnc: { listed: null, enforcedAt: "does not apply — this gate broadcasts, it does not contact anybody" },
     volume: {
       sevenDay: null,
       unit: "posts",
