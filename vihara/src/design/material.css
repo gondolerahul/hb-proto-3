@@ -606,3 +606,100 @@ button.m-chip:hover {
     translate: 0 -8px;
   }
 }
+
+/* ==========================================================================
+   PORTRAIT — art bible §7 direction A, generated (components/Portrait.tsx).
+
+   The ramp is the DEEP half of the gold scale. §2.1 forbids gold on portraits
+   at rest and §2.1a keeps the exemption to the atmosphere layer, so the
+   brightest dot in a portrait must sit below the dimmest beacon: gold as
+   material, never as light. A room full of colleagues cannot out-shout one
+   raised hand — that property is what these three values buy.
+   ======================================================================== */
+
+.vh-portrait {
+  display: block;
+  overflow: visible;
+}
+
+/* 0 — the lit rim, following the one warm key from the upper left. */
+.vh-pd0 {
+  fill: var(--gold-600);
+}
+
+/* 1 — mid mass. */
+.vh-pd1 {
+  fill: var(--gold-700);
+}
+
+/* 2 — the shadowed side. */
+.vh-pd2 {
+  fill: var(--gold-900);
+}
+
+/* Drained — the Gallery and the twin. */
+.vh-portrait[data-drained] .vh-pd0 {
+  fill: #9aa1a7;
+}
+.vh-portrait[data-drained] .vh-pd1 {
+  fill: #6d747a;
+}
+.vh-portrait[data-drained] .vh-pd2 {
+  fill: #454b50;
+}
+
+/* A portrait seated in its own frame — the district room's workplaces, and any
+   list that wants the figure in a well rather than floating. */
+.m-portrait-well {
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background:
+    radial-gradient(70% 60% at 50% 112%, rgba(237, 171, 72, 0.075) 0%, transparent 72%),
+    var(--ink-900);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--ao-well);
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   SEAL — art bible §7 direction C (components/Seal.tsx), the fallback for any
+   entity with no persona: a gateway, a Meta-Agent role, a newly seeded agent.
+
+   The three tones map to the *deep half* of the gold ramp, because §2.1a keeps
+   portraits un-glowing at rest: the seal is gold as MATERIAL — a struck mark —
+   never gold as light. Only the signature ring reaches --gold-400, and even
+   that stays below the luminance a beacon uses, so a colleague's portrait can
+   never compete with a raised hand.
+   ======================================================================== */
+
+.do-seal {
+  display: block;
+  flex: none;
+}
+
+/* 0 — the signature ring: one per identity, the brightest thing in the mark. */
+.do-seal-d0 {
+  fill: var(--gold-400);
+}
+
+/* 1 — mid. */
+.do-seal-d1 {
+  fill: var(--gold-700);
+}
+
+/* 2 — deep. Reads as the shadowed side of a struck impression. */
+.do-seal-d2 {
+  fill: var(--gold-800);
+}
+
+/* Drained — the Gallery and the twin. The past and the not-yet-real share a
+   material, because neither is currently true (art bible §5, §7.2). */
+.do-seal[data-drained] .do-seal-d0 {
+  fill: #cfd4d8;
+}
+.do-seal[data-drained] .do-seal-d1 {
+  fill: #8b9298;
+}
+.do-seal[data-drained] .do-seal-d2 {
+  fill: #5b6167;
+}
