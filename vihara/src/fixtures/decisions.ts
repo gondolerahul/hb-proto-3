@@ -303,3 +303,262 @@ export const STANDUP: StandupLine[] = [
     grade: null,
   },
 ];
+
+// ============================================================================
+// TABLING A MATTER — the owner-initiated path (owner review D, 2026-07-30)
+// ============================================================================
+
+/**
+ * The review asked: *how do I brainstorm here — say I want to develop a new
+ * marketing plan?* The honest answer was that there was no way to, because the
+ * Boardroom only rendered propositions **Pragya** raised from KPI drift. An
+ * owner arriving with a thought had nowhere to put it.
+ *
+ * What closes that is not a chat panel. It is the **front of the same pipeline**:
+ * a matter the owner tables becomes Minutes, the exchange becomes a Proposition,
+ * and the Proposition adopts into a Resolution exactly as hers do. Anything else
+ * would be a second way to make strategy, and STRAT's whole premise is that
+ * there is one.
+ *
+ * Pragya's side of the exchange is scripted here because the prototype has no
+ * model behind it. Two properties are load-bearing and are what R-4 must keep
+ * when a real model replaces the script:
+ *
+ *  1. **She opens with what she already knows** — named figures from the estate,
+ *     not enthusiasm. A strategy conversation that begins with "great idea!" has
+ *     taught the owner nothing and cost them a turn.
+ *  2. **She names what she cannot know.** Every matter here ends `untested`,
+ *     because nothing has been simulated yet. She says so, and offers the
+ *     Glasshouse rather than implying a forecast she does not have.
+ */
+
+export interface MatterQuestion {
+  id: string;
+  /** Her question, in her voice. */
+  asks: string;
+  /** Why she is asking — what the answer changes. Never omitted. */
+  because: string;
+  options: { label: string; /** What choosing this sets on the draft. */ sets: string }[];
+}
+
+export interface MatterScript {
+  /** Lower-case words that route a typed matter to this script. */
+  match: string[];
+  /** How she restates the matter, so the owner can see she understood it. */
+  reading: string;
+  /** What she already knows, from the estate. Figures, not sentiment. */
+  knows: { label: string; value: string; note: string }[];
+  /** What she does not have and would need. */
+  missing: string[];
+  questions: MatterQuestion[];
+  /** The proposition the exchange assembles into. */
+  draft: {
+    title: string;
+    because: string;
+    concerns: string;
+    levers: { label: string; from: string; to: string }[];
+    expected: { label: string; value: string } | null;
+    resolutionId: string;
+  };
+}
+
+const UNTESTED_MEANS =
+  "Nothing has been simulated. There is no past window where we ran this, so there is nothing to replay and nothing honest to model forward from.";
+
+export const MATTER_SCRIPTS: MatterScript[] = [
+  {
+    match: ["marketing", "campaign", "brand", "awareness", "festive", "promotion"],
+    reading:
+      "A marketing plan — you want to spend to bring more work in, and you want to know what it would cost and what it would move.",
+    knows: [
+      {
+        label: "Quote win rate",
+        value: "61%",
+        note: "Acquisition is ahead of its target of 55, so the work we get, we mostly close.",
+      },
+      {
+        label: "Leads this month",
+        value: "38",
+        note: "All inbound. Nothing in the estate currently generates a lead.",
+      },
+      {
+        label: "Order-to-cash",
+        value: "38 days",
+        note: "Collections is nine days over target, so more work billed is more money in transit before it is money.",
+      },
+    ],
+    missing: [
+      "any past marketing spend to compare against — this would be the first",
+      "a cost-per-lead figure, which only exists once something has run",
+      "channel consent posture for outbound social (KAR-05 gates it)",
+    ],
+    questions: [
+      {
+        id: "q-goal",
+        asks: "What is this plan for — more leads, or better ones?",
+        because:
+          "It picks the lever. More leads means volume and a wider net; better leads means targeting, and a smaller spend that Devika can actually keep up with.",
+        options: [
+          { label: "More leads", sets: "goal = volume" },
+          { label: "Better leads", sets: "goal = qualification" },
+        ],
+      },
+      {
+        id: "q-ceiling",
+        asks: "What is the most you would spend in a month before you wanted to stop and look?",
+        because:
+          "It becomes the campaign's budget envelope. Work stops at the envelope rather than asking you mid-month, and the protected reserve sits behind it.",
+        options: [
+          { label: "₹25,000", sets: "envelope = ₹25,000/month" },
+          { label: "₹60,000", sets: "envelope = ₹60,000/month" },
+          { label: "You tell me what it needs", sets: "envelope = Pragya proposes" },
+        ],
+      },
+      {
+        id: "q-who",
+        asks: "Should I bring in a colleague for this, or extend Devika?",
+        because:
+          "Devika quotes; she does not prospect. A campaign is a different charter, and giving it to her would blur what she is measured on.",
+        options: [
+          { label: "Bring in a colleague", sets: "new colleague, at A1" },
+          { label: "Extend Devika", sets: "amend Devika's charter" },
+        ],
+      },
+    ],
+    draft: {
+      title: "Run a festive-season acquisition campaign for one month",
+      because:
+        "We close 61% of what we quote but generate none of it — every lead we have is inbound. One bounded month of spend would tell us what a lead costs us, which is the number every later marketing decision needs and the one number we do not have.",
+      concerns:
+        "More work billed lands on a collections function already nine days over target, so this raises exposure before it raises cash. And this is our first spend of its kind, so I can offer you a bounded experiment, not a projection.",
+      levers: [
+        { label: "campaign envelope", from: "₹0", to: "₹25,000/mo" },
+        { label: "acquisition colleagues", from: "1", to: "2" },
+        { label: "lead source", from: "inbound only", to: "inbound + campaign" },
+      ],
+      // Nothing projects an effect: this is the first campaign of its kind.
+      expected: null,
+      resolutionId: "R-19",
+    },
+  },
+  {
+    match: ["price", "pricing", "rate", "discount", "margin"],
+    reading:
+      "Pricing — you are asking whether what we charge is right, and what moving it would do.",
+    knows: [
+      {
+        label: "Quote win rate",
+        value: "61%",
+        note: "Well above the target of 55, which is usually a sign there is room to charge more.",
+      },
+      {
+        label: "Quotes lost on price",
+        value: "4 of 27",
+        note: "The stated reason in the record. Most losses were not about price.",
+      },
+      {
+        label: "Days sales outstanding",
+        value: "38 days",
+        note: "A higher price on slower-paying accounts widens the gap before it narrows it.",
+      },
+    ],
+    missing: [
+      "any competitor price we hold on the record",
+      "a segment breakdown — the win rate is one number across all customers",
+    ],
+    questions: [
+      {
+        id: "q-direction",
+        asks: "Up across the board, or up only where we are winning easily?",
+        because:
+          "A flat rise is one change I can make once. A segmented rise needs a segment definition first, which is a schema change and a slower path.",
+        options: [
+          { label: "Across the board", sets: "flat +5%" },
+          { label: "Only where we win easily", sets: "segmented, needs a definition" },
+        ],
+      },
+      {
+        id: "q-existing",
+        asks: "Does this touch quotes already out?",
+        because:
+          "Repricing a live quote is a different act from repricing the list — it reaches a customer who has already seen a number.",
+        options: [
+          { label: "New quotes only", sets: "effective on new quotes" },
+          { label: "Everything not yet accepted", sets: "reprice open quotes" },
+        ],
+      },
+    ],
+    draft: {
+      title: "Raise list prices 5% on new quotes",
+      because:
+        "We win 61% of quotes against a target of 55, and only 4 of 27 losses named price as the reason. That combination usually means the list is under-priced. A 5% rise is small enough to read the effect on win rate without losing a season.",
+      concerns:
+        "The win rate is one number across every customer, so a flat rise is blunt where a segmented one would be precise. And a higher price on accounts already paying at 38 days widens the exposure before it improves the margin.",
+      levers: [
+        { label: "list price", from: "baseline", to: "+5%" },
+        { label: "applies to", from: "—", to: "new quotes only" },
+      ],
+      expected: null,
+      resolutionId: "R-20",
+    },
+  },
+];
+
+/** The fallback: she is honest about not recognising the matter. */
+export const MATTER_FALLBACK: MatterScript = {
+  match: [],
+  reading:
+    "I have this down as tabled. I do not have a read on it yet — nothing in the estate measures it, so I would be guessing if I opened with a figure.",
+  knows: [],
+  missing: [
+    "any KPI in the estate that this moves",
+    "a past decision of this shape to reason from",
+  ],
+  questions: [
+    {
+      id: "q-what",
+      asks: "What would tell us this had worked?",
+      because:
+        "Whatever you name becomes the measure, and without one I cannot bring you a review of it later — only an anecdote.",
+      options: [
+        { label: "A number I already see", sets: "measure = existing KPI" },
+        { label: "Something we do not measure yet", sets: "measure = new, needs defining" },
+      ],
+    },
+    {
+      id: "q-reversible",
+      asks: "If it goes badly, can we simply stop?",
+      because:
+        "A reversible matter can start at A1 and be watched. An irreversible one belongs in the Glasshouse before it belongs in the estate.",
+      options: [
+        { label: "We can stop any time", sets: "reversible" },
+        { label: "Not really", sets: "irreversible — Glasshouse first" },
+      ],
+    },
+  ],
+  draft: {
+    title: "Tabled for the next sitting, with a measure attached",
+    because:
+      "Nothing in the estate currently measures this, so the first useful step is agreeing what would count as it having worked. That is what makes a review possible later.",
+    concerns:
+      "I am carrying no evidence on this at all. Everything above is your reasoning, recorded, not mine.",
+    levers: [],
+    expected: null,
+    resolutionId: "R-21",
+  },
+};
+
+export const UNTESTED_GRADE: Grade = {
+  grade: "untested",
+  twinRunId: null,
+  means: UNTESTED_MEANS,
+};
+
+/** Route a typed matter to a script. Word-boundary, so "repricing" still hits. */
+export function scriptFor(matter: string): MatterScript {
+  const text = matter.toLowerCase();
+  for (const s of MATTER_SCRIPTS) {
+    if (s.match.some((w) => text.includes(w))) return s;
+  }
+  return MATTER_FALLBACK;
+}

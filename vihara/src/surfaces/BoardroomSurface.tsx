@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
+import { Brainstorm } from "./Brainstorm";
 import {
   AGENDA,
   BOARD,
@@ -133,11 +134,28 @@ export function BoardroomSurface({ onEcho }: { onEcho: (msg: string) => void }) 
 
       <div className="br-body">
         <div className="br-main vh-stagger">
+          {/* Owner review D: the owner-initiated way in, placed FIRST. Her
+              prepared agenda is what she brought; this is what you brought, and
+              a boardroom that leads with the chair's agenda every time teaches
+              the owner that their own thinking goes second. */}
+          <div style={{ ["--i" as string]: 0 }}>
+            <Brainstorm
+              onMinute={(text, kind) =>
+                setMinutes((m) => [
+                  ...m,
+                  { id: `MIN-${m.length + 1}`, at: "now", text, kind },
+                ])
+              }
+              onTabled={() => undefined}
+              onEcho={onEcho}
+            />
+          </div>
+
           {/* ------------------------------------------- she arrives prepared */}
           <section
             className="br-agenda m-plate m-ticks"
             aria-label="Agenda, drawn from KPI drift"
-            style={{ ["--i" as string]: 0 }}
+            style={{ ["--i" as string]: 1 }}
           >
             <header className="br-block-head">
               <span className="t-eyebrow">SHE ARRIVES PREPARED</span>
@@ -173,9 +191,9 @@ export function BoardroomSurface({ onEcho }: { onEcho: (msg: string) => void }) 
           </section>
 
           {/* ------------------------------------------------- the propositions */}
-          <section className="br-props" aria-label="Propositions" style={{ ["--i" as string]: 1 }}>
+          <section className="br-props" aria-label="Propositions" style={{ ["--i" as string]: 2 }}>
             <header className="br-block-head">
-              <span className="t-eyebrow">PROPOSITIONS</span>
+              <span className="t-eyebrow">FROM HER · PROPOSITIONS</span>
               <span className="br-block-note t-mono">
                 {PROPOSITIONS.length} tabled · graded before you bet · four grades, not three
               </span>

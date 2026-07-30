@@ -1,0 +1,343 @@
+/* Tabling a matter — the owner-initiated front of the STRAT pipeline.
+
+   It reuses the Boardroom's own idioms on purpose: the same gold-bordered
+   "because" quote, the same lever rows, the same `.br-grade` seal. A separate
+   visual language here would say this is a separate kind of strategy, and the
+   whole point of decision D's answer is that it is not. */
+
+.bs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  flex: none;
+}
+
+.bs-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.bs-drafted-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.bs-head .t-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.bs-lamp {
+  translate: 0 -1px;
+}
+
+.bs-lead,
+.bs-reading-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+/* --------------------------------------------------------------- compose --- */
+
+.bs-form {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.bs-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.bs-input::placeholder {
+  color: var(--fg-faint);
+}
+
+.bs-suggests {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------- reading --- */
+
+.bs-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* What she knows: the figure leads, because a figure is the only thing here
+   that is not an opinion. */
+.bs-knows {
+  display: flex;
+  flex-direction: column;
+}
+
+.bs-know {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: baseline;
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.bs-know:last-child {
+  box-shadow: none;
+}
+
+.bs-know-figure {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-lg);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--white);
+  text-align: right;
+}
+
+.bs-know-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bs-know-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-subtle);
+  max-width: 70ch;
+}
+
+/* What she does not have. Unlit lamps: an absence is not a fault. */
+.bs-missing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.bs-miss {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-subtle);
+}
+
+/* Questions ------------------------------------------------------------- */
+
+.bs-q-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.bs-progress {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.bs-questions {
+  display: flex;
+  flex-direction: column;
+}
+
+.bs-question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+}
+
+.bs-question[data-answered] {
+  opacity: 0.72;
+}
+
+.bs-question[data-answered]:hover {
+  opacity: 1;
+}
+
+.bs-asks {
+  font-family: var(--font-body);
+  font-weight: 380;
+  font-size: var(--text-md);
+  line-height: 1.45;
+  color: var(--fg);
+  max-width: 62ch;
+}
+
+/* Why she is asking. Set as mono at caption size so it reads as a note on the
+   question rather than as part of it. */
+.bs-because-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 74ch;
+}
+
+.bs-options {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.bs-answered {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 10px;
+  color: var(--positive);
+}
+
+/* --------------------------------------------------------------- drafted --- */
+
+.bs-draft-title {
+  font-size: var(--text-lg);
+  line-height: 1.3;
+  color: var(--white);
+  max-width: 40ch;
+}
+
+.bs-because {
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--border-gold);
+}
+
+.bs-because .t-narrative {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.bs-because cite {
+  display: block;
+  margin-top: var(--s-2);
+  font-style: normal;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+/* Her objection to her own draft. In a well, because it is evidence rather than
+   argument — and set at the same size as the "because", so it carries equal
+   weight on the page. A proposition that argues only for itself is advocacy. */
+.bs-concerns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+
+.bs-concerns-body {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.bs-levers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.bs-lever {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+.bs-lever-vals {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  white-space: nowrap;
+}
+
+.bs-lever-from {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-faint);
+}
+
+.bs-lever-arrow {
+  color: var(--fg-faint);
+}
+
+.bs-lever-to {
+  color: var(--fg);
+}
+
+.bs-expected {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.bs-expected-icon {
+  color: var(--fg-subtle);
+}
+
+.bs-expected-val {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.bs-grade {
+  padding: var(--s-3) var(--s-4);
+}
+
+/* ------------------------------------------------------------------ acts --- */
+
+.bs-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.bs-gh {
+  opacity: 0.55;
+}
+
+.bs-gh-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-faint);
+  max-width: 70ch;
+}
