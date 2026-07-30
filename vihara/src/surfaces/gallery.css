@@ -1,0 +1,855 @@
+/* The Gallery — the growth journey.
+
+   The room is a wall you walk along: a spine of named seasons across the top,
+   then the chapter you are standing in front of, then the record, the bets and
+   the people. Two material devices carry it and neither costs gold:
+
+   1. **A hatch means "told, not measured".** Every season before 25 July 2026
+      has no figures behind it, and rather than leaving that as a caption it is
+      the season's own surface texture. The gate where the hatch stops is where
+      the record begins.
+   2. **A ghost is a dashed hatch; a realization is solid.** Predicted-vs-realized
+      is a material contrast, not a colour one — the same "not currently true"
+      material the drained portraits and the twin use. */
+
+.ga {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-9);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ----------------------------------------------------------------- the head */
+
+.ga-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  flex: none;
+}
+
+.ga-title {
+  font-size: var(--text-2xl);
+}
+
+.ga-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+/* --------------------------------------------------------- shared furniture */
+
+.ga-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+.ga-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+/* The whisper subtitle — a panel's own aside, never information you need. */
+.ga-whisper {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ga-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.ga-note strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* A state: lamp plus a word, always both. */
+.ga-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.ga-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+  flex: none;
+}
+
+/* ============================================================== THE SEASONS
+   A spine, not an axis. The rail runs behind the marks and is interrupted once,
+   at the gate where measurement starts. Cards are sized by content rather than
+   by duration: a five-day season proportional to a forty-two-day one would be a
+   sliver, and the present is not a footnote. */
+
+.ga-seasons {
+  flex: none;
+}
+
+.ga-spine {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-3);
+  /* Its own scroll container, so the page body never scrolls sideways. */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: var(--s-2);
+}
+
+/* The rail. 27px is optical: it passes through the centre of the 9px marks
+   below, which sit at the cards' top padding. */
+.ga-spine::before {
+  content: "";
+  position: absolute;
+  top: 27px;
+  right: 2px;
+  left: 2px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--rule-strong) 6%, var(--rule-strong) 94%, transparent);
+}
+
+.ga-season {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 168px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-6) var(--s-4) var(--s-4);
+  border-radius: var(--r-sm);
+  text-align: left;
+  background: var(--ink-900);
+  box-shadow: var(--edge-line);
+  transition:
+    background var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    translate var(--dur) var(--ease-out);
+}
+
+.ga-season:hover {
+  background: var(--surface);
+  translate: 0 -1px;
+}
+
+/* Selected is surface + a strong edge. Never gold — "you clicked this" is the
+   named example of what gold is not (§2.1). */
+.ga-season[aria-checked="true"] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-md);
+}
+
+/* Told, not measured — the hatch. The word is in the chapter beside it; this is
+   only the fast read. */
+.ga-season[data-told]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    58deg,
+    rgba(255, 246, 230, 0.05) 0 1px,
+    transparent 1px 7px
+  );
+  pointer-events: none;
+}
+
+.ga-season-mark {
+  position: absolute;
+  top: 23px; /* centres the 9px mark on the 27px rail */
+  left: var(--s-4);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ink-700);
+  box-shadow: inset 0 0 0 1px var(--rule-strong), 0 0 0 4px var(--ink-900);
+}
+
+.ga-season[aria-checked="true"] .ga-season-mark {
+  background: var(--fg-muted);
+  box-shadow: inset 0 0 0 1px rgba(255, 246, 230, 0.3), 0 0 0 4px var(--surface-2);
+}
+
+.ga-season-span {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ga-season-name {
+  font-size: var(--text-base);
+  color: var(--fg-muted);
+}
+
+.ga-season[aria-checked="true"] .ga-season-name {
+  color: var(--fg);
+}
+
+.ga-season-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* The gate — where the record begins. A dashed vertical rule with its label set
+   in the rule's own direction, so it reads as a threshold rather than as another
+   card. */
+.ga-gate {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  padding: var(--s-4) 0;
+}
+
+.ga-gate::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 1px;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--rule-strong) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+.ga-gate-label {
+  writing-mode: vertical-rl;
+  font-size: 9px;
+  color: var(--fg-subtle);
+  background: var(--surface);
+  padding: var(--s-2) 1px;
+}
+
+/* ============================================================== THE CHAPTER */
+
+.ga-chapter-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.ga-chapter-name {
+  font-size: var(--text-xl);
+}
+
+.ga-chapter-span {
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.ga-chapter-story {
+  font-size: var(--text-base);
+  max-width: 70ch;
+}
+
+.ga-after {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-left: var(--s-4);
+  box-shadow: inset 1px 0 0 var(--rule);
+}
+
+.ga-after-text {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 70ch;
+}
+
+/* ---------------------------------------------------------- the monuments */
+
+.ga-mons {
+  display: flex;
+  flex-direction: column;
+}
+
+.ga-mon {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+  padding: var(--s-4) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ga-mon:last-child {
+  box-shadow: none;
+}
+
+.ga-mon-well {
+  width: 52px;
+  height: 52px;
+}
+
+/* A dismantled monument is past, so its mark drains — the same material as the
+   colleagues on the wall and as the twin. */
+.ga-mon-well[data-past] {
+  background: var(--ink-900);
+}
+
+.ga-mon-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ga-mon-name {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--fg);
+}
+
+/* The certified medallion — the only gold this surface spends on content, and it
+   spends it on the one meaning gold has here. */
+.ga-medallion {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--on-accent);
+}
+
+.ga-mon-what {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--fg-muted);
+  max-width: 66ch;
+}
+
+.ga-mon-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ga-mon-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ga-empty {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 66ch;
+}
+
+/* =============================================================== THE RECORD
+   The young state, designed as the primary state. An empty frame with a plaque
+   is the honest gallery idiom: the wall space is reserved, and the plaque says
+   what will hang there and when. */
+
+.ga-record {
+  flex: none;
+}
+
+.ga-record-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: var(--s-5);
+  align-items: stretch;
+}
+
+.ga-frame {
+  display: grid;
+  min-height: 210px;
+  margin: 0;
+  padding: var(--s-3);
+}
+
+/* m-ticks lives on an inner element on purpose: it and m-well both draw
+   ::before, and stacking them puts the grain inside a 9px corner bracket. */
+.ga-frame-inner {
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  border-radius: var(--r-xs);
+  background: repeating-linear-gradient(
+    58deg,
+    rgba(255, 246, 230, 0.035) 0 1px,
+    transparent 1px 9px
+  );
+}
+
+.ga-plaque {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-width: 44ch;
+  padding: var(--s-4) var(--s-4) var(--s-4);
+  text-align: left;
+}
+
+.ga-plaque-text {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+}
+
+.ga-record-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------- days of record */
+
+.ga-days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.ga-days-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.ga-days-count {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* Ninety marks, five of them cut. Grid rather than flex so the strip compresses
+   to any width without wrapping or scrolling. */
+.ga-days-strip {
+  display: grid;
+  grid-template-columns: repeat(90, minmax(0, 1fr));
+  gap: 1px;
+  align-items: end;
+  height: 20px;
+}
+
+.ga-tick {
+  height: 11px;
+  background: var(--rule);
+  border-radius: 1px;
+}
+
+/* Every thirtieth mark is taller — a month, so ninety reads as a quarter. */
+.ga-tick:nth-child(30n) {
+  height: 20px;
+  background: var(--rule-strong);
+}
+
+/* A day that exists. Warm white, never gold — an accruing record is not asking
+   anything of you. */
+.ga-tick[data-cut] {
+  height: 16px;
+  background: var(--fg-muted);
+}
+
+/* ------------------------------------------------------------- the readings */
+
+.ga-readings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.ga-reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+  box-shadow: inset 0 1px 0 var(--rule-faint);
+}
+
+.ga-reading-val {
+  font-size: var(--text-xl);
+  color: var(--fg);
+}
+
+.ga-reading-note {
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 60ch;
+}
+
+/* =============================================================== THE GHOSTS
+   Predicted beside realized. The ghost bar is hatched and dashed — the "not
+   currently true" material — and the realization is solid. */
+
+.ga-ghosts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.ga-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line);
+}
+
+.ga-ghost-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.ga-ghost-label {
+  font-size: var(--text-base);
+  color: var(--fg);
+  max-width: 46ch;
+}
+
+.ga-ghost-what {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 66ch;
+}
+
+.ga-pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.ga-pair-row {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.ga-pair-row dt {
+  color: var(--fg-subtle);
+}
+
+.ga-pair-row dd {
+  display: contents;
+}
+
+.ga-track {
+  position: relative;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--ink-950);
+  box-shadow: var(--edge-line), inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.ga-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+}
+
+/* The ghost: hatched and dashed. Nothing solid, because nothing happened. */
+.ga-bar[data-kind="predicted"] {
+  background: repeating-linear-gradient(
+    58deg,
+    rgba(255, 246, 230, 0.22) 0 1px,
+    transparent 1px 5px
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 246, 230, 0.16);
+  border-right: 1px dashed rgba(255, 246, 230, 0.4);
+}
+
+/* What actually happened: solid, lit at the top like every other real object. */
+.ga-bar[data-kind="realized"] {
+  background: linear-gradient(180deg, rgba(246, 241, 233, 0.4), rgba(246, 241, 233, 0.26));
+  box-shadow: inset 0 1px 0 rgba(255, 249, 238, 0.28);
+}
+
+.ga-pair-val {
+  font-size: 11px;
+  color: var(--fg);
+  text-align: right;
+  min-width: 9ch;
+}
+
+.ga-ghost-delta,
+.ga-ghost-absent {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+.ga-ghost-delta .m-lamp,
+.ga-ghost-absent .m-lamp {
+  margin-top: 4px;
+}
+
+.ga-ghost-over {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+/* ============================================================= THE MANDATES */
+
+.ga-mandates {
+  display: flex;
+  flex-direction: column;
+}
+
+.ga-mandate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ga-mandate:last-child {
+  box-shadow: none;
+}
+
+.ga-mandate-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.ga-mandate-id {
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.ga-mandate-title {
+  font-size: var(--text-base);
+  color: var(--fg);
+  margin-right: auto;
+}
+
+.ga-mandate-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--fg-subtle);
+  max-width: 70ch;
+}
+
+.ga-mandate-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.ga-mandate-acts .m-btn {
+  min-height: 30px;
+  padding: 0 var(--s-3);
+  font-size: var(--text-xs);
+}
+
+/* ------------------------------------------------------- the version ledger */
+
+.ga-versions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+}
+
+.ga-version {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ga-version + .ga-version {
+  padding-top: var(--s-3);
+  box-shadow: inset 0 1px 0 var(--rule-faint);
+}
+
+.ga-version-head {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* A diff is signed, not coloured: sage and terracotta mean good and bad, and a
+   removed line is neither. The sign is the word. */
+.ga-diff {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.ga-diff[data-op="del"] {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-faint);
+}
+
+.ga-diff[data-op="add"] {
+  color: var(--fg);
+}
+
+.ga-diff-sign {
+  color: var(--fg-faint);
+  text-decoration: none;
+}
+
+/* =========================================================== COLLEAGUES PAST */
+
+.ga-alumni {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.ga-alum {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.ga-alum-well {
+  width: 60px;
+  height: 60px;
+}
+
+/* The one colleague still serving. Her frame keeps the warm base the drained
+   ones lose — the contrast is the whole statement. */
+.ga-alum-live .ga-alum-well {
+  box-shadow: var(--edge-line-strong), var(--edge-rim), var(--ao-well);
+}
+
+.ga-alum-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ga-alum-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--fg);
+}
+
+.ga-alum-id {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ga-alum-served {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ga-alum-why {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--fg-muted);
+  max-width: 62ch;
+}
+
+.ga-alum-past .ga-alum-name {
+  color: var(--fg-muted);
+}
+
+.ga-wall-rule {
+  margin: var(--s-2) 0;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1180px) {
+  .ga-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ga-record-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .ga {
+    padding: var(--s-4) var(--s-4) var(--s-8);
+  }
+  .ga-season {
+    min-width: 150px;
+  }
+  .ga-pair-row {
+    grid-template-columns: 60px minmax(0, 1fr) auto;
+    gap: var(--s-2);
+  }
+  .ga-mon {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: var(--s-3);
+  }
+  .ga-mon-well {
+    width: 44px;
+    height: 44px;
+  }
+}
