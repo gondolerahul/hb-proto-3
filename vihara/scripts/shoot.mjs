@@ -31,7 +31,9 @@ page.on("console", (m) => {
   if (m.type() === "error") console.log("console.error:", m.text().slice(0, 200));
 });
 
-await page.goto("http://localhost:4044/", { waitUntil: "networkidle0" });
+// `networkidle0` never settles against a vite dev server — the HMR socket
+// stays open. `domcontentloaded` plus the per-shot dwell is what works.
+await page.goto("http://localhost:4044/", { waitUntil: "domcontentloaded", timeout: 60000 });
 // Park the mouse mid-canvas so the tile lift is visible in the shot.
 await page.mouse.move(800, 620);
 

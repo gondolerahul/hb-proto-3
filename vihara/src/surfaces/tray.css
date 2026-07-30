@@ -1,0 +1,285 @@
+/* The Tray. The surface that retires HITLPanel, and under decision D1 a
+   first-class room rather than a sheet fallback.
+
+   The layout choice that matters: cards are a single measured column, not a
+   grid. A grid of approvals invites scanning; a column invites *reading*, and
+   every card here is a decision with money or legal consequence behind it. The
+   column is capped at 74ch so the "because" paragraph — the one field that is
+   prose — never runs to a line length nobody reads. */
+
+.tr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  height: 100%;
+  padding: var(--s-6) var(--s-5) var(--s-8);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ----------------------------------------------------------------- the head */
+
+.tr-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-5);
+  width: min(780px, 100%);
+  margin: 0 auto;
+}
+
+.tr-title {
+  margin-top: var(--s-2);
+  font-size: var(--text-2xl);
+  color: var(--fg);
+}
+
+.tr-head-meta {
+  display: flex;
+  gap: var(--s-2);
+  padding-bottom: 5px;
+}
+
+/* ----------------------------------------------------------------- the list */
+
+.tr-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: min(780px, 100%);
+  margin: 0 auto;
+}
+
+.tr-card {
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  transition: box-shadow var(--dur-base) var(--ease-settle);
+}
+
+/* Closed cards sit back; the open one comes forward. Depth carries "this is
+   the one you are deciding" without a border colour or a highlight. */
+.tr-card:not([data-open]) {
+  opacity: 0.82;
+}
+
+.tr-card:not([data-open]):hover {
+  opacity: 1;
+}
+
+/* 1 · who ---------------------------------------------------------------- */
+
+.tr-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  width: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.tr-raiser {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.tr-raiser-seal {
+  width: 30px;
+  font-size: 11px;
+}
+
+.tr-raiser-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.tr-raiser-name {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.tr-raiser-id {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.tr-head-right {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex: none;
+}
+
+.tr-seal {
+  width: 15px;
+  height: 15px;
+  margin-right: var(--s-2);
+  translate: 0 2px;
+}
+
+.tr-head-right .t-eyebrow {
+  display: flex;
+  align-items: center;
+}
+
+.tr-waited {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.tr-caret {
+  color: var(--fg-faint);
+  transition: rotate var(--dur-base) var(--ease-settle);
+}
+
+.tr-card[data-open] .tr-caret {
+  rotate: 90deg;
+}
+
+/* 2 · what is asked ------------------------------------------------------ */
+
+.tr-ask {
+  margin-top: var(--s-4);
+  font-size: var(--text-lg);
+  line-height: 1.3;
+  color: var(--fg);
+  max-width: 34ch;
+}
+
+.tr-card[data-gold] .tr-ask {
+  color: var(--white);
+}
+
+/* ----------------------------------------------------------------- the body */
+
+.tr-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin-top: var(--s-4);
+}
+
+/* 3 · why, in her own words ---------------------------------------------- */
+
+.tr-because {
+  position: relative;
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--border-gold);
+}
+
+.tr-because .t-narrative {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 66ch;
+}
+
+.tr-because cite {
+  display: block;
+  margin-top: var(--s-2);
+  font-style: normal;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+/* 4 · the facts --------------------------------------------------------- */
+
+.tr-facts {
+  padding: var(--s-2) var(--s-4);
+}
+
+.tr-facts dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+}
+
+.tr-fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  /* Interior rules rather than a border on each cell — a fact table with four
+     visible boxes reads as a form. */
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.tr-fact:last-child,
+.tr-facts dl > .tr-fact:nth-last-child(-n + 2) {
+  box-shadow: none;
+}
+
+.tr-fact-value {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+/* 5 · the paths --------------------------------------------------------- */
+
+.tr-paths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.tr-path {
+  min-height: 40px;
+  padding: 0 var(--s-4);
+}
+
+/* The cost on a certified path is the number the owner is agreeing to part
+   with, so it is the last thing that should be de-emphasised. Dark ink on gold
+   at full opacity — 0.78 washed it out to the point of being decorative. */
+.tr-path-cost {
+  padding-left: var(--s-3);
+  margin-left: var(--s-1);
+  border-left: 1px solid rgba(42, 29, 8, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  color: #1d1405;
+}
+
+.m-btn[data-rank="quiet"] .tr-path-cost,
+.m-btn:not([data-rank]) .tr-path-cost {
+  border-left-color: var(--rule);
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.tr-cert-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: 62ch;
+  line-height: 1.55;
+  color: var(--fg-subtle);
+}
+
+.tr-cert-note svg {
+  translate: 0 2px;
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------- settled */
+
+.tr-card-settled {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  opacity: 0.55;
+}
+
+.tr-settled-text {
+  flex: 1;
+  font-size: var(--text-sm);
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

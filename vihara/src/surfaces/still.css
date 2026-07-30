@@ -1,0 +1,234 @@
+/* Depth 0. The only surface with no chrome, because it is the chrome.
+
+   The composition problem RD-4 names: a page whose whole content is three
+   sentences needs a *structure* holding them, or it reads as a page that failed
+   to load. The structure here is a measured column set at optical centre —
+   left of true centre and above the midline, because a block of left-ranged text
+   centred exactly looks low and off to the right. */
+
+.st {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--s-6);
+}
+
+/* ---------------------------------------------------------------- the frame
+   A single horizon line low in the frame. It gives the sentences somewhere to
+   sit and it is the day-night state made visible without a palette change
+   (art bible §4: the shift is luminance). */
+
+.st-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.st-horizon {
+  position: absolute;
+  right: 0;
+  bottom: 26%;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 240, 220, 0.05) 22%,
+    rgba(255, 240, 220, 0.1) 50%,
+    rgba(255, 240, 220, 0.05) 78%,
+    transparent 100%
+  );
+}
+
+/* By day the key light lifts the ground above the horizon; by night it does
+   not. Same frame, different luminance — no second palette. */
+.st:not([data-night]) .st-horizon::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 34vh;
+  background: linear-gradient(to top, rgba(255, 246, 230, 0.035), transparent);
+}
+
+.st[data-night] .st-horizon::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  translate: -50% 0;
+  width: min(680px, 70vw);
+  height: 22vh;
+  /* One lamplight pool. Art bible §4 gives night "low, local, few". */
+  background: radial-gradient(
+    60% 100% at 50% 100%,
+    rgba(168, 114, 42, 0.22) 0%,
+    transparent 72%
+  );
+}
+
+/* --------------------------------------------------------------- the column */
+
+.st-column {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: min(620px, 100%);
+  /* Optical centre, not geometric. */
+  margin-bottom: 6vh;
+}
+
+.st-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+
+.st-mark {
+  width: 16px;
+  height: 16px;
+}
+
+.st-mark .sh-mark-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.st-eyebrow-sep {
+  width: 1px;
+  height: 10px;
+  background: var(--rule-strong);
+}
+
+/* ---------------------------------------------------------------- the lines
+   The narrative register: Hanken Grotesk with air, per art bible §6. Set large
+   enough to be the page's subject and light enough not to shout. */
+
+.st-line {
+  font-family: var(--font-body);
+  font-weight: 320;
+  font-size: clamp(var(--text-lg), 2.1vw, var(--text-2xl));
+  line-height: 1.42;
+  letter-spacing: -0.012em;
+  color: var(--fg);
+  /* Over a live scene, glyphs need their own separation or they shimmer as the
+     floor breathes beneath them. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8), 0 2px 22px rgba(0, 0, 0, 0.6);
+}
+
+.st-line-head {
+  font-family: var(--font-body);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--white);
+}
+
+/* The figure gets the display face and tabular digits — it is the one thing on
+   this surface that will be compared against last week. */
+.st-figure {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--white);
+}
+
+.st-line-gold {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  color: var(--gold-300);
+}
+
+.st-hand {
+  translate: 0 -0.32em;
+}
+
+.st-rule {
+  width: 100%;
+  margin: var(--s-5) 0 var(--s-4);
+  /* The fade starts at the left edge rather than inset, so the rule reads as
+     belonging to the column rather than floating across it. */
+  background: linear-gradient(90deg, var(--rule-strong) 0%, var(--rule-strong) 62%, transparent);
+}
+
+/* ---------------------------------------------------------------- the pulse */
+
+.st-pulse {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--fg-subtle);
+}
+
+.st-pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  animation: st-pulse 3.8s var(--ease-in-out) infinite;
+}
+
+@keyframes st-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    scale: 0.85;
+  }
+  50% {
+    opacity: 0.9;
+    scale: 1;
+  }
+}
+
+/* -------------------------------------------------------------- go deeper
+   The one affordance. Quiet at rest, and it never looks like a CTA — descending
+   is not a conversion. */
+
+.st-descend {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-6);
+  padding: var(--s-2) var(--s-3);
+  margin-left: calc(var(--s-3) * -1);
+  border-radius: var(--r-sm);
+  color: var(--fg-subtle);
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+
+.st-descend:hover {
+  color: var(--fg);
+  background: rgba(255, 246, 230, 0.04);
+}
+
+.st-descend-keys {
+  display: flex;
+  gap: 3px;
+}
+
+.st-descend-keys kbd {
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line), var(--edge-rim);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.st-descend-icon {
+  transition: translate var(--dur) var(--ease-out);
+}
+
+.st-descend:hover .st-descend-icon {
+  translate: 0 2px;
+}

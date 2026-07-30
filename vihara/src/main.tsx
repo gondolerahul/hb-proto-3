@@ -1,19 +1,20 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./design/index.css";
-import { BackgroundPick } from "./boards/BackgroundPick";
+import { Prototype } from "./app/Prototype";
 
 /**
- * Redesign R-1/R-3 entry.
+ * Redesign R-3 entry.
  *
- * While the prototype is the deliverable, `main.tsx` mounts the board the
- * current round is up for review on. R-4 replaces this with the real shell.
+ * The prototype IS the deliverable (decision D4), so this mounts it directly.
+ * R-4 replaces `Prototype` with the real shell and swaps the fixtures for the
+ * API client — the surfaces themselves carry across.
  */
 const root = document.getElementById("root");
 if (!root) throw new Error("no #root");
 
 createRoot(root).render(
   <StrictMode>
-    <BackgroundPick />
+    <Prototype />
   </StrictMode>,
 );

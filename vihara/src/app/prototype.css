@@ -1,0 +1,103 @@
+/* Review scaffolding only. Deleted at R-4 — nothing here is product chrome.
+   It is styled with the same material system so it does not visually shout over
+   the surfaces being judged, but it sits bottom-right and out of the composition. */
+
+.pn {
+  position: fixed;
+  right: var(--s-4);
+  bottom: var(--s-4);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-lg);
+  opacity: 0.42;
+  transition: opacity var(--dur-base) var(--ease-settle);
+}
+
+.pn:hover,
+.pn:focus-within {
+  opacity: 1;
+}
+
+.pn-tag {
+  color: var(--fg-faint);
+  writing-mode: vertical-rl;
+  rotate: 180deg;
+  font-size: 8px;
+}
+
+.pn-items {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.pn-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  transition: background var(--dur) var(--ease-out);
+}
+
+.pn-item:hover {
+  background: rgba(255, 246, 230, 0.05);
+}
+
+.pn-item[data-active] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim);
+}
+
+.pn-item kbd {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--fg-subtle);
+}
+
+.pn-item-label {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.pn-item[data-active] .pn-item-label {
+  color: var(--fg);
+}
+
+.pn-item-note {
+  font-size: 8px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+.pn-div {
+  align-self: stretch;
+}
+
+.pn-variant {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+@media (max-width: 900px) {
+  .pn {
+    left: var(--s-4);
+    bottom: 56px;
+    flex-wrap: wrap;
+  }
+  .pn-item-note,
+  .pn-tag {
+    display: none;
+  }
+}
