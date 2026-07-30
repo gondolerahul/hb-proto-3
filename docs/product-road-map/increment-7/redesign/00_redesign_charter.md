@@ -53,6 +53,66 @@ The Phase-A failure mode is now documented: **R2 passed on wireframes, and wiref
 
 This replaces R1/R2's format for the redesign. It does not replace their *rulings*: the gold budget, day–night as luminance, the desaturated twin, the type mapping, and portraits A-with-C-fallback all stand unless a redesign round explicitly reopens one and records it here.
 
+## 3a. Owner decisions — round 2, locked 2026-07-30
+
+Four more, taken against the **R-4 readiness assessment** ([04_r4_readiness.md](./04_r4_readiness.md)). That assessment
+is the reason this round exists: R-4 was chartered as three mechanical steps, and
+measuring the tree found six unlisted prerequisites, two red gates, and three
+surfaces that were never rebuilt. The decisions below are the response.
+
+**D5 · R-4 is one large round, not a mechanical swap.**
+The charter's "swap `src/fixtures/`, delete `PrototypeNav`, re-run `gen:api`"
+stands as *part* of R-4 and no longer as the whole of it. Folded in, because none
+of them is optional and each blocks the swap: the auth entry point and session
+gate, the fetch lifecycle (scaffold-then-hydrate, not spinners — D7 §3.1 permits a
+visible loading state on the Glasshouse alone), the step-up ceremony, the
+navigation replacement, the `gen:api` drift gate, and the SSE client.
+
+The plan table in §5 is amended rather than annotated. **A plan that claims three
+steps when the tree needs nine is not a plan, it is an estimate that has already
+failed** — and the first build's drift began the same way, with a round whose
+stated size stopped matching its actual one.
+
+**D6 · The Private Line is rebuilt before R-4, to the new design standard.**
+Three of the eighteen ratified surfaces — Thread, Morning Story, Pocket Desk —
+plus the installable PWA shell, the service worker and the webmanifest were not
+carried into the redesign. Nothing recorded a decision to drop them; every
+document since R-3b has said "all fifteen product surfaces" as though fifteen were
+the total. It was an omission, and it is closed by building, not by amending the
+count.
+
+They are **rebuilt, not ported.** D3 makes `vihara-review-rejected/` a parts bin,
+and that applies to the Line exactly as it applies to the estate — the plumbing
+(push subscription, the service worker's refusals, the second Vite entry and its
+own 220 KB budget) carries across; every visual implementation is written new
+against `design/material.css`. This is **R-3c**, and it completes the eighteen.
+
+**D7 · Navigation is the ⌘K palette plus `pushState`.**
+`PrototypeNav` is the only click path to eleven of sixteen surfaces, so deleting it
+— a stated R-4 task — strands them. The palette already exists in `Shell.tsx` as a
+designed and empty shell, and D6 §1 requires navigation to be app-owned rather
+than manifest-composed, so the palette becomes the real navigator. No router
+dependency.
+
+**Surface identity reaches the URL** via hand-rolled `pushState`. This is not
+optional polish: L8 makes a push *a tray or nothing*, and a push that cannot
+deep-link to the tray it announces is a notification that drops you at the front
+door. Bookmarks and reload-in-place fall out of the same mechanism.
+
+**D8 · Every unsourced region gets a real endpoint.**
+Four regions render fixture data with no backend behind it: the Bridges board's
+gate consent and DNC state, the Undercroft's consent bay, the Dossier's charter
+clauses / competencies / SLOs / probation, and the Talent Office's brief and past
+cases. All four are built rather than converted to rendered gaps.
+
+The cost is honest and is accepted: **two of the four are real backend design, not
+a missing HTTP surface.** Consent is nearly free — `consent_records`, `dnc_entries`
+and `trust/consent_registry.py` all ship behind no router. The colleague charter
+and the talent brief are new domain work, and they enter Increment 7 as a
+consequence of this decision. The alternative — shipping invented data that looks
+live — is the failure the whole redesign exists to avoid, and a rendered gap on
+four regions of two flagship surfaces would have been a large one.
+
 ## 4. What is carried forward, and what is not
 
 | Layer | Status |
@@ -72,10 +132,18 @@ This replaces R1/R2's format for the redesign. It does not replace their *ruling
 | **R-1** | The background ported verbatim + the brand re-key, both live | **Owner pick** — D2's open half |
 | **R-2** | The design foundation: tokens, self-hosted faces, the glass and metal material system, elevation, motion language, icon set | The shared substrate every board consumes |
 | **R-3a** ✅ | Shell · Still surface · the Tray · Registry Hall — [02_prototype_r3a.md](./02_prototype_r3a.md) | The design language, judgeable |
-| **R-3b** ✅ | **All fifteen product surfaces + the shell stand.** Owner review round 1 implemented (A1–A4, B, C, D), then the Glasshouse, Undercroft, Library, Bridges & Gates, Talent Office and Gallery. Gates: tsc · vitest 28 · sweep 16/16 · build. See [02](./02_prototype_r3a.md) §5a–§5e | **Owner review** — D4's gate, now open |
-| **R-4** ◀ **NEXT** | Fixtures swapped for the salvaged API client; `PrototypeNav` deleted; `gen:api` drift gate re-run. Mechanical, not a rebuild — see [03_resume.md](./03_resume.md) §5 | Live |
+| **R-3b** ✅ | **Fifteen of the eighteen product surfaces + the shell stand.** Owner review round 1 implemented (A1–A4, B, C, D), then the Glasshouse, Undercroft, Library, Bridges & Gates, Talent Office and Gallery. Gates: tsc · vitest 28 · sweep 16/16 · build. See [02](./02_prototype_r3a.md) §5a–§5e | **Owner review** — D4's gate, now open |
+| **R-3c** ◀ **NEXT** | **The Private Line — the missing three.** Thread · Morning Story · Pocket Desk, rebuilt to the new material system; the second Vite entry, service worker, webmanifest and VAPID subscribe carried across as plumbing. **D6.** See [05_r3c_private_line.md](./05_r3c_private_line.md) | The eighteen complete |
+| **R-4** | **One round, nine parts (D5).** Gates honest again · auth entry + session gate · navigation (⌘K + `pushState`, **D7**) · fetch lifecycle · step-up ceremony · the fixture swap · the missing client wrappers · the SSE live estate · the four new endpoints (**D8**). See [06_r4_wiring.md](./06_r4_wiring.md) | Live |
+| **R-5** | The honesty pass: the three stale rendered gaps closed, the parity register re-walked against the rebuilt app, and the G0–G6 proofs that must be re-measured on the new tree | A citable record |
 
 R-1 and R-2 ran together. R-3 does not begin on a surface until R-2's material system can render it at final quality.
+
+**Plan change recorded at R-4 readiness (2026-07-30):** R-4's stated size stopped
+matching its actual one, and the gap was six prerequisites wide. §3a's D5 folds
+them in, D6 adds R-3c for the three surfaces that were never rebuilt, and R-5 is
+split out so that correcting the record is a round with a name rather than a
+rounding error inside a build.
 
 **Plan change recorded at R-3a:** because D4's prototype is built as *real code* rather than as a mockup, **R-4 is no longer a rebuild.** The prototype is the app in mock mode; R-4 swaps `src/fixtures/` for the salvaged API client and deletes the review scaffold. This is strictly better than the original plan — it removes a translation step, and a translation step between an approved design and shipped code is exactly where the first build lost its look.
 
@@ -97,4 +165,5 @@ R-1 and R-2 ran together. R-3 does not begin on a surface until R-2's material s
 
 | Date | Change |
 |---|---|
+| 2026-07-30 | v1.1 — **round 2 decisions (§3a), taken against the R-4 readiness assessment** ([04_r4_readiness.md](./04_r4_readiness.md)). **D5:** R-4 is one large round, because measuring the tree found six unlisted prerequisites — a plan claiming three steps for nine is an estimate that has already failed. **D6:** the Private Line's three surfaces plus the PWA shell were never rebuilt and nothing recorded dropping them; they are **rebuilt to the new standard** as **R-3c**, closing the eighteen. **D7:** navigation is the ⌘K palette plus hand-rolled `pushState` — surface identity must reach the URL because L8 makes a push *a tray or nothing*, and a push that cannot deep-link is a notification that drops you at the front door. **D8:** all four unsourced regions get real endpoints, accepting that two of them (the colleague charter, the talent brief) are new domain work rather than a missing HTTP surface. §5 amended: R-3c added, R-4 restated at its real size, **R-5** split out as the honesty pass. |
 | 2026-07-30 | v1.0 — redesign opened after the built app was rejected on design. Seven findings (**RD-1**…**RD-7**) diagnosed from the rendered boards, with RD-7 identified as structural rather than cosmetic. Four owner decisions locked: visual redesign **plus** an IA rebalance that promotes the nine working surfaces out of fallback status (D1); the legacy background ported **verbatim** with a brand re-key offered beside it and the gold-budget conflict named rather than papered over (D2); the rejected app kept as a **parts bin** with a named salvage list (D3); and review moved to a **pixel-final interactive prototype**, because Phase A proved wireframe approval does not predict implementation approval (D4). Art bible §13 is the only R1 ruling reopened. |
