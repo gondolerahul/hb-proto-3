@@ -3,11 +3,13 @@ import { BRAND_PALETTE, LEGACY_PALETTE, createHexField } from "./hexField";
 import "./background.css";
 
 /**
- * The two candidates of redesign decision D2, mounted behind everything.
+ * The estate's atmosphere, mounted behind everything.
  *
- * `variant="legacy"` is the owner's approved background with its own colours.
- * `variant="brand"` is the same scene re-keyed to gold + a cool neutral.
- * Nothing else differs — see `hexField.ts` and the verbatim test.
+ * **Decision D2 closed 2026-07-30: the owner picked the brand re-key**, so
+ * `"brand"` is the default and the product's only background. `"legacy"` stays
+ * selectable — it is the artifact the pick was made against, and keeping it
+ * runnable is what keeps the verbatim test meaningful rather than decorative.
+ * The two differ in exactly four colour values; see `hexField.ts`.
  *
  * `intensity` is the one addition the redesign makes: at `"quiet"` the field is
  * dimmed and its motion stilled behind dense working surfaces, because a
@@ -16,7 +18,7 @@ import "./background.css";
  * is never re-graded — only veiled.
  */
 export function Background({
-  variant = "legacy",
+  variant = "brand",
   intensity = "full",
 }: {
   variant?: "legacy" | "brand";

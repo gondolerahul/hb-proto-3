@@ -1,6 +1,6 @@
 # Increment 7 / Redesign — R-1: The Background Port
 
-> **Round R-1** of [00_redesign_charter.md](./00_redesign_charter.md) §5. Closes the build half of **decision D2**; the *pick* is owner-side and open.
+> **Round R-1** of [00_redesign_charter.md](./00_redesign_charter.md) §5. ✅ **DECISION D2 FULLY CLOSED 2026-07-30: the owner picked the BRAND RE-KEY.** It is now the default and the product's only background; the verbatim variant stays runnable because it is the artifact the pick was made against, which is what keeps the verbatim test meaningful rather than decorative. The consequence — gold in the atmosphere — is handled by an explicit amendment, [03_art_bible.md](../03_art_bible.md) §2.1a, not by silence.
 > **Code:** `vihara/src/background/` · **Test:** `vihara/tests/background_verbatim.test.ts` (10 assertions, green).
 
 ---
@@ -31,9 +31,17 @@ Identical geometry, shaders, bloom, camera, fog and interaction. Four colour val
 
 The re-key's `colorA` is brand gold scaled to the luminance the legacy copper carried, so the cracks read at the intensity that was approved rather than brighter. `colorB` drops the hue entirely: art bible §2.1's gold budget survives a cool *sheen* where it would not survive a cool *hue*.
 
-### 2.1 The conflict, stated rather than resolved
+### 2.1 The conflict — resolved 2026-07-30
 
-Charter D2 names this and does not paper over it. The legacy copper glow is warm light across the whole lower frame, and §2.1 exists so that a gold beacon is *the only gold on screen* and therefore unmissable. Those two approved things are in genuine tension.
+**The owner picked the brand re-key.** That settles which background ships and it does *not* settle the gold-budget question, because the re-key's crack-of-light colour is `--gold-500` — so gold is now in the atmosphere of every surface, which art bible §2.1 as written forbids.
+
+Resolved by **amending §2.1 in place** ([03_art_bible.md](../03_art_bible.md) §2.1a), as D2 said would happen if the rule had to bend. The amendment is one layer deep: gold in the *atmosphere layer* — behind all content, never on or bounding an element — is exempt; everywhere a user can point at, §2.1 is unchanged. It is defensible because the atmosphere has no edge, no hit target and no state, so it cannot be mistaken for "this needs you", and because a beacon wins the eye on luminance and spatial frequency rather than on hue.
+
+It also takes on an obligation: **the exemption is only safe if the beacon still wins, which is now an empirical claim.** Beacon-against-atmosphere contrast is measured at all three intensities on real hardware before R-3b closes, and if a raised hand is not unmistakable at `full`, the field's luminance drops — never the beacon's, because brightening the beacon to compete is how an estate stops being still.
+
+The original framing is kept below, because the reasoning is why the amendment is shaped the way it is.
+
+Charter D2 named this and did not paper over it. The legacy copper glow is warm light across the whole lower frame, and §2.1 exists so that a gold beacon is *the only gold on screen* and therefore unmissable. Those two approved things are in genuine tension.
 
 The R-1 board is built to make that judgeable instead of arguable: it puts a breathing gold beacon and a gold certified block on top of each background, so the question becomes **"can you still find the beacon"** rather than "which floor is prettier". If the verbatim version wins, §2.1 is amended in the same commit.
 

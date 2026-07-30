@@ -44,6 +44,24 @@ Everything else in the world is built from the **warm-white ramp at varying alph
 
 The consequence is the product's most important visual property: **on a still estate with nothing to do, there is almost no gold on screen.** The silence L1 promises becomes literally visible, and the first gold beacon to appear is unmissable because it is the only gold in the frame. A design that spends gold on decoration cannot make that promise.
 
+### 2.1a AMENDED 2026-07-30 — the atmosphere exemption
+
+> **Amendment forced by redesign decision D2.** The owner chose the **brand re-key** of the legacy hex-field background, whose crack-of-light colour is `--gold-500`. Gold is therefore present in the atmosphere layer of every surface, which §2.1 as written forbids. Recorded here rather than left as a silent violation — see [redesign/00_redesign_charter.md](./redesign/00_redesign_charter.md) D2 and [redesign/01_background_port.md](./redesign/01_background_port.md).
+
+**The amendment, stated as narrowly as it can be:**
+
+> Gold in the **atmosphere layer** — behind all content, never on or bounding an element, never at element scale — is exempt from the budget. Everywhere a user can point at, §2.1 is unchanged.
+
+Three reasons this is a principled carve-out and not a loophole:
+
+1. **It cannot be mistaken for state.** The budget exists so that gold on a *thing* means that thing needs you. The atmosphere is not a thing: it has no edge, no hit target, no label, and no state. A user cannot ask "why is that gold?" of a floor 60 pixels behind a card.
+2. **The distinguishing channel was never hue.** A beacon wins the eye by being a small, bright, *local* point with a bloom halo against a large, dim, low-frequency field. That contrast is luminance and spatial frequency, and both survive the two sharing a hue. What would kill it is a gold field at beacon *luminance*, which is why §2.1a carries the measurement obligation below.
+3. **The veil already enforces it where it matters.** `Background`'s `intensity` drops the field to `quiet` in rooms and `hushed` behind dense working surfaces, so on exactly the surfaces where gold carries the most meaning, there is least gold behind it.
+
+**The obligation this amendment takes on.** The exemption is only safe if the beacon still wins, and that is now an empirical claim rather than a design one. Before R-3b closes, the beacon-against-atmosphere contrast is measured at all three intensities on real hardware, and if a raised hand is not unmistakable at `full`, the fix is the field's luminance — not the beacon's, because brightening the beacon to compete is how an estate stops being still.
+
+**What is explicitly *not* exempted:** the territory's built form, roads, traffic, weather, portraits at rest, chart series, KPI figures, headings, links, active states, and every element in the Sheet and Card renderers. The exemption is one layer deep and stops at the first element.
+
 ### 2.2 The one exception, and why it is not one
 
 Charts need more than one distinguishable series. Rather than break the palette, chart series use the **warm-white ramp plus the two semantic hues** (`--positive` sage, `--negative` terracotta) and, past three series, **texture** (dash patterns, dot density) rather than new hues. The brand's rule that semantic colours stay desaturated so they never compete with gold is what makes this work: a five-series chart still has no gold in it, so a beacon appearing beside it still wins the eye.

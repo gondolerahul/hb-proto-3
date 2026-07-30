@@ -29,7 +29,7 @@ const INTENSITY_NOTE: Record<Intensity, string> = {
 };
 
 export function BackgroundPick() {
-  const [variant, setVariant] = useState<Variant>("legacy");
+  const [variant, setVariant] = useState<Variant>("brand");
   const [intensity, setIntensity] = useState<Intensity>("full");
 
   // A/B on one key, because switching fast is how you actually see a difference.

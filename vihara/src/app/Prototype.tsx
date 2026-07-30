@@ -45,7 +45,7 @@ const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
 export function Prototype() {
   const [surface, setSurface] = useState<SurfaceId>("still");
   const [echo, setEcho] = useState<string | null>(null);
-  const [variant, setVariant] = useState<"legacy" | "brand">("legacy");
+  const [variant, setVariant] = useState<"legacy" | "brand">("brand");
 
   const showEcho = useCallback((msg: string) => {
     setEcho(null);
