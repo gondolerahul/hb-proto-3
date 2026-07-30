@@ -71,7 +71,7 @@ This replaces R1/R2's format for the redesign. It does not replace their *ruling
 | **R-1** | The background ported verbatim + the brand re-key, both live | **Owner pick** — D2's open half |
 | **R-2** | The design foundation: tokens, self-hosted faces, the glass and metal material system, elevation, motion language, icon set | The shared substrate every board consumes |
 | **R-3a** ✅ | Shell · Still surface · the Tray · Registry Hall — [02_prototype_r3a.md](./02_prototype_r3a.md) | The design language, judgeable |
-| **R-3b** ◐ | Terrace · district room · dossier · Boardroom **done**; Glasshouse + 7 Sheet surfaces remain — [02](./02_prototype_r3a.md) §5a | **Owner review**, D4's gate |
+| **R-3b** ◐ | **Eight surfaces + shell standing**; owner review round 1 implemented (A1–A4, B, C, D). Glasshouse + 5 Sheet surfaces remain — [02](./02_prototype_r3a.md) §5a–§5c | **Owner review**, D4's gate |
 | **R-4** | Fixtures swapped for the salvaged API client; review scaffold deleted | Live |
 
 R-1 and R-2 ran together. R-3 does not begin on a surface until R-2's material system can render it at final quality.

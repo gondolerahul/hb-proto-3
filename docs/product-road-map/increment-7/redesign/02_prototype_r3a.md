@@ -104,6 +104,107 @@ Four rounds of render-and-look on the Terrace alone. The `viewBox` pad was in wo
 
 **Six Sheet surfaces:** Talent Office, Gallery, Standup, Library, Bridges & Gates, Undercroft, The Study. **One World surface:** the Glasshouse. `src/fixtures/decisions.ts` already carries the Standup's data.
 
+## 5b. Owner review round 1 — 2026-07-30
+
+Four comment groups on the six standing surfaces. All implemented; the notable
+thing is that one of them **reversed a decision I had argued for**, and was right.
+
+### A · the Terrace
+
+| # | Comment | What changed |
+|---|---|---|
+| A1 | Beacon too wide and overlapping the building; should be behind it | Shaft narrowed 1.8 → 0.68 and drawn **before** the built form, so buildings occlude it. A shaft the district stands in front of reads as light rising from the place; in front, it reads as a sticker on top |
+| A2 | Labels are screen-parallel and overlap the structures; prefer them **lying flat beside** them | Reversed — see below |
+| A3 | Zoom/scroll/drag not working | A viewBox camera: pointer-anchored wheel zoom, drag to pan, double-click to reframe |
+| A4 | Roads can be more muted; signals much smaller | Roads 0.13 → 0.075 alpha, 0.2 → 0.14 width; dots r 0.26 → 0.14 |
+
+**A2 is the one worth recording properly.** R-3b's headline claim was that finding
+RD-1 was fixed *structurally* by moving all text into screen-space DOM. That was
+half right and half wrong. RD-1 was three defects arriving together — labels were
+skewed **and** colliding **and** too small — and "flat" got the blame for what
+collision and size actually did. The inspiration set ([../inspiration/](../inspiration/))
+labels flat on the ground and reads beautifully.
+
+So the labels are flat again, with the two real defects fixed by construction
+rather than by taste:
+
+* **They cannot collide with built form.** `buildTerritory` places each label on clear ground *outside* its slab, along the plot's own outward vector.
+* **They are set to be read.** Heading at display size, at most one detail line, stroked against the floor (`paint-order: stroke fill`) so glyphs keep their edges under shear.
+* **They are still real `<text>`** — selectable and in the accessibility tree. Flatness was never what cost accessibility.
+
+Two things took a second pass. The first mirrored-axis matrix rendered text
+**backwards**; there is now deliberately no mirrored transform, and labels that
+grow the other way keep the one transform with `text-anchor: end`. And labels are
+part of the drawing, so they became part of the frame — `LABEL_RUN`/`LABEL_DROP`
+extend the viewBox, sized against the ~26-character line budget the surface keeps,
+because over-estimating shrinks the estate to make room for whitespace.
+
+### B · the district room — rebuilt as a room
+
+The room now has the Terrace's structure and reveals detail on the structure you
+click. Nothing was dropped. `world/Room.tsx` is the estate's grammar one level
+down, sharing `iso.ts` deliberately: descending a level should change the *scale*
+of what you are looking at and nothing else.
+
+Colleagues are **personified as architecture** — each has a workplace with its own
+built form, stable across sessions because the massing derives from their position
+in the roster. Fixtures are instruments whose form says what they are: the KPI an
+obelisk (a reading standing up), the treasury a low vault with the protected
+reserve as a gold seam struck across its lit face, live runs an almost-flat table.
+
+Nothing is selected on arrival — a surface that pre-opens one panel has decided
+for you which structure matters.
+
+### C · portraits — art bible direction A, generated
+
+`components/Portrait.tsx` builds the halftone bust **without the raster pipeline
+it was blocked on**: a shoulder-up figure whose form is carried by dot density on
+a hex lattice, deterministic from the entity id. Per-identity variation is
+deliberately narrow (head size and tilt, neck, shoulder width and slope, and a
+crown mass — the strongest cue that two portraits are two people). These are
+people in one house style, not a character generator.
+
+The ramp is the **deep half** of the gold scale, so the brightest dot in a portrait
+sits below the dimmest beacon: a room full of colleagues cannot out-shout one
+raised hand. Direction C survives as `components/Seal.tsx` for entities with no
+persona — a gateway, a Meta-Agent role, a newly seeded agent.
+
+### D · the Boardroom — the question exposed a real gap
+
+*"How do I brainstorm here — say I am thinking about developing a new marketing
+plan?"* There was no way to. The room only rendered propositions **Pragya** raised
+from KPI drift; an owner arriving with a thought had nowhere to put it.
+
+The answer is deliberately **not a chat panel**. It is the front of the same
+pipeline: a matter you table becomes Minutes, the exchange becomes a Proposition,
+and it adopts into a Resolution by the same certified act as hers. A second way to
+make strategy would defeat STRAT's premise that there is one.
+
+Four beats, each earning its place: she **reads the matter back**; she opens with
+**what she already knows** (named figures, not enthusiasm — a strategy
+conversation that opens with "great idea" has taught you nothing); she names **what
+she cannot know** and asks, every question carrying *why it is being asked*; and
+the draft assembles in the Proposition idiom, arriving `untested` with **no
+expected effect at all**, because nothing projects one for a first-of-its-kind
+act.
+
+The draft also states **what would worry me** at equal weight beside the because.
+A proposition that argues only for itself is advocacy, and an owner cannot weigh
+advocacy. And the brainstorm sits **first** in the column, above her prepared
+agenda: a boardroom that leads with the chair's agenda every time teaches the
+owner their own thinking goes second.
+
+## 5c. R-3b — surfaces standing
+
+Eight plus the shell: **Still · Terrace · district room · Dossier · Boardroom ·
+Standup · The Study · Tray · Registry Hall.**
+
+* **The Standup** (D6 §10) — L2 shapes it: every line is relayed by Pragya, never spoken by the colleague, because a tenant who can be addressed by twelve colleagues has twelve channels to mute and will mute the wrong one. The surface states the rule in words. Two densities that are genuinely different registers — a keyed sequence, or one sheet.
+* **The Study** (D6 §15a) — all four R2 rules held. Its real design problem is dunning: everywhere else in Vihara quiet reads as calm, which is the product's own aesthetic working against the tenant at the worst moment. So the ladder is **always** visible, the tone explains rather than warns, and no rung uses terracotta.
+
+**Still outstanding:** Talent Office · Gallery · Library · Bridges & Gates ·
+Undercroft (Sheet), and the Glasshouse (World).
+
 ## 6. What R-3b needs
 
 1. **The owner's background pick** ([01](./01_background_port.md) §2.1) — it changes the atmosphere every remaining surface is composed against.

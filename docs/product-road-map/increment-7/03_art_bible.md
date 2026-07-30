@@ -62,6 +62,25 @@ Three reasons this is a principled carve-out and not a loophole:
 
 **What is explicitly *not* exempted:** the territory's built form, roads, traffic, weather, portraits at rest, chart series, KPI figures, headings, links, active states, and every element in the Sheet and Card renderers. The exemption is one layer deep and stops at the first element.
 
+### 2.1b Ground labels are not gold — and the flat-label reversal
+
+> **Recorded 2026-07-30, owner review A2.** The redesign first moved every
+> territory label into screen-space DOM, arguing that finding RD-1 (unreadable
+> skewed labels) was caused by flatness. The owner reversed it, and was right:
+> RD-1 was three defects arriving together — skewed **and** colliding **and** too
+> small — and flatness took the blame for what collision and size did.
+
+Labels now lie on the ground plane, as the [inspiration set](./inspiration/) does.
+Three properties keep them legible, and they are construction rather than taste:
+
+1. **Placement is outside the slab**, along the plot's outward vector, so a label can never land on built form.
+2. **One heading plus at most one detail line**, stroked against the floor (`paint-order: stroke fill`) so glyphs keep their edges under shear.
+3. **They remain real SVG `<text>`** — selectable, in the accessibility tree. Flatness never cost accessibility; only the first implementation did.
+
+**Ground labels are warm-white, never gold.** The only gold a label may carry is a
+`needs you` callout, which is §2.1's first meaning exactly. A district's name, its
+code, its KPI figure and its drift are all ramp — a name is not a request.
+
 ### 2.2 The one exception, and why it is not one
 
 Charts need more than one distinguishable series. Rather than break the palette, chart series use the **warm-white ramp plus the two semantic hues** (`--positive` sage, `--negative` terracotta) and, past three series, **texture** (dash patterns, dot density) rather than new hues. The brand's rule that semantic colours stay desaturated so they never compete with gold is what makes this work: a five-series chart still has no gold in it, so a beacon appearing beside it still wins the eye.
