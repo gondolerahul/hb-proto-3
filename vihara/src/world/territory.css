@@ -50,13 +50,15 @@
 
 .tv-road {
   fill: none;
-  stroke: rgba(246, 241, 233, 0.13);
-  stroke-width: 0.2;
+  /* Owner review A4: more muted still. A road is context — it should be
+     legible when looked for and invisible when not. */
+  stroke: rgba(246, 241, 233, 0.075);
+  stroke-width: 0.14;
   stroke-linejoin: round;
   stroke-linecap: round;
   /* Dashed, so a road reads as a route rather than as a drawn line. Kept
      quieter than the built form — a route is context, not subject. */
-  stroke-dasharray: 0.7 0.6;
+  stroke-dasharray: 0.5 0.7;
 }
 
 .tv-road[data-twin] {
@@ -64,8 +66,9 @@
   stroke-dasharray: 0.5 1.3;
 }
 
+/* Owner review A4: signals are much smaller — a moving speck, not a bead. */
 .tv-traffic-dot {
-  fill: rgba(246, 241, 233, 0.55);
+  fill: rgba(246, 241, 233, 0.68);
   offset-distance: 0%;
   animation: tv-travel 4.8s linear infinite;
 }
@@ -156,4 +159,84 @@
   .tv-beacon {
     opacity: 1;
   }
+}
+
+/* ==========================================================================
+   FLAT GROUND LABELS — owner review A2.
+   Real SVG text lying on the floor beside each structure. Sheared by the
+   isometric floor transform, which was never the defect finding RD-1 named:
+   collision and size were. So these are set LARGE, on clear ground, with the
+   paint-order guarantee that they are drawn after their plot.
+   ======================================================================== */
+
+.tv-label {
+  pointer-events: none;
+  /* Text on a floor needs its own separation from the floor, and a stroke reads
+     better than a shadow under a shear — a sheared blur smears along the wrong
+     axis. Paint-order puts the stroke behind the fill so glyph shapes stay true. */
+  paint-order: stroke fill;
+  stroke: rgba(6, 5, 4, 0.85);
+  stroke-linejoin: round;
+}
+
+.tv-label-head {
+  font-family: var(--font-display);
+  font-size: 1.5px;
+  font-weight: 500;
+  letter-spacing: -0.01px;
+  fill: var(--white);
+  stroke-width: 0.34px;
+}
+
+.tv-label-line {
+  font-family: var(--font-mono);
+  font-size: 0.86px;
+  letter-spacing: 0.02px;
+  fill: rgba(246, 241, 233, 0.72);
+  stroke-width: 0.26px;
+}
+
+/* Gold, and only ever "this needs you" (§2.1). */
+.tv-label-callout {
+  font-family: var(--font-mono);
+  font-size: 0.86px;
+  letter-spacing: 0.03px;
+  fill: var(--gold-300);
+  stroke-width: 0.26px;
+}
+
+.tv-label[data-drained] .tv-label-head {
+  fill: #dfe3e7;
+}
+
+.tv-label[data-drained] .tv-label-line {
+  fill: rgba(223, 227, 231, 0.6);
+}
+
+/* A dimmed plot dims its label with it — the hover model is subtractive. */
+.tv-plot[data-dimmed] .tv-label {
+  opacity: 0.3;
+}
+
+/* ==========================================================================
+   THE CAMERA — owner review A3.
+   Pan and zoom move the viewBox, so this is a true vector zoom: hairlines stay
+   hairlines and text stays text. A CSS scale() would resample every edge the
+   material system works to keep sharp.
+   ======================================================================== */
+
+.tv-svg[data-navigable] {
+  cursor: grab;
+  /* The wheel handler is non-passive and calls preventDefault; this stops the
+     browser from also treating a two-finger drag as a page gesture. */
+  touch-action: none;
+}
+
+.tv-svg[data-navigable][data-panning] {
+  cursor: grabbing;
+}
+
+/* While panning, nothing inside should intercept the pointer or animate. */
+.tv-svg[data-panning] .tv-plot {
+  pointer-events: none;
 }

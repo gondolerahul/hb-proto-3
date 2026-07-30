@@ -1,5 +1,5 @@
-import { Fragment, useMemo } from "react";
-import { baseCentre, boxFaces, groundQuad, road, topCentre } from "./iso";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { baseCentre, boxFaces, groundQuad, groundTextTransform, road, topCentre } from "./iso";
 import { SHEEL, buildTerritory, type Plot, type PlotSeed } from "./layout";
 import "./territory.css";
 
@@ -37,10 +37,28 @@ export interface TerritoryProps {
   glasshouse?: boolean;
   /** The Sheel and its roads. Off for the district room's single-plot diorama. */
   sheel?: boolean;
+  /**
+   * Flat ground labels, keyed by plot (owner review A2). Rendered as real SVG
+   * text lying on the floor beside each structure — selectable, in the
+   * accessibility tree, and never over built form.
+   */
+  labels?: Record<string, GroundLabel>;
+  /** Drag to pan, wheel to zoom (owner review A3). */
+  navigable?: boolean;
   hoveredKey?: string | null;
   onHover?: (key: string | null) => void;
   onOpen?: (key: string) => void;
   night?: boolean;
+}
+
+/** One flat ground label: a heading line and up to two detail lines. */
+export interface GroundLabel {
+  heading: string;
+  lines?: string[];
+  /** Rendered in gold — reserved for "this needs you" (§2.1). */
+  callout?: string | null;
+  /** The twin's drained material (art bible §5). */
+  drained?: boolean;
 }
 
 export function Territory({
@@ -48,6 +66,8 @@ export function Territory({
   gatehouses,
   glasshouse = true,
   sheel = true,
+  labels,
+  navigable = false,
   hoveredKey,
   onHover,
   onOpen,
@@ -59,14 +79,24 @@ export function Territory({
   );
 
   const { view } = model;
+  const camera = useCamera(view, navigable);
 
   return (
     <svg
+      ref={camera.ref}
       className="tv-svg"
-      viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+      viewBox={camera.viewBox}
       preserveAspectRatio="xMidYMid meet"
       data-night={night || undefined}
-      role="presentation"
+      data-navigable={navigable || undefined}
+      data-panning={camera.panning || undefined}
+      onPointerDown={camera.onPointerDown}
+      onPointerMove={camera.onPointerMove}
+      onPointerUp={camera.onPointerUp}
+      onPointerCancel={camera.onPointerUp}
+      onDoubleClick={camera.reset}
+      role={navigable ? "application" : "presentation"}
+      aria-label={navigable ? "The estate. Drag to pan, scroll to zoom, double-click to reset." : undefined}
     >
       <defs>
         {/* -------------------------------------------------- face lighting */}
@@ -146,17 +176,22 @@ export function Territory({
       </g>
 
       {/* ============================================================== the plots */}
-      {model.ordered.map((p) => (
-        <PlotView
-          key={p.key}
-          plot={p}
-          hovered={hoveredKey === p.key}
-          dimmed={Boolean(hoveredKey) && hoveredKey !== p.key}
-          night={night}
-          onHover={onHover}
-          onOpen={onOpen}
-        />
-      ))}
+      {model.ordered.map((p) => {
+        const anchor = model.anchors.find((a) => a.key === p.key);
+        return (
+          <PlotView
+            key={p.key}
+            plot={p}
+            hovered={hoveredKey === p.key}
+            dimmed={Boolean(hoveredKey) && hoveredKey !== p.key}
+            night={night}
+            onHover={onHover}
+            onOpen={onOpen}
+            label={labels?.[p.key]}
+            anchor={anchor}
+          />
+        );
+      })}
     </svg>
   );
 }
@@ -168,6 +203,8 @@ function PlotView({
   night,
   onHover,
   onOpen,
+  label,
+  anchor,
 }: {
   plot: Plot;
   hovered: boolean;
@@ -175,6 +212,8 @@ function PlotView({
   night: boolean;
   onHover?: (key: string | null) => void;
   onOpen?: (key: string) => void;
+  label?: GroundLabel;
+  anchor?: TerritoryAnchorLocal;
 }) {
   const twin = Boolean(plot.twin);
   const slab = boxFaces(plot.slab);
@@ -224,6 +263,42 @@ function PlotView({
         fill={twin ? "url(#tv-twin-top)" : "url(#tv-slab-top)"}
       />
 
+      {/* ------------------------------------------------------------ the beacon
+          Owner review A1: narrower, and drawn BEFORE the built form so the
+          buildings occlude it. A shaft the district stands in front of reads as
+          light rising from the place; a shaft in front of the buildings reads as
+          a sticker on top of them. */
+          }
+      {plot.beacon && (
+        <g className="tv-beacon">
+          <ellipse
+            cx={crown[0]}
+            cy={crown[1]}
+            rx={plot.slab.size[0] * 0.62}
+            ry={plot.slab.size[2] * 0.34}
+            fill="url(#tv-beacon-pool)"
+          />
+          <path
+            className="tv-beacon-shaft"
+            d={`M ${crown[0] - 0.34} ${crown[1]} L ${crown[0] - 0.12} ${crown[1] - (tallest + 5.2) * 0.94} L ${crown[0] + 0.12} ${crown[1] - (tallest + 5.2) * 0.94} L ${crown[0] + 0.34} ${crown[1]} Z`}
+            fill="url(#tv-beacon)"
+          />
+          <circle
+            className="tv-beacon-tip"
+            cx={crown[0]}
+            cy={crown[1] - (tallest + 5.2) * 0.94}
+            r={0.5}
+            filter="url(#tv-glow)"
+          />
+          <circle
+            className="tv-beacon-tip-core"
+            cx={crown[0]}
+            cy={crown[1] - (tallest + 5.2) * 0.94}
+            r={0.22}
+          />
+        </g>
+      )}
+
       {/* -------------------------------------------------------- built form */}
       {plot.volumes.map((v, i) => {
         const f = boxFaces(v);
@@ -240,41 +315,171 @@ function PlotView({
         );
       })}
 
-      {/* ------------------------------------------------------------ the beacon */}
-      {plot.beacon && (
-        <g className="tv-beacon">
-          <ellipse
-            cx={crown[0]}
-            cy={crown[1]}
-            rx={plot.slab.size[0] * 1.1}
-            ry={plot.slab.size[2] * 0.62}
-            fill="url(#tv-beacon-pool)"
-          />
-          <path
-            className="tv-beacon-shaft"
-            d={`M ${crown[0] - 0.9} ${crown[1]} L ${crown[0] - 0.3} ${crown[1] - (tallest + 4.6) * 0.94} L ${crown[0] + 0.3} ${crown[1] - (tallest + 4.6) * 0.94} L ${crown[0] + 0.9} ${crown[1]} Z`}
-            fill="url(#tv-beacon)"
-          />
-          <circle
-            className="tv-beacon-tip"
-            cx={crown[0]}
-            cy={crown[1] - (tallest + 4.6) * 0.94}
-            r={0.62}
-            filter="url(#tv-glow)"
-          />
-          <circle
-            className="tv-beacon-tip-core"
-            cx={crown[0]}
-            cy={crown[1] - (tallest + 4.6) * 0.94}
-            r={0.28}
-          />
-        </g>
-      )}
-
       {/* The hover ring. Warm-white, not gold — hovering is not a request. */}
       {interactive && <polygon className="tv-select" points={groundQuad(plot.slab)} />}
+
+      {/* ------------------------------------------------------ the flat label
+          Owner review A2. Real SVG text lying on the floor beside the plot —
+          selectable, in the accessibility tree, and placed on clear ground
+          outside the slab so it can never sit on built form. */}
+      {label && anchor && <GroundLabelText label={label} anchor={anchor} />}
     </g>
   );
+}
+
+type TerritoryAnchorLocal = {
+  labelAt: { x: number; z: number };
+  anchorEnd: boolean;
+};
+
+/** Line advance in world units — successive lines run along world +z. */
+const LINE = 1.15;
+
+function GroundLabelText({
+  label,
+  anchor,
+}: {
+  label: GroundLabel;
+  anchor: TerritoryAnchorLocal;
+}) {
+  const { x, z } = anchor.labelAt;
+  const tf = (dz: number) => groundTextTransform(x, z + dz);
+  // Same transform both ways; only the growth direction differs.
+  const textAnchor = anchor.anchorEnd ? "end" : "start";
+
+  let row = 0;
+  return (
+    <g
+      className="tv-label"
+      data-drained={label.drained || undefined}
+      textAnchor={textAnchor}
+    >
+      <text className="tv-label-head" transform={tf(row * LINE)}>
+        {label.heading}
+      </text>
+      {(label.lines ?? []).map((line) => {
+        row += 1;
+        return (
+          <text className="tv-label-line" key={line} transform={tf(row * LINE)}>
+            {line}
+          </text>
+        );
+      })}
+      {label.callout && (
+        <text className="tv-label-callout" transform={tf((row + 1) * LINE)}>
+          {label.callout}
+        </text>
+      )}
+    </g>
+  );
+}
+
+/**
+ * Drag to pan, wheel to zoom, double-click to reset (owner review A3).
+ *
+ * The camera moves the **viewBox**, not a CSS transform, so zooming is a true
+ * vector zoom: strokes stay hairline-crisp and text stays text at every scale.
+ * A CSS `scale()` would resample the whole drawing and soften every edge the
+ * material system works to keep sharp.
+ *
+ * Zoom is anchored on the pointer, which is the only behaviour that feels like
+ * looking rather than like a slider — the point under the cursor stays put.
+ */
+function useCamera(
+  base: { x: number; y: number; w: number; h: number },
+  enabled: boolean,
+) {
+  const ref = useRef<SVGSVGElement>(null);
+  const [box, setBox] = useState(base);
+  const [panning, setPanning] = useState(false);
+  const drag = useRef<{ px: number; py: number; box: typeof base } | null>(null);
+
+  // A new estate (different districts) reframes rather than keeping a stale pan.
+  useEffect(() => setBox(base), [base.x, base.y, base.w, base.h]);
+
+  const MIN = 0.35; // deepest zoom-in, as a fraction of the framed estate
+  const MAX = 1.8; // furthest out
+
+  const onWheel = useCallback(
+    (e: WheelEvent) => {
+      if (!enabled) return;
+      const svg = ref.current;
+      if (!svg) return;
+      e.preventDefault();
+
+      const rect = svg.getBoundingClientRect();
+      setBox((b) => {
+        const factor = Math.exp(e.deltaY * 0.0014);
+        const scale = b.w / base.w;
+        const next = Math.min(MAX, Math.max(MIN, scale * factor));
+        const w = base.w * next;
+        const h = base.h * next;
+
+        /* Anchor on the pointer. `preserveAspectRatio="xMidYMid meet"` letterboxes,
+           so the mapping from client pixels to user units has to account for the
+           unused margin — using rect directly would drift the anchor point. */
+        const fit = Math.min(rect.width / b.w, rect.height / b.h);
+        const usedW = b.w * fit;
+        const usedH = b.h * fit;
+        const ox = (rect.width - usedW) / 2;
+        const oy = (rect.height - usedH) / 2;
+        const ux = b.x + (e.clientX - rect.left - ox) / fit;
+        const uy = b.y + (e.clientY - rect.top - oy) / fit;
+
+        const kx = (ux - b.x) / b.w;
+        const ky = (uy - b.y) / b.h;
+        return { x: ux - kx * w, y: uy - ky * h, w, h };
+      });
+    },
+    [enabled, base.w, base.h],
+  );
+
+  // Non-passive, because a passive wheel listener cannot preventDefault and the
+  // page would scroll underneath the zoom.
+  useEffect(() => {
+    const svg = ref.current;
+    if (!svg || !enabled) return;
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [onWheel, enabled]);
+
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!enabled || e.button !== 0) return;
+    drag.current = { px: e.clientX, py: e.clientY, box };
+    setPanning(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    const svg = ref.current;
+    if (!d || !svg) return;
+    const rect = svg.getBoundingClientRect();
+    const fit = Math.min(rect.width / d.box.w, rect.height / d.box.h);
+    setBox({
+      ...d.box,
+      x: d.box.x - (e.clientX - d.px) / fit,
+      y: d.box.y - (e.clientY - d.py) / fit,
+    });
+  };
+
+  const onPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    drag.current = null;
+    setPanning(false);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  return {
+    ref,
+    viewBox: `${box.x.toFixed(2)} ${box.y.toFixed(2)} ${box.w.toFixed(2)} ${box.h.toFixed(2)}`,
+    panning,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    reset: () => setBox(base),
+  };
 }
 
 /**
@@ -293,7 +498,7 @@ function Traffic({ path, rate, plotKey }: { path: string; rate: number; plotKey:
         <circle
           key={`${plotKey}-${i}`}
           className="tv-traffic-dot"
-          r={0.26}
+          r={0.14}
           style={{
             ["offsetPath" as string]: `path("${path}")`,
             animationDelay: `${(i / count) * 4.8}s`,

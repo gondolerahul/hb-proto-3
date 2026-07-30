@@ -143,3 +143,36 @@ export function extentOf(points: Pt[], pad = 5): { x: number; y: number; w: numb
   const maxY = Math.max(...ys) + pad;
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
+
+/**
+ * The transform that lays flat text on the ground plane.
+ *
+ * Owner review A2 (2026-07-30) reversed the screen-space label decision, and
+ * correctly: finding **RD-1** was that labels were *skewed AND overlapping AND
+ * illegible*, not that they were flat. The inspiration set labels flat on the
+ * ground and reads beautifully. So labels lie on the floor again — but on
+ * **clear ground beside** the structure rather than under it, at reading size,
+ * and as real SVG `<text>` so they stay selectable and in the accessibility
+ * tree. Skew was never the defect; collision and size were.
+ *
+ * The matrix maps local text space onto the floor: the text's own +x runs along
+ * world **+x**, and its +y (downward, i.e. successive lines) runs along world
+ * **+z**. That is the standard isometric floor-decal transform.
+ */
+export function groundTextTransform(x: number, z: number, scale = 1): string {
+  const [tx, ty] = proj(x, 0, z);
+  const a = ISO.ax * scale;
+  const b = ISO.ay * scale;
+  return `matrix(${a} ${b} ${-a} ${b} ${tx.toFixed(2)} ${ty.toFixed(2)})`;
+}
+
+/*
+ * There is deliberately no mirrored variant.
+ *
+ * A second matrix that flips an axis produces text with a negative reading
+ * direction — it renders backwards, which is exactly what the first attempt at
+ * this did. Labels that need to grow the other way keep THIS transform and set
+ * `text-anchor: end` instead: the glyphs still run left-to-right, the block just
+ * extends from its anchor in the other direction. One transform, one reading
+ * direction, no mirrored text possible.
+ */

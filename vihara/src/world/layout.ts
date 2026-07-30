@@ -176,11 +176,23 @@ import { extentOf, proj, topCentre, type Pt } from "./iso";
 
 export interface TerritoryAnchor {
   key: string;
-  /** Screen-space point in viewBox units, for the DOM label layer. */
+  /** Screen-space point in viewBox units — kept for hit-testing and hover. */
   at: Pt;
+  /**
+   * Where the flat ground label starts, in WORLD coords (owner review A2).
+   * Clear ground beside the plot, never under its built form.
+   */
+  labelAt: { x: number; z: number };
+  /**
+   * The label block grows *leftward* from its anchor (`text-anchor: end`).
+   * Set for plots left of the centre line, so a label always extends away from
+   * the estate rather than back across it. The transform is the same either way
+   * — see the note in iso.ts about why there is no mirrored matrix.
+   */
+  anchorEnd: boolean;
   beacon: boolean;
   twin: boolean;
-  /** Which side of its plot the label should sit on. */
+  /** Which side of its plot the label sits on. */
   side: "above" | "below";
 }
 
@@ -223,6 +235,48 @@ export function buildTerritory(
   // roads. The room shows a place, not the estate.
   const plots = sheel ? [SHEEL, ...ring, ...gates, ...twin] : [...ring, ...gates, ...twin];
 
+  /**
+   * The flat ground label sits on clear ground **outside** the slab, pushed along
+   * the plot's own outward vector by half the slab plus a margin. That guarantees
+   * it never lands on built form — which was half of finding RD-1, and the half
+   * owner review A2 kept when it asked for flat labels back.
+   *
+   * Deterministic, and needing no measurement pass: resolving collisions from
+   * measured text boxes would reflow the estate on every font load.
+   */
+  const OUT = 3.4;
+  const LABEL_GAP = 2.1;
+  const anchors: TerritoryAnchor[] = [...ring, ...gates, ...twin].map((p) => {
+    const [ox, oz] = p.outward;
+    const c = p.slab;
+    const at = topCentre({
+      at: [c.at[0] + ox * OUT, c.at[1], c.at[2] + oz * OUT],
+      size: c.size,
+    });
+    // Only truly near-edge plots label downward.
+    const side: "above" | "below" = oz > 0.6 ? "below" : "above";
+
+    const halfW = c.size[0] / 2;
+    const halfD = c.size[2] / 2;
+    const cx = c.at[0] + halfW;
+    const cz = c.at[2] + halfD;
+
+    return {
+      key: p.key,
+      at,
+      labelAt: {
+        x: cx + ox * (halfW + LABEL_GAP),
+        z: cz + oz * (halfD + LABEL_GAP),
+      },
+      // Plots left of the centre line grow their label leftward, so it extends
+      // away from the estate instead of back across it.
+      anchorEnd: cx < -1,
+      beacon: p.beacon,
+      twin: Boolean(p.twin),
+      side,
+    };
+  });
+
   const corners: Pt[] = plots.flatMap((p) => {
     const [x, y, z] = p.slab.at;
     const [w, , d] = p.slab.size;
@@ -238,24 +292,22 @@ export function buildTerritory(
   });
 
   /**
-   * Labels are pushed along their plot's `outward` vector before projection, so a
-   * ring of plots becomes a ring of labels rather than a pile in the middle. This
-   * is deterministic and needs no measurement pass — the alternative, resolving
-   * collisions from measured DOM boxes, would reflow on every font load.
+   * Labels are part of the drawing, so they are part of the frame.
+   *
+   * A flat label is long in world units — a twenty-character heading at display
+   * size runs about as far as two slabs — so framing on the plots alone pushes
+   * labels off the canvas. `LABEL_RUN` is sized for the longest line the Terrace
+   * actually sets (~26 characters); pushing it much higher shrinks the estate to
+   * make room for whitespace, which is the failure mode of the first attempt.
+   * Callers keep their label lines short — that is the constraint, not a hint.
    */
-  const OUT = 3.4;
-  const anchors: TerritoryAnchor[] = [...ring, ...gates, ...twin].map((p) => {
-    const [ox, oz] = p.outward;
-    const c = p.slab;
-    const at = topCentre({
-      at: [c.at[0] + ox * OUT, c.at[1], c.at[2] + oz * OUT],
-      size: c.size,
-    });
-    // Only truly near-edge plots (the gatehouse row) label downward — a ring
-    // plot at 30° labelled "below" runs into the near row and the shell footer.
-    const side: "above" | "below" = oz > 0.6 ? "below" : "above";
-    return { key: p.key, at, beacon: p.beacon, twin: Boolean(p.twin), side };
-  });
+  const LABEL_RUN = 12.5;
+  const LABEL_DROP = 3.4;
+  for (const a of anchors) {
+    const { x, z } = a.labelAt;
+    const run = a.anchorEnd ? -LABEL_RUN : LABEL_RUN;
+    corners.push(proj(x, 0, z), proj(x + run, 0, z + LABEL_DROP));
+  }
 
   return {
     plots,

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import { Icon } from "../components/Icon";
-import { Territory, buildTerritory } from "../world/Territory";
+import { Territory, type GroundLabel } from "../world/Territory";
 import type { PlotSeed } from "../world/layout";
 import { COMPANY, DISTRICTS, STILL } from "../fixtures/estate";
 import "./terrace.css";
@@ -8,19 +7,25 @@ import "./terrace.css";
 /**
  * The Terrace · depth 1 · W (+S) (D6 §3).
  *
- * The estate seen whole. This is the surface finding **RD-1** damaged worst — its
- * labels were painted onto the ground plane and were unreadable — so the
- * architecture here is the fix:
+ * The estate seen whole.
  *
- *   - `Territory` draws **geometry only**. Not one glyph.
- *   - This component lays **DOM labels** over it, positioned by projecting each
- *     plot's anchor through the same isometric transform. Upright, selectable, in
- *     the accessibility tree, and legible at every zoom.
+ * **Owner review A2 reversed the label decision, and was right to.** Finding
+ * RD-1 was that labels were skewed AND colliding AND too small to read — three
+ * defects that arrived together, so "flat" got blamed for what collision and
+ * size did. The inspiration set labels flat on the ground and reads beautifully.
  *
- * The label layer is positioned in `viewBox` percentages rather than pixels, so
- * it tracks the SVG's `preserveAspectRatio` fit without a resize observer or a
- * per-frame projection. That is the whole trick, and it is why this needs no
- * WebGL to be correct.
+ * So the labels lie on the floor again, with the two real defects fixed
+ * structurally rather than by taste:
+ *
+ *   - **They cannot collide with built form.** `buildTerritory` places each label
+ *     on clear ground *outside* its slab, along the plot's own outward vector.
+ *   - **They are set to be read.** Heading at display size, at most two detail
+ *     lines, stroked against the floor so glyphs keep their edges under shear.
+ *   - **They are still real text** — SVG `<text>`, so selectable and in the
+ *     accessibility tree. Flatness was never what cost accessibility.
+ *
+ * The KPI's full sentence moved into the district room: a flat label is legible
+ * in proportion to how little of it there is.
  *
  * **Weather** (spec §4) is one sentence, not an icon field. Five states, each a
  * texture + a sentence; the sentence is what a person acts on.
@@ -65,18 +70,43 @@ export function TerraceSurface({
 
   const gatehouses = useMemo(() => Object.keys(GATEHOUSE_LABEL), []);
 
-  const { anchors, view } = useMemo(
-    () => buildTerritory(seeds, gatehouses, true),
-    [seeds, gatehouses],
-  );
-
-  /** viewBox units → percentage of the SVG's box, so labels track its fit. */
-  const pct = (p: readonly [number, number]) => ({
-    left: `${((p[0] - view.x) / view.w) * 100}%`,
-    top: `${((p[1] - view.y) / view.h) * 100}%`,
-  });
-
   const byCode = useMemo(() => new Map(DISTRICTS.map((d) => [d.code, d])), []);
+
+  /**
+   * Flat ground labels (owner review A2). Every glyph on the territory is now
+   * SVG text lying on the floor beside its structure — the register the
+   * inspiration set uses, and still real selectable text.
+   *
+   * Kept to three short lines: a heading, one detail line, and the gold callout
+   * only when a hand is actually raised. A flat label is legible in proportion
+   * to how little of it there is, so the KPI's full sentence moves into the
+   * district room rather than lying on the floor here.
+   */
+  const labels = useMemo<Record<string, GroundLabel>>(() => {
+    /* Lines stay under ~26 characters. `LABEL_RUN` in layout.ts frames the
+       estate against that budget, so a long line here does not just overflow —
+       it shrinks the whole territory to make room for itself. */
+    const out: Record<string, GroundLabel> = {};
+    for (const d of DISTRICTS) {
+      out[d.code] = {
+        heading: d.name,
+        lines: [
+          `${d.code} · ${d.kpi.figure} ${d.kpi.drift === "flat" ? "steady" : d.kpi.drift}`,
+        ],
+        callout: d.handsRaised > 0 ? "needs you" : null,
+      };
+    }
+    for (const [key, name] of Object.entries(GATEHOUSE_LABEL)) {
+      out[key] = { heading: name, lines: [key.toUpperCase()] };
+    }
+    out["glasshouse"] = {
+      heading: "The Glasshouse",
+      lines: ["simulation · not yet real"],
+      drained: true,
+    };
+    return out;
+  }, []);
+
   const totalHands = DISTRICTS.reduce((n, d) => n + d.handsRaised, 0);
 
   return (
@@ -110,107 +140,14 @@ export function TerraceSurface({
           <Territory
             districts={seeds}
             gatehouses={gatehouses}
+            labels={labels}
+            navigable
             hoveredKey={hovered}
             onHover={setHovered}
             onOpen={(key) => byCode.has(key) && onOpenDistrict(key)}
             night={night}
           />
 
-          {/* ------------------------------------------------- the DOM label layer
-              Every glyph on this surface is here, in screen space. */}
-          <div className="te-labels">
-            {anchors.map((a) => {
-              const d = byCode.get(a.key);
-              const isGate = a.key in GATEHOUSE_LABEL;
-
-              if (a.twin) {
-                return (
-                  <div
-                    className="te-label te-label-twin"
-                    key={a.key}
-                    style={pct(a.at)}
-                    data-side={a.side}
-                  >
-                    <span className="t-eyebrow">SIMULATION</span>
-                    <span className="te-label-name t-display">The Glasshouse</span>
-                    <span className="t-mono te-label-sub">nothing here can touch the real</span>
-                  </div>
-                );
-              }
-
-              if (isGate) {
-                return (
-                  <div
-                    className="te-label te-label-gate"
-                    key={a.key}
-                    style={pct(a.at)}
-                    data-side={a.side}
-                  >
-                    <span className="t-eyebrow">{a.key.toUpperCase()}</span>
-                    <span className="te-label-gate-name">{GATEHOUSE_LABEL[a.key]}</span>
-                  </div>
-                );
-              }
-
-              if (!d) return null;
-
-              return (
-                <button
-                  className="te-label te-label-district"
-                  key={a.key}
-                  style={pct(a.at)}
-                  data-side={a.side}
-                  data-hovered={hovered === a.key || undefined}
-                  data-dimmed={(hovered && hovered !== a.key) || undefined}
-                  onMouseEnter={() => setHovered(a.key)}
-                  onMouseLeave={() => setHovered(null)}
-                  onFocus={() => setHovered(a.key)}
-                  onBlur={() => setHovered(null)}
-                  onClick={() => onOpenDistrict(a.key)}
-                >
-                  <span className="t-eyebrow">
-                    {d.code} · {d.quarter.toUpperCase()}
-                  </span>
-                  <span className="te-label-name t-display">{d.name}</span>
-
-                  <span className="te-label-kpi">
-                    <span className="te-label-figure">{d.kpi.figure}</span>
-                    <span className="te-label-drift" data-drift={d.kpi.drift}>
-                      <span
-                        className="m-lamp"
-                        data-positive={d.kpi.drift === "ahead" || undefined}
-                        data-negative={d.kpi.drift === "behind" || undefined}
-                      />
-                      {d.kpi.label}
-                    </span>
-                  </span>
-
-                  <span className="te-label-foot t-mono">
-                    {d.colleagues.length}{" "}
-                    {d.colleagues.length === 1 ? "colleague" : "colleagues"} ·{" "}
-                    {d.signalsPerHour}/h
-                    {d.handsRaised > 0 && (
-                      <span className="te-label-hand">
-                        <span className="m-lamp" data-lit data-breathing />
-                        needs you
-                      </span>
-                    )}
-                  </span>
-
-                  <span className="te-label-enter" aria-hidden="true">
-                    <Icon name="forward" size={12} />
-                  </span>
-                </button>
-              );
-            })}
-
-            {/* The Sheel gets a mark, not a card — it is the centre, not a place
-                you go. */}
-            <div className="te-label te-label-sheel" style={pct([0, 0])}>
-              <span className="t-eyebrow">THE PULSE</span>
-              <span className="te-label-sheel-name">Sheel</span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -219,7 +156,7 @@ export function TerraceSurface({
         <p className="te-foot-still t-narrative">
           {STILL.headline} <span className="t-subtle">{"—"} </span>
           <span className="t-muted">
-            drag to look, scroll to zoom, or pick a quarter to walk into it.
+            drag to pan, scroll to zoom, double-click to reframe — or pick a quarter to walk into it.
           </span>
         </p>
         <div className="te-foot-hops">
