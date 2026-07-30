@@ -19,7 +19,29 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
-import type { EstateSnapshot } from "./layout";
+/** Surface-printed lettering (§13: names print on the ground, never
+ * billboard) — a canvas texture on a flat plane. */
+function useNamePlate(text: string): THREE.CanvasTexture | null {
+  return useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1024;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) return null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = "500 58px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "rgba(246, 241, 233, 0.85)";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    const spaced = text.toUpperCase().split("").join("  ");
+    ctx.fillText(spaced, canvas.width / 2, canvas.height / 2, canvas.width - 40);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.anisotropy = 4;
+    return texture;
+  }, [text]);
+}
+
+import type { EstateSnapshot, PlacedGatehouse } from "./layout";
 import { placeTerritory, type PlacedDistrict, type Road } from "./layout";
 
 const GOLD = "#edab48";
@@ -50,7 +72,7 @@ export default function WorldTerrace({
     <Canvas
       shadows={quality === "full"}
       dpr={quality === "full" ? [1, 2] : [0.5, 1]}
-      camera={{ position: [0, 16, 24], fov: 42 }}
+      camera={{ position: [0, 14, 19], fov: 44 }}
       onCreated={({ gl }) => {
         gl.domElement.addEventListener("webglcontextlost", (event) => {
           event.preventDefault();
@@ -79,6 +101,18 @@ export default function WorldTerrace({
         castShadow={quality === "full"}
       />
       <EnergyFloor bounds={layout.bounds} />
+      {/* Sheel — the hub's pulse: a soft pool of light where the roads
+          meet. Light, never gold (§13). */}
+      <pointLight
+        position={[0, 1.4, 0]}
+        intensity={0.7}
+        color={WARM_WHITE}
+        distance={9}
+      />
+      <mesh position={[0, 0.12, 0]}>
+        <sphereGeometry args={[0.09, 12, 12]} />
+        <meshBasicMaterial color={WARM_WHITE} />
+      </mesh>
       {layout.roads.map((road, index) => (
         <RoadStrip key={index} road={road} />
       ))}
@@ -91,15 +125,7 @@ export default function WorldTerrace({
         />
       ))}
       {layout.gatehouses.map((gatehouse) => (
-        <group
-          key={gatehouse.gateway_code}
-          position={[gatehouse.position[0], 0, gatehouse.position[1]]}
-        >
-          <mesh position={[0, 0.25, 0]}>
-            <boxGeometry args={[1.6, 0.5, 1.2]} />
-            <meshStandardMaterial color={SURFACE} />
-          </mesh>
-        </group>
+        <Gatehouse key={gatehouse.gateway_code} gatehouse={gatehouse} />
       ))}
       {layout.beacons.map((beacon) => (
         <Beacon
@@ -145,19 +171,19 @@ function EnergyFloor({ bounds }: { bounds: number }): JSX.Element {
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
-        <planeGeometry args={[bounds * 2.4, bounds * 2.4]} />
+        <planeGeometry args={[bounds * 4, bounds * 4]} />
         <meshStandardMaterial color={INK} />
       </mesh>
       {/* The glow is light, never gold (§13) — a warm-white grid, faint. */}
       <gridHelper
-        args={[bounds * 2.4, 48, WARM_WHITE, WARM_WHITE]}
+        args={[bounds * 4, 96, WARM_WHITE, WARM_WHITE]}
         position={[0, -0.04, 0]}
       >
         <meshBasicMaterial
           attach="material"
           color={WARM_WHITE}
           transparent
-          opacity={0.07}
+          opacity={0.1}
         />
       </gridHelper>
     </group>
@@ -177,15 +203,28 @@ function DistrictSite({
   const height = 0.9 + district.colleagues.length * 0.35;
   const [x, z] = district.position;
   const float = hover ? 0.55 : 0.35;
+  const namePlate = useNamePlate(district.name);
+
+  // The wireframe look is carried by EDGES, not faces: a lit hairline
+  // around the plinth and the volume reads at night where a translucent
+  // face alone goes black (POLISH L4).
+  const volumeEdges = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(2.1, height, 2.1)),
+    [height],
+  );
+  const plinthEdges = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(2.6, 0.3, 2.6)),
+    [],
+  );
 
   return (
     <group position={[x, 0, z]}>
       {/* Light beneath sells the float (§13). */}
       <pointLight
         position={[0, 0.12, 0]}
-        intensity={hover ? 0.9 : 0.4}
+        intensity={hover ? 1.1 : 0.6}
         color={WARM_WHITE}
-        distance={3.2}
+        distance={3.6}
       />
       {lampIntensity > 0.5 && (
         <pointLight
@@ -208,22 +247,87 @@ function DistrictSite({
         <boxGeometry args={[2.6, 0.3, 2.6]} />
         <meshStandardMaterial color={SURFACE} />
       </mesh>
+      <lineSegments position={[0, float, 0]} geometry={plinthEdges}>
+        <lineBasicMaterial
+          color={WARM_WHITE}
+          transparent
+          opacity={hover ? 0.5 : 0.32}
+        />
+      </lineSegments>
       {/* The holographic volume: translucent warm glass … */}
       <mesh position={[0, float + 0.15 + height / 2, 0]}>
         <boxGeometry args={[2.1, height, 2.1]} />
         <meshStandardMaterial
           color={WARM_WHITE}
           transparent
-          opacity={0.09}
+          opacity={0.14}
           depthWrite={false}
         />
       </mesh>
+      <lineSegments
+        position={[0, float + 0.15 + height / 2, 0]}
+        geometry={volumeEdges}
+      >
+        <lineBasicMaterial
+          color={WARM_WHITE}
+          transparent
+          opacity={hover ? 0.55 : 0.38}
+        />
+      </lineSegments>
       {/* … with the ghost wireframe scaffold above the solid mass. */}
       <mesh position={[0, float + 0.15 + height + 0.35, 0]}>
         <boxGeometry args={[2.1, 0.6, 2.1]} />
-        <meshBasicMaterial color={WARM_WHITE} wireframe transparent opacity={0.18} />
+        <meshBasicMaterial color={WARM_WHITE} wireframe transparent opacity={0.22} />
       </mesh>
+      {/* The name, printed on the ground at the world's own perspective. */}
+      {namePlate !== null && (
+        <mesh position={[0, 0.02, 2.15]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[3.6, 0.45]} />
+          <meshBasicMaterial
+            map={namePlate}
+            transparent
+            opacity={hover ? 0.95 : 0.75}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
       <Weather state={district.weather.state} height={float + height + 1.4} />
+    </group>
+  );
+}
+
+/** A gatehouse at the estate's edge — where a channel crosses the wall.
+ * Same construction language at smaller scale (§13). */
+function Gatehouse({
+  gatehouse,
+}: {
+  gatehouse: PlacedGatehouse;
+}): JSX.Element {
+  const namePlate = useNamePlate(gatehouse.channel);
+  const edges = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(1.6, 0.5, 1.2)),
+    [],
+  );
+  return (
+    <group position={[gatehouse.position[0], 0, gatehouse.position[1]]}>
+      <mesh position={[0, 0.25, 0]}>
+        <boxGeometry args={[1.6, 0.5, 1.2]} />
+        <meshStandardMaterial color={SURFACE} />
+      </mesh>
+      <lineSegments position={[0, 0.25, 0]} geometry={edges}>
+        <lineBasicMaterial color={WARM_WHITE} transparent opacity={0.3} />
+      </lineSegments>
+      {namePlate !== null && (
+        <mesh position={[0, 0.02, 1.15]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[2.6, 0.33]} />
+          <meshBasicMaterial
+            map={namePlate}
+            transparent
+            opacity={0.55}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -299,7 +403,7 @@ function RoadStrip({ road }: { road: Road }): JSX.Element {
         <meshBasicMaterial
           color={WARM_WHITE}
           transparent
-          opacity={0.05 + road.intensity * 0.08}
+          opacity={0.12 + road.intensity * 0.12}
         />
       </mesh>
       {road.intensity > 0 && (

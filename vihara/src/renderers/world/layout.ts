@@ -193,20 +193,24 @@ export function placeTerritory(estate: EstateSnapshot): TerritoryLayout {
   }));
 
   const phase = estate.estate.phase === "night" ? "night" : "day";
+  // Night is the brand's default look and must be READABLE, not void —
+  // the wireframe's night renders every ghost volume clearly (POLISH L4;
+  // the first screenshot round found a black screen). Day–night stays a
+  // luminance shift, but the night floor is lifted well off zero.
   const lighting: Lighting =
     phase === "day"
       ? {
           phase,
           keyIntensity: 1.6,
           keyColor: "#fff3dc",
-          ambientIntensity: 0.5,
+          ambientIntensity: 0.55,
           lampIntensity: 0.15,
         }
       : {
           phase,
-          keyIntensity: 0.25,
+          keyIntensity: 0.5,
           keyColor: "#fff3dc",
-          ambientIntensity: 0.12,
+          ambientIntensity: 0.38,
           lampIntensity: 1.1,
         };
 

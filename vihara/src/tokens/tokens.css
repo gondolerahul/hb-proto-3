@@ -29,13 +29,25 @@
   --energy-floor: rgba(255, 253, 249, 0.05);
 }
 
-/* Minimal shell chrome for the substrate; surfaces style themselves. */
-html,
+/* Minimal shell chrome for the substrate; surfaces style themselves.
+ *
+ * The canvas background lives on <html> ONLY. The atmosphere layer
+ * (POLISH P2) is a fixed z-index:-1 element, which paints above the
+ * root canvas but BELOW any in-flow ancestor background — so an opaque
+ * body (the DS default, and this file's own first version) covers the
+ * floor, the vignette and the watermark completely, everywhere, and
+ * nothing looks "broken", just flat. Found by screenshot, 2026-07-30. */
+html {
+  background: var(--bg);
+}
 body {
   margin: 0;
-  background: var(--bg);
+  background: transparent;
   color: var(--fg, var(--ink-50));
   font-family: var(--font-body, "Hanken Grotesk", sans-serif);
+}
+#root {
+  background: transparent;
 }
 
 .vihara-shell {

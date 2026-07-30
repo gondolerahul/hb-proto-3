@@ -28,16 +28,19 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 
 import { luminanceAt } from "../../atmosphere/scene";
 
-const LIGHT_WARM = new THREE.Vector3(0.3, 0.28, 0.25);
-const LIGHT_BRIGHT = new THREE.Vector3(0.42, 0.4, 0.36);
+const LIGHT_WARM = new THREE.Vector3(0.38, 0.35, 0.3);
+const LIGHT_BRIGHT = new THREE.Vector3(0.48, 0.45, 0.38);
 const TILE_COLOR = new THREE.Color("#0b0a08");
 const BACKGROUND_COLOR = new THREE.Color("#060505");
 
+// The legacy grid density: the field must outrun the light plane and the
+// fog horizon, or the bare shader plane glows past the far edge of the
+// tiles (found by screenshot — a bright scalloped band across the top).
 const HEX_RADIUS = 0.2;
 const HEX_HEIGHT = 0.2;
 const GAP = 0.03;
-const GRID_ROWS = 48;
-const GRID_COLS = 84;
+const GRID_ROWS = 60;
+const GRID_COLS = 105;
 
 const FPS_FLOOR_MS = 33;
 const BREACH_FRAMES = 90;
@@ -141,16 +144,21 @@ export default function AtmosphereFloor({
     const container = containerRef.current;
     if (container === null) return;
 
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    // Sized to the container (the lower viewport band), not the window.
+    const width = container.clientWidth || window.innerWidth;
+    const height = container.clientHeight || window.innerHeight;
 
     const scene = new THREE.Scene();
     scene.background = BACKGROUND_COLOR;
-    scene.fog = new THREE.Fog(0x000000, 10, 40);
+    // The horizon: the far half of the frame dissolves into the vignette
+    // rather than showing the field's edge.
+    scene.fog = new THREE.Fog(0x000000, 8, 26);
 
+    // Slightly higher horizon than the legacy scene — the floor band
+    // reaches ~40% up the frame, like the wireframes' floorwrap.
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
-    camera.position.set(0, 9, 7);
-    camera.lookAt(0, -8, -6);
+    camera.position.set(0, 8, 10);
+    camera.lookAt(0, -5, -9);
 
     let renderer: THREE.WebGLRenderer;
     try {
@@ -168,11 +176,13 @@ export default function AtmosphereFloor({
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
+    // Bloom kept LOW: the estate's light is calm; the legacy "lava"
+    // intensity read as harsh against the still line (screenshot round).
     const bloom = new UnrealBloomPass(
       new THREE.Vector2(width, height),
-      0.55,
-      0.4,
-      0.1,
+      0.25,
+      0.35,
+      0.2,
     );
     composer.addPass(bloom);
 
@@ -190,12 +200,15 @@ export default function AtmosphereFloor({
         colorB: { value: LIGHT_BRIGHT },
       },
     });
+    // Kept just inside the tile field's extent (105 cols ≈ 31.5 units)
+    // so the light only ever shows through the gaps, never past the edge —
+    // and pulled slightly toward the camera so the whole visible band is lit.
     const energyFloor = new THREE.Mesh(
-      new THREE.PlaneGeometry(80, 80),
+      new THREE.PlaneGeometry(34, 26),
       planeMaterial,
     );
     energyFloor.rotation.x = -Math.PI / 2;
-    energyFloor.position.y = -0.1;
+    energyFloor.position.set(0, -0.1, -1);
     scene.add(energyFloor);
 
     // The matte tiles.
@@ -329,8 +342,8 @@ export default function AtmosphereFloor({
     animate();
 
     const onResize = (): void => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || window.innerHeight;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);

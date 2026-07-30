@@ -80,7 +80,7 @@ export function startFloor(
       const x = blob.x + Math.sin(elapsed * blob.dx + blob.phase) * 150;
       const y = blob.y + Math.cos(elapsed * blob.dy + blob.phase) * 95;
       const gradient = ctx.createRadialGradient(x, y, 0, x, y, blob.r);
-      const alpha = (blob.bright ? 0.26 : 0.22) * lum.glow;
+      const alpha = (blob.bright ? 0.36 : 0.3) * lum.glow;
       gradient.addColorStop(0, `rgba(${FLOOR.light},${alpha})`);
       gradient.addColorStop(1, `rgba(${FLOOR.light},0)`);
       ctx.fillStyle = gradient;
