@@ -173,6 +173,50 @@ Direction **C is procedurally generatable in SVG from the entity id**, which mea
 
 The honest counter is that seals are cold, and spec §5's dossier and one-on-one surfaces are built on the premise that you *meet* a colleague. A room of seals is a filing cabinet.
 
+### 7.2a RESOLVED 2026-07-30 — direction A ships, and it was never blocked
+
+> **Owner review:** the procedural halftone bust was not personified enough. It
+> read as a *figure*, not a *person* — and a generic silhouette cannot carry a
+> name. Direction **A** is now generated for real.
+
+Charter decision 8 recorded the A rasters as "blocked on working ADC or the
+owner's own image tool". **They were not blocked.** The user ADC is expired and
+cannot refresh non-interactively, but the VM has an *attached service account*
+(`hirebuddha-vertex-ai`, cloud-platform scope) on the metadata server — the path
+`backend/.env` already documents and the backend already uses. Twelve portraits
+drawn on `imagen-4.0-generate-001` via `vihara/scripts/portraits.py`.
+
+What is reused unchanged, because it was reviewed: the **STYLE block byte-identical**
+and **T4 luminous**, the treatment picked from four on 2026-07-29. What changed is
+only the cast — the pre-redesign personas were written per *role*, and the
+redesign's colleagues are named people whose ids mean something else, so reusing
+those assets would have put a bespectacled bookkeeper's face on Meera in
+Collections.
+
+Three properties the pipeline holds, and the reasons:
+
+1. **One locked style block.** Twelve figures start from the same bytes, so the cast reads as one house rather than as twelve prompts. A persona adds silhouette only — build, hair, one garment, because that is what a dot lattice carries.
+2. **The tracer has no style opinion.** Dot presence, size and shade all come from the model's own luminance. If a portrait looks wrong the fix is its prompt, never the tracer — otherwise the *medium* drifts per portrait and §7's disclosure-by-medium stops being one medium.
+3. **A promoted portrait does not change by accident.** `promote` refuses to overwrite without `--force`, and `public/portraits/manifest.json` records what was drawn and from which persona.
+
+**Two sizing findings worth keeping.** The tracer must crop to content — Imagen
+centres the bust in a wide black margin, and tracing the raw square spends a third
+of the lattice on empty ground. And a 112-dot lattice **greys out below ~56px**,
+where its dots fall under a device pixel: every portrait therefore grew wherever
+the person is the subject. That is a sizing fix rather than a medium fix — at 38px
+a face is too small whatever it is made of.
+
+**Direction C is unchanged and still load-bearing.** `components/Seal.tsx` is what
+an entity with no persona gets — a gateway, a connector, a Meta-Agent role, a newly
+seeded agent — and the procedural bust remains the floor for any id with no drawn
+asset, so nothing is ever portrait-less and adding a colleague cannot break a
+surface while it waits for an art run.
+
+**One consequence beyond portraits, found in the Library.** Once the halftone means
+*"this is a synthetic agent"*, its **absence means "human"** — so the tenant gets
+neither a bust nor a seal, only their name. Hanging one on a person would run the
+L7 disclosure backwards while looking entirely deliberate.
+
 **Resolved at R1 (2026-07-29): the seal stays the fallback, not the floor.** The owner chose direction A as the house style with C as the automatic fallback — the recommendation as written. A colleague with a defined persona gets a halftone bust; everything else gets a seal, so nothing is ever portrait-less and nothing waits on an art pipeline. The raster round for the A busts remains a **pre-G1 obligation** (charter decision 8), blocked on working ADC or the owner's own image tool.
 
 ### 7.1a The busts are BUILT (2026-07-29) — the production record
