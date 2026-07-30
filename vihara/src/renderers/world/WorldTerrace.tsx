@@ -19,28 +19,8 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
-/** Surface-printed lettering (§13: names print on the ground, never
- * billboard) — a canvas texture on a flat plane. */
-function useNamePlate(text: string): THREE.CanvasTexture | null {
-  return useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1024;
-    canvas.height = 128;
-    const ctx = canvas.getContext("2d");
-    if (ctx === null) return null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "500 58px 'JetBrains Mono', monospace";
-    ctx.fillStyle = "rgba(246, 241, 233, 0.85)";
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    const spaced = text.toUpperCase().split("").join("  ");
-    ctx.fillText(spaced, canvas.width / 2, canvas.height / 2, canvas.width - 40);
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.anisotropy = 4;
-    return texture;
-  }, [text]);
-}
 
+import { useNamePlate } from "./plates";
 import type { EstateSnapshot, PlacedGatehouse } from "./layout";
 import { placeTerritory, type PlacedDistrict, type Road } from "./layout";
 
@@ -139,7 +119,7 @@ export default function WorldTerrace({
 
 /** 90 frames below the floor inside a 5s window (D7 §3.2) — long enough
  * that one scroll hitch does not demote a working device. */
-function FrameWatchdog({
+export function FrameWatchdog({
   floorFps,
   onSustainedBreach,
 }: {

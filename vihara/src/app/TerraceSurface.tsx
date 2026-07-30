@@ -24,7 +24,7 @@ const WorldTerrace = lazy(() => import("../renderers/world/WorldTerrace"));
 export function TerraceSurface({
   onEnterDistrict,
 }: {
-  onEnterDistrict: (code: string) => void;
+  onEnterDistrict: (code: string, name?: string) => void;
 }): JSX.Element {
   const [tier, setTier] = useState<DeviceTier | null>(null);
   const [mode, setMode] = useState<"map" | "sheet">("map");
@@ -113,7 +113,12 @@ export function TerraceSurface({
               <WorldTerrace
                 estate={live.estate}
                 quality={tier === "A" ? "full" : "reduced"}
-                onEnterDistrict={onEnterDistrict}
+                onEnterDistrict={(code) => {
+                  const district = live.estate.districts.find(
+                    (candidate) => candidate.process_code === code,
+                  );
+                  onEnterDistrict(code, district?.name);
+                }}
                 onSustainedBreach={() =>
                   setOffer("this is running slowly — would you rather have the list?")
                 }
@@ -134,7 +139,9 @@ export function TerraceSurface({
               <button
                 key={district.process_code}
                 type="button"
-                onClick={() => onEnterDistrict(district.process_code)}
+                onClick={() =>
+                  onEnterDistrict(district.process_code, district.name)
+                }
               >
                 {district.name}
               </button>

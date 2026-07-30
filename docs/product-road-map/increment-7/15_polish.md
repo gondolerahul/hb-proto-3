@@ -136,6 +136,16 @@ The estate used for every screenshot is a **real activation** — the review ten
 
 **The lesson, recorded for every future front-end workstream in this repo: structural tests prove behaviour; only a rendered pixel proves a look.** The screenshot loop is now a repo tool, and the walkable-look review (G1) should run against these same scripts.
 
+### 9.5 The M-round (2026-07-30) — rooms, not sheets
+
+The owner looked again: still not close. The L-round had fixed *defects*; the remaining distance was **composition** — the wireframes are full-bleed *rooms* (the district is a floating plate you look down onto; the Glasshouse is two plates; the Undercroft is a rail with card panels) and the app was rendering *sheets in a page*. What shipped:
+
+1. **M1 — full-bleed.** The world escapes its card: the terrace canvas is the page, the HUD floats over it, the district chips centre at the bottom, controls are pills. The HUD gains the wireframes' **breadcrumb** (`Terrace ▸ here`, district names carried through the depth object), the bottom-centre hint, and the credit line moves bottom-right.
+2. **M2 — the W district room** (`renderers/world/DistrictRoom.tsx` + `app/DistrictSurface.tsx`): the floating plate with the district's name printed across it, colleague workplaces as edge-lit ghost volumes with names and roles printed on the plate (never billboard), the gold shaft + printed **● needs you** for a raised hand — the room's only gold — the treasury/traffic figure printed large at the plate's edge, the quarter label on the ground beneath, the live-runs glass panel floating right, and every colleague reachable without the canvas via chips (D7 §6). The **DistrictSheet stays as the first-class flip** (L9) and the tier-C/D product; demotion and context-loss land there with their reasons echoed. Shared plate lettering extracted to `renderers/world/plates.tsx`.
+3. **M4 (part) — the Undercroft** gets the wireframe's left mono rail ("the engine room"), card panels for the registers, and **state words in colour** (green flow · gold parked · terracotta dead-ends).
+
+**Honest remainder, named as next tasks:** the **Glasshouse W room** (two plates, real warm / twin desaturated, shelf as floating cards — DistrictRoom is the proven template), and the whisper-subtitle panel grammar across Halls/Board/Talent/Gallery/Library. The room pattern is established; those are now composition work inside it.
+
 ### 9.3 Honest limits — each named, none silent
 
 * **No pixel has been seen by human eyes this session.** The entire pass is spec-and-test-driven; the walkable-look judgement is G1's owner review and §3 of the run sheet. The per-surface *fine* pass (P6's tail) rides that review — the shared idiom is applied everywhere, but taste calls need a screen.

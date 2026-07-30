@@ -144,7 +144,7 @@ export function UndercroftSurface({
               {(data as RunSummary[]).slice(0, 30).map((run) => (
                 <tr key={run.id}>
                   <td className="vh-mono">{run.id.slice(0, 8)}</td>
-                  <td>{run.status}</td>
+                  <td data-state={run.status}>{run.status}</td>
                   <td className="vh-mono">{run.created_at.slice(0, 19)}</td>
                   <td>
                     <button

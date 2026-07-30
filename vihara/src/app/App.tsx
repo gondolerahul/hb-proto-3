@@ -24,7 +24,7 @@ import { Atmosphere } from "../atmosphere/Atmosphere";
 import { StewardDock, type Navigation } from "../steward/StewardDock";
 import { BoardroomSurface } from "./BoardroomSurface";
 import { BridgesSurface } from "./BridgesSurface";
-import { DistrictSheet } from "./DistrictSheet";
+import { DistrictSurface } from "./DistrictSurface";
 import { DossierSurface } from "./DossierSurface";
 import { GallerySurface } from "./GallerySurface";
 import { GlasshouseSurface } from "./GlasshouseSurface";
@@ -50,7 +50,12 @@ type Depth =
   | { level: 0 }
   | { level: 1 }
   | { level: 1; room: "standup" }
-  | { level: 2; district: string; dossier?: { id: string; name: string } }
+  | {
+      level: 2;
+      district: string;
+      districtName?: string;
+      dossier?: { id: string; name: string };
+    }
   | { level: 2; room: "halls"; module?: string }
   | { level: 2; room: "board" }
   | { level: 2; room: "talent" }
@@ -119,7 +124,11 @@ export function App(): JSX.Element {
   const rise = (): void => {
     if (depth.level === 3) setDepth({ level: 1 });
     else if (depth.level === 2 && "district" in depth && depth.dossier) {
-      setDepth({ level: 2, district: depth.district });
+      setDepth({
+        level: 2,
+        district: depth.district,
+        districtName: depth.districtName,
+      });
     } else if (depth.level === 2) setDepth({ level: 1 });
     else if (depth.level === 1) {
       if ("room" in depth) setDepth({ level: 1 });
@@ -180,6 +189,38 @@ export function App(): JSX.Element {
     { label: "the study", whisper: "you — keys, notices, billing", go: () => setDepth({ level: 2, room: "study" }) },
   ];
 
+  const ROOM_LABELS: Record<string, string> = {
+    standup: "The Standup",
+    halls: "Registry Halls",
+    board: "The Boardroom",
+    talent: "The Talent Office",
+    gallery: "The Gallery",
+    library: "The Library",
+    bridges: "Bridges & Gates",
+    study: "The Study",
+    glasshouse: "The Glasshouse",
+  };
+
+  // The wireframes' breadcrumb: Terrace ▸ here. Depth 0 carries none —
+  // the still surface is the home, not a place you navigated to.
+  const here =
+    depth.level === 1 && "room" in depth
+      ? ROOM_LABELS["standup"]
+      : depth.level === 2 && "district" in depth
+        ? depth.dossier?.name ?? depth.districtName ?? depth.district
+        : depth.level === 2 && "room" in depth
+          ? ROOM_LABELS[depth.room]
+          : depth.level === 3
+            ? "The Undercroft"
+            : null;
+
+  const hint =
+    depth.level === 1 && !("room" in depth)
+      ? "click a district to enter · esc rises"
+      : depth.level > 0
+        ? "esc rises a level"
+        : null;
+
   const depthPath =
     depth.level === 0
       ? "vihara · still surface · depth 0"
@@ -216,6 +257,25 @@ export function App(): JSX.Element {
         <span className="vh-hud-left">
           <span className="vh-hud-mark" aria-hidden="true" />
           <span className="vh-hud-co">{companyName ?? "Vihara"}</span>
+          {depth.level >= 1 && (
+            <span className="vh-hud-crumb" data-part="breadcrumb">
+              <button
+                type="button"
+                className="vh-crumb-link"
+                onClick={() => setDepth({ level: 1 })}
+              >
+                Terrace
+              </button>
+              {here !== null && (
+                <>
+                  <span className="vh-crumb-sep" aria-hidden="true">
+                    ▸
+                  </span>
+                  <span className="vh-crumb-here">{here}</span>
+                </>
+              )}
+            </span>
+          )}
         </span>
         <nav className="vh-hud-right" aria-label="shell">
           <button
@@ -319,7 +379,9 @@ export function App(): JSX.Element {
         )}
         {depth.level === 1 && !("room" in depth) && (
           <TerraceSurface
-            onEnterDistrict={(district) => setDepth({ level: 2, district })}
+            onEnterDistrict={(district, districtName) =>
+              setDepth({ level: 2, district, districtName })
+            }
           />
         )}
         {depth.level === 1 && "room" in depth && (
@@ -340,7 +402,11 @@ export function App(): JSX.Element {
                 type="button"
                 className="vh-quiet-link"
                 onClick={() =>
-                  setDepth({ level: 2, district: depth.district })
+                  setDepth({
+                    level: 2,
+                    district: depth.district,
+                    districtName: depth.districtName,
+                  })
                 }
               >
                 ← back to {depth.district}
@@ -348,12 +414,13 @@ export function App(): JSX.Element {
               <DossierSurface entityId={depth.dossier.id} />
             </>
           ) : (
-            <DistrictSheet
+            <DistrictSurface
               code={depth.district}
               onOpenDossier={(colleague) =>
                 setDepth({
                   level: 2,
                   district: depth.district,
+                  districtName: depth.districtName,
                   dossier: colleague,
                 })
               }
@@ -405,6 +472,11 @@ export function App(): JSX.Element {
         contextRef={contextRef}
       />
 
+      {hint !== null && (
+        <span className="vh-hint" aria-hidden="true">
+          {hint}
+        </span>
+      )}
       <span className="vh-depth-path" aria-hidden="true">
         {depthPath}
       </span>
