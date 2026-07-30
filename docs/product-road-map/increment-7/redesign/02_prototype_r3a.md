@@ -1,8 +1,9 @@
-# Increment 7 / Redesign — R-3a: The Prototype, First Slice
+# Increment 7 / Redesign — R-3: The Prototype
 
-> **Round R-3a** of [00_redesign_charter.md](./00_redesign_charter.md) §5. Satisfies **decision D4** for three surfaces plus the shell.
-> **Run it:** `cd vihara && npm run dev` → <http://localhost:4044> · keys `1`–`4` switch surface, `⌘K` the palette, `⌘↑`/`⌘↓` the depth ladder.
-> **Gates:** `tsc --noEmit` clean · `vitest` **13 passed**.
+> **Rounds R-3a and R-3b** of [00_redesign_charter.md](./00_redesign_charter.md) §5. Satisfies **decision D4**. ✅ **All fifteen product surfaces plus the shell stand.**
+> **Run it:** `cd vihara && npm run dev` → <http://localhost:4044> · keys `1`–`9` switch surface (past nine, click the scaffold), `⌘K` the palette, `⌘↑`/`⌘↓` the depth ladder.
+> **Gates:** `tsc --noEmit` clean · `vitest` **28 passed** · `scripts/sweep.mjs` **16/16 clean** · `vite build` clean, shell **140.6 KB gz** against the 220 KB budget.
+> **Read in order:** §1–§4 are R-3a's substrate and still current. §5 is superseded — §5a onward is what actually happened.
 
 ---
 
@@ -63,15 +64,28 @@ A grid of approvals invites scanning; a column invites reading. Every card here 
 
 **A null cost renders as nothing** — `tests/tray_cost.test.tsx`. `paths[].cost` is `null` until DRIVER's estimator exists (D5 §4.1). The rule is that it renders as *nothing at all* — never `₹0`, never `—`, never "unknown". On a payment card an invented zero is the worst available bug, so it is a test and not a convention.
 
-## 5. Honest limits of R-3a
+## 5. Honest limits of R-3a — ⚠️ SUPERSEDED, kept for the record
 
-**No World surfaces.** The Terrace, district rooms and the Glasshouse are absent, and this is a capability limit, not a scoping choice: `UnrealBloomPass` needs float render targets, this VM has no GPU, and **craft work cannot be done on something that cannot be seen.** Verified by rendering the legacy app itself under the same headless GL — it produces the same near-black frame ([01](./01_background_port.md) §4). They land in **R-3b**, once the owner confirms the background renders on real hardware.
+> The three limits below were true when R-3a closed and **two of them were wrong
+> about the future**. Kept rather than deleted, because the way the first one was
+> resolved is the most reusable thing in this document.
 
-**The screenshots understate the background.** Every shot in this round shows the surfaces over a near-black floor. On real hardware the lava field is running underneath. The surfaces were composed to hold up either way — text over a live scene carries its own shadow so it does not shimmer as the floor breathes — but the *atmosphere* is not visible in any image produced here.
+**"No World surfaces, because this VM has no GPU."** True premise, wrong
+conclusion. The blocker was assumed to be *WebGL*; it was actually *bloom*. Once
+the territory was drawn in **SVG** (`world/iso.ts`) the whole objection dissolved
+— and the result is better than the WebGL version would have been, because an SVG
+territory is the tier-C path and the L9 sheet equivalent *simultaneously*, at full
+quality rather than as a fallback, with labels that are real selectable text.
+**When a capability limit blocks a surface, check whether it blocks the surface or
+only one implementation of it.**
 
-**Fourteen surfaces still to draw.** R-3a is 4 of 18. The remaining fourteen reuse this round's material system and shell, which is the point of building the substrate first.
+**"The screenshots understate the background."** Still true, and the one limit that
+did not move. The atmosphere needs real hardware, and so does art bible §2.1a's
+beacon-salience measurement.
 
-**The 404 in the console** is the missing favicon. Cosmetic, fixed when the brand mark is cut to an icon.
+**"Fourteen surfaces still to draw."** Done — see §5a–§5d.
+
+**The 404** is the missing favicon. Still cosmetic, still open.
 
 ## 5a. R-3b progress — 2026-07-30
 
