@@ -168,9 +168,11 @@
   gap: var(--s-3);
 }
 
+/* 78px wrapped "A GOLD SHAFT" onto two lines against a one-line value, which
+   made the row read as two rows. Wide enough for the longest key it holds. */
 .di-legend-row {
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr);
+  grid-template-columns: 96px minmax(0, 1fr);
   gap: var(--s-3);
   align-items: baseline;
 }

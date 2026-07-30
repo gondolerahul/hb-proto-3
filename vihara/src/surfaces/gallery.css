@@ -118,16 +118,39 @@
   padding-bottom: var(--s-2);
 }
 
-/* The rail. 27px is optical: it passes through the centre of the 9px marks
-   below, which sit at the cards' top padding. */
-.ga-spine::before {
+/* One cell per season. The gate, where there is one, rides inside the cell of
+   the season it precedes, so the spine stays a single flex row. */
+.ga-spine-cell {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  gap: var(--s-3);
+}
+
+/* The rail, drawn per cell rather than once across the spine — the spine is its
+   own scroll container, and one absolutely positioned rail inside a scroller is
+   only as long as the visible box. 27px is optical: it passes through the centre
+   of the 9px marks that sit in the cards' top padding. The segment bridges the
+   gap to the next cell, and the two ends fade so the run reads machined rather
+   than cut off. */
+.ga-spine-cell::before {
   content: "";
   position: absolute;
   top: 27px;
-  right: 2px;
-  left: 2px;
+  right: calc(-1 * var(--s-3));
+  left: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--rule-strong) 6%, var(--rule-strong) 94%, transparent);
+  background: var(--rule-strong);
+}
+
+.ga-spine-cell:first-child::before {
+  background: linear-gradient(90deg, transparent, var(--rule-strong) 30%);
+}
+
+.ga-spine-cell:last-child::before {
+  right: 0;
+  background: linear-gradient(90deg, var(--rule-strong) 70%, transparent);
 }
 
 .ga-season {
@@ -174,6 +197,13 @@
     transparent 1px 7px
   );
   pointer-events: none;
+}
+
+/* The hatch is a positioned pseudo-element, so without this the card's own text
+   would paint beneath it. */
+.ga-season > span:not(.ga-season-mark) {
+  position: relative;
+  z-index: 1;
 }
 
 .ga-season-mark {
@@ -394,17 +424,21 @@
 }
 
 .ga-frame {
-  display: grid;
-  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
   margin: 0;
   padding: var(--s-3);
 }
 
-/* m-ticks lives on an inner element on purpose: it and m-well both draw
-   ::before, and stacking them puts the grain inside a 9px corner bracket. */
+/* The reserved field. m-ticks lives on this inner element on purpose: it and
+   m-well both draw a ::before, and stacking them would put the grain inside a
+   9px corner bracket. */
 .ga-frame-inner {
   display: grid;
   place-items: center;
+  flex: 1;
+  min-height: 132px;
   padding: var(--s-5);
   border-radius: var(--r-xs);
   background: repeating-linear-gradient(
@@ -412,14 +446,19 @@
     rgba(255, 246, 230, 0.035) 0 1px,
     transparent 1px 9px
   );
+  box-shadow: inset 0 0 0 1px var(--rule-faint);
 }
 
+.ga-frame-mark {
+  color: var(--fg-subtle);
+}
+
+/* The plaque, mounted under the frame the way a wall label is. */
 .ga-plaque {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-  max-width: 44ch;
-  padding: var(--s-4) var(--s-4) var(--s-4);
+  padding: var(--s-4);
   text-align: left;
 }
 
@@ -688,14 +727,14 @@
   max-width: 70ch;
 }
 
-.ga-mandate-acts {
+.ga-acts {
   display: flex;
   align-items: center;
   gap: var(--s-2);
   flex-wrap: wrap;
 }
 
-.ga-mandate-acts .m-btn {
+.ga-acts .m-btn {
   min-height: 30px;
   padding: 0 var(--s-3);
   font-size: var(--text-xs);
@@ -739,6 +778,11 @@
 
 .ga-diff[data-op="del"] {
   color: var(--fg-subtle);
+}
+
+/* The rule is on the text and not on the row: a decoration set on an ancestor
+   cannot be cancelled by a descendant, and a struck-through "−" is a smudge. */
+.ga-diff[data-op="del"] > span:last-child {
   text-decoration: line-through;
   text-decoration-color: var(--fg-faint);
 }
@@ -749,7 +793,6 @@
 
 .ga-diff-sign {
   color: var(--fg-faint);
-  text-decoration: none;
 }
 
 /* =========================================================== COLLEAGUES PAST */
@@ -770,12 +813,6 @@
 .ga-alum-well {
   width: 60px;
   height: 60px;
-}
-
-/* The one colleague still serving. Her frame keeps the warm base the drained
-   ones lose — the contrast is the whole statement. */
-.ga-alum-live .ga-alum-well {
-  box-shadow: var(--edge-line-strong), var(--edge-rim), var(--ao-well);
 }
 
 .ga-alum-text {

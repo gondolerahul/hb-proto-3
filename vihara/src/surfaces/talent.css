@@ -128,15 +128,17 @@
 
 .ta-stage-here {
   margin-left: auto;
-  font-size: 9px;
-  color: var(--fg-subtle);
+  font-size: 10px;
+  color: var(--fg-muted);
 }
 
+/* Prose sits at --fg-muted, not --fg-subtle: --fg-subtle clears 4.5:1 only
+   against the deepest ink, and these five sentences are what teach the room. */
 .ta-stage-means {
   font-family: var(--font-body);
   font-size: var(--text-xs);
   line-height: 1.55;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
 }
 
 /* ============================================================== the columns */
@@ -205,9 +207,9 @@
 
 .ta-note {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.65;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
   max-width: 68ch;
 }
 
@@ -368,7 +370,7 @@
   font-family: var(--font-body);
   font-size: var(--text-xs);
   line-height: 1.55;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
 }
 
 /* ============================================================ VG-18, blocked
@@ -431,7 +433,7 @@
   font-family: var(--font-body);
   font-size: var(--text-xs);
   line-height: 1.6;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
   max-width: 68ch;
 }
 
@@ -467,11 +469,15 @@
 
 /* ============================================================ the shortlist */
 
+/* Stretch, not start: in a compare grid the cost blocks and the actions of two
+   cards in the same row have to sit on the same line, or the eye reads the
+   difference in height as a difference in the candidates. `.ta-card-acts` takes
+   the slack with `margin-top: auto`. */
 .ta-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: var(--s-3);
-  align-items: start;
+  align-items: stretch;
 }
 
 .ta-card {
@@ -495,11 +501,21 @@
     var(--shadow-lg);
 }
 
+/* Two flags can be true at once (recommended *and* in the interview), so each
+   one is bracketed. Two bare eyebrows side by side read as one phrase. */
 .ta-card-flag {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  min-height: 12px;
+  flex-wrap: wrap;
+  min-height: 20px;
+}
+
+.ta-card-flag > .t-eyebrow {
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-xs);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line);
 }
 
 .ta-card-top {
@@ -765,7 +781,7 @@
   font-family: var(--font-body);
   font-size: var(--text-xs);
   line-height: 1.65;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
   max-width: 68ch;
 }
 
@@ -969,15 +985,18 @@
   align-items: flex-start;
   gap: var(--s-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.6;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
   max-width: 68ch;
 }
 
+/* The seal is gold inside the certified block, exactly as the Tray's cert note
+   does it — sanctioned by §2.1's second clause, and nowhere else on the page. */
 .ta-passkey svg {
   margin-top: 3px;
   flex: none;
+  color: var(--accent);
 }
 
 .ta-hired {
@@ -1012,8 +1031,14 @@
     overflow-y: visible;
     padding-right: 0;
   }
+  /* Flex rather than auto-fit: when the five wrap, the last row's stage grows
+     to fill the width instead of leaving three empty columns beside it. */
   .ta-stages {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .ta-stage {
+    flex: 1 1 200px;
   }
 }
 

@@ -13,28 +13,31 @@ import { UndercroftSurface } from "../surfaces/UndercroftSurface";
 import { LibrarySurface } from "../surfaces/LibrarySurface";
 import { BridgesSurface } from "../surfaces/BridgesSurface";
 import { TalentSurface } from "../surfaces/TalentSurface";
+import { GallerySurface } from "../surfaces/GallerySurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
 import { BackgroundPick } from "../boards/BackgroundPick";
 import "./prototype.css";
 
 /**
- * R-3a · the prototype.
+ * R-3b · the prototype, complete.
  *
  * Decision D4: the review artifact is a clickable prototype that already looks
- * finished, because R2 proved wireframe approval does not predict craft
- * approval. So this is real React with the real material system and real
- * content density — not a mockup of it.
+ * finished, because R2 proved wireframe approval does not predict craft approval.
+ * So this is real React with the real material system and real content density —
+ * not a mockup of one. The consequence, recorded in the charter: **R-4 is a
+ * data-source swap, not a rebuild.** Swap `src/fixtures/` for the salvaged API
+ * client and delete `PrototypeNav`, and the surfaces carry across untouched.
  *
- * **Honest scope of R-3a.** Three surfaces plus the shell, all of them Sheet
- * renderer. The World surfaces (Terrace, district rooms, the Glasshouse) are
- * deliberately absent: `UnrealBloomPass` needs float render targets, this VM
- * has no GPU, and craft work cannot be done on something that cannot be seen.
- * They land in R-3b once the owner confirms the background renders on real
- * hardware. Named here rather than discovered as a gap.
+ * All fifteen product surfaces plus the shell, at both renderers. The World
+ * surfaces (Terrace, district rooms, the Glasshouse) are drawn in SVG rather than
+ * WebGL — `world/iso.ts` — which is why they are here at all: this VM has no GPU,
+ * and an SVG territory is the tier-C path and the L9 sheet equivalent
+ * simultaneously, at full quality rather than as a fallback.
  *
- * The three chosen are not arbitrary — they are the ones finding RD-7 says were
- * built as fallbacks, plus depth 0, which RD-4 says was left empty.
+ * The only thing still needing real hardware is the atmosphere itself, and the
+ * obligation art bible §2.1a takes on: measuring that a gold beacon still wins
+ * against the gold field.
  */
 
 type SurfaceId =
@@ -50,6 +53,7 @@ type SurfaceId =
   | "library"
   | "bridges"
   | "talent"
+  | "gallery"
   | "tray"
   | "hall"
   | "bg";
@@ -67,6 +71,7 @@ const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
   library: 2,
   bridges: 2,
   talent: 2,
+  gallery: 2,
   tray: 2,
   hall: 2,
   bg: 1,
@@ -85,6 +90,7 @@ const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
   { id: "library", label: "The Library", note: "provenance · influence" },
   { id: "bridges", label: "Bridges & Gates", note: "conflicts · consent" },
   { id: "talent", label: "Talent Office", note: "hire at A1 · VG-18" },
+  { id: "gallery", label: "The Gallery", note: "honestly young · drained" },
   { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
   { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
   { id: "bg", label: "Background pick", note: "decision D2 · closed" },
@@ -134,6 +140,10 @@ const BREADCRUMBS: Partial<
     { label: "Terrace", onClick: () => go("terrace") },
     { label: "Talent Office" },
   ],
+  gallery: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "The Gallery" },
+  ],
   tray: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
     { label: "The Tray" },
@@ -181,7 +191,7 @@ export function Prototype() {
   const intensity =
     surface === "still" || surface === "terrace"
       ? "full"
-      : surface === "hall" || surface === "dossier" || surface === "standup" || surface === "study" || surface === "undercroft" || surface === "library" || surface === "bridges" || surface === "talent"
+      : surface === "hall" || surface === "dossier" || surface === "standup" || surface === "study" || surface === "undercroft" || surface === "library" || surface === "bridges" || surface === "talent" || surface === "gallery"
         ? "hushed"
         : "quiet";
 
@@ -222,6 +232,7 @@ export function Prototype() {
           {surface === "library" && <LibrarySurface onEcho={showEcho} />}
           {surface === "bridges" && <BridgesSurface onEcho={showEcho} />}
           {surface === "talent" && <TalentSurface onEcho={showEcho} />}
+          {surface === "gallery" && <GallerySurface onEcho={showEcho} />}
           {surface === "standup" && (
             <StandupSurface
               onOpenTray={() => setSurface("tray")}

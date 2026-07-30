@@ -184,12 +184,20 @@ export function TalentSurface({ onEcho }: { onEcho: (msg: string) => void }) {
               <ul className="ta-touch">
                 {BRIEF.mayTouch.map((p) => (
                   <li className="ta-touch-item" key={p.name} data-withheld={p.withheld || undefined}>
-                    <span className="m-lamp ta-touch-lamp" aria-hidden="true" />
+                    {/* Granted or kept back: a lamp and the word, both. Sage means
+                        the brief hands it over; unlit means the brief holds it. */}
+                    <span
+                      className="m-lamp ta-touch-lamp"
+                      data-positive={!p.withheld || undefined}
+                      aria-hidden="true"
+                    />
                     <span className="ta-touch-text">
                       <span className="ta-touch-name">
                         {p.name}
                         <span className="m-chip ta-touch-word">{p.kind}</span>
-                        {p.withheld && <span className="m-chip ta-touch-word">withheld</span>}
+                        <span className="m-chip ta-touch-word">
+                          {p.withheld ? "kept back" : "granted"}
+                        </span>
                       </span>
                       <span className="ta-touch-note">{p.note}</span>
                     </span>
