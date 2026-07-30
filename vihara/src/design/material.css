@@ -1,0 +1,544 @@
+/* ============================================================================
+   MATERIAL — the layer finding RD-5 says was missing.
+
+   The first build took colour and type from the brand bundle and left its
+   *material* vocabulary unused, so surfaces were flat fills at low alpha and
+   read as cheap. This file is the vocabulary: six materials, one edge grammar,
+   and the fine detail that makes an element look machined rather than filled.
+
+   The rule that governs all of it: **an edge is never one border.** Every real
+   surface in this product has a light rim where it catches the key, a hairline
+   body, a contact shadow where it meets what is beneath it, and a soft cast
+   shadow further out. One border is a div. Four is an object.
+   ========================================================================= */
+
+:root {
+  /* ---- The edge grammar -------------------------------------------------- */
+  /* Top rim: where a raised surface catches the warm key light. */
+  --edge-rim: inset 0 1px 0 rgba(255, 249, 238, 0.09);
+  --edge-rim-strong: inset 0 1px 0 rgba(255, 249, 238, 0.16);
+  /* Body hairline: the surface's own outline, all four sides. */
+  --edge-line: inset 0 0 0 1px rgba(255, 240, 220, 0.07);
+  --edge-line-strong: inset 0 0 0 1px rgba(255, 240, 220, 0.13);
+  /* Base shade: the surface's underside, darkening into its own contact. */
+  --edge-base: inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  /* Contact: the tight dark line directly beneath a raised object. Cheap to
+     draw, and the single biggest contributor to "this thing is sitting on
+     something" — omit it and everything floats. */
+  --contact-sm: 0 1px 1px rgba(0, 0, 0, 0.5);
+  --contact-md: 0 2px 3px -1px rgba(0, 0, 0, 0.6);
+  --contact-lg: 0 4px 6px -2px rgba(0, 0, 0, 0.66);
+
+  /* ---- Ambient occlusion for wells -------------------------------------- */
+  --ao-well:
+    inset 0 2px 6px rgba(0, 0, 0, 0.55),
+    inset 0 1px 1px rgba(0, 0, 0, 0.7);
+
+  /* ---- Grain ------------------------------------------------------------- */
+  /* fBm noise as a data URI. A warm near-black gradient over 900px of screen
+     bands visibly on an 8-bit panel; ~2% grain hides the banding and gives the
+     dark a texture to be dark *in*. Every plate carries it. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+
+  /* ---- Hairline colour ramp --------------------------------------------- */
+  --rule-faint: rgba(255, 240, 220, 0.05);
+  --rule: rgba(255, 240, 220, 0.08);
+  --rule-strong: rgba(255, 240, 220, 0.14);
+}
+
+/* ==========================================================================
+   1 · PLATE — the opaque base surface.
+   Districts, cards, rooms, panels. Warm dark, machined edges, grained.
+   ======================================================================== */
+
+.m-plate {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 246, 230, 0.028) 0%, transparent 42%),
+    var(--surface);
+  border-radius: var(--r-md);
+  box-shadow:
+    var(--edge-line),
+    var(--edge-rim),
+    var(--edge-base),
+    var(--contact-md),
+    var(--shadow-md);
+  isolation: isolate;
+}
+
+/* Grain sits above the fill and below the content. `mix-blend-mode: overlay`
+   keeps it from lightening the black — it modulates what is already there. */
+.m-plate::before,
+.m-glass::before,
+.m-well::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--grain);
+  background-size: 140px 140px;
+  opacity: 0.022;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.m-plate > *,
+.m-glass > *,
+.m-well > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Raised — one step further off the ground. */
+.m-plate[data-raised] {
+  background:
+    linear-gradient(180deg, rgba(255, 246, 230, 0.04) 0%, transparent 46%),
+    var(--surface-2);
+  box-shadow:
+    var(--edge-line-strong),
+    var(--edge-rim-strong),
+    var(--edge-base),
+    var(--contact-lg),
+    var(--shadow-lg);
+}
+
+/* Sunken — a plate set *into* the ground rather than on it. */
+.m-plate[data-sunken] {
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+}
+
+/* ==========================================================================
+   2 · GLASS — translucent, for things that float over the world.
+   The brand's liquid-glass material, used where it means something: a panel
+   over the territory, a command palette, a sticky bar. Not everywhere —
+   glass on glass is fog.
+   ======================================================================== */
+
+.m-glass {
+  position: relative;
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-radius: var(--r-lg);
+  box-shadow: var(--glass-edge), var(--contact-md);
+  isolation: isolate;
+}
+
+/* The signature specular sweep across the top-left of a glass surface. */
+.m-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-sheen);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.m-glass[data-strong] {
+  background: var(--glass-tint-strong);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
+}
+
+/* Gold-tinted glass — certified blocks only (§2.1: gold means certified). */
+.m-glass[data-gold] {
+  background:
+    linear-gradient(180deg, rgba(237, 171, 72, 0.1) 0%, transparent 60%),
+    var(--glass-tint);
+  box-shadow: var(--glass-edge-gold), var(--contact-md);
+}
+
+/* ==========================================================================
+   3 · WELL — inset. Where data lives: tables, inputs, logs, code.
+   A well reads as *carved out*, which is what makes a table feel set into a
+   panel rather than drawn on top of one.
+   ======================================================================== */
+
+.m-well {
+  position: relative;
+  background: var(--ink-900);
+  border-radius: var(--r-sm);
+  box-shadow: var(--edge-line), var(--ao-well);
+  isolation: isolate;
+}
+
+.m-well[data-deep] {
+  background: var(--ink-950);
+  box-shadow:
+    var(--edge-line),
+    inset 0 3px 10px rgba(0, 0, 0, 0.7),
+    inset 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+/* ==========================================================================
+   4 · METAL — gold. Certified seals, medallions, the one hero figure.
+   Under the §2.1 budget this is the most restricted material in the product,
+   and it is the only one allowed to be shiny.
+   ======================================================================== */
+
+.m-metal {
+  background: var(--gradient-gold-metallic);
+  color: var(--on-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 2px rgba(90, 52, 8, 0.55),
+    var(--contact-md),
+    var(--shadow-gold);
+  border-radius: var(--r-sm);
+}
+
+/* The specular band, swept on hover. Transform-only, so it composites. */
+.m-metal-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.m-metal-shine::after {
+  content: "";
+  position: absolute;
+  inset: -30% -60%;
+  background: var(--gradient-gold-shine);
+  translate: -70% 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.m-metal-shine:hover::after {
+  transition: translate 720ms var(--ease-out);
+  translate: 70% 0;
+}
+
+/* A struck medallion — the certified seal. */
+.m-medallion {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gradient-gold-conic);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 240, 210, 0.6),
+    inset 0 2px 5px rgba(255, 255, 255, 0.4),
+    inset 0 -3px 6px rgba(80, 46, 6, 0.6),
+    0 3px 10px -2px rgba(0, 0, 0, 0.8),
+    var(--shadow-gold);
+}
+
+/* Gold *text* — figures and seals only. Clipped gradient, so the numeral
+   itself is the metal rather than sitting on it. */
+.m-gold-text {
+  background: var(--gradient-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ==========================================================================
+   5 · HAIRLINE — precision rules. The technical register of the inspiration
+   set is mostly this: very thin, very exact lines at low contrast.
+   ======================================================================== */
+
+.m-rule {
+  height: 1px;
+  border: 0;
+  background: var(--rule);
+}
+
+/* A rule that fades at both ends — reads as machined rather than cut off. */
+.m-rule-fade {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, var(--rule-strong) 18%, var(--rule-strong) 82%, transparent);
+}
+
+.m-rule-v {
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--rule) 14%, var(--rule) 86%, transparent);
+}
+
+/* Corner ticks — four L-brackets inset from a plate's corners. The single
+   cheapest device for the "instrument panel" register, and it does not cost a
+   drop of gold. */
+.m-ticks {
+  position: relative;
+}
+
+.m-ticks::before,
+.m-ticks::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+  border-color: var(--rule-strong);
+  border-style: solid;
+}
+
+.m-ticks::before {
+  top: 7px;
+  left: 7px;
+  border-width: 1px 0 0 1px;
+}
+
+.m-ticks::after {
+  right: 7px;
+  bottom: 7px;
+  border-width: 0 1px 1px 0;
+}
+
+/* ==========================================================================
+   6 · LAMP — the point light. Small, warm, local.
+   Art bible §4 gives night "lamplight pools"; this is that at UI scale, and it
+   is how status reads without spending gold on a whole element.
+   ======================================================================== */
+
+.m-lamp {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  box-shadow: 0 0 0 3px rgba(255, 240, 220, 0.04);
+  flex: none;
+}
+
+.m-lamp[data-lit] {
+  background: var(--gold-300);
+  box-shadow:
+    0 0 0 3px rgba(237, 171, 72, 0.14),
+    0 0 10px 1px rgba(237, 171, 72, 0.55),
+    0 0 22px 4px rgba(237, 171, 72, 0.2);
+}
+
+.m-lamp[data-positive] {
+  background: var(--positive);
+  box-shadow: 0 0 0 3px rgba(123, 180, 135, 0.14), 0 0 9px rgba(123, 180, 135, 0.4);
+}
+
+.m-lamp[data-negative] {
+  background: var(--negative);
+  box-shadow: 0 0 0 3px rgba(212, 102, 79, 0.14), 0 0 9px rgba(212, 102, 79, 0.4);
+}
+
+/* A lamp that breathes — hands raised. The only looping animation in the
+   product, and it stops dead under reduced motion. */
+.m-lamp[data-breathing] {
+  animation: m-breathe 3.4s var(--ease-in-out) infinite;
+}
+
+@keyframes m-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px rgba(237, 171, 72, 0.12),
+      0 0 8px 1px rgba(237, 171, 72, 0.45),
+      0 0 18px 3px rgba(237, 171, 72, 0.16);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px rgba(237, 171, 72, 0.2),
+      0 0 16px 2px rgba(237, 171, 72, 0.7),
+      0 0 34px 8px rgba(237, 171, 72, 0.3);
+  }
+}
+
+/* ==========================================================================
+   TYPE ROLES — the art bible §6 mapping, as classes.
+   ======================================================================== */
+
+/* Eyebrow: uppercase mono, wide tracked. Labels a block. Gold ONLY when the
+   block it labels is certified (§6). */
+.t-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+
+.t-eyebrow[data-certified] {
+  color: var(--accent);
+}
+
+/* Display: surface titles, district names, colleague names. */
+.t-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: var(--track-tight);
+  line-height: var(--lh-snug);
+}
+
+/* Figure: a KPI number. Display face, tight, tabular, optically large. */
+.t-figure {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-3xl);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mono data: agent ids, signal ids, traces, diffs, the Undercroft entire. */
+.t-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--fg-muted);
+}
+
+/* Narrative: Pragya's voice and every sentence a person reads. Art bible §6 —
+   the register is carried by air and measure, not by a serif. */
+.t-narrative {
+  font-family: var(--font-body);
+  font-weight: 340;
+  font-size: var(--text-md);
+  line-height: var(--lh-relaxed);
+  max-width: 64ch;
+  color: var(--fg);
+}
+
+.t-muted {
+  color: var(--fg-muted);
+}
+.t-subtle {
+  color: var(--fg-subtle);
+}
+.t-faint {
+  color: var(--fg-faint);
+}
+
+/* ==========================================================================
+   CHIP — the small pill. Filters, hops, states, counts.
+   ======================================================================== */
+
+.m-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 26px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out);
+}
+
+button.m-chip:hover {
+  background: var(--ink-700);
+  color: var(--fg);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-sm);
+}
+
+.m-chip[data-selected] {
+  background: var(--surface-2);
+  color: var(--fg);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-sm);
+}
+
+/* ==========================================================================
+   BUTTON — three ranks. Rank is about consequence, not decoration.
+   ======================================================================== */
+
+.m-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  color: var(--fg);
+  background: var(--surface-2);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--edge-base), var(--contact-sm);
+  transition:
+    background var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    translate 120ms var(--ease-out);
+}
+
+.m-btn:hover:not(:disabled) {
+  background: var(--ink-700);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--edge-base), var(--contact-md);
+}
+
+.m-btn:active:not(:disabled) {
+  translate: 0 1px;
+  box-shadow: var(--edge-line), var(--ao-well);
+}
+
+/* Quiet — the default for anything reversible. */
+.m-btn[data-rank="quiet"] {
+  background: transparent;
+  color: var(--fg-muted);
+  box-shadow: var(--edge-line);
+}
+
+.m-btn[data-rank="quiet"]:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+/* Certified — gold metal. Money, legal, irreversible. Nothing else. */
+.m-btn[data-rank="certified"] {
+  background: var(--gradient-gold-metallic);
+  color: var(--on-accent);
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 2px rgba(90, 52, 8, 0.5),
+    var(--contact-md),
+    var(--shadow-gold);
+}
+
+.m-btn[data-rank="certified"]:hover:not(:disabled) {
+  background: var(--gradient-gold-metallic);
+  filter: brightness(1.07);
+}
+
+/* ==========================================================================
+   MINIATURE — the isometric plinth object, in 2D.
+   The inspiration set's core motif: a small precise volume on a lit base.
+   Used in lists to stand for a district, a hall, a colleague's workplace.
+   ======================================================================== */
+
+.m-plinth {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  background:
+    radial-gradient(70% 55% at 50% 108%, rgba(237, 171, 72, 0.1) 0%, transparent 70%),
+    linear-gradient(160deg, rgba(255, 246, 230, 0.05) 0%, transparent 55%),
+    var(--ink-900);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--ao-well);
+  color: var(--fg-subtle);
+}
+
+.m-plinth::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  left: 6px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 240, 220, 0.16), transparent);
+}

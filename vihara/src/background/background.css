@@ -1,0 +1,67 @@
+/* The background layer (redesign D2).
+
+   The field itself is a fixed full-viewport canvas at the bottom of the stack.
+   The veil above it is how a surface asks for less atmosphere without the
+   scene being re-graded: `quiet` and `hushed` add a wash of the canvas colour
+   plus a slight desaturation, so dense text sits on near-flat ground while the
+   same approved scene keeps running underneath. */
+
+.vh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--ink-950);
+}
+
+.vh-bg-field {
+  position: absolute;
+  inset: 0;
+}
+
+/* The verbatim port sets its own inline `position:fixed; z-index:-1` on the
+   element it creates. Ours is a plain child, so it fills the layer instead. */
+.vh-bg-field > canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.vh-bg-veil {
+  position: absolute;
+  inset: 0;
+  transition: opacity 420ms var(--ease-out), backdrop-filter 420ms var(--ease-out);
+  opacity: 0;
+}
+
+/* Working surfaces: most of the atmosphere goes, a warm ember stays at the
+   edges so the frame is never a flat black rectangle. */
+.vh-bg[data-intensity="quiet"] .vh-bg-veil {
+  opacity: 1;
+  background:
+    radial-gradient(120% 80% at 50% 120%, transparent 0%, rgba(10, 9, 8, 0.72) 62%, rgba(10, 9, 8, 0.9) 100%),
+    rgba(10, 9, 8, 0.52);
+  backdrop-filter: saturate(0.72);
+}
+
+/* Reading surfaces: near-flat. */
+.vh-bg[data-intensity="hushed"] .vh-bg-veil {
+  opacity: 1;
+  background: rgba(10, 9, 8, 0.88);
+  backdrop-filter: saturate(0.45) blur(2px);
+}
+
+/* Reduced motion: no scene is mounted at all, so the layer has to carry the
+   look on its own. A static gradient in the same key — warm floor, dark sky. */
+@media (prefers-reduced-motion: reduce) {
+  .vh-bg[data-variant="legacy"] {
+    background:
+      radial-gradient(140% 90% at 50% 118%, rgba(96, 54, 18, 0.5) 0%, transparent 58%),
+      linear-gradient(to bottom, #100b02 0%, #1d1605 46%, #0a0908 100%);
+  }
+  .vh-bg[data-variant="brand"] {
+    background:
+      radial-gradient(140% 90% at 50% 118%, rgba(237, 171, 72, 0.22) 0%, transparent 58%),
+      linear-gradient(to bottom, #0a0908 0%, #17120a 48%, #0a0908 100%);
+  }
+}

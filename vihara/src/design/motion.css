@@ -1,0 +1,195 @@
+/* ============================================================================
+   MOTION — the language.
+
+   Art bible §6 (carried forward): motion is inertial, weighty, silent, and
+   fully removable. Three rules the first build broke often enough to be worth
+   writing as CSS rather than as prose:
+
+   1. **Only transform and opacity animate.** No width, height, top, left, or
+      box-shadow keyframes — those are layout and paint, and they jank.
+   2. **Enter slow, exit fast.** Arriving is information; leaving is not.
+   3. **Everything stops under `prefers-reduced-motion`.** One block at the
+      bottom of this file, no per-component opt-in to forget.
+   ========================================================================= */
+
+:root {
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 320ms;
+  --dur-flight: 520ms;
+
+  /* Inertial: fast out of the gate, long settle. Nothing overshoots — an
+     overshoot on informational UI reads as sloppy (ui-ux-pro-max, dense-data
+     anti-pattern). */
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* -------------------------------------------------------------- ENTRANCES */
+
+@keyframes vh-rise {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes vh-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* A surface arriving. Art bible §9: 320ms crossfade + 12px rise. */
+.vh-enter {
+  animation: vh-rise var(--dur-slow) var(--ease-settle) both;
+}
+
+.vh-enter-fade {
+  animation: vh-fade var(--dur-base) var(--ease-settle) both;
+}
+
+/* Staggered children. The delay is set inline as `--i` on each child so a list
+   of any length gets a wave without generating N classes. Capped at 10 steps —
+   past that the last row waits long enough to feel broken. */
+.vh-stagger > * {
+  animation: vh-rise var(--dur-slow) var(--ease-settle) both;
+  animation-delay: calc(min(var(--i, 0), 10) * 34ms);
+}
+
+/* ------------------------------------------------------------- THE DEPTH DIAL
+   Rising and descending the ladder. The one place motion carries meaning
+   rather than polish: which way you went. */
+
+@keyframes vh-descend-in {
+  from {
+    opacity: 0;
+    scale: 1.03;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes vh-ascend-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.vh-depth-descend {
+  animation: vh-descend-in var(--dur-flight) var(--ease-settle) both;
+}
+
+.vh-depth-ascend {
+  animation: vh-ascend-in var(--dur-flight) var(--ease-settle) both;
+}
+
+/* ------------------------------------------------------------- ECHO RIBBON
+   L10: 120ms in, 4s dwell, 400ms out. Written as one animation so the timing
+   contract lives in one place. */
+
+@keyframes vh-echo {
+  0% {
+    opacity: 0;
+    translate: 0 8px;
+  }
+  3% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  90% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+.vh-echo {
+  animation: vh-echo 4.52s var(--ease-settle) both;
+}
+
+/* ------------------------------------------------------------------ HOVER
+   Objects lift toward the key light; they do not grow. Scale on a card makes
+   its text resample and go soft for the duration. */
+
+.vh-lift {
+  transition:
+    translate var(--dur-base) var(--ease-settle),
+    box-shadow var(--dur-base) var(--ease-settle);
+  will-change: transform;
+}
+
+.vh-lift:hover {
+  translate: 0 -2px;
+}
+
+/* --------------------------------------------------------------- SKELETON
+   A sweep, not a pulse. Pulsing opacity on a dark ground reads as a fault. */
+
+@keyframes vh-sweep {
+  from {
+    background-position: -160% 0;
+  }
+  to {
+    background-position: 260% 0;
+  }
+}
+
+.vh-skeleton {
+  border-radius: var(--r-xs);
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 246, 230, 0.05) 42%,
+      rgba(255, 246, 230, 0.08) 50%,
+      rgba(255, 246, 230, 0.05) 58%,
+      transparent 100%
+    ),
+    var(--ink-900);
+  background-size: 220% 100%, 100% 100%;
+  animation: vh-sweep 1.5s linear infinite;
+}
+
+/* ============================================================ REDUCED MOTION
+   One block. Nothing moves, everything is still legible, and the breathing
+   beacon becomes a static lit lamp rather than disappearing — the *information*
+   survives, only the animation goes. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .m-lamp[data-breathing] {
+    box-shadow:
+      0 0 0 4px rgba(237, 171, 72, 0.18),
+      0 0 14px 2px rgba(237, 171, 72, 0.6);
+  }
+
+  .m-metal-shine::after {
+    display: none;
+  }
+}

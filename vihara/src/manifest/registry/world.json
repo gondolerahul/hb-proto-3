@@ -1,0 +1,311 @@
+[
+  {
+    "type": "world.district",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"process_code": {"type": "string"}, "name": {"type": "string"}, "quarter": {"type": "string"}},
+      "required": ["process_code", "name"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.district"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "group", "label_from": "props.name"}
+  },
+  {
+    "type": "world.workplace",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"entity_id": {"type": "string"}, "name": {"type": "string"}},
+      "required": ["entity_id", "name"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.colleague"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "group", "label_from": "props.name"}
+  },
+  {
+    "type": "world.gatehouse",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"gateway_code": {"type": "string"}, "channel": {"type": "string"}},
+      "required": ["gateway_code", "channel"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.gatehouse"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "group", "label_from": "props.channel"}
+  },
+  {
+    "type": "world.road",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"from_ref": {"type": "string"}, "to_ref": {"type": "string"}},
+      "required": ["from_ref", "to_ref"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.traffic"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "presentation", "label_from": null}
+  },
+  {
+    "type": "world.beacon",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"district": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.beacon"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "alert", "label_from": "binding.sentence"}
+  },
+  {
+    "type": "world.weather",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"district": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.weather"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "status", "label_from": "binding.sentence"}
+  },
+  {
+    "type": "world.monument",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"resolution_id": {"type": "string"}, "title": {"type": "string"}},
+      "required": ["resolution_id"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["strategy.resolution"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "group", "label_from": "props.title"}
+  },
+  {
+    "type": "world.plinth",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}},
+      "required": ["title"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["kpi.series", "kpi.current"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "img", "label_from": "props.title"}
+  },
+  {
+    "type": "world.treasury-gauge",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"district": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["loop.envelope"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "img", "label_from": "props.district"}
+  },
+  {
+    "type": "world.glasshouse-pane",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"pane": {"enum": ["real", "twin"]}},
+      "required": ["pane"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["twin.scenario", "twin.forecast", "estate.district"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "group", "label_from": "props.pane"}
+  },
+  {
+    "type": "world.time-scrubber",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"window_days": {"type": "integer"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["kpi.series", "signals.history"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "slider", "label_from": null}
+  },
+  {
+    "type": "world.ghost",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}, "kind": {"enum": ["not_yet_built", "onboarding_stage", "planned"]}},
+      "required": ["label", "kind"],
+      "additionalProperties": true
+    },
+    "bindings": {"type": "array", "maxItems": 0},
+    "a11y": {"role": "img", "label_from": "props.label"}
+  },
+  {
+    "type": "world.divergence-ribbon",
+    "class": "world",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["W"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["twin.divergence"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "img", "label_from": "props.label"}
+  }
+]

@@ -1,0 +1,219 @@
+/* ============================================================================
+   BASE — reset, page, type defaults, focus.
+
+   Redesign R-2. The brand tokens (tokens.brand.css) say what the colours and
+   faces are; this file says how a page made of them behaves before any
+   component is involved.
+   ========================================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--lh-normal);
+  font-weight: 380;
+  /* The whole product is dark. Greyscale antialiasing keeps warm-white text
+     from picking up the colour fringing subpixel AA gives light-on-dark. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  overflow: hidden; /* surfaces own their own scrolling */
+}
+
+/* ---------------------------------------------------------------- HEADINGS */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+/* Display type at large sizes needs tighter tracking than the token gives —
+   optical, not systematic, which is why it lives here and not in the scale. */
+h1 {
+  font-size: var(--text-3xl);
+  letter-spacing: -0.028em;
+}
+h2 {
+  font-size: var(--text-xl);
+}
+h3 {
+  font-size: var(--text-md);
+  letter-spacing: -0.012em;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* ----------------------------------------------------------------- CONTROLS */
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  color: var(--fg-faint);
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: 1px;
+  transition: text-decoration-color var(--dur) var(--ease-out);
+}
+
+a:hover {
+  text-decoration-color: var(--fg-subtle);
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+/* -------------------------------------------------------------------- FOCUS
+   Never removed (art bible §8 / UX priority 1). Gold is sanctioned here even
+   under the §2.1 budget: a focus ring *is* "this needs you". */
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* ------------------------------------------------------------------ SELECTION */
+
+::selection {
+  background: rgba(237, 171, 72, 0.26);
+  color: var(--white);
+}
+
+/* ----------------------------------------------------------------- SCROLLBARS
+   Thin, warm, and only visible while the surface is hovered. A dark app with
+   default scrollbars looks unfinished at the edges. */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-700) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--ink-700);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-pill);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-500);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* -------------------------------------------------------------------- FIGURES
+   Every number in this product is compared against another number, so figures
+   are tabular everywhere by default and only opt out for prose. */
+
+.num,
+.vh-figure,
+td,
+th {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "kern" 1;
+}
+
+/* ----------------------------------------------------------------- UTILITIES */
+
+.vh-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link — visible only on focus, first in the tab order of every surface. */
+.vh-skip {
+  position: fixed;
+  top: var(--s-3);
+  left: 50%;
+  translate: -50% -200%;
+  z-index: 999;
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  box-shadow: var(--glass-edge);
+  font-size: var(--text-sm);
+  transition: translate 220ms var(--ease-out);
+}
+
+.vh-skip:focus-visible {
+  translate: -50% 0;
+}

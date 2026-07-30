@@ -1,0 +1,38 @@
+{
+  "name": "vihara",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Vihara — the tenant's estate. Redesign build (Increment 7 / redesign, charter redesign/00_redesign_charter.md). A separate app beside frontend/; no import crosses that boundary in either direction.",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
+    "test": "vitest run",
+    "build": "vite build",
+    "preview": "vite preview --port 4045 --strictPort"
+  },
+  "dependencies": {
+    "axios": "^1.19.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "three": "^0.182.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@types/three": "^0.182.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "jsdom": "^24.0.0",
+    "puppeteer": "^24.43.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8",
+    "vitest": "^1.6.0"
+  }
+}
