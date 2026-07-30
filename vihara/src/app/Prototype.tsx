@@ -6,6 +6,7 @@ import { TerraceSurface } from "../surfaces/TerraceSurface";
 import { DistrictSurface } from "../surfaces/DistrictSurface";
 import { DossierSurface } from "../surfaces/DossierSurface";
 import { BoardroomSurface } from "../surfaces/BoardroomSurface";
+import { StandupSurface } from "../surfaces/StandupSurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
 import { BackgroundPick } from "../boards/BackgroundPick";
@@ -36,6 +37,7 @@ type SurfaceId =
   | "district"
   | "dossier"
   | "boardroom"
+  | "standup"
   | "tray"
   | "hall"
   | "bg";
@@ -46,6 +48,7 @@ const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
   district: 2,
   dossier: 2,
   boardroom: 2,
+  standup: 1,
   tray: 2,
   hall: 2,
   bg: 1,
@@ -56,7 +59,8 @@ const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
   { id: "terrace", label: "The Terrace", note: "depth 1 · findings RD-1/RD-2" },
   { id: "district", label: "District room", note: "depth 2 · W+S" },
   { id: "dossier", label: "Dossier", note: "one-on-one · seals" },
-  { id: "boardroom", label: "Boardroom", note: "four honesty grades" },
+  { id: "boardroom", label: "Boardroom", note: "brainstorm · review D" },
+  { id: "standup", label: "The Standup", note: "one voice · L2" },
   { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
   { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
   { id: "bg", label: "Background pick", note: "decision D2 · closed" },
@@ -79,6 +83,10 @@ const BREADCRUMBS: Partial<
   boardroom: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
     { label: "The Boardroom" },
+  ],
+  standup: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "The Standup" },
   ],
   tray: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
@@ -127,7 +135,7 @@ export function Prototype() {
   const intensity =
     surface === "still" || surface === "terrace"
       ? "full"
-      : surface === "hall" || surface === "dossier"
+      : surface === "hall" || surface === "dossier" || surface === "standup"
         ? "hushed"
         : "quiet";
 
@@ -162,6 +170,13 @@ export function Prototype() {
           )}
           {surface === "dossier" && <DossierSurface onEcho={showEcho} />}
           {surface === "boardroom" && <BoardroomSurface onEcho={showEcho} />}
+          {surface === "standup" && (
+            <StandupSurface
+              onOpenTray={() => setSurface("tray")}
+              onOpenDossier={() => setSurface("dossier")}
+              onEcho={showEcho}
+            />
+          )}
           {surface === "tray" && <TraySurface onEcho={showEcho} />}
           {surface === "hall" && <HallSurface onEcho={showEcho} />}
         </Shell>

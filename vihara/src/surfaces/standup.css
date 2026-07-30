@@ -1,0 +1,312 @@
+/* The Standup. A card sequence at novice density, one sheet at operator — two
+   genuinely different registers, not one layout at two sizes. */
+
+.su {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--s-4);
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+}
+
+.su[data-density="operator"] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* ------------------------------------------------------------------ header */
+
+.su-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-6);
+  flex-wrap: wrap;
+}
+
+.su-head-lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.su-title {
+  font-size: var(--text-2xl);
+}
+
+/* L2, stated on the surface. A promise the product keeps but never mentions is a
+   promise the user cannot rely on. */
+.su-voice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--fg-subtle);
+  max-width: 76ch;
+}
+
+.su-head-side {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.su-waiting {
+  height: 30px;
+  color: var(--gold-300);
+}
+
+.su-density {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* ------------------------------------------------------- novice — the stage */
+
+.su-stage {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-2) 0;
+}
+
+/* ----------------------------------------------------- operator — the sheet */
+
+.su-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--s-8);
+}
+
+/* -------------------------------------------------------------- the card */
+
+.su-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  width: 100%;
+}
+
+.su-card[data-expanded] {
+  max-width: 74ch;
+  padding: var(--s-5) var(--s-6) var(--s-6);
+}
+
+.su-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.su-who {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-1);
+  margin: calc(var(--s-1) * -1);
+  border-radius: var(--r-md);
+  text-align: left;
+  transition: background var(--dur) var(--ease-out);
+}
+
+.su-who:hover {
+  background: rgba(255, 246, 230, 0.04);
+}
+
+.su-portrait {
+  width: 48px;
+  height: 48px;
+}
+
+.su-card[data-expanded] .su-portrait {
+  width: 66px;
+  height: 66px;
+}
+
+.su-who-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.su-who-name {
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+.su-card[data-expanded] .su-who-name {
+  font-size: var(--text-lg);
+}
+
+.su-who-meta {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* Attribution, not authorship. */
+.su-prepared {
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  padding-top: var(--s-2);
+}
+
+/* Her sentence. The one piece of prose on the card, and the reason the card
+   exists — so it gets the narrative register and the measure to match. */
+.su-line {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.su-card[data-expanded] .su-line {
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+/* The colleague's own output, as data. */
+.su-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  padding: var(--s-2) var(--s-4);
+}
+
+.su-fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.su-facts > .su-fact:nth-last-child(-n + 1) {
+  box-shadow: none;
+}
+
+.su-fact-val {
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+
+/* ---------------------------------------------------------------- the foot */
+
+.su-card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.su-moved {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+}
+
+.su-moved-icon {
+  color: var(--fg-faint);
+}
+
+.su-moved-val {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.su-needs {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------- the rail */
+
+.su-rail {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.su-pips {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1;
+}
+
+/* A pip per colleague. Wide when current, so the rail reads as progress rather
+   than as a set of dots. */
+.su-pip {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--ink-700);
+  transition: background var(--dur-base) var(--ease-settle), width var(--dur-base) var(--ease-settle);
+}
+
+.su-pip:hover {
+  background: var(--ink-500);
+}
+
+.su-pip[data-passed] {
+  background: var(--ink-500);
+}
+
+.su-pip[data-active] {
+  width: 46px;
+  background: rgba(246, 241, 233, 0.7);
+}
+
+/* A hand raised on a line you have not reached yet. Sanctioned gold (§2.1) —
+   this is literally "this needs you". */
+.su-pip-hand {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  translate: -50% 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gold-300);
+  box-shadow: 0 0 6px rgba(237, 171, 72, 0.6);
+}
+
+.su-count {
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .su-prepared {
+    width: 100%;
+    padding-top: 0;
+  }
+  .su-needs {
+    margin-left: 0;
+    width: 100%;
+  }
+  .su-pip {
+    width: 18px;
+  }
+  .su-pip[data-active] {
+    width: 32px;
+  }
+}
