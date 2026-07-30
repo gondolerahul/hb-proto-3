@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Background } from "../background/Background";
 import { Shell, type Depth } from "../shell/Shell";
 import { StillSurface } from "../surfaces/StillSurface";
+import { TerraceSurface } from "../surfaces/TerraceSurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
 import { BackgroundPick } from "../boards/BackgroundPick";
@@ -26,10 +27,11 @@ import "./prototype.css";
  * built as fallbacks, plus depth 0, which RD-4 says was left empty.
  */
 
-type SurfaceId = "still" | "tray" | "hall" | "bg";
+type SurfaceId = "still" | "terrace" | "tray" | "hall" | "bg";
 
 const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
   still: 0,
+  terrace: 1,
   tray: 2,
   hall: 2,
   bg: 1,
@@ -37,10 +39,27 @@ const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
 
 const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
   { id: "still", label: "Still surface", note: "depth 0 · finding RD-4" },
+  { id: "terrace", label: "The Terrace", note: "depth 1 · findings RD-1/RD-2" },
   { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
   { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
-  { id: "bg", label: "Background pick", note: "decision D2 · needs a GPU" },
+  { id: "bg", label: "Background pick", note: "decision D2 · closed" },
 ];
+
+/** Per-surface breadcrumb, so the shell's trail is data rather than a ternary. */
+const BREADCRUMBS: Partial<
+  Record<SurfaceId, (go: (s: SurfaceId) => void) => { label: string; onClick?: () => void }[]>
+> = {
+  terrace: (go) => [{ label: "Terrace", onClick: () => go("still") }],
+  tray: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "The Tray" },
+  ],
+  hall: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "Halls", onClick: () => go("hall") },
+    { label: "Invoices" },
+  ],
+};
 
 export function Prototype() {
   const [surface, setSurface] = useState<SurfaceId>("still");
@@ -75,7 +94,8 @@ export function Prototype() {
 
   const depth = SURFACE_DEPTH[surface];
   // Atmosphere per surface — the addition R-1 §5 describes.
-  const intensity = surface === "still" ? "full" : surface === "hall" ? "hushed" : "quiet";
+  const intensity =
+    surface === "still" || surface === "terrace" ? "full" : surface === "hall" ? "hushed" : "quiet";
 
   return (
     <>
@@ -83,25 +103,21 @@ export function Prototype() {
 
       {surface === "still" ? (
         // Depth 0 has no chrome, because it *is* the chrome (D6 §2).
-        <StillSurface onDescend={() => setSurface("tray")} />
+        <StillSurface onDescend={() => setSurface("terrace")} />
       ) : (
         <Shell
           depth={depth}
           onDepth={(d) => {
             if (d === 0) setSurface("still");
+            if (d === 1) setSurface("terrace");
           }}
-          breadcrumb={
-            surface === "tray"
-              ? [{ label: "Terrace", onClick: () => setSurface("still") }, { label: "The Tray" }]
-              : [
-                  { label: "Terrace", onClick: () => setSurface("still") },
-                  { label: "Halls", onClick: () => setSurface("hall") },
-                  { label: "Invoices" },
-                ]
-          }
+          breadcrumb={BREADCRUMBS[surface]?.(setSurface) ?? []}
           echo={echo}
           onUndo={() => showEcho("undone")}
         >
+          {surface === "terrace" && (
+            <TerraceSurface onOpenDistrict={() => setSurface("hall")} onEcho={showEcho} />
+          )}
           {surface === "tray" && <TraySurface onEcho={showEcho} />}
           {surface === "hall" && <HallSurface onEcho={showEcho} />}
         </Shell>

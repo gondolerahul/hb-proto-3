@@ -1,0 +1,159 @@
+/* The drawn territory.
+
+   Everything here is geometry. There is not one glyph in this stylesheet, by
+   design — finding RD-1 was text painted onto the ground plane, and the fix is
+   architectural: labels are DOM, in `terrace.css`. */
+
+.tv-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* ------------------------------------------------------------------- faces
+   Every face carries a hairline of its own. A solid fill with no edge is a
+   silhouette; a fill plus a 0.14 edge is an object with a corner. */
+
+.tv-face {
+  stroke: rgba(255, 244, 226, 0.14);
+  stroke-width: 0.09;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The top face catches the key, so its edge is the brightest line on the
+   drawing — this is what reads as a lit corner. */
+.tv-volume-top {
+  stroke: rgba(255, 246, 232, 0.3);
+  stroke-width: 0.14;
+}
+
+.tv-slab-top {
+  stroke: rgba(255, 246, 232, 0.22);
+  stroke-width: 0.12;
+}
+
+.tv-plot[data-twin] .tv-face {
+  /* Cool-neutral edge inside the twin only (--twin-line). */
+  stroke: rgba(228, 232, 236, 0.28);
+}
+
+.tv-contact {
+  fill: rgba(0, 0, 0, 0.62);
+}
+
+.tv-lamp-pool {
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------- roads */
+
+.tv-road {
+  fill: none;
+  stroke: rgba(246, 241, 233, 0.13);
+  stroke-width: 0.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* Dashed, so a road reads as a route rather than as a drawn line. Kept
+     quieter than the built form — a route is context, not subject. */
+  stroke-dasharray: 0.7 0.6;
+}
+
+.tv-road[data-twin] {
+  stroke: rgba(228, 232, 236, 0.16);
+  stroke-dasharray: 0.5 1.3;
+}
+
+.tv-traffic-dot {
+  fill: rgba(246, 241, 233, 0.55);
+  offset-distance: 0%;
+  animation: tv-travel 4.8s linear infinite;
+}
+
+@keyframes tv-travel {
+  from {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------- plots */
+
+.tv-plot {
+  transition: opacity var(--dur-base) var(--ease-settle);
+}
+
+.tv-plot[data-interactive] {
+  cursor: pointer;
+}
+
+/* Hover raises attention by dimming everything else rather than by lighting the
+   target. Lighting the target would need a colour, and the only colour available
+   is gold — which under §2.1 must not mean "your pointer is here". */
+.tv-plot[data-dimmed] {
+  opacity: 0.42;
+}
+
+.tv-select {
+  fill: none;
+  stroke: rgba(255, 246, 232, 0);
+  stroke-width: 0.2;
+  vector-effect: non-scaling-stroke;
+  transition: stroke var(--dur-base) var(--ease-settle);
+}
+
+.tv-plot[data-hovered] .tv-select {
+  stroke: rgba(255, 246, 232, 0.55);
+}
+
+/* ------------------------------------------------------------------ beacons
+   Sanctioned gold — hands raised (§2.1). The only breathing thing in the
+   territory, and the only gold in it. */
+
+.tv-beacon-tip {
+  fill: rgba(253, 200, 113, 0.9);
+}
+
+.tv-beacon-tip-core {
+  fill: var(--gold-100);
+}
+
+.tv-beacon {
+  animation: tv-beacon-breathe 3.4s var(--ease-in-out) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes tv-beacon-breathe {
+  0%,
+  100% {
+    opacity: 0.82;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The beacon must read identically at every hour (spec §4) — no day/night rule
+   touches it, and that omission is deliberate. */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Traffic stops rather than freezing mid-path at a random offset. */
+  .tv-traffic-dot {
+    offset-distance: 50%;
+    opacity: 1;
+  }
+  .tv-beacon {
+    opacity: 1;
+  }
+}
