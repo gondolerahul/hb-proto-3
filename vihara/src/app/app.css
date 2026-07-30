@@ -144,10 +144,56 @@
   white-space: nowrap;
 }
 
-/* The mono depth path, bottom-left (still-visual's credit line idiom). */
+/* The breadcrumb (M1 — the wireframes' room grammar). */
+.vh-hud-crumb {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: 14px;
+  font-family: var(--font-body, sans-serif);
+  font-size: 13px;
+  font-weight: 400;
+}
+.vh-crumb-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.vh-crumb-link:hover {
+  color: var(--fg);
+}
+.vh-crumb-sep {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+.vh-crumb-here {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* The bottom-centre hint (the wireframes carry one on every room). */
+.vh-hint {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  color: var(--fg-subtle);
+  pointer-events: none;
+}
+
+/* The mono credit line, bottom-right (the wireframes' idiom). */
 .vh-depth-path {
   position: fixed;
-  left: 22px;
+  right: 22px;
   bottom: 14px;
   z-index: 30;
   font-family: var(--font-mono, monospace);
@@ -544,14 +590,13 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+/* The territory is FULL-BLEED (M1) — the wireframes never box the world
+ * in a card; the room is the page and the HUD floats over it. */
 .vh-world-frame {
-  flex: 1;
-  min-height: 420px;
-  position: relative;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
-  box-shadow: var(--shadow-lg);
 }
 /* r3f's injected wrapper carries INLINE position:relative and
  * height:100%; a percentage against a flex-derived (indefinite) height
@@ -564,10 +609,26 @@
   inset: 0;
 }
 .vh-terrace-controls {
+  position: fixed;
+  top: 52px;
+  right: 22px;
+  z-index: 20;
   display: flex;
   justify-content: flex-end;
 }
+.vh-terrace-controls .vh-quiet-link {
+  font-size: 12.5px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: rgba(10, 9, 8, 0.55);
+}
 .vh-demotion-offer {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -588,9 +649,19 @@
   cursor: pointer;
 }
 .vh-district-skiplist {
+  position: fixed;
+  bottom: 42px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: min(70rem, calc(100vw - 3rem));
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 0.5rem;
+}
+.vh-district-skiplist button {
+  background: rgba(10, 9, 8, 0.55);
 }
 /* District hop-list as chips — the DS's own small-navigation idiom. */
 .vh-district-skiplist button {
@@ -897,6 +968,52 @@
   background: var(--surface-3);
   border: 1px solid var(--ink-500);
   min-width: 2px;
+}
+
+/* ── the W district room's DOM layer (POLISH M2) ──────────────────────── */
+.vh-room-line {
+  position: fixed;
+  top: 52px;
+  left: 22px;
+  z-index: 20;
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-muted);
+  max-width: 44ch;
+}
+.vh-live-panel {
+  position: fixed;
+  right: 22px;
+  top: 30%;
+  z-index: 20;
+  width: min(19rem, calc(100vw - 3rem));
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-radius: var(--r-lg);
+  padding: 0.8rem 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.vh-live-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.vh-live-panel li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+.vh-live-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── the district sheet + dossier (DRIVER D4, D6 §5–6) ────────────────── */
@@ -1325,18 +1442,62 @@
 /* ── the undercroft (DRIVER D10, D6 §15) ──────────────────────────────── */
 /* Mono, dense, operator regardless of the learned value (art bible §6).
  * Gold audit: none. Nothing down here needs you; it explains. */
+/* The wireframe's engine room (M4): a left mono rail, card panels on
+ * the dark, the register tables inside them. */
 .vh-undercroft {
   display: grid;
-  gap: 0.75rem;
+  grid-template-columns: 11rem 1fr;
+  align-items: start;
+  gap: 1.25rem;
   text-align: left;
-  padding: 1rem;
+  padding: 1rem 0;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.85rem;
 }
 .vh-undercroft-nav {
   display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.55rem;
+  position: sticky;
+  top: 64px;
+}
+.vh-undercroft-nav::before {
+  content: "the engine room";
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  margin-bottom: 0.35rem;
+}
+.vh-undercroft-nav .vh-quiet-link {
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+.vh-undercroft > :not(.vh-undercroft-nav) {
+  grid-column: 2;
+}
+.vh-undercroft table[data-part] {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 0.6rem 0.8rem;
+}
+/* State words carry colour in the engine room (the wireframe's grammar):
+ * green for flow, gold for parked, terracotta for a dead end. */
+.vh-undercroft td[data-state="completed"],
+.vh-undercroft td[data-state="dispatched"],
+.vh-undercroft td[data-state="done"] {
+  color: var(--positive, #7fae7a);
+}
+.vh-undercroft td[data-state="parked"] {
+  color: var(--gold-400);
+}
+.vh-undercroft td[data-state="failed"],
+.vh-undercroft td[data-state="error"] {
+  color: var(--negative, #d4664f);
 }
 
 /* ── bridges & gates (DRIVER D11, D6 §14) ─────────────────────────────── */
@@ -1581,7 +1742,8 @@ form[data-part="thread-say"] input { flex: 1; }
   .vh-standup-card,
   .vh-steward-dock,
   .vh-desk-vitals,
-  .vh-places {
+  .vh-places,
+  .vh-live-panel {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background: var(--surface);

@@ -32,6 +32,13 @@ await page.waitForSelector('[data-part="shell"]', { timeout: 15000 });
 await shot("q-still", 2500);
 await page.click('[data-part="walk-in"]');
 await shot("q-terrace", 6000);
+await page.evaluate(() => {
+  const chip = [...document.querySelectorAll(".vh-district-skiplist button")].find(
+    (b) => b.textContent.includes("Order-to-Cash"),
+  );
+  chip?.click();
+});
+await shot("q-district", 5000);
 await page.click('[data-part="places-toggle"]');
 await shot("q-places", 800);
 await browser.close();
