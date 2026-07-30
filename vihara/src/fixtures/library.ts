@@ -191,10 +191,14 @@ export const DOCS: Doc[] = [
     influence: 0.83,
     influenceBasis: "40 distinct questions across 3 districts, weighted by how often the answer was acted on",
     counters: { retrievals: 214, chunk_hits: 96, distinct_queries: 40, window: "since 1 July 2026" },
+    /* The per-colleague counts are distinct questions, so they sum to
+       `distinct_queries` above. They deliberately do not sum to `retrievals` —
+       that number counts rows, and a row count has no owner. */
     citedBy: [
       { id: "AGT-046", name: "Meera", role: "Collections", count: 22 },
-      { id: "AGT-013", name: "Devika", role: "Quoting", count: 14 },
-      { id: "META-PRAGYA", name: "Pragya", role: "Meta-Agent", count: 4 },
+      { id: "AGT-013", name: "Devika", role: "Quoting", count: 12 },
+      { id: "AGT-041", name: "Anjali", role: "Dunning", count: 4 },
+      { id: "META-PRAGYA", name: "Pragya", role: "Meta-Agent", count: 2 },
     ],
     readBy: ["Collections", "Acquisition"],
     sections: [
@@ -207,7 +211,23 @@ export const DOCS: Doc[] = [
       { page: 15, headingPath: ["Freight and handling"], chunkFrom: 39, chunkTo: 44 },
       { page: 17, headingPath: ["Annexure", "Signed schedule"], chunkFrom: 45, chunkTo: 46 },
     ],
+    /* Newest first, everywhere. The surface prints "the most recent" from the
+       head of this list rather than sorting a date string it cannot parse. */
     citations: [
+      {
+        /* Same section as CIT-9021, a different question. Two citations in one
+           section is the case a viewer must handle without hiding either. */
+        id: "CIT-9105",
+        headingPath: ["Terms of trade", "Late payment"],
+        chunkIndex: 27,
+        page: 9,
+        passage:
+          "A waiver is recorded against the account and does not carry into the following quarter. A second waiver inside one financial year is the owner's to give, not ours.",
+        question: "Can I waive interest for Bhagwati Mills a second time?",
+        by: { id: "AGT-041", name: "Anjali", role: "Dunning" },
+        when: "25 July, 12:20",
+        afterSupersede: true,
+      },
       {
         id: "CIT-9021",
         headingPath: ["Terms of trade", "Late payment"],

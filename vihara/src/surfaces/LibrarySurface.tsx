@@ -127,6 +127,11 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
   /** A hand-mark names no replacement, so nothing is drawn where one would be. */
   const supersededBy = isMarked ? null : doc.supersededBy;
 
+  /* Read out as locals so the "absent means absent" test is one condition, and so
+     nothing downstream needs a non-null assertion to print a measured figure. */
+  const influence = doc.influence;
+  const counters = doc.counters;
+
   const cite: Citation | null = doc.citations.find((c) => c.id === openCite) ?? null;
 
   const sectionOf = (c: Citation) =>
@@ -158,7 +163,10 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
 
   const stillIndexing = DOCS.filter((d) => d.indexingNote !== null).length;
 
+  /* Citations are newest first in the fixture, so the head of this list is the
+     most recent one — no date string is parsed anywhere on this surface. */
   const citedAfter = doc.citations.filter((c) => c.afterSupersede);
+  const latestAfter = citedAfter[0];
   const needsYou = staleness === "superseded" && citedAfter.length > 0 && !isWithdrawn;
 
   function pickDoc(next: Doc) {
@@ -319,8 +327,29 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                 <ol className="li-outline">
                   {doc.sections.map((s, i) => {
                     const here = citesBySection.get(i) ?? [];
+                    const first = here[0];
                     const isOpen = openSection === i && cite !== null;
-                    const RowTag = here.length > 0 ? "button" : "div";
+                    /* The row's insides are the same either way; only a section
+                       with a returned passage is a control, because a section with
+                       none has nowhere to land. */
+                    const inside = (
+                      <>
+                        <span className="li-sec-page t-mono">p. {s.page}</span>
+                        <span className="li-sec-body">
+                          <HeadingPath path={s.headingPath} />
+                          <span className="li-sec-meta t-mono">
+                            <span>
+                              chunks {s.chunkFrom}–{s.chunkTo}
+                            </span>
+                            {here.length > 0 && (
+                              <span className="m-chip li-sec-cited">
+                                {here.length} {here.length === 1 ? "citation" : "citations"}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </>
+                    );
                     return (
                       <li
                         className="li-sec"
@@ -328,30 +357,17 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                         data-open={isOpen || undefined}
                         ref={isOpen ? openRow : undefined}
                       >
-                        <RowTag
-                          className="li-sec-row"
-                          {...(here.length > 0
-                            ? {
-                                onClick: () => openAt(here[0]!),
-                                "aria-label": `Open ${s.headingPath.join(" › ")} on page ${s.page}`,
-                              }
-                            : {})}
-                        >
-                          <span className="li-sec-page t-mono">p. {s.page}</span>
-                          <span className="li-sec-body">
-                            <HeadingPath path={s.headingPath} />
-                            <span className="li-sec-meta t-mono">
-                              <span>
-                                chunks {s.chunkFrom}–{s.chunkTo}
-                              </span>
-                              {here.length > 0 && (
-                                <span className="m-chip li-sec-cited">
-                                  {here.length} {here.length === 1 ? "citation" : "citations"}
-                                </span>
-                              )}
-                            </span>
-                          </span>
-                        </RowTag>
+                        {first ? (
+                          <button
+                            className="li-sec-row"
+                            aria-label={`Open ${s.headingPath.join(" › ")} on page ${s.page}`}
+                            onClick={() => openAt(first)}
+                          >
+                            {inside}
+                          </button>
+                        ) : (
+                          <div className="li-sec-row">{inside}</div>
+                        )}
 
                         {isOpen && cite && (
                           <div className="m-well li-passage vh-enter" data-deep>
@@ -368,6 +384,28 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                                 <Icon name="close" size={12} />
                               </button>
                             </div>
+                            {/* One section can hold several citations. Both are
+                                reachable from here rather than only from the
+                                right-hand list, because once you have landed the
+                                neighbouring passage is the next thing you want. */}
+                            {here.length > 1 && (
+                              <div
+                                className="li-passage-switch"
+                                role="group"
+                                aria-label="Citations in this section"
+                              >
+                                {here.map((c) => (
+                                  <button
+                                    key={c.id}
+                                    className="m-chip"
+                                    data-selected={c.id === cite.id || undefined}
+                                    onClick={() => openAt(c)}
+                                  >
+                                    {c.by.name} · #{c.chunkIndex}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                             <p className="li-passage-text">{cite.passage}</p>
                             <p className="li-passage-foot t-mono">
                               Returned to {cite.by.name} ({cite.by.role}) on {cite.when}, for
@@ -549,11 +587,18 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                   <span className="li-needs-word">this needs you</span>
                 </p>
                 <p className="li-needs-what">
-                  {citedAfter.length} answers have come out of this document since it
-                  was superseded — the most recent{" "}
-                  {citedAfter[0] ? `${citedAfter[0].by.name}, ${citedAfter[0].when}` : ""}. Until
-                  it is withdrawn, colleagues will keep quoting prices that stopped
-                  being true.
+                  {citedAfter.length === 1
+                    ? "One answer has"
+                    : `${citedAfter.length} answers have`}{" "}
+                  gone out of this document since it was superseded
+                  {latestAfter && (
+                    <>
+                      {" "}
+                      — the most recent from {latestAfter.by.name} on {latestAfter.when}
+                    </>
+                  )}
+                  . Until it is withdrawn, colleagues will keep answering customers
+                  out of a document you have already replaced.
                 </p>
                 <div className="li-acts">
                   <button
@@ -573,7 +618,7 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
             <section className="li-block">
               <h3 className="t-eyebrow">INFLUENCE</h3>
 
-              {doc.influence !== null && doc.counters ? (
+              {influence !== null && counters ? (
                 <div className="li-infl">
                   <div className="li-gauge-row">
                     {/* Six segments, per the wireframe. aria-hidden: the reading
@@ -583,13 +628,12 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                         <span
                           key={i}
                           className="li-seg"
-                          data-filled={i < Math.round(doc.influence! * 6) || undefined}
+                          data-filled={i < Math.round(influence * 6) || undefined}
                         />
                       ))}
                     </span>
                     <span className="li-gauge-read">
-                      {Math.round(doc.influence * 6)} of 6 · score{" "}
-                      {doc.influence.toFixed(2)}
+                      {Math.round(influence * 6)} of 6 · score {influence.toFixed(2)}
                     </span>
                   </div>
 
@@ -598,10 +642,10 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                   <p className="li-infl-sentence">
                     Answered{" "}
                     <strong>
-                      {doc.counters[INFLUENCE_SENTENCE_BINDS]}{" "}
-                      {doc.counters[INFLUENCE_SENTENCE_BINDS] === 1 ? "question" : "questions"}
+                      {counters[INFLUENCE_SENTENCE_BINDS]}{" "}
+                      {counters[INFLUENCE_SENTENCE_BINDS] === 1 ? "question" : "questions"}
                     </strong>{" "}
-                    {doc.counters.window}.
+                    {counters.window}.
                   </p>
 
                   {doc.influenceBasis && <p className="li-infl-basis">{doc.influenceBasis}.</p>}
@@ -622,7 +666,7 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                           )}
                           <span className="vh-sr-only"> — {COUNTER_MEANS[k]}</span>
                         </dt>
-                        <dd>{doc.counters![k].toLocaleString("en-IN")}</dd>
+                        <dd>{counters[k].toLocaleString("en-IN")}</dd>
                       </div>
                     ))}
                   </dl>
@@ -636,7 +680,9 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                   </p>
                 </div>
               ) : (
-                doc.indexingNote && <p className="li-empty">{doc.indexingNote}</p>
+                /* Absent, not zero. No gauge, no counters, no "0 questions" —
+                   the sentence explains that nothing has been measured yet. */
+                doc.indexingNote && <p className="li-absent">{doc.indexingNote}</p>
               )}
             </section>
 

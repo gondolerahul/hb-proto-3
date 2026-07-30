@@ -85,6 +85,7 @@
    It gets the width it needs and the rest of the strip yields to it. */
 .bg-edge-item[data-wide] {
   flex: 1 1 34ch;
+  max-width: 58ch; /* the measure rule applies inside an instrument strip too */
 }
 
 .bg-edge-item[data-wide] .bg-edge-val {
@@ -95,6 +96,7 @@
 
 .bg-edge-div {
   align-self: stretch;
+  flex: none; /* a 1px flex item will otherwise shrink to nothing */
 }
 
 /* ------------------------------------------------------------- the two columns
@@ -160,11 +162,12 @@
   content: "";
   position: absolute;
   inset: 0;
-  /* The unknown texture. Still, sparse, and nothing like the repair hatch. */
-  background-image: radial-gradient(circle at 1px 1px, rgba(255, 246, 230, 0.16) 1px, transparent 1px);
+  /* The unknown texture. Still, sparse, and nothing like the repair hatch.
+     Not `mix-blend-mode: overlay` — over a near-black ground overlay multiplies
+     toward black and the lattice disappears, which is the one thing this
+     texture is not allowed to do. Plain alpha, tuned to read at 1×. */
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 246, 230, 0.1) 1px, transparent 1px);
   background-size: 7px 7px; /* optical: lattice pitch, tuned by eye at 1× */
-  opacity: 0.5;
-  mix-blend-mode: overlay;
   pointer-events: none;
   z-index: 0;
 }
@@ -217,7 +220,7 @@
   border-radius: var(--r-md) var(--r-md) 0 0;
   background: repeating-linear-gradient(
     -45deg,
-    rgba(255, 246, 230, 0.3) 0 3px,
+    rgba(255, 246, 230, 0.24) 0 3px,
     rgba(255, 246, 230, 0.04) 3px 7px
   );
   pointer-events: none;
@@ -249,6 +252,14 @@
   width: 42px;
   height: 42px;
   padding: 3px; /* optical: keeps the seal's outer ring off the well's rim */
+}
+
+/* The small well — a catalogue row and the two sides of a dispute, where the
+   mark identifies rather than announces. */
+.bg-ident-well[data-sm] {
+  width: 34px;
+  height: 34px;
+  padding: 2px; /* optical: the same 3px rim, scaled down with the well */
 }
 
 .bg-ident-text {
@@ -296,7 +307,13 @@
   display: flex;
   align-items: flex-start;
   gap: var(--s-3);
+  flex-wrap: wrap;
   padding: var(--s-3) var(--s-4);
+}
+
+.bg-cred .m-btn {
+  flex: none;
+  margin-left: auto;
 }
 
 /* Expiry not known — the dot lattice again, so the same absence wears the same
@@ -305,10 +322,8 @@
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle at 1px 1px, rgba(255, 246, 230, 0.16) 1px, transparent 1px);
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 246, 230, 0.1) 1px, transparent 1px);
   background-size: 7px 7px;
-  opacity: 0.45;
-  mix-blend-mode: overlay;
   pointer-events: none;
   z-index: 0;
 }
@@ -376,6 +391,12 @@
 }
 
 /* ---- mastering ----------------------------------------------------------- */
+
+/* The well is the scroll container, so the mastering table can be wider than a
+   narrow card without the page ever scrolling sideways. */
+.bg-master-scroll {
+  overflow-x: auto;
+}
 
 .bg-master-table {
   width: 100%;
@@ -629,7 +650,9 @@
   font-size: 9px; /* optical: a tag, subordinate to the field name above it */
   letter-spacing: var(--track-eyebrow);
   text-transform: uppercase;
-  color: var(--accent);
+  /* Warm-white, not gold: the seam already spends the panel's gold and this
+     word only has to be unmissable, which contrast does better than hue. */
+  color: var(--fg);
 }
 
 .bg-val {
@@ -663,6 +686,7 @@
 .bg-seam-mark {
   font-family: var(--font-mono);
   font-size: 11px;
+  font-weight: 600;
   color: var(--accent);
 }
 
@@ -687,7 +711,7 @@
   color: var(--fg);
 }
 
-.bg-resolve-acts {
+.bg-acts {
   display: flex;
   gap: var(--s-2);
   flex-wrap: wrap;

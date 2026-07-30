@@ -205,6 +205,64 @@ Standup · The Study · Tray · Registry Hall.**
 **Still outstanding:** Talent Office · Gallery · Library · Bridges & Gates ·
 Undercroft (Sheet), and the Glasshouse (World).
 
+## 5d. R-3b closing — the last six surfaces
+
+### The Glasshouse · depth 2 · W+S (D6 §12)
+
+The whole surface hangs on one property: **the twin is the real, drained** — not
+recoloured. A blue twin would say "different place"; a drained twin says "not yet
+real".
+
+Three things make it more than a filter:
+
+* **Draining is applied at the plane boundary by the renderer** (`Room`'s `drained` prop), never chosen per element. That is what makes it **unforgeable**: a twin-derived component cannot be styled to look real. L6 asks the manifest layer to enforce that honesty; here the *material* enforces it too. A twin also has no lamplight and no beacons, because nothing in it has happened.
+* **Gold inside the twin is the divergence ribbon and the certified promotion links, and nothing else.** So the one thing your eye finds in a simulation is the thing that *differs from reality* — the only reason to be in there.
+* **A grade governs what may be displayed, not just what is labelled.** The `untested` scenario has no twin reading, so the ribbon is absent and the pane says *"I am not going to put a number here."* A ribbon between one number and nothing is a ribbon that invents the second number.
+
+Both panes render the same `Room`, so a difference between them is real rather than
+drawn. And moving a lever invalidates the reading — the surface says so unprompted,
+because a stale number beside a moved lever is the most convincing wrong number in
+the product.
+
+### The Undercroft · depth 3 · S (D6 §15)
+
+Mono throughout, pinned to operator density regardless of the learned value.
+
+**The manifest inspector is first and it is the point.** Every other bay is a view
+onto a subsystem that already had one; the inspector is Vihara-specific and it is
+what makes the rest of the product debuggable, because without it *"why did she
+show me that"* has no answer anywhere. It carries the four things needed to
+**reproduce** a render — the manifest as served, its `intent_shape`, its cache age,
+and the registry versions it resolved against — plus the **refusals**, because a
+component that was *declined* is the difference between what she asked for and what
+she was allowed.
+
+The cache key is the one gold string in the Undercroft and it earns it: keyed on
+**shape, never on tenant**, and the surface says why. A tenant-dependent key would
+leak one tenant's manifest into another's render, so the absence of a tenant id in
+that string is a security property rather than an omission — worth being able to
+verify by eye.
+
+Four bays are drawn. The other five name the endpoint that already answers and say
+the *table* is what is missing, not the data. Drawing a plausible one would be
+inventing rows, and the Undercroft is the last surface that should do that.
+
+### Library · Bridges & Gates · Talent Office · Gallery
+
+Built in a four-agent workflow against `DESIGN_CONTRACT.md`. Each was given its
+spec section, its gap to render honestly, and the instruction to write **fixture →
+CSS → TSX** in that order so a partial failure leaves the recoverable artifact —
+the lesson from the run whose agents died having written TSX and no styles.
+
+The gaps each was required to render rather than paper over:
+
+| Surface | The gap it must not hide |
+|---|---|
+| **Library** | Nothing calls `raise_contradiction`, so the flag exists and is **always absent**. Staleness is live; contradiction is not, and the surface says why rather than leaving a reader to assume it was forgotten. The influence sentence binds `distinct_queries`, **not** `retrievals` — a row count overstates influence in proportion to how finely the chunker split the document |
+| **Bridges & Gates** | `credentials_expire_at` ships and is **never populated**, so the sweep is correct and always empty. The surface must not imply a bridge without an expiry has been *checked* — absence of an expiry is absence of information, not a clean bill of health. Getting this wrong would be a security design bug |
+| **Talent Office** | Termination has **no backend contract** (VG-18, soft-delete only). The exit-interview and handover-memo flow is designed and blocked, and is shown as blocked |
+| **Gallery** | The KPI series starts **2026-07-25 with no backfill**. For a quarter this surface has almost nothing to show, must say so in prose, and must not render an empty chart — the young state is the *primary* state, because it is what the owner will actually see |
+
 ## 6. What R-3b needs
 
 1. **The owner's background pick** ([01](./01_background_port.md) §2.1) — it changes the atmosphere every remaining surface is composed against.

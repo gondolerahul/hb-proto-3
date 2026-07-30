@@ -10,6 +10,8 @@ import { StandupSurface } from "../surfaces/StandupSurface";
 import { StudySurface } from "../surfaces/StudySurface";
 import { GlasshouseSurface } from "../surfaces/GlasshouseSurface";
 import { UndercroftSurface } from "../surfaces/UndercroftSurface";
+import { LibrarySurface } from "../surfaces/LibrarySurface";
+import { BridgesSurface } from "../surfaces/BridgesSurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
 import { BackgroundPick } from "../boards/BackgroundPick";
@@ -44,6 +46,8 @@ type SurfaceId =
   | "study"
   | "glasshouse"
   | "undercroft"
+  | "library"
+  | "bridges"
   | "tray"
   | "hall"
   | "bg";
@@ -58,6 +62,8 @@ const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
   study: 2,
   glasshouse: 2,
   undercroft: 3,
+  library: 2,
+  bridges: 2,
   tray: 2,
   hall: 2,
   bg: 1,
@@ -73,6 +79,8 @@ const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
   { id: "study", label: "The Study", note: "your desk · VP-03" },
   { id: "glasshouse", label: "The Glasshouse", note: "drained twin · L6" },
   { id: "undercroft", label: "The Undercroft", note: "depth 3 · manifest" },
+  { id: "library", label: "The Library", note: "provenance · influence" },
+  { id: "bridges", label: "Bridges & Gates", note: "conflicts · consent" },
   { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
   { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
   { id: "bg", label: "Background pick", note: "decision D2 · closed" },
@@ -109,6 +117,14 @@ const BREADCRUMBS: Partial<
   undercroft: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
     { label: "The Undercroft" },
+  ],
+  library: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "The Library" },
+  ],
+  bridges: (go) => [
+    { label: "Terrace", onClick: () => go("terrace") },
+    { label: "Bridges & Gates" },
   ],
   tray: (go) => [
     { label: "Terrace", onClick: () => go("terrace") },
@@ -157,7 +173,7 @@ export function Prototype() {
   const intensity =
     surface === "still" || surface === "terrace"
       ? "full"
-      : surface === "hall" || surface === "dossier" || surface === "standup" || surface === "study" || surface === "undercroft"
+      : surface === "hall" || surface === "dossier" || surface === "standup" || surface === "study" || surface === "undercroft" || surface === "library" || surface === "bridges"
         ? "hushed"
         : "quiet";
 
@@ -195,6 +211,8 @@ export function Prototype() {
           {surface === "study" && <StudySurface onEcho={showEcho} />}
           {surface === "glasshouse" && <GlasshouseSurface onEcho={showEcho} />}
           {surface === "undercroft" && <UndercroftSurface onEcho={showEcho} />}
+          {surface === "library" && <LibrarySurface onEcho={showEcho} />}
+          {surface === "bridges" && <BridgesSurface onEcho={showEcho} />}
           {surface === "standup" && (
             <StandupSurface
               onOpenTray={() => setSurface("tray")}

@@ -190,9 +190,11 @@ export function BridgesSurface({ onEcho }: { onEcho: (msg: string) => void }) {
               settled={settled}
               openDispute={openDispute}
               onToggleDispute={(id) => setOpenDispute((cur) => (cur === id ? null : id))}
+              /* `echo: null` means the act has already spoken for itself — the
+                 re-declaration echoes as a declaration, not twice. */
               onSettle={(id, how, echo) => {
                 setSettled((s) => ({ ...s, [id]: how }));
-                onEcho(echo);
+                if (echo !== null) onEcho(echo);
               }}
               onDeclare={(object, master) => {
                 setDeclared((d) => ({ ...d, [`${b.id}:${object}`]: master }));
@@ -209,8 +211,8 @@ export function BridgesSurface({ onEcho }: { onEcho: (msg: string) => void }) {
             </h3>
             {AVAILABLE.map((a) => (
               <div className="bg-avail-row" key={a.id}>
-                <span className="m-portrait-well bg-ident-well" aria-hidden="true">
-                  <Seal id={a.id} size={30} />
+                <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
+                  <Seal id={a.id} size={28} />
                 </span>
                 <span className="bg-avail-text">
                   <span className="bg-avail-name">{a.name}</span>
@@ -300,7 +302,7 @@ function BridgeCard({
   settled: Record<string, string>;
   openDispute: string | null;
   onToggleDispute: (id: string) => void;
-  onSettle: (id: string, how: string, echo: string) => void;
+  onSettle: (id: string, how: string, echo: string | null) => void;
   onDeclare: (object: string, master: string) => void;
   onEcho: (msg: string) => void;
 }) {
@@ -323,8 +325,9 @@ function BridgeCard({
         </div>
 
         {/* Lamp plus word. The lamp is the fast read, the word is the correct
-            one — neither carries it alone. */}
-        <p className="bg-health" role="status">
+            one — neither carries it alone. Not a live region: this is standing
+            state, and four announcing regions on one surface is noise. */}
+        <p className="bg-health">
           <span
             className="m-lamp"
             data-positive={health.lamp === "positive" || undefined}
@@ -354,7 +357,7 @@ function BridgeCard({
       </div>
 
       {/* ----------------------------------------------------------- mastering */}
-      <div className="m-well">
+      <div className="m-well bg-master-scroll">
         <table className="bg-master-table">
           <caption className="vh-sr-only">
             Which system masters each object {bridge.name} carries
@@ -388,10 +391,7 @@ function BridgeCard({
                   </th>
                   <td>
                     {masterName !== undefined ? (
-                      <span
-                        className="bg-obj-master"
-                        data-elsewhere={elsewhere || undefined}
-                      >
+                      <span className="bg-obj-master">
                         <span className="m-lamp" />
                         <span className={elsewhere ? "bg-obj-elsewhere" : undefined}>
                           {masterName}
@@ -418,10 +418,11 @@ function BridgeCard({
                       <button
                         className="m-btn bg-mini"
                         data-rank="certified"
+                        aria-label={`Declare ${bridge.name} master of ${o.object}`}
                         onClick={() => onDeclare(o.object, bridge.name)}
                       >
                         <Icon name="key" size={12} />
-                        Declare {bridge.name} master
+                        Declare a master
                       </button>
                     )}
                   </td>
@@ -455,7 +456,12 @@ function BridgeCard({
                 key={d.id}
                 dispute={d}
                 onSettle={(how, echo) => onSettle(d.id, how, echo)}
-                onDeclare={(object, master) => onDeclare(object, master)}
+                /* Re-declaring the master settles this round *and* every future
+                   one, so it does both. It echoes once, as a declaration. */
+                onMasterInstead={() => {
+                  onDeclare(d.object, d.otherSide.system);
+                  onSettle(d.id, `${d.otherSide.system} made master`, null);
+                }}
               />
             ) : (
               <button
@@ -566,11 +572,11 @@ function Credential({ bridge, onEcho }: { bridge: Bridge; onEcho: (msg: string) 
 function DisputeView({
   dispute,
   onSettle,
-  onDeclare,
+  onMasterInstead,
 }: {
   dispute: Dispute;
   onSettle: (how: string, echo: string) => void;
-  onDeclare: (object: string, master: string) => void;
+  onMasterInstead: () => void;
 }) {
   const d = dispute;
   const differing = d.fields.filter((f) => f.differs).length;
@@ -590,7 +596,7 @@ function DisputeView({
         </div>
         {/* A dispute nobody has settled is the definition of "this needs you",
             which is what buys the lit lamp here under §2.1. */}
-        <p className="bg-dispute-waiting" role="status">
+        <p className="bg-dispute-waiting">
           <span className="m-lamp" data-lit />
           waiting on you
         </p>
@@ -615,8 +621,8 @@ function DisputeView({
               </th>
               <th scope="col">
                 <span className="bg-side">
-                  <span className="m-portrait-well bg-ident-well" aria-hidden="true">
-                    <Seal id={d.masterSide.sealId} size={28} />
+                  <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
+                    <Seal id={d.masterSide.sealId} size={26} />
                   </span>
                   <span className="bg-side-text">
                     <span className="bg-side-name">{d.masterSide.system}</span>
@@ -634,8 +640,8 @@ function DisputeView({
               </th>
               <th scope="col">
                 <span className="bg-side">
-                  <span className="m-portrait-well bg-ident-well" aria-hidden="true">
-                    <Seal id={d.otherSide.sealId} size={28} />
+                  <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
+                    <Seal id={d.otherSide.sealId} size={26} />
                   </span>
                   <span className="bg-side-text">
                     <span className="bg-side-name">{d.otherSide.system}</span>
@@ -684,7 +690,7 @@ function DisputeView({
           other side's values are kept either way, and you can read them in the
           Undercroft afterwards.
         </p>
-        <div className="bg-resolve-acts">
+        <div className="bg-acts">
           <button
             className="m-btn"
             onClick={() =>
@@ -724,7 +730,7 @@ function DisputeView({
           <button
             className="m-btn"
             data-rank="certified"
-            onClick={() => onDeclare(d.object, d.otherSide.system)}
+            onClick={onMasterInstead}
           >
             <Icon name="key" size={13} />
             Make {d.otherSide.system} master of {d.object} instead
@@ -844,7 +850,7 @@ function GateCard({
         </div>
       </dl>
 
-      <div className="bg-resolve-acts">
+      <div className="bg-acts">
         {gate.consent.promotional && (
           <button
             className="m-btn bg-mini"
