@@ -1,0 +1,460 @@
+/* The Line's frame — the chrome the three C surfaces mount into, drawn once so
+   a phone-shaped product cannot grow three phone-shaped chromes.
+
+   Three decisions shape all of it.
+
+   **The bars are docked and full-bleed, not floating.** The estate's rail is a
+   rounded glass slab inset from the window edge (shell.css), which is right at
+   1600px and wrong at 390: 24px of side padding on the chrome is 6% of the one
+   axis a phone has none of. The same glass material therefore runs edge to edge
+   and pays the notch back through env() insets. Docking them also means the
+   surfaces below never have to know the bar exists — they get the grid row
+   between the two bars and scroll inside it, exactly as they do on the desk.
+
+   **Nothing here is gold except a raised hand.** The active tab is a warm-white
+   cap over --surface-2 (§4). That restraint is what buys the tab bar the right
+   to carry a beacon at all: a bar with a gold "you are here" cannot also say
+   "this needs you" with gold and be believed.
+
+   **Every interactive target is >= 44px.** On the desk the floor is 32; here the
+   frame's own controls set their heights explicitly rather than inheriting
+   m-btn's 36, because a mis-tap in a bottom bar is a wrong tab and a mis-tap in
+   the rail is a session ended. */
+
+.ln {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  /* rail · the push notice (zero-tall when there is nothing true to say) · the
+     surface · the tabs. The notice is a row and not an overlay because it is
+     chrome: it must never sit on top of the thing it is talking about. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /* dvh, not 100%: iOS Safari's collapsing URL bar changes the visual viewport,
+     and a percentage height leaves the tab bar underneath the browser chrome
+     exactly when the thumb reaches for it. */
+  height: 100dvh;
+  /* A pull-to-refresh in the middle of an approval would discard the surface's
+     state to reload a fixture. The gesture buys nothing here. */
+  overscroll-behavior: none;
+
+  /* The tab bar's height, needed twice — by the bar and by the echo ribbon that
+     rides above it. 52 is the 44px touch floor plus the label's line box. */
+  --ln-tab-h: 52px;
+}
+
+/* ================================================================= the rail
+   The child combinator wins the border-radius back from m-glass without
+   depending on stylesheet order: a 16px radius on a full-bleed bar rounds its
+   outer corners against the screen edge, which reads as a broken frame rather
+   than as a floating one. */
+
+.ln > .ln-rail {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  border-radius: 0;
+  /* --s-2, not --s-1: the Leave control is 44px tall and the rail has to be
+     visibly taller than the control it holds, or it stops reading as a rail and
+     starts reading as a button with a company name beside it. */
+  padding-top: calc(var(--s-2) + env(safe-area-inset-top));
+  padding-right: calc(var(--s-3) + env(safe-area-inset-right));
+  padding-bottom: var(--s-2);
+  padding-left: calc(var(--s-4) + env(safe-area-inset-left));
+}
+
+/* The mark. Same anatomy as the estate's rail (shell.css .sh-mark) — one gold
+   point in a ring — because the phone and the desk are one product, and under
+   §2.1 the brand mark is one of the few things allowed to say so in gold. */
+.ln-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--border-gold);
+  flex: none;
+}
+
+.ln-mark-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gradient-gold);
+  box-shadow: 0 0 8px rgba(237, 171, 72, 0.6);
+}
+
+/* The tenant, and the only thing in the rail allowed to lose characters. Party
+   names in this product run long ("Vasudha Handloom Cooperative Ltd"), so the
+   name yields to the two controls beside it rather than pushing them off. */
+.ln-company {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Presence. Static, not a button: the Line has no palette to open, and a 44px
+   target that opens nothing is 44px of the rail spent on nothing. */
+.ln-presence {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+}
+
+/* Listening: a half-filled disc that breathes very slowly. Not a face. */
+.ln-presence-mark {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, var(--fg-muted) 50%, transparent 50%);
+  box-shadow: inset 0 0 0 1px var(--fg-subtle);
+  animation: ln-listen 4.6s var(--ease-in-out) infinite;
+}
+
+@keyframes ln-listen {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The way out. Top-right is the hardest corner for a thumb to reach by
+   accident, which is exactly where a rare and consequential control belongs. */
+.ln-leave {
+  flex: none;
+  min-height: 44px;
+  padding: 0 var(--s-3);
+}
+
+/* =============================================================== the notice
+   What the Line can and cannot tell you. A plate, because it is a statement the
+   frame is making rather than a floating layer over the world — and because the
+   rail and the tab bar are already the two glass layers this frame is allowed. */
+
+.ln-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin: var(--s-2) calc(var(--s-4) + env(safe-area-inset-right)) 0
+    calc(var(--s-4) + env(safe-area-inset-left));
+  padding: var(--s-3) var(--s-4);
+}
+
+/* An unlit lamp: this is information, not a state that needs you. It sits on
+   the eyebrow's optical centre rather than the flex baseline. */
+.ln-notice-lamp {
+  translate: 0 5px;
+}
+
+.ln-notice-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ln-notice-line {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 48ch;
+}
+
+/* --fg-muted, not --fg-subtle: `tests/contrast.test.ts` holds --fg-subtle to the
+   3:1 large-text floor, and this is 11px of instructions someone is following
+   with the phone in one hand. */
+.ln-notice-how {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.ln-notice-btn {
+  align-self: flex-start;
+  min-height: 44px;
+  margin-top: var(--s-1);
+}
+
+/* ============================================================== the surface
+   The surfaces own their own scrolling, exactly as they do inside the estate's
+   shell — so this row only has to be a correctly-sized hole. */
+
+.ln-body {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ln-body:focus {
+  outline: none;
+}
+
+.ln-swap {
+  height: 100%;
+}
+
+/* ============================================================== the tab bar */
+
+.ln > .ln-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-radius: 0;
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+.ln-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* 3px, not --s-1: the label has to read as the icon's caption rather than as
+     a second row, and 4px is already the gap at which it detaches. */
+  gap: 3px;
+  min-height: var(--ln-tab-h);
+  padding: var(--s-2) var(--s-1);
+  /* A dormant tab is still navigation, not decoration, so it sits on the muted
+     step rather than the subtle one — `tests/contrast.test.ts` holds --fg-subtle
+     to the 3:1 large-text floor, and these labels are 10px. The active state is
+     carried by the cap and the lit ground, not by making the other two dim. */
+  color: var(--fg-muted);
+  /* No transition on `color` or `background`: DESIGN_CONTRACT §1.5 permits only
+     transform and opacity, and the lit ground below rides an opacity overlay
+     instead. The label's colour changes instantly, which is also the right
+     answer for a thumb — a 200ms fade on the thing you just tapped reads as
+     lag, not as polish. */
+}
+
+.ln-tab:hover {
+  color: var(--fg);
+}
+
+/* Active: warm-white on a lit ground, never gold (§4).
+   The ground lives on `::after` rather than on the tab's own `background`, so
+   the state arrives by fading a layer's opacity instead of transitioning a
+   paint property — §1.5 permits transform and opacity and nothing else.
+   (`::before` is already the cap, below.) */
+.ln-tab[data-active] {
+  color: var(--fg);
+}
+
+.ln-tab::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 246, 230, 0.055), transparent 64%);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+  pointer-events: none;
+}
+
+.ln-tab[data-active]::after {
+  opacity: 1;
+}
+
+/* The cap. A 2px rule across the top of the live tab — the thinnest mark that
+   still reads as a state at arm's length, and the same device the estate's
+   depth rungs use, turned through ninety degrees. */
+.ln-tab::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+  width: 26px;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: rgba(246, 241, 233, 0.72);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.ln-tab[data-active]::before {
+  opacity: 1;
+}
+
+/* .t-eyebrow sets its own colour, so the tab's `color` never reaches the label —
+   both states have to be said here or the live tab's word stays dim. */
+.ln-tab-label {
+  letter-spacing: 0.1em; /* the eyebrow's 0.16em breaks a 7-character word across a 130px tab */
+  color: var(--fg-muted);
+}
+
+.ln-tab[data-active] .ln-tab-label {
+  color: var(--fg);
+}
+
+/* The one gold on this frame: a hand is raised, which is §4's first sanctioned
+   meaning. It hangs off the icon's upper right so it reads as a mark on the tab
+   rather than as part of the glyph. */
+.ln-tab-hands {
+  position: absolute;
+  top: var(--s-1);
+  left: 50%;
+  translate: 8px 0;
+  display: flex;
+  align-items: center;
+  /* 3px, not --s-1: the lamp and its count are one mark, and --s-1 separates
+     them into a lamp beside a number. Optical, at this size only. */
+  gap: 3px;
+}
+
+.ln-tab-count {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--gold-300);
+}
+
+/* The Line is phone-first, but it is a web page and it will be opened wide —
+   by the R-4 sweep at 1600px, and by anyone who taps a push on a tablet. Three
+   20px icons stretched across 1600px reads as a broken layout rather than as a
+   generous one, so past the phone the bar becomes three fixed tabs, centred. */
+@media (min-width: 640px) {
+  .ln > .ln-tabs {
+    grid-auto-columns: minmax(0, 8rem);
+    justify-content: center;
+  }
+
+  /* Likewise the notice: a plate holding one sentence has no business being
+     1600px wide. It stops growing where its prose stops, and stays left-aligned
+     so it sits under the mark rather than floating in the middle of nowhere —
+     which also leaves the base rule's env() margins doing their job in
+     landscape, where a centred plate would drift into the notch. */
+  .ln-notice {
+    max-width: 42rem;
+  }
+}
+
+/* =========================================================== the echo ribbon
+   Rides above the tab bar rather than over it — a receipt that covers the way
+   out is a receipt that costs you a tap. */
+
+.ln-echo {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--ln-tab-h) + env(safe-area-inset-bottom) + var(--s-3));
+  /* Centred with `transform`, not the `translate` longhand: `vh-echo` animates
+     `translate`, and sharing the property would drop the centring for the whole
+     4.5s of the animation. The two compose — translate resolves before
+     transform — so the ribbon rises and stays centred. */
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  max-width: calc(100vw - var(--s-6));
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-pill);
+}
+
+.ln-echo-text {
+  font-size: var(--text-sm);
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ================================================================== leaving
+   A bottom sheet, because the way out has to be reachable by the same thumb
+   that opened it — a centred modal on a phone puts the confirm button in the
+   dead zone. A plate rather than glass: glass on glass is fog, and the rail and
+   the tab bar behind this are both already glass. */
+
+.ln-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  align-items: end;
+  background: rgba(4, 3, 3, 0.62);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: vh-fade var(--dur-fast) var(--ease-settle) both;
+}
+
+.ln-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin: 0 calc(var(--s-3) + env(safe-area-inset-right))
+    calc(var(--s-3) + env(safe-area-inset-bottom))
+    calc(var(--s-3) + env(safe-area-inset-left));
+  padding: var(--s-5);
+  animation: vh-rise var(--dur-base) var(--ease-settle) both;
+}
+
+.ln-sheet-title {
+  font-size: var(--text-lg);
+}
+
+.ln-sheet-note {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 46ch;
+}
+
+.ln-sheet-acts {
+  display: flex;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+
+.ln-sheet-act {
+  flex: 1;
+  min-height: 46px;
+}
+
+/* ============================================================== after leaving
+   Not a locked screen and not an error: one plate, the mark, and the single
+   sentence that is true. R-4 replaces the return button with the real
+   pre-session gate; the frame's contract is only that a way out exists, that
+   taking it is deliberate, and that the state it lands in is honest. */
+
+.ln-gone {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  height: 100dvh;
+  padding: calc(var(--s-5) + env(safe-area-inset-top))
+    calc(var(--s-5) + env(safe-area-inset-right))
+    calc(var(--s-5) + env(safe-area-inset-bottom))
+    calc(var(--s-5) + env(safe-area-inset-left));
+}
+
+.ln-gone-plate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+  max-width: 34rem;
+  padding: var(--s-6) var(--s-5);
+}
+
+.ln-gone-title {
+  font-size: var(--text-2xl);
+}
+
+.ln-gone-note {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  max-width: 44ch;
+}
+
+.ln-gone-btn {
+  min-height: 46px;
+  margin-top: var(--s-2);
+}

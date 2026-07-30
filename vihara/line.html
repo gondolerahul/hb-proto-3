@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover: the Line draws its glass bars to the edges of a
+         notched phone and pays the insets back in CSS (env(), in line.css).
+         Without it the bars stop short and the app looks letterboxed. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <!-- --ink-950, the canvas token, so the phone's own chrome matches the app's
+         ground. The first build shipped #111111 here and in the manifest, which
+         is a value the brand does not contain. -->
+    <meta name="theme-color" content="#0a0908" />
+    <link rel="manifest" href="/line.webmanifest" />
+    <link rel="apple-touch-icon" href="/line-icon.svg" />
+    <title>The Line</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/line/main.tsx"></script>
+  </body>
+</html>

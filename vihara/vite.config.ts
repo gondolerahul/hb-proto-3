@@ -13,6 +13,11 @@ import { defineConfig } from "vite";
  *   narrows what 3D is spent on, but the tier-C rule from D7 §3.3 stands:
  *   a tier-C device never downloads three, so the chunk boundary has to
  *   exist for the budget check to have something to measure.
+ * - The Line (R-3c C1) is a **second HTML entry**, not a route inside the
+ *   first. A route would put the estate's fifteen surfaces in the phone's
+ *   initial graph, and `scripts/check_bundle_budget.mjs` gives every
+ *   `dist/*.html` its own 220 KB gz ceiling precisely so the two are
+ *   measured apart. Same app, same components, two front doors.
  */
 export default defineConfig({
   plugins: [react()],
@@ -26,6 +31,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: { main: "index.html", line: "line.html" },
       output: {
         manualChunks(id: string) {
           if (id.includes("node_modules/three")) return "world";

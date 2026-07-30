@@ -217,3 +217,19 @@ th {
 .vh-skip:focus-visible {
   translate: -50% 0;
 }
+
+/* The skip link is keyboard-only by construction — it exists off-screen until
+   it takes focus — so the desktop rule leaves it at its type's natural height.
+   On the phone breakpoint it still has to meet the 44px touch floor
+   (DESIGN_CONTRACT §6): the Line is reached by external keyboards and by
+   switch-control users on iPadOS, and a target that only a keyboard can find is
+   not a target a keyboard user should have to hit precisely. Scoped rather than
+   blanket, because raising it everywhere would push a 37px control past the
+   estate's 32px desktop floor for no one's benefit. */
+@media (max-width: 640px) {
+  .vh-skip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

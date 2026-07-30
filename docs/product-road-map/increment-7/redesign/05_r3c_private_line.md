@@ -139,6 +139,73 @@ estate is, and R-4 wires all eighteen together. Building the Line against live d
 while the estate is on fixtures would produce two half-wired apps and one shared
 component with two data sources.
 
+## 6a. Build notes — ✅ BUILT 2026-07-30
+
+All eight tasks landed. **The eighteen are complete.**
+
+**Gates, measured:** `tsc` clean · `lint` clean (now covering `tests/` too) ·
+**vitest 65** (+15, of which 15 are the Line's) · `sweep` **19/19** · build clean
+with **two entries measured apart — index 139.5 KB gz, line 87.8 KB gz**, each of
+its own 220 budget · `gen:api` no drift · token mirror matches · backend **2242**
+unit green.
+
+**Five deltas worth reading.**
+
+**1. The Line's real cost is 87.8 KB gz, not the first build's 3.5.** That number
+came from counting only what the Line entry uniquely owned and letting the shared
+chunk ride "because it is cached". The rebuilt budget script counts a shared chunk
+against **both** entries, because a cold visit to either page pays for it — which
+is what the budget is about. The standing risk in §7 is closed by measuring
+honestly rather than by coming in under a number that was never real.
+
+**2. The C4 invariant holds, and is mutation-tested rather than asserted.** The
+Thread imports `../surfaces/TraySurface` and mounts it. Four assertions guard it,
+and a verification pass proved they bite by standing a byte-perfect fork in the
+way. **It also found the docstring overstated one of them:** byte-equality does
+*not* catch a perfect copy — a perfect copy emits identical markup. Module
+identity and the source scan are what catch it. The comment is corrected, because
+a test whose docstring claims more than it does is how the wrong test gets deleted
+later.
+
+**3. Two `§1.5` violations were found by the verification pass and fixed.** The tab
+bar transitioned `color` and `background`; the Morning Story's pip transitioned
+`background`. Both now move by opacity and transform alone — the tab's lit ground
+became an `::after` layer that fades. Worth recording: **the shared design system
+breaches the same rule in three places** (`material.css` transitions
+`background, color, box-shadow`; `motion.css`'s `.vh-lift` and `tray.css`
+transition `box-shadow`, which §1.5 forbids **by name**). The Line is now stricter
+than the system it sits in. That is a finding for a later pass, not something a
+Line round should fix across all eighteen surfaces.
+
+**4. The absence rule was correct on two surfaces and held by nothing.** The
+verification pass rendered the Morning Story's degraded card and the Pocket Desk's
+young KPI and found both right — and found **zero tests** on either. Given
+`tray_cost.test.tsx` exists precisely because a null that renders as a number is
+the worst available bug here, correct-by-authorship is not the standard. Four
+tests were added, then mutation-tested. The first mutation **escaped**: replacing
+the `DeskFigure` branch's absence with a dash passed everything, because the
+fixture has no figure with a null aggregate to render. A source-level scan over
+every `current === null` branch now covers what no fixture can reach, and it
+catches that mutation. *A behavioural test can only ever cover the states a
+fixture actually produces.*
+
+**5. A counted zero and an absent reading must not look alike**, and the Desk is
+the surface where both occur. `unreconciled` genuinely counts zero and prints
+`0`; `close_days` has no point in its series yet and prints no figure at all with
+a sentence saying why. Both are pinned by test — the second assertion is what
+stops "render nothing for a null" from being over-applied into "render nothing for
+a falsy", which would erase a real and usually good result.
+
+**Also fixed:** the skip link was 37px tall on the phone, under the 44px touch
+floor. Raised at the mobile breakpoint only, since the estate's desktop floor is
+32px and a blanket bump serves nobody.
+
+**Honest limits.** The Line has never run on a real phone — install, a push
+arriving as a tray, and a fingerprint approving a payment are all G4's owner-side
+legs and stay owner-side. This VM has no GPU, so no screenshot taken here judges
+the atmosphere. And no harness measures touch targets or dead CSS; both were done
+with throwaway probes this round and belong in `scripts/`.
+
 ## 7. Standing risks
 
 | Risk | Held by |
@@ -154,4 +221,5 @@ component with two data sources.
 
 | Date | Change |
 |---|---|
+| 2026-07-30 | v1.1 — **✅ BUILT** (§6a). All eight tasks; the eighteen surfaces are complete. Five deltas: the Line's honest bundle cost is 87.8 KB gz rather than the first build's fictional 3.5, because a shared chunk is now counted against both entries; the **C4 invariant holds and was mutation-tested**, which also exposed that its own docstring overstated one assertion (byte-equality cannot catch a byte-perfect copy); two §1.5 transition violations found and fixed, with the finding that **the shared design system breaches the same rule in three places** and the Line is now stricter than the system it sits in; the absence rule was correct on two surfaces and **held by no test at all**, so four were added and mutation-tested — and the first mutation **escaped**, because a behavioural test can only cover the states a fixture actually produces, which is why a source-level scan now backs it. |
 | 2026-07-30 | v1.0 — round opened by charter D6. Records the counting habit that hid the omission (fifteen was a subtotal reported as a total, and no test could have caught it), fixes the split between salvaged plumbing and rebuilt visuals, and names **C4** — the Thread's certified section must *be* `TraySurface`, not resemble it — as the round's load-bearing task. |
