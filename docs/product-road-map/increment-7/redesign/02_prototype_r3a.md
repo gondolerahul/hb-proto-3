@@ -263,6 +263,37 @@ The gaps each was required to render rather than paper over:
 | **Talent Office** | Termination has **no backend contract** (VG-18, soft-delete only). The exit-interview and handover-memo flow is designed and blocked, and is shown as blocked |
 | **Gallery** | The KPI series starts **2026-07-25 with no backfill**. For a quarter this surface has almost nothing to show, must say so in prose, and must not render an empty chart — the young state is the *primary* state, because it is what the owner will actually see |
 
+## 5e. What R-3b verified, and the defects verification found
+
+Three harnesses were written because three claims were unchecked. Each one found
+something, which is the argument for having written them.
+
+| Harness | What it checks | What it found |
+|---|---|---|
+| `scripts/sweep.mjs` | Visits every surface; reports console errors, page errors, empty bodies | Clean 16/16 — but it is the reason a runtime throw in a rarely-opened surface is no longer possible to ship unseen |
+| `scripts/shoot_variants.mjs` | Any surface under `prefers-reduced-motion` and at 720px | **165 lines of unreachable CSS** in `terrace.css` — the entire DOM label layer, left behind when review A2 moved every glyph into the drawing, including a responsive rule hiding an element that no longer exists. Also a two-line wrap in the district legend |
+| `tests/contrast.test.ts` | WCAG ratios computed from the **real** token values in the brand stylesheet | All 12 pass, so the ramp is sound. One assertion is inverted on purpose: `--fg-faint` is asserted to **fail** the body floor, so a future "fix" that brightens it breaks here and forces the real conversation instead of quietly making disabled look enabled |
+
+### The defect worth reading twice
+
+`npm run build` had never been run. It showed that **D7 §3.3's tier-C gate was
+failing while the build output looked like it passed.**
+
+Quarantining three.js into its own rollup chunk is necessary and *not sufficient*.
+A static `import` puts that chunk in the initial module graph, Vite emits a
+`<link rel="modulepreload">` for it, and **every device fetches 137 KB gzipped**
+whether or not it will ever render a frame. The chunk list looked exactly right —
+`world` separate, shell inside budget — and the gate was being violated on every
+page load.
+
+Fixed with `background/tier.ts` (the D7 §3.1 probe, deliberately conservative:
+when it cannot tell, it answers C) and a dynamic import, with
+`tests/tier_gate.test.ts` asserting the world chunk is never preloaded. This is
+the shape of defect that reading build output cannot catch, which is why it is now
+a test.
+
+Shell: **140.6 KB gzipped** against the 220 KB budget.
+
 ## 6. What R-3b needs
 
 1. **The owner's background pick** ([01](./01_background_port.md) §2.1) — it changes the atmosphere every remaining surface is composed against.
