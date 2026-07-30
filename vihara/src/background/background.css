@@ -51,8 +51,31 @@
   backdrop-filter: saturate(0.45) blur(2px);
 }
 
-/* Reduced motion: no scene is mounted at all, so the layer has to carry the
-   look on its own. A static gradient in the same key — warm floor, dark sky. */
+/* No scene: tier C (D7 §3.3 — it never downloads three.js), reduced motion, or a
+   browser without WebGL2. The layer carries the look on its own, and it is styled
+   as a deliberate still rather than as a scene that failed to arrive — same key as
+   the running field, warm floor into dark sky.
+
+   `[data-still]` and the media query are both here on purpose: the attribute
+   covers the tier decision, the media query covers a preference that can change
+   after mount without React re-probing. */
+.vh-bg[data-still][data-variant="legacy"],
+.vh-bg[data-variant="legacy"]:not([data-still]) {
+  background: var(--ink-950);
+}
+
+.vh-bg[data-still][data-variant="legacy"] {
+  background:
+    radial-gradient(140% 90% at 50% 118%, rgba(96, 54, 18, 0.5) 0%, transparent 58%),
+    linear-gradient(to bottom, #100b02 0%, #1d1605 46%, #0a0908 100%);
+}
+
+.vh-bg[data-still][data-variant="brand"] {
+  background:
+    radial-gradient(140% 90% at 50% 118%, rgba(237, 171, 72, 0.22) 0%, transparent 58%),
+    linear-gradient(to bottom, #0a0908 0%, #17120a 48%, #0a0908 100%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .vh-bg[data-variant="legacy"] {
     background:

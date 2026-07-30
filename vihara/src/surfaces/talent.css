@@ -1,0 +1,1057 @@
+/* The Talent Office — brief → shortlist → interview → probation → confirmation.
+
+   Three regions, three registers, one room:
+
+     the brief       narrative, narrow measure, a conversation you can add to
+     the shortlist   cards you compare, side by side, at operator density
+     the interview   evidence: a well per case, the known answer above the
+                     attempt, and a trace one flip away
+
+   Two structural decisions live here rather than in the TSX:
+
+   1. **Each column owns a fixed head and a scrolling body** (`.ta-col` is a
+      two-row grid). No sticky headers: this surface floats over the animated
+      background, so an "opaque sticky header" would have to be an opaque plate
+      drawn over transparent gaps, which reads as a card that lost its edges.
+      Taking the head out of the scroller gets the same guarantee with no
+      translucency over moving text.
+
+   2. **The certified hire is pinned to the foot of the interview column**, not
+      scrolled to. It is the one act this room exists to perform, and it is the
+      only glass in the surface (glass on glass is fog) and the only gold.
+*/
+
+.ta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  height: 100%;
+  min-height: 0;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+}
+
+/* ================================================================= the head */
+
+.ta-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  flex: none;
+}
+
+.ta-head-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+}
+
+.ta-title {
+  margin-top: var(--s-2);
+  font-size: var(--text-2xl);
+}
+
+.ta-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+.ta-head-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------- the stage rail
+   Five stages, each with what it means. The stage you are on gets surface and
+   a strong edge and the words "you are here" — deliberately NOT gold: the gold
+   budget on this surface is spent entirely on the hire, and a rail that glowed
+   would compete with the one act that matters. */
+
+.ta-stages {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+
+.ta-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line);
+}
+
+.ta-stage[data-state="here"] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim);
+}
+
+.ta-stage-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.ta-stage-mark {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-500);
+  flex: none;
+}
+
+.ta-stage[data-state="done"] .ta-stage-mark {
+  background: var(--fg-subtle);
+}
+
+.ta-stage[data-state="here"] .ta-stage-mark {
+  background: var(--white);
+  box-shadow: 0 0 0 3px rgba(255, 240, 220, 0.08);
+}
+
+.ta-stage-label {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.ta-stage[data-state="here"] .ta-stage-label {
+  color: var(--fg);
+}
+
+.ta-stage-here {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--fg-subtle);
+}
+
+.ta-stage-means {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-subtle);
+}
+
+/* ============================================================== the columns */
+
+.ta-cols {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 420px;
+  gap: var(--s-4);
+  flex: 1;
+  min-height: 0;
+}
+
+.ta-col {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  min-height: 0;
+  min-width: 0;
+}
+
+.ta-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.ta-col-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the scrollbar so it never sits on the plate's rim. */
+  padding-right: var(--s-1);
+}
+
+.ta-col-note {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ta-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  flex: none;
+}
+
+.ta-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.ta-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.ta-note strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* ================================================================ the brief
+   A conversation, because that is how the brief was actually made. Pragya's
+   turns are set in a well; yours sit on the plate — the register difference is
+   material, not colour. */
+
+.ta-turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.ta-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+}
+
+.ta-turn[data-who="pragya"] {
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+}
+
+.ta-turn[data-who="you"] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
+}
+
+.ta-turn-said {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg);
+  max-width: 68ch;
+}
+
+.ta-turn[data-who="pragya"] .ta-turn-said {
+  color: var(--fg-muted);
+}
+
+/* The one input on the surface. A brief you cannot add a line to is a brief
+   somebody else wrote. */
+.ta-brief-form {
+  display: flex;
+  gap: var(--s-2);
+  align-items: stretch;
+}
+
+.ta-brief-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.ta-brief-input::placeholder {
+  color: var(--fg-subtle);
+}
+
+.ta-brief-form .m-btn {
+  padding: 0 var(--s-3);
+}
+
+/* Clauses ---------------------------------------------------------------- */
+
+.ta-clauses {
+  display: flex;
+  flex-direction: column;
+}
+
+.ta-clause {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ta-clause:last-child {
+  box-shadow: none;
+}
+
+.ta-clause-val {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--fg);
+  max-width: 68ch;
+}
+
+/* What it may touch ----------------------------------------------------- */
+
+.ta-touch {
+  display: flex;
+  flex-direction: column;
+}
+
+.ta-touch-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ta-touch-item:last-child {
+  box-shadow: none;
+}
+
+.ta-touch-lamp {
+  margin-top: 6px;
+}
+
+.ta-touch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ta-touch-name {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.ta-touch-item[data-withheld] .ta-touch-name {
+  color: var(--fg-muted);
+}
+
+.ta-touch-word {
+  font-size: 9px;
+  height: 18px;
+  padding: 0 var(--s-2);
+}
+
+.ta-touch-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-subtle);
+}
+
+/* ============================================================ VG-18, blocked
+   No control is drawn, because there is nothing behind one. The state is a
+   lamp plus the word "blocked" — unlit, not terracotta: a platform gap is an
+   absence, not an error, and colouring it as a fault would tell the owner that
+   something they did has gone wrong. */
+
+.ta-gap-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.ta-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  counter-reset: ta-step;
+}
+
+.ta-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ta-step:last-child {
+  box-shadow: none;
+}
+
+.ta-step::before {
+  counter-increment: ta-step;
+  content: counter(ta-step);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+  padding-top: 3px;
+}
+
+.ta-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.ta-step-label {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.ta-step-what {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.ta-missing {
+  padding: var(--s-3);
+}
+
+.ta-missing ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.ta-missing li {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  padding-left: var(--s-3);
+  position: relative;
+}
+
+.ta-missing li::before {
+  content: "";
+  position: absolute;
+  /* A 3px square bullet, optically matched to the 10px mono line. */
+  top: 6px;
+  left: 0;
+  width: 3px;
+  height: 3px;
+  background: var(--fg-faint);
+}
+
+/* ============================================================ the shortlist */
+
+.ta-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s-3);
+  align-items: start;
+}
+
+.ta-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+/* The card in the interview. Surface plus a strong edge plus a word — never
+   gold, because "you clicked this" is not what gold means (§2.1). */
+.ta-card[data-active] {
+  background:
+    linear-gradient(180deg, rgba(255, 246, 230, 0.04) 0%, transparent 46%),
+    var(--surface-2);
+  box-shadow:
+    var(--edge-line-strong),
+    var(--edge-rim-strong),
+    var(--edge-base),
+    var(--contact-lg),
+    var(--shadow-lg);
+}
+
+.ta-card-flag {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 12px;
+}
+
+.ta-card-top {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: center;
+}
+
+.ta-card-face {
+  width: 52px;
+  height: 52px;
+}
+
+.ta-card-ident {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ta-card-name {
+  font-size: var(--text-lg);
+}
+
+.ta-card-role {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.ta-card-origin {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ta-card-words {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 340;
+  line-height: var(--lh-relaxed);
+  color: var(--fg);
+  max-width: 68ch;
+  padding-left: var(--s-3);
+  box-shadow: inset 2px 0 0 var(--rule-strong);
+}
+
+/* The recommendation. Ticks and a well, not a glow: a recommendation is
+   neither "this needs you" nor "this is certified". */
+.ta-why {
+  padding: var(--s-3);
+}
+
+.ta-why-text {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+.ta-charter {
+  display: flex;
+  flex-direction: column;
+}
+
+.ta-charter-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: var(--s-2) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ta-charter-row:last-child {
+  box-shadow: none;
+}
+
+.ta-charter-val {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+
+.ta-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.ta-tool {
+  height: 22px;
+  font-size: 10px;
+}
+
+/* A tool the brief withholds. Terracotta is earned here — it is a conflict
+   between what the candidate asks for and what the owner said. Paired with the
+   words "outside the brief", never colour alone. */
+.ta-tool[data-outside] {
+  color: var(--negative);
+  box-shadow: var(--edge-line-strong), var(--edge-rim), var(--contact-sm);
+}
+
+.ta-cost {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.ta-cost-fig {
+  font-size: var(--text-xl);
+}
+
+.ta-cost-per {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+.ta-cost-basis {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+
+/* No figure, and the reason in its place. Never ₹0, never a dash. */
+.ta-cost-absent {
+  padding: var(--s-3);
+}
+
+.ta-card-acts {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.ta-card-acts .m-btn {
+  min-height: 32px;
+}
+
+/* ============================================================ the interview */
+
+.ta-iv-title {
+  font-size: var(--text-lg);
+}
+
+.ta-iv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.ta-iv-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+.ta-iv-summary {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.65;
+  color: var(--fg);
+  max-width: 68ch;
+}
+
+.ta-case {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+.ta-case-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.ta-case-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ta-case-party {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.ta-case-what {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+/* The comparison. One well, two halves, a hairline between: the answer you
+   already know above, the candidate's attempt below. Two separate wells read as
+   two unrelated facts; one well with a rule reads as a comparison. */
+.ta-compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+}
+
+.ta-compare-half {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.ta-compare-text {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+.ta-compare-half[data-side="candidate"] .ta-compare-text {
+  color: var(--fg);
+}
+
+.ta-compare-words {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-style: italic;
+  line-height: 1.7;
+  color: var(--fg-muted);
+  max-width: 68ch;
+  padding-left: var(--s-3);
+  box-shadow: inset 2px 0 0 var(--rule);
+}
+
+.ta-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.ta-verdict-word {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.ta-verdict-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+/* untested: never tried. Distinct from unknown — the words say nothing ran. */
+.ta-untested {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+}
+
+.ta-trace-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  align-self: flex-start;
+  min-height: 28px;
+  padding: 0 var(--s-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  transition: color var(--dur) var(--ease-out);
+}
+
+.ta-trace-toggle:hover {
+  color: var(--fg);
+}
+
+.ta-trace-caret {
+  transition: rotate var(--dur) var(--ease-out);
+}
+
+.ta-trace-toggle[aria-expanded="true"] .ta-trace-caret {
+  rotate: 90deg;
+}
+
+.ta-trace {
+  padding: var(--s-3);
+}
+
+.ta-trace ol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.ta-trace li {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: var(--s-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.ta-trace-at {
+  color: var(--fg-subtle);
+}
+
+.ta-trace-what {
+  color: var(--fg-muted);
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------- diff
+   primitive.diff — the candidate against the colleague you already have. Two
+   columns, because "what changes on Monday" is a two-column question. */
+
+.ta-diff {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.ta-diff thead th {
+  padding: var(--s-2) var(--s-3);
+  text-align: left;
+  font-weight: 400;
+  box-shadow: inset 0 -1px 0 var(--rule-strong);
+}
+
+.ta-diff tbody th {
+  padding: var(--s-3);
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--fg);
+  vertical-align: top;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ta-diff tbody td {
+  padding: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-muted);
+  vertical-align: top;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.ta-diff tbody tr:last-child th,
+.ta-diff tbody tr:last-child td {
+  box-shadow: none;
+}
+
+.ta-diff-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.ta-diff-sign {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line);
+  color: var(--fg-muted);
+}
+
+/* ------------------------------------------------------------ the hire block
+   The only glass and the only gold on the surface. Pinned to the foot of the
+   interview column: this is the act the room exists for, and scrolling it out
+   of sight would hide the consequence of everything above it. */
+
+.ta-hire {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  flex: none;
+  padding: var(--s-4);
+}
+
+.ta-hire-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.ta-hire-seal {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--on-accent);
+  flex: none;
+}
+
+.ta-hire-title {
+  font-size: var(--text-lg);
+}
+
+.ta-band {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3);
+}
+
+.ta-band-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  color: var(--fg);
+  letter-spacing: 0.04em;
+}
+
+/* The band never prints alone — "A1" is engineer-speak on a page a business
+   owner reads. */
+.ta-band-means {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+.ta-hire-acts {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.ta-passkey {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.ta-passkey svg {
+  margin-top: 3px;
+  flex: none;
+}
+
+.ta-hired {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.ta-hired-word {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1360px) {
+  /* One column, and the page scrolls instead of three independent panes. Each
+     region is self-contained, so stacking loses adjacency and nothing else. */
+  .ta {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .ta-cols {
+    grid-template-columns: minmax(0, 1fr);
+    flex: none;
+  }
+  .ta-col {
+    grid-template-rows: auto auto auto;
+  }
+  .ta-col-scroll {
+    overflow-y: visible;
+    padding-right: 0;
+  }
+  .ta-stages {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .ta {
+    padding: var(--s-4) var(--s-4) var(--s-8);
+  }
+  .ta-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ta-charter-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-2);
+  }
+  .ta-card-acts .m-btn,
+  .ta-hire-acts .m-btn {
+    min-height: 44px;
+  }
+  .ta-trace-toggle {
+    min-height: 44px;
+  }
+  /* The diff becomes two stacked rows per fact — a three-column table at 900px
+     is a horizontal scrollbar with extra steps. */
+  .ta-diff,
+  .ta-diff tbody,
+  .ta-diff tr,
+  .ta-diff th,
+  .ta-diff td {
+    display: block;
+  }
+  .ta-diff thead {
+    display: none;
+  }
+  .ta-diff tbody tr {
+    padding: var(--s-2) 0;
+    box-shadow: inset 0 -1px 0 var(--rule-faint);
+  }
+  .ta-diff tbody tr:last-child {
+    box-shadow: none;
+  }
+  .ta-diff tbody th,
+  .ta-diff tbody td {
+    box-shadow: none;
+    padding: var(--s-1) var(--s-2);
+  }
+  .ta-diff tbody td::before {
+    content: attr(data-col) " ";
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: var(--track-eyebrow);
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+}

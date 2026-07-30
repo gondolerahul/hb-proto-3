@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { BRAND_PALETTE, LEGACY_PALETTE, createHexField } from "./hexField";
+import { useEffect, useRef, useState } from "react";
+import { probeTier, tierRunsWorld, type Tier } from "./tier";
 import "./background.css";
 
 /**
@@ -11,11 +11,23 @@ import "./background.css";
  * runnable is what keeps the verbatim test meaningful rather than decorative.
  * The two differ in exactly four colour values; see `hexField.ts`.
  *
- * `intensity` is the one addition the redesign makes: at `"quiet"` the field is
- * dimmed and its motion stilled behind dense working surfaces, because a
- * breathing floor under a table of invoices competes with the invoices. The
- * scene is untouched; the dimming is a CSS layer over it, so the approved look
- * is never re-graded — only veiled.
+ * ## Why the scene is loaded, not imported
+ *
+ * D7 §3.3 makes one rule a hard gate: *a tier-C device never downloads three.js.*
+ * Quarantining three into its own chunk is necessary and **not sufficient** — a
+ * static import puts that chunk in the initial module graph and Vite emits a
+ * `modulepreload` for it, so every device fetches 137 KB gzipped whether or not it
+ * will ever run a frame. The build looked like it passed the gate while failing it.
+ *
+ * So `hexField` is reached through `await import()` behind `probeTier()`, and
+ * `tests/tier_gate.test.ts` asserts the built `index.html` does not preload the
+ * world chunk. On tier C nothing is fetched and the CSS layer carries the look,
+ * which is the same path `prefers-reduced-motion` already took.
+ *
+ * `intensity` is the one addition the redesign makes: at `quiet`/`hushed` the field
+ * is veiled behind dense working surfaces, because a breathing floor under a table
+ * of invoices competes with the invoices. The scene is never re-graded — only
+ * veiled — which is what keeps "ported verbatim" literally true.
  */
 export function Background({
   variant = "brand",
@@ -25,16 +37,43 @@ export function Background({
   intensity?: "full" | "quiet" | "hushed";
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [tier, setTier] = useState<Tier | null>(null);
+
+  useEffect(() => setTier(probeTier()), []);
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    return createHexField(el, variant === "brand" ? BRAND_PALETTE : LEGACY_PALETTE);
-  }, [variant]);
+    if (!el || tier === null || !tierRunsWorld(tier)) return;
+
+    let teardown: (() => void) | undefined;
+    let cancelled = false;
+
+    // The one place three.js enters the graph, and it is asynchronous by design.
+    void import("./hexField").then(({ createHexField, BRAND_PALETTE, LEGACY_PALETTE }) => {
+      if (cancelled || !ref.current) return;
+      teardown = createHexField(
+        ref.current,
+        variant === "brand" ? BRAND_PALETTE : LEGACY_PALETTE,
+      );
+    });
+
+    return () => {
+      cancelled = true;
+      teardown?.();
+    };
+  }, [variant, tier]);
 
   return (
-    <div className="vh-bg" data-variant={variant} data-intensity={intensity} aria-hidden="true">
+    <div
+      className="vh-bg"
+      data-variant={variant}
+      data-intensity={intensity}
+      /* `still` is the honest name for "no scene here": tier C, reduced motion, or
+         the probe not yet run. The CSS layer styles it as a deliberate look rather
+         than as a scene that failed to arrive. */
+      data-still={tier !== null && !tierRunsWorld(tier) ? "" : undefined}
+      aria-hidden="true"
+    >
       <div className="vh-bg-field" ref={ref} />
       <div className="vh-bg-veil" />
     </div>
