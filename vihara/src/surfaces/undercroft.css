@@ -87,11 +87,6 @@
   box-shadow: inset 2px 0 0 var(--fg-muted), inset 0 -1px 0 var(--rule);
 }
 
-.uc-bay-count {
-  font-size: 9px;
-  color: var(--fg-faint);
-}
-
 /* -------------------------------------------------------------------- pane */
 
 .uc-pane {
@@ -356,4 +351,19 @@
     padding-bottom: var(--s-2);
     box-shadow: inset 0 -2px 0 var(--rule-strong);
   }
+}
+
+/* ============================================================ R-4 part W ==
+   The count moved out of the rail.
+
+   Nine bays with a figure each meant eight numbers nobody had measured, because
+   only one bay is ever loaded. It is one line above the table now, and it says
+   what it counts — rows on screen — with the server's own cap beside it where
+   there is one, so a short list is never read as "that is all there is".
+   ========================================================================= */
+
+.uc-count {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono, one step under .uc-note */
+  color: var(--fg-subtle);
 }

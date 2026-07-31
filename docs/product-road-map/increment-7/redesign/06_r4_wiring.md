@@ -344,6 +344,92 @@ the exact bug `tray_cost.test.tsx` exists to prevent, one surface over. And
 `vh-skeleton`'s ground is a 6/255 delta on the raw canvas, so part W's scaffolds
 must draw their plates first and put bars inside them.
 
+## 10c. Build notes — part W ✅ BUILT 2026-07-31. **R-4 is complete.**
+
+All eighteen surfaces plus the shell read the API. **No file under `src/surfaces/`,
+`src/line/` or `src/shell/` imports `src/fixtures/`** — the fixtures stay on disk
+and are read only by tests.
+
+**Gates:** tsc · lint · **vitest 383** (five runs, including one under 2× CPU
+oversubscription) · build clean, index 183.7 · line 115.9 KB gz of 220 each ·
+`gen:api` no drift · tokens match · backend **2327** unit + 2 parity ·
+typecheck 352.
+
+**The defect class this round kept producing: a check satisfied by the thing it
+meant to exclude.**
+
+* `tray_cost` and the Line's C4 identity test both settled on `.tr-list`
+  appearing — and **the Tray's scaffold draws its ghost cards inside a `.tr-list`
+  of its own**. The condition meant to wait past the loading state was satisfied
+  *by* the loading state. It passed under light load and failed under heavy,
+  which is why it read as a flake rather than as a wrong assertion. Both now
+  settle on `[data-lifecycle="scaffold"]` being gone.
+* `w5_surfaces` asserted `.uc-bay-count` was absent — **a class no code path
+  renders**, surviving only as a dead rule in `undercroft.css`. It could not
+  fail. The rule is deleted and the assertion now reads the rail that exists: no
+  entry may contain a digit. Mutation-tested.
+* The Talent Office's lifecycle case mocked `[]` where E4's reads answer an
+  object carrying its own `absent` list, so `Office` crashed on
+  `briefs.briefs.length`. **A mock of the wrong shape tests the surface against a
+  response the server cannot send.**
+
+That is four in one increment, counting the certified guards' vacuity. The
+common shape: *the assertion names the property and measures something the
+property shares with its opposite.* A settle condition, an absent class, a mock's
+shape, an empty corpus — all four looked like coverage.
+
+**Five residuals the verification pass found, all fixed.**
+
+1. **The shell still rendered fixture data as chrome on every desk surface** — a
+   hardcoded company name and a hardcoded "2 waiting". It was outside every
+   agent's ownership, so eighteen wired surfaces sat under a rail that was not.
+   Now on `/auth/me` and the live estate, and it renders **nothing** until each
+   answers: a placeholder company name on the rail of every room is a lie the
+   owner reads all day. `stillLine` is imported from the surface that owns it, so
+   the rail and depth 0 cannot drift.
+2. **`PocketDesk` printed `Signals an hour = 0` for an estate with no districts.**
+   `reduce` over an empty list answers 0 for a quiet hour *and* for an estate
+   nobody has built — and the second is every tenant's first fortnight.
+   `StillSurface` reads the same snapshot and says so in words.
+3. **`HallSurface.tsx` contained two raw NUL bytes** as sentinels. Not a runtime
+   bug — but git called the file binary, so **the largest file in the round could
+   not be diffed or reviewed**, and `grep` exited silently without matching
+   anything in it. Every text audit of that file passed by not reading it. Now
+   ` ` escapes: same value, reviewable file.
+4. The dead `.uc-bay-count` rule (above).
+5. A raw hex `#2a1d08` in two seals — which is exactly `--on-accent`. Now
+   `currentColor` plus the token, since a presentation attribute cannot hold a
+   `var()`.
+
+**What the wiring refused to draw.** Four instruments were deleted rather than
+rescaled — the district's KPI meter, the treasury's reserve seam, the Dossier's
+three SLO arcs, the Pocket Desk's target meter. Each was drawn against something
+the platform does not have. **No `KpiDefinition` declares a target or a
+direction**, which is one gap with five separate visible consequences: no dial on
+reliability, no proportion on a district gauge, no "six days better", and `fog`
+off the estate's weather vocabulary entirely. Each deletion carries its reason
+where the rule used to be, so it is not re-added by someone who reads the gap as
+an omission.
+
+**Bridges got sharper, not softer.** `credentials_expire_at` is not merely
+unpopulated — `_binding_view` does not project it at all, so the block now says
+both: nobody has written one, *and* the endpoint a reader would check does not
+carry it. No positive lamp can appear in an unknown-expiry block, held by test.
+
+**The certified boundary's guards are no longer vacuous.** `TraySurface`,
+`BoardroomSurface` and `BridgesSurface` are real consumers, and the verification
+pass broke the tree four ways — a direct gated call, a route literal outside
+`src/api`, a deep import past the barrel, and renaming every call site — and all
+four failed as intended, including the non-emptiness backstop.
+
+**Honest limits.** **Nothing has been run against a live backend.** Every claim
+is the type checker, 383 unit tests and readings of the backend source — not a
+login. The sweep needs seeded credentials documented nowhere, which is now the
+single largest blocker to proving any of this works. One `w6_line` failure was
+seen once during a concurrent run and has not reproduced in five subsequent runs
+including under load; it is recorded rather than called fixed. `useResource`'s
+Glasshouse loading exemption is still unexercised.
+
 ## 11. Gates
 
 R-4 is complete when:

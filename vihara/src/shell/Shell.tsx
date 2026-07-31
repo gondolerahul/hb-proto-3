@@ -1,6 +1,8 @@
-import { useCallback, useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
-import { COMPANY, STILL } from "../fixtures/estate";
+import { fetchCompanyName } from "../api/identity";
+import { useLiveEstate } from "../estate/useLiveEstate";
+import { stillLine } from "../surfaces/StillSurface";
 import "./shell.css";
 
 /**
@@ -59,6 +61,23 @@ export function Shell({
   onLeave,
   children,
 }: ShellProps) {
+  /* The rail's two readings. `useLiveEstate` shares one connection through
+     `sharedStream`, so mounting it here does not open a second — the rail and
+     whichever surface is below it read the same stream, which is also what
+     stops them disagreeing about how many hands are up. */
+  const live = useLiveEstate();
+  const [company, setCompany] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchCompanyName().then((name) => {
+      if (alive) setCompany(name);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const rise = useCallback(() => onDepth(Math.max(0, depth - 1) as Depth), [depth, onDepth]);
   const descend = useCallback(() => onDepth(Math.min(3, depth + 1) as Depth), [depth, onDepth]);
 
@@ -90,7 +109,12 @@ export function Shell({
           <span className="sh-mark" aria-hidden="true">
             <span className="sh-mark-dot" />
           </span>
-          <span className="sh-company t-display">{COMPANY.name}</span>
+          {/* Absent until `/auth/me` answers, and absent forever if it cannot:
+              a placeholder company name on the rail of every room is a lie the
+              owner reads all day. `fetchCompanyName` is fail-soft by design. */}
+          {company !== null && (
+            <span className="sh-company t-display">{company}</span>
+          )}
 
           {breadcrumb.length > 0 && (
             <nav className="sh-crumbs" aria-label="Breadcrumb">
@@ -111,18 +135,27 @@ export function Shell({
             </nav>
           )}
 
-          {/* The still line, condensed. Same words as depth 0, always. */}
-          {depth > 0 && (
+          {/* The still line, condensed. Same words as depth 0, ALWAYS — which is
+              why `stillLine` is imported from the surface that owns it rather
+              than re-derived here. D6 §1 makes this a requirement and not a
+              convenience: two copies of that sentence is how the rail and the
+              front door come to disagree about the estate.
+
+              It renders only once the estate has answered. A headline and a
+              hands count are readings, and the rail printing either before it
+              has one would be inventing them — which is the same rule the
+              surfaces below it follow, applied to their chrome. */}
+          {depth > 0 && live.phase === "ready" && (
             <p className="sh-still">
-              <span className="t-subtle">{STILL.headline}</span>
-              {STILL.handsRaised > 0 && (
+              <span className="t-subtle">{stillLine(live.estate)}</span>
+              {live.estate.beacons.length > 0 && (
                 <>
                   <span className="sh-still-sep" aria-hidden="true">
                     ·
                   </span>
                   <span className="sh-still-hands">
                     <span className="m-lamp" data-lit data-breathing />
-                    {STILL.handsRaised} waiting
+                    {live.estate.beacons.length} waiting
                   </span>
                 </>
               )}

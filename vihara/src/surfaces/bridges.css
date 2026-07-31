@@ -944,3 +944,60 @@
     display: none;
   }
 }
+
+/* ============================================================ R-4 part W ==
+   Three additions, all for states that could not exist while the surface read
+   a fixture: a named absence where a control or a value used to sit, and the
+   certified layer's refusal notice.
+   ========================================================================= */
+
+/* An absence standing where a value or a control would have been. Mono at
+   caption size and --fg-subtle, never --fg-faint: the faint step is the
+   disabled one, and "we cannot answer this" is information (§3). */
+.bg-absent {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono, as .bg-avail-what */
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 46ch;
+  text-align: right;
+  margin-left: auto;
+}
+
+.bg-scopes .bg-absent,
+.bg-master-table .bg-absent {
+  text-align: left;
+  margin-left: 0;
+}
+
+/* The certified layer's answer when an act did not happen. A plate rather than
+   a well: this reports a result, which is why it is also the one block in this
+   column with role="status". */
+.bg-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+.bg-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg);
+  min-width: 0;
+}
+
+.bg-problem-reason {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono, as .bg-cert-note */
+  color: var(--fg-subtle);
+}
+
+.bg-problem .m-btn {
+  margin-left: auto;
+  flex: none;
+}

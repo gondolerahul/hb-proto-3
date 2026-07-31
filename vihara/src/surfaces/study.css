@@ -436,3 +436,50 @@
     text-align: left;
   }
 }
+
+/* ============================================================ R-4 part W ==
+   Three additions, each for a state that could not exist while the desk read a
+   fixture: a unit beside a figure that is not money, an inline mark on a note
+   that names a gap, and a notification row that is an absence rather than a
+   switch.
+   ========================================================================= */
+
+/* The balance is credits, not rupees — the endpoint sends buckets of credits
+   and stamps no currency on any of them. The unit rides beside the figure so
+   the number is never read as money in a rupee-shaped app. */
+.sy-balance-unit {
+  margin-left: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono against a 38px figure */
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+
+/* A note that names a platform gap carries the same triangle the credential
+   block on Bridges uses. Baseline-nudged rather than centred: the glyph sits
+   on the first line of a paragraph, not in the middle of the block. */
+.sy-note svg {
+  margin-right: var(--s-2);
+  vertical-align: -2px; /* optical: 12px glyph on a 10px/1.65 line */
+  color: var(--fg-subtle);
+}
+
+/* A notification the platform does not read. It keeps the row's shape so the
+   list still scans as one thing, and it wears an unlit lamp where the switch
+   would be — an absence is not a fault, and a terracotta dot here would teach
+   a tenant that something is broken rather than unbuilt. */
+.sy-toggle[data-absent] .sy-toggle-label,
+.sy-toggle[data-absent] .sy-toggle-note {
+  color: var(--fg-subtle);
+}
+
+.sy-toggle-mark {
+  display: grid;
+  place-items: center;
+  /* optical: the switch's own box, so the rows in this list keep one text
+     column whether or not a row has a control in it. */
+  width: 38px;
+  height: 22px;
+  margin-top: 2px;
+}

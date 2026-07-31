@@ -114,6 +114,11 @@
 }
 
 .tr-seal {
+  /* The struck check inside the medallion. `--on-accent` is the token for
+     near-black on gold; the svg takes it through `currentColor` because a
+     presentation attribute cannot hold a `var()`, and DESIGN_CONTRACT §3
+     forbids the raw hex that used to sit there. */
+  color: var(--on-accent);
   width: 15px;
   height: 15px;
   margin-right: var(--s-2);

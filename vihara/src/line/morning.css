@@ -37,6 +37,25 @@
   padding: var(--s-4) 0 var(--s-3);
 }
 
+/* Two states have no deck to give the middle row to — the pending scaffold and
+   the morning with nobody in it — so the rows collapse to what is actually
+   there and the content stays at the top. A 1fr row holding nothing would
+   centre a one-line notice in the middle of the screen, which reads as a page
+   that failed to finish rather than as an estate with no colleagues in it. */
+.mo:has(> .lc-scaffold),
+.mo[data-empty] {
+  grid-template-rows: auto auto;
+  align-content: start;
+}
+
+/* The empty notice and the scaffold both carry their own side padding, because
+   the surface's is zero: the deck is full-bleed and pays it on the slide. */
+.mo > .lc-notice,
+.mo-ghost {
+  margin-right: calc(var(--s-4) + env(safe-area-inset-right));
+  margin-left: calc(var(--s-4) + env(safe-area-inset-left));
+}
+
 /* ------------------------------------------------------------------ header */
 
 .mo-head {
@@ -72,6 +91,19 @@
   gap: var(--s-2);
   font-size: 11px;
   color: var(--fg-muted);
+}
+
+/* ------------------------------------------------------------- the scaffold
+   The morning that has not arrived (D7 §3.1 — layout first, data second, and no
+   spinner on any of the seventeen). The deck is one card wide, so the ghost is
+   one card: a row of three would promise a deck this tenant may not have. The
+   bars go inside the plate because `vh-skeleton`'s ground is a ~6/255 delta on
+   the raw canvas and reads as nothing at all on the page background. */
+
+.mo-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
 }
 
 /* -------------------------------------------------------------------- deck */

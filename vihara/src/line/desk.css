@@ -19,10 +19,14 @@
    costs a material rather than a colour, which is finding RD-3 answered in the
    small.
 
-   **Every line under a figure begins with a lamp.** Lit it carries a state; unlit
-   it is the left edge of the card's instrument column and nothing more. One
-   grammar for all of them means the sentences line up down the card instead of
-   stepping in and out as the states change.
+   **Every line under a figure begins with a lamp, and after R-4 part W none of
+   them is lit.** The lamp is the left edge of the card's instrument column, so
+   the sentences line up down the card instead of stepping in and out as the
+   states change. It used to go sage or terracotta on the trend; nothing on the
+   wire says which way is good — `KpiDefinition` declares no direction and no
+   target — so the colour was this file deciding, and it is gone with the meter
+   that had the same problem. The one lamp that still lights on this surface is
+   the raised hand in the band, and the notice that says the wire has dropped.
 
    **Nothing here is gold except a raised hand** — the rule `line.css` sets for
    the frame, kept by the surface it frames. A phone screen holds one meaning of
@@ -104,9 +108,11 @@
 }
 
 /* The strip. `grid-auto-flow: column` rather than three named tracks, because
-   the longest-wait cell does not exist when nothing is waiting — and a layout
-   that has to be edited when a reading honestly disappears is a layout that will
-   one day render an empty box instead. */
+   two of the three cells honestly disappear: the deadline when no beacon carries
+   one, and the lead measure when nothing in the estate is measurable yet. A
+   layout that has to be edited when a reading vanishes is a layout that will one
+   day render an empty box instead — which is how a `Math.min()` of nothing ends
+   up on a screen as a figure. */
 .pd-strip {
   display: grid;
   grid-auto-flow: column;
@@ -136,6 +142,31 @@
   letter-spacing: var(--track-tight);
   line-height: 1;
   color: var(--fg);
+}
+
+/* The wire, when it has dropped (part S, S3). Inside the band because that is
+   what has stopped being true — an estate that says "nothing waiting on you"
+   while it has stopped listening is the one lie this surface must not tell. */
+.pd-stale {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: 48ch;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* A pin the store refused. Outside the band and above the columns, because its
+   subject is the act you just took rather than the estate's state. */
+.pd-refused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: 48ch;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-muted);
 }
 
 /* =============================================================== the sections */
@@ -180,6 +211,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
+}
+
+/* The pending state's cards. The band above it is drawn first and the bars go
+   inside both — `vh-skeleton`'s ground is a ~6/255 delta on the raw canvas, so a
+   bar on the page background draws nothing and the scaffold would be the blank
+   screen it exists to prevent. */
+.pd-scaffold-list {
+  margin-top: var(--s-5);
 }
 
 .pd-card {
@@ -252,61 +291,16 @@
   line-height: 1.5;
 }
 
-/* --------------------------------------------------------------- the meter
-   The reading against its target: one track, the distance travelled, the
-   overshoot past the mark, and a hairline where the target is. Built from the
-   edge grammar rather than a border, and scaled with headroom by the surface —
-   a bar pinned to its own end reads as broken rather than as bad.
-
-   The three ratios arrive as custom properties, which is the one channel §1.4
-   leaves open. Nothing here transitions: a meter that slides on every render is
-   a meter you cannot read while it moves. */
-
-.pd-meter {
-  position: relative;
-  /* 3px. Below it the terracotta segment stops being a colour and becomes a
-     hairline; above it the card starts to look like a chart. */
-  height: 3px;
-  border-radius: var(--r-pill);
-  overflow: hidden;
-  background: var(--ink-900);
-  box-shadow: var(--edge-line), var(--ao-well);
-}
-
-.pd-meter-fill,
-.pd-meter-past,
-.pd-meter-tick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  display: block;
-}
-
-.pd-meter-fill {
-  left: 0;
-  width: calc(var(--pd-fill) * 100%);
-  background: rgba(255, 246, 230, 0.34);
-}
-
-/* Past the target. Sage where overshooting is the point (a win rate), terracotta
-   where it is the problem (a receivable) — and the word beside the meter says
-   which, so the hue is never carrying it alone. */
-.pd-meter-past {
-  left: calc(var(--pd-tick) * 100%);
-  width: calc(var(--pd-past) * 100%);
-  background: var(--positive);
-}
-
-.pd-meter-past[data-behind] {
-  background: var(--negative);
-}
-
-.pd-meter-tick {
-  left: calc(var(--pd-tick) * 100%);
-  /* 1px: the target is a position, not a range. */
-  width: 1px;
-  background: var(--fg-muted);
-}
+/* --------------------------------------------------- the meter that is gone
+   There was a rule with a mark on it here: the reading, the overshoot, and a
+   hairline where the target was. R-4 part W deleted it rather than rescaling
+   it, because **there is no target anywhere on the platform** — `KpiDefinition`
+   declares a formula, a baseline and a unit, and nothing to aim at — so the only
+   number the mark could have been drawn to was one this file chose. The Dossier
+   lost its three arc gauges to the same finding. The rules are removed rather
+   than left standing over markup nothing renders: a stylesheet that describes a
+   component the surface no longer has is a stylesheet that will one day be used
+   to bring it back. */
 
 /* --------------------------------------------------------------- no reading
    The state a young estate is in for a quarter, drawn as a statement: a label,

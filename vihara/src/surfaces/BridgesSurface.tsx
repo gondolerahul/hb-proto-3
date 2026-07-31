@@ -1,176 +1,232 @@
 import { useMemo, useState } from "react";
+
 import { Icon } from "../components/Icon";
 import { Seal } from "../components/Seal";
+import { CERTIFIED_ACTS, StepUpCeremony, useCertifiedAct } from "../components/certified";
 import {
-  AVAILABLE,
-  BRIDGES,
-  EXPIRY_GAP,
-  GATES,
-  type Bridge,
-  type Dispute,
-  type Gate,
-} from "../fixtures/bridges";
+  fetchBindings,
+  fetchCatalog,
+  fetchSocialConnections,
+  fetchSyncConflicts,
+  type CatalogConnector,
+  type ConnectorBinding,
+  type SocialConnection,
+  type SyncConflict,
+} from "../api/bridges";
+import { fetchEstate, type EstateBridge } from "../api/estate";
+import { fetchConsent, type ConsentChannel, type ConsentView } from "../api/undercroft";
+import { Bar, Empty, Failed, Lines, Scaffold, useResource } from "../lifecycle";
 import "./bridges.css";
 
 /**
- * Bridges & Gates · depth 2 · S (D6 §14).
+ * Bridges & Gates · depth 2 · S (D6 §14). Wired in R-4 part W.
  *
- * The estate's edge: what it is connected to, who masters what, and how it is
- * allowed to reach people. Under **RD-7** this was an "L9 sheet equivalent" and
- * inherited a fallback's budget; it is a first-class room and the two states
- * that actually happen at an edge get real idioms rather than warning banners.
+ * The estate's edge, on the network: `GET /ai/connectors/catalog` +
+ * `/bindings` for what we are connected to, `GET /ai/genui/estate` for the one
+ * field the connectors door does not project, `GET /ai/signals?type_prefix=
+ * sync.conflict` for the disputes, and — new this increment — **`GET
+ * /ai/consent`** for the gates, which is the endpoint D8's E1 built and the
+ * reason this surface's right-hand column was a fixture.
  *
- * Three decisions a reader could not recover from the code:
+ * The look is unchanged. What changed is where every field comes from, and the
+ * four places where the honest answer turned out to be *nothing at all*.
  *
- *  1. **The credential gap is placed at the top of the Bridges column, not in a
- *     footnote — and it is the only block on the surface written as narrative
- *     prose.** `credentials_expire_at` ships and nothing has ever written it, so
- *     the expiry sweep is correct and permanently empty. The dangerous reading
- *     is the calm one: a tenant seeing no expiry warnings concludes their keys
- *     have been checked. Absence of an expiry is absence of *information*, and
- *     we cannot distinguish "never expires" from "dies next Tuesday". That is a
- *     security claim, so it gets prose at reading size and a material of its own
- *     — a **dot lattice**, the instrument register for a gauge with nothing
- *     behind it, reused on every credential row so the same absence always
- *     wears the same texture. `credentialExpiresAt` is still rendered when
- *     present, so the day the platform writes one, this is already right.
+ * ## 1 · The credential gap, which is sharper than it was
  *
- *  2. **A dispute is a seam, not an alert.** Both versions sit as two columns of
- *     one table with a machined vertical rule between them, and the rule goes
- *     gold *only on the rows that actually disagree* — which is sanctioned under
- *     §2.1 because an unresolved dispute is precisely "this needs you". Rows
- *     that agree are shown rather than hidden: the tension comes from seeing
- *     that most of the record matches and the argument is narrow and stubborn.
- *     Master-wins is offered as the **default** and stated in words with its
- *     provenance, never applied silently — a default that needs no person would
- *     not have reached a person.
+ * `credentials_expire_at` ships on `connector_bindings` and **nothing has ever
+ * written one**, so the nightly sweep (`connectors/credential_expiry.py`) is
+ * correctly implemented and permanently finds nothing. Wiring found a second
+ * layer to that: `GET /ai/connectors/bindings` does not even *project* the
+ * column — `_binding_view` returns status, policy, `has_credential` and
+ * `last_error`, and stops. The only door that ships the field is the estate
+ * projection, which is why this surface reads the estate at all, and every
+ * binding comes back `null` there.
  *
- *  3. **Reconnecting does not fake a sync.** The certified acts fire the echo
- *     and change nothing else, because we have no result to report yet;
- *     re-declaring a master *does* update the row, because the declaration is
- *     the act itself. Consent posture likewise, because the registry entry is
- *     the whole state. Where an act's outcome is not ours to know, the surface
- *     stays quiet rather than drawing a success.
+ * So the block says both things, because they are different: nobody has written
+ * an expiry, **and** the endpoint a reader would check does not carry the field.
+ * The dangerous reading is the calm one — a tenant seeing no expiry warnings
+ * concludes their keys have been checked. Absence of an expiry is absence of
+ * *information*; we cannot tell "never expires" from "dies next Tuesday", and
+ * drawing a green tick there would be a security design bug rather than a
+ * cosmetic one. It keeps its own material — the dot lattice, the instrument
+ * register for a gauge with nothing behind it — and the `credentials_expire_at`
+ * branch is still rendered when present, so the day the platform writes one
+ * this is already right.
+ *
+ * **The expiry-sweep cell is gone.** It said "ran 03:00 today · nothing to
+ * find". The sweep is real and nothing reports when it last ran, so that line
+ * was two invented facts standing immediately beside the caveat — and it was
+ * exactly the sentence a tenant would read as safety (§7.1).
+ *
+ * ## 2 · A dispute has one side, so it is drawn with one
+ *
+ * The old sheet drew both versions as two columns of one table with a machined
+ * seam between them. `sync.conflict` carries `losing_delta` and nothing else:
+ * `record_service.py` raises it *after* master-wins has already been applied,
+ * and the master's own values are not in the payload. A second column would
+ * have to be invented, and there is no honest content for the ≠ marks. So the
+ * seam is gone and what is left is the rejected write, named as what it is.
+ *
+ * Two consequences follow, and both are corrections rather than losses:
+ *
+ *  - **No lit lamp.** A conflict where master-wins has already been applied is
+ *    not "this needs you", and §2.1 gives gold to nothing else. The old card
+ *    said "waiting on you" about a decision the platform had already taken.
+ *  - **The four resolution buttons are gone.** Nothing on the platform accepts
+ *    "let the master win", "take the other version" or "send it to Ravi". The
+ *    one act that is real — changing which system masters an object — is a
+ *    two-step certified migration (`propose` then `apply`) and belongs to its
+ *    own flow rather than to a button on a conflict card.
+ *
+ * ## 3 · Who masters an object is not a read this platform serves
+ *
+ * The mastering table's MASTERED BY / DECLARED / provenance columns had no
+ * source. A declaration lives in `TenantEntityDef.sor`, and `GET
+ * /ai/tenant/defs` projects name, module, domain tag, owner and fields — not
+ * `sor`. The catalogue *does* say which objects a connector **can** master, and
+ * that is real, so the table keeps its object column and states the absence in
+ * the place the answer would have been.
+ *
+ * ## 4 · No act on this surface writes
+ *
+ * Binding a connector is genuinely T2 (`enforce_kind(CONNECTOR_BINDING)` in
+ * `ai/connectors/router.py`), and it is deliberately not drawn — the same call
+ * `DossierSurface` makes about `certified.autonomy-change`, for a stronger
+ * reason. `POST /ai/connectors/{id}/bind` takes a credential *set*, the
+ * catalogue declares an `auth` kind and never the fields, and an OAuth
+ * connector needs a redirect leg this app does not implement. Posting `{}`
+ * would succeed after the ceremony and leave an ACTIVE binding that cannot
+ * authenticate — a connected-looking estate that is not connected, which is the
+ * silent success `acts.ts` §6 names as the dangerous kind. The gate is printed
+ * from `CERTIFIED_ACTS` so the claim is checkable rather than asserted.
+ *
+ * Consent is the opposite case and is wired: the grant control routes through
+ * `useCertifiedAct`, whose `certified.consent` row is gate kind `absent`, so
+ * pressing it performs nothing, echoes nothing, and renders the platform's own
+ * sentence about why. `GET /ai/consent` is the whole door — the registry's
+ * router says a write belongs to the flows that have the counterparty's word,
+ * never to a panel that lists them.
  *
  * Operator layout. The novice variant would drop the scope chips, the
- * per-object provenance column and the collapsed second dispute, keeping "what
- * is connected" and "what needs attention" (§14).
+ * per-object table and the collapsed second dispute, keeping "what is
+ * connected" and "what needs attention" (§14).
  */
 
-const HEALTH: Record<Bridge["health"], { word: string; lamp: "positive" | "negative" | null }> = {
-  flowing: { word: "flowing", lamp: "positive" },
-  behind: { word: "behind", lamp: null },
-  "under-repair": { word: "under repair", lamp: "negative" },
+/** Binding status, as `BindingStatus` writes it. A status this table has not
+ *  met prints itself rather than borrowing a neighbour's word. */
+const HEALTH: Record<string, { word: string; lamp: "positive" | "negative" | null }> = {
+  active: { word: "active", lamp: "positive" },
+  paused: { word: "paused", lamp: null },
+  error: { word: "under repair", lamp: "negative" },
 };
 
-const CONSENT: Record<Gate["consent"]["posture"], string> = {
-  "opt-in": "opt-in on record",
-  "legitimate-interest": "legitimate interest",
-  revoked: "revoked",
+/** The registry's three postures, as an owner reads them. The word carries the
+ *  meaning; the lamp beside it is only the fast read (§4). */
+const POSTURE: Record<ConsentChannel["posture"], string> = {
+  open: "open on every purpose we model",
+  restricted: "restricted",
+  closed: "closed",
 };
 
-const BRIDGE_NAME: Record<string, string> = {};
-for (const b of BRIDGES) BRIDGE_NAME[b.id] = b.name;
+/** The consent grant's gate, quoted from the certified table rather than
+ *  described. `absent` is the whole point — see §4 above. */
+const BIND_GATE = CERTIFIED_ACTS["certified.connector-binding"].gate;
+
+/** Why no bind control is drawn, per auth kind. Copy, not data — the catalogue
+ *  ships the kind and this file supplies the consequence, once. */
+const NO_BIND_REASON: Record<string, string> = {
+  oauth2:
+    "an OAuth redirect leg, which this app does not implement — the bind endpoint takes a finished token set, not a login",
+  api_key:
+    "a credential set whose field names the catalogue does not declare, and this surface will not guess them",
+  gateway:
+    "a gateway process on a machine of yours, and somebody standing at it",
+};
+
+interface EdgeMaterial {
+  catalog: CatalogConnector[];
+  bindings: ConnectorBinding[];
+  projected: EstateBridge[];
+  conflicts: SyncConflict[];
+}
+
+interface GateMaterial {
+  consent: ConsentView;
+  social: SocialConnection[];
+}
+
+/** A binding's status string, defensively — `_binding_view` types it loosely
+ *  and a missing status is not "active". */
+function statusOf(binding: ConnectorBinding): string | null {
+  const status = binding["status"];
+  return typeof status === "string" && status !== "" ? status : null;
+}
+
+function idOf(binding: ConnectorBinding): string | null {
+  const id = binding["connector_id"];
+  return typeof id === "string" && id !== "" ? id : null;
+}
+
+function stringsOf(binding: ConnectorBinding, key: string): string[] {
+  const value = binding[key];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function errorOf(binding: ConnectorBinding): string | null {
+  const last = binding["last_error"];
+  return typeof last === "string" && last !== "" ? last : null;
+}
+
+/** A date the wire wrote, trimmed to the day. Never reformatted through ICU —
+ *  `toLocaleString` would change shape between two browsers. */
+function day(at: string | null): string | null {
+  return at === null || at === "" ? null : at.slice(0, 10);
+}
 
 export function BridgesSurface({ onEcho }: { onEcho: (msg: string) => void }) {
-  const allDisputes = useMemo(() => BRIDGES.flatMap((b) => b.disputes), []);
-  const first = allDisputes[0];
+  /* One read for the left column. `Promise.all` rather than four hooks: the
+     four answers describe one thing, and a card drawn from three of them while
+     the fourth is still coming would show a bridge with its disputes missing —
+     which reads as a bridge with no disputes. */
+  const edge = useResource<EdgeMaterial>(async () => {
+    const [catalog, bindings, estate, conflicts] = await Promise.all([
+      fetchCatalog(),
+      fetchBindings(),
+      fetchEstate(),
+      fetchSyncConflicts(),
+    ]);
+    return { catalog, bindings, projected: estate.bridges, conflicts };
+  });
 
-  const [openDispute, setOpenDispute] = useState<string | null>(first ? first.id : null);
-  /** dispute id → the words of how it was settled. */
-  const [settled, setSettled] = useState<Record<string, string>>({});
-  /** `${bridgeId}:${object}` → the name of the system now declared master. */
-  const [declared, setDeclared] = useState<Record<string, string>>({});
-  /** gate id → posture, once the tenant has changed it here. */
-  const [posture, setPosture] = useState<Record<string, Gate["consent"]["posture"]>>({});
-  const [connected, setConnected] = useState<string[]>([]);
+  const gates = useResource<GateMaterial>(async () => {
+    const [consent, social] = await Promise.all([
+      fetchConsent(),
+      fetchSocialConnections(),
+    ]);
+    return { consent, social };
+  });
 
-  const waiting = allDisputes.filter((d) => !settled[d.id]).length;
-  const repairing = BRIDGES.filter((b) => b.health === "under-repair");
+  /* Both are one-shot reads fired at the same moment, so the surface is early
+     until both have answered. One `Scaffold`, one live sentence — two of them
+     would announce the same room twice. */
+  if (edge.phase === "pending" || gates.phase === "pending") return <BridgesScaffold />;
 
   return (
     <section className="bg">
-      {/* --------------------------------------------------------------- head */}
       <header className="bg-head">
         <span className="t-eyebrow">BRIDGES &amp; GATES</span>
-        <h1 className="bg-title t-display">The estate's edge</h1>
+        <h1 className="bg-title t-display">The estate&apos;s edge</h1>
         <p className="t-narrative bg-lead">
-          Four systems of record and five ways of reaching a person. Everything on
-          this surface is a promise to something outside the estate, and every one
-          of those promises can break without asking you first.
+          Systems of record on one side, ways of reaching a person on the other.
+          Everything on this surface is a promise to something outside the
+          estate, and every one of those promises can break without asking you
+          first.
         </p>
       </header>
 
-      {/* ------------------------------------------------- the state of the edge */}
-      <dl className="bg-edge m-plate m-ticks">
-        <div className="bg-edge-item">
-          <dt className="t-eyebrow">BRIDGES</dt>
-          <dd className="bg-edge-val">
-            {BRIDGES.length} connected
-            {repairing.length > 0 && (
-              <>
-                <span className="m-lamp" data-negative />
-                <span className="t-muted">
-                  {repairing.length} under repair
-                </span>
-              </>
-            )}
-          </dd>
-        </div>
-
-        <div className="m-rule-v bg-edge-div" />
-
-        <div className="bg-edge-item">
-          <dt className="t-eyebrow">GATES</dt>
-          <dd className="bg-edge-val">{GATES.length} open</dd>
-        </div>
-
-        <div className="m-rule-v bg-edge-div" />
-
-        <div className="bg-edge-item">
-          <dt className="t-eyebrow">DISPUTES</dt>
-          <dd className="bg-edge-val">
-            {waiting > 0 ? (
-              <>
-                <span className="m-lamp" data-lit />
-                {waiting} waiting on you
-              </>
-            ) : (
-              <>
-                <span className="m-lamp" data-positive />
-                all settled
-              </>
-            )}
-          </dd>
-        </div>
-
-        <div className="m-rule-v bg-edge-div" />
-
-        {/* The sweep's last run is a real fact and is shown as one. It sits
-            immediately before the caveat, because on its own it is the sentence
-            a tenant would read as reassurance. */}
-        <div className="bg-edge-item">
-          <dt className="t-eyebrow">EXPIRY SWEEP</dt>
-          <dd className="bg-edge-val">
-            ran {EXPIRY_GAP.sweep.ranAt} · {EXPIRY_GAP.sweep.found}
-          </dd>
-        </div>
-
-        <div className="m-rule-v bg-edge-div" />
-
-        {/* The gap, stated in the summary strip. There is no figure to give here
-            and none is invented — the cell is a sentence. */}
-        <div className="bg-edge-item" data-wide>
-          <dt className="t-eyebrow">CREDENTIAL EXPIRY</dt>
-          <dd className="bg-edge-val">
-            Not known for any bridge. Nothing has ever written an expiry date, so
-            there is nothing here to have checked.
-          </dd>
-        </div>
-      </dl>
+      <EdgeStrip edge={edge.phase === "ready" ? edge.value : null} gates={gates.phase === "ready" ? gates.value : null} />
 
       <div className="bg-cols">
-        {/* ================================================== column 1 · bridges */}
         <div className="bg-col">
           <div className="bg-col-head">
             <h2 className="t-eyebrow">BRIDGES · SYSTEMS OF RECORD</h2>
@@ -179,119 +235,252 @@ export function BridgesSurface({ onEcho }: { onEcho: (msg: string) => void }) {
             </span>
           </div>
 
-          {/* -------------------------------------------------------- the gap */}
-          <section className="m-well bg-gap" aria-labelledby="bg-gap-h">
-            <div className="bg-gap-head">
-              <Icon name="clock" size={13} />
-              <h3 className="t-eyebrow" id="bg-gap-h">
-                {EXPIRY_GAP.eyebrow}
-              </h3>
-            </div>
-            <p className="bg-gap-body">{EXPIRY_GAP.body}</p>
-            <p className="bg-gap-body" data-key>
-              {EXPIRY_GAP.consequence}
-            </p>
-            <p className="bg-note">{EXPIRY_GAP.observed}</p>
-          </section>
-
-          {BRIDGES.map((b) => (
-            <BridgeCard
-              key={b.id}
-              bridge={b}
-              declared={declared}
-              settled={settled}
-              openDispute={openDispute}
-              onToggleDispute={(id) => setOpenDispute((cur) => (cur === id ? null : id))}
-              /* `echo: null` means the act has already spoken for itself — the
-                 re-declaration echoes as a declaration, not twice. */
-              onSettle={(id, how, echo) => {
-                setSettled((s) => ({ ...s, [id]: how }));
-                if (echo !== null) onEcho(echo);
-              }}
-              onDeclare={(object, master) => {
-                setDeclared((d) => ({ ...d, [`${b.id}:${object}`]: master }));
-                onEcho(`declared ${master} master of ${object}`);
-              }}
-              onEcho={onEcho}
+          {edge.phase === "failed" ? (
+            <Failed
+              what="the estate’s bridges"
+              reason={edge.reason}
+              onRetry={edge.retry}
+              alone={false}
             />
-          ))}
-
-          {/* ----------------------------------------------- available, not bound */}
-          <section className="m-plate bg-avail" aria-labelledby="bg-avail-h">
-            <h3 className="t-eyebrow" id="bg-avail-h">
-              IN THE CATALOGUE · NOT CONNECTED
-            </h3>
-            {AVAILABLE.map((a) => (
-              <div className="bg-avail-row" key={a.id}>
-                <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
-                  <Seal id={a.id} size={28} />
-                </span>
-                <span className="bg-avail-text">
-                  <span className="bg-avail-name">{a.name}</span>
-                  <span className="bg-avail-what">{a.what}</span>
-                </span>
-                {connected.includes(a.id) ? (
-                  <span className="m-chip bg-settled-how">
-                    <span className="m-lamp" data-positive />
-                    binding signed
-                  </span>
-                ) : (
-                  <button
-                    className="m-btn bg-mini"
-                    data-rank="certified"
-                    onClick={() => {
-                      setConnected((c) => [...c, a.id]);
-                      onEcho(`connected ${a.name}`);
-                    }}
-                  >
-                    <Icon name="key" size={13} />
-                    Connect
-                  </button>
-                )}
-              </div>
-            ))}
-            <p className="bg-cert-note">
-              <Icon name="seal" size={12} />
-              Connecting a system and declaring who masters an object are
-              certified acts. Each is rendered from a frozen component, never from
-              a manifest, and each will ask for your passkey.
-            </p>
-          </section>
+          ) : (
+            <BridgesColumn material={edge.value} />
+          )}
         </div>
 
-        {/* ==================================================== column 2 · gates */}
         <div className="bg-col">
           <div className="bg-col-head">
             <h2 className="t-eyebrow">GATES · HOW WE REACH PEOPLE</h2>
-            <span className="bg-col-count">consent, do-not-contact, volume</span>
+            <span className="bg-col-count">
+              consent, do-not-contact, and who asked us to stop
+            </span>
           </div>
 
-          {GATES.map((g) => (
-            <GateCard
-              key={g.id}
-              gate={g}
-              posture={posture[g.id] ?? g.consent.posture}
-              onPosture={(next) => {
-                setPosture((p) => ({ ...p, [g.id]: next }));
-                onEcho(
-                  next === "revoked"
-                    ? `revoked ${g.name} consent for promotions`
-                    : `restored ${g.name} consent for promotions`,
-                );
-              }}
-              onEcho={onEcho}
+          {gates.phase === "failed" ? (
+            <Failed
+              what="the consent registry"
+              reason={gates.reason}
+              onRetry={gates.retry}
+              alone={false}
             />
-          ))}
-
-          <p className="bg-cert-note">
-            <Icon name="seal" size={12} />
-            Changing a consent posture is a certified act. It is written to the
-            consent registry with your name on it, every colleague is bound by it
-            within the second, and it will ask for your passkey.
-          </p>
+          ) : (
+            <GatesColumn material={gates.value} onEcho={onEcho} />
+          )}
         </div>
       </div>
     </section>
+  );
+}
+
+/* ========================================================================== */
+/*  THE STATE OF THE EDGE                                                     */
+/* ========================================================================== */
+
+/**
+ * The instrument strip.
+ *
+ * Every cell here is a count of rows the server sent, or a sentence. There is
+ * no cell for anything derived: the estate's own `conflicts_open` is a
+ * hard-coded `0` in `genui/estate.py` and is deliberately not read, because a
+ * zero nobody counted is worse than no figure at all (§7.1).
+ */
+function EdgeStrip({
+  edge,
+  gates,
+}: {
+  edge: EdgeMaterial | null;
+  gates: GateMaterial | null;
+}) {
+  return (
+    <dl className="bg-edge m-plate m-ticks">
+      {edge !== null && (
+        <>
+          <div className="bg-edge-item">
+            <dt className="t-eyebrow">BRIDGES</dt>
+            <dd className="bg-edge-val">
+              {edge.bindings.length} bound
+              {edge.bindings.filter((b) => statusOf(b) === "error").length > 0 && (
+                <>
+                  <span className="m-lamp" data-negative />
+                  <span className="t-muted">
+                    {edge.bindings.filter((b) => statusOf(b) === "error").length} under
+                    repair
+                  </span>
+                </>
+              )}
+            </dd>
+          </div>
+
+          <div className="m-rule-v bg-edge-div" />
+
+          <div className="bg-edge-item">
+            <dt className="t-eyebrow">DISPUTES</dt>
+            {/* No lamp. Master-wins was applied when each of these was raised,
+                so none of them is waiting on anybody. */}
+            <dd className="bg-edge-val">
+              {edge.conflicts.length} recorded · already settled by the master
+            </dd>
+          </div>
+
+          <div className="m-rule-v bg-edge-div" />
+        </>
+      )}
+
+      {gates !== null && (
+        <>
+          <div className="bg-edge-item">
+            <dt className="t-eyebrow">GATES</dt>
+            <dd className="bg-edge-val">
+              {gates.consent.channels.length} known to the registry
+            </dd>
+          </div>
+
+          <div className="m-rule-v bg-edge-div" />
+
+          <div className="bg-edge-item">
+            <dt className="t-eyebrow">ASKED US TO STOP</dt>
+            <dd className="bg-edge-val">
+              {gates.consent.totals.dnc + gates.consent.totals.unsubscribed} people
+            </dd>
+          </div>
+
+          <div className="m-rule-v bg-edge-div" />
+        </>
+      )}
+
+      {/* The gap, stated in the summary strip. There is no figure to give here
+          and none is invented — the cell is a sentence. */}
+      <div className="bg-edge-item" data-wide>
+        <dt className="t-eyebrow">CREDENTIAL EXPIRY</dt>
+        <dd className="bg-edge-val">
+          Not known for any bridge. Nothing has ever written an expiry date, and
+          the bindings endpoint does not carry the field at all.
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+/* ========================================================================== */
+/*  THE BRIDGES COLUMN                                                        */
+/* ========================================================================== */
+
+function BridgesColumn({ material }: { material: EdgeMaterial }) {
+  const { catalog, bindings, projected, conflicts } = material;
+
+  const byId = useMemo(() => {
+    const map: Record<string, CatalogConnector> = {};
+    for (const connector of catalog) map[connector.connector_id] = connector;
+    return map;
+  }, [catalog]);
+
+  const bound = useMemo(
+    () => new Set(bindings.map(idOf).filter((id): id is string => id !== null)),
+    [bindings],
+  );
+
+  const available = catalog.filter(
+    (connector) => connector.bindable && !bound.has(connector.connector_id),
+  );
+
+  return (
+    <>
+      {/* -------------------------------------------------------- the gap --
+          First, and the only block on this surface written as narrative prose
+          at reading size. It is a security claim, so it is not a footnote. */}
+      <section className="m-well bg-gap" aria-labelledby="bg-gap-h">
+        <div className="bg-gap-head">
+          <Icon name="clock" size={13} />
+          <h3 className="t-eyebrow" id="bg-gap-h">
+            CREDENTIAL EXPIRY · WHAT WE DO NOT KNOW
+          </h3>
+        </div>
+        <p className="bg-gap-body">
+          Every binding below has a column for when its credential expires, and
+          nothing has ever written one. The nightly sweep is real, it runs, and
+          it correctly finds nothing — because there is nothing there to find.
+          The endpoint that lists your bindings does not even return the column;
+          the only door that carries it is the estate projection, and it is
+          empty on every row.
+        </p>
+        <p className="bg-gap-body" data-key>
+          So a bridge with no expiry date has not been checked and found
+          healthy. We cannot tell you whether its key never expires or dies next
+          Tuesday. Both look identical from here, and we will not draw one as
+          the other.
+        </p>
+        <p className="bg-note">
+          Every expiry this estate has ever found, it found by a sync breaking
+          hours after the fact — which is what a bridge marked under repair below
+          is, and why the sweep has never been the thing that told you.
+        </p>
+      </section>
+
+      {bindings.length === 0 ? (
+        /* L2. An estate with no bindings is a young estate, not a broken one —
+           the unlit lamp and the prose say which. */
+        <Empty
+          icon="drive"
+          title="Nothing is connected to this estate yet."
+          body="A bridge is a system of record outside the estate — your books, your store, your bank — that your colleagues read from and write back to. Until one is bound, everything the estate knows was typed into it or learnt inside it."
+        />
+      ) : (
+        bindings.map((binding) => {
+          const id = idOf(binding);
+          if (id === null) return null;
+          return (
+            <BridgeCard
+              key={id}
+              connectorId={id}
+              binding={binding}
+              connector={byId[id]}
+              projected={projected.find((bridge) => bridge.connector === id)}
+              conflicts={conflicts.filter((conflict) => conflict.connector === id)}
+            />
+          );
+        })
+      )}
+
+      {/* ------------------------------------------- available, not bound -- */}
+      <section className="m-plate bg-avail" aria-labelledby="bg-avail-h">
+        <h3 className="t-eyebrow" id="bg-avail-h">
+          IN THE CATALOGUE · NOT CONNECTED
+        </h3>
+        {available.length === 0 ? (
+          <p className="bg-note">
+            Every connector this platform ships is already bound here.
+          </p>
+        ) : (
+          available.slice(0, 8).map((connector) => (
+            <div className="bg-avail-row" key={connector.connector_id}>
+              <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
+                <Seal id={connector.connector_id} size={28} />
+              </span>
+              <span className="bg-avail-text">
+                <span className="bg-avail-name">{connector.display_name}</span>
+                <span className="bg-avail-what">
+                  {connector.domain} · {connector.auth.replace(/_/g, " ")}
+                </span>
+              </span>
+              {/* Where a Connect button was. Binding needs a credential set this
+                  surface cannot compose, and a bind posted without one succeeds
+                  and leaves a binding that cannot authenticate. */}
+              <span className="bg-absent">
+                needs {NO_BIND_REASON[connector.auth] ?? "a credential set this surface cannot compose"}
+              </span>
+            </div>
+          ))
+        )}
+        <p className="bg-cert-note">
+          <Icon name="seal" size={12} />
+          Binding a connector is a certified act and the gate is real —{" "}
+          {BIND_GATE.kind === "server" ? BIND_GATE.call : "no endpoint"}, refused
+          until you prove it is you. No control is drawn for it here because the
+          credential each connector needs is not something the catalogue
+          declares, and a bind sent without one would leave you looking connected
+          to a system that cannot answer.
+        </p>
+      </section>
+    </>
   );
 }
 
@@ -300,26 +489,27 @@ export function BridgesSurface({ onEcho }: { onEcho: (msg: string) => void }) {
 /* ========================================================================== */
 
 function BridgeCard({
-  bridge,
-  declared,
-  settled,
-  openDispute,
-  onToggleDispute,
-  onSettle,
-  onDeclare,
-  onEcho,
+  connectorId,
+  binding,
+  connector,
+  projected,
+  conflicts,
 }: {
-  bridge: Bridge;
-  declared: Record<string, string>;
-  settled: Record<string, string>;
-  openDispute: string | null;
-  onToggleDispute: (id: string) => void;
-  onSettle: (id: string, how: string, echo: string | null) => void;
-  onDeclare: (object: string, master: string) => void;
-  onEcho: (msg: string) => void;
+  connectorId: string;
+  binding: ConnectorBinding;
+  connector: CatalogConnector | undefined;
+  projected: EstateBridge | undefined;
+  conflicts: SyncConflict[];
 }) {
-  const health = HEALTH[bridge.health];
-  const repair = bridge.credentialFailedAt !== null;
+  const [open, setOpen] = useState<string | null>(conflicts[0]?.signal_id ?? null);
+
+  const status = statusOf(binding);
+  const health = status === null ? undefined : HEALTH[status];
+  const lastError = errorOf(binding);
+  const repair = status === "error";
+
+  const tools = stringsOf(binding, "tool_allow");
+  const writes = stringsOf(binding, "write_allow");
 
   return (
     <article className="m-plate bg-bridge" data-repair={repair || undefined}>
@@ -328,42 +518,68 @@ function BridgeCard({
         <div className="bg-ident">
           {/* A connector has no persona, so it is sealed rather than portrayed. */}
           <span className="m-portrait-well bg-ident-well" aria-hidden="true">
-            <Seal id={bridge.id} size={36} />
+            <Seal id={connectorId} size={36} />
           </span>
           <span className="bg-ident-text">
-            <h3 className="bg-ident-name t-display">{bridge.name}</h3>
-            <span className="bg-ident-sub">{bridge.transport}</span>
+            <h3 className="bg-ident-name t-display">
+              {connector?.display_name ?? connectorId}
+            </h3>
+            {/* Backend and auth kind, from the catalogue. There is no "synced 6
+                minutes ago" any more: nothing on the wire records when a
+                binding last ran, so the line that claimed it is gone. */}
+            {connector !== undefined && (
+              <span className="bg-ident-sub">
+                {connector.backend.replace(/_/g, " ")} · {connector.auth.replace(/_/g, " ")}
+              </span>
+            )}
           </span>
         </div>
 
         {/* Lamp plus word. The lamp is the fast read, the word is the correct
-            one — neither carries it alone. Not a live region: this is standing
-            state, and four announcing regions on one surface is noise. */}
-        <p className="bg-health">
-          <span
-            className="m-lamp"
-            data-positive={health.lamp === "positive" || undefined}
-            data-negative={health.lamp === "negative" || undefined}
-          />
-          <strong>{health.word}</strong>
-          <span>
-            ·{" "}
-            {bridge.health === "under-repair"
-              ? `nothing since ${bridge.lastSyncedAt}`
-              : `synced ${bridge.lastSyncedAt}`}
-          </span>
-        </p>
+            one — neither carries it alone. A status the table has not met
+            prints itself rather than borrowing a word. */}
+        {status !== null && (
+          <p className="bg-health">
+            <span
+              className="m-lamp"
+              data-positive={health?.lamp === "positive" || undefined}
+              data-negative={health?.lamp === "negative" || undefined}
+            />
+            <strong>{health?.word ?? status}</strong>
+          </p>
+        )}
       </div>
 
       {/* --------------------------------------------------------- credential */}
-      <Credential bridge={bridge} onEcho={onEcho} />
+      <Credential
+        lastError={lastError}
+        expiresAt={projected?.credentials_expire_at ?? null}
+        hasCredential={binding["has_credential"] === true}
+      />
 
-      {/* -------------------------------------------------------------- scopes */}
+      {/* -------------------------------------------------------------- scopes
+          `tool_allow` empty means every tool the connector publishes is
+          permitted — the model's own rule, and an inversion a reader would get
+          backwards if the row simply rendered as blank. */}
       <div className="bg-scopes">
         <span className="t-eyebrow">SCOPE</span>
-        {bridge.scopes.map((s) => (
-          <span className="m-chip bg-scope" key={s}>
-            {s}
+        {tools.length === 0 ? (
+          <span className="bg-absent">
+            no tool allow-list — every tool this connector publishes is permitted
+          </span>
+        ) : (
+          tools.map((tool) => (
+            <span className="m-chip bg-scope" key={`t:${tool}`}>
+              {tool}
+            </span>
+          ))
+        )}
+        {/* A write scope is the dangerous half of a binding and is labelled as
+            one. The word carries it, not a colour or a weight — the same rule
+            every lamp on this surface follows (§4). */}
+        {writes.map((write) => (
+          <span className="m-chip bg-scope" key={`w:${write}`}>
+            writes {write}
           </span>
         ))}
       </div>
@@ -372,7 +588,7 @@ function BridgeCard({
       <div className="m-well bg-master-scroll">
         <table className="bg-master-table">
           <caption className="vh-sr-only">
-            Which system masters each object {bridge.name} carries
+            Objects {connector?.display_name ?? connectorId} is able to master
           </caption>
           <thead>
             <tr>
@@ -382,117 +598,79 @@ function BridgeCard({
               <th scope="col">
                 <span className="t-eyebrow">MASTERED BY</span>
               </th>
-              <th scope="col" className="bg-obj-when-head">
-                <span className="t-eyebrow">DECLARED</span>
-              </th>
-              <th scope="col">
-                <span className="vh-sr-only">Act</span>
-              </th>
             </tr>
           </thead>
           <tbody>
-            {bridge.objects.map((o) => {
-              const local = declared[`${bridge.id}:${o.object}`];
-              const masterName = local ?? (o.master ? BRIDGE_NAME[o.master] : undefined);
-              const elsewhere = !local && o.master !== null && o.master !== bridge.id;
-
-              return (
-                <tr key={o.object}>
+            {(connector?.masters ?? []).length === 0 ? (
+              <tr>
+                <th scope="row" className="bg-obj-name">
+                  —
+                </th>
+                <td>
+                  <span className="bg-obj-none">
+                    this connector masters nothing; it reads and it feeds
+                  </span>
+                </td>
+              </tr>
+            ) : (
+              (connector?.masters ?? []).map((object) => (
+                <tr key={object}>
                   <th scope="row" className="bg-obj-name">
-                    {o.object}
+                    {object}
                   </th>
                   <td>
-                    {masterName !== undefined ? (
-                      /* No lamp here on purpose: which system masters an object
-                         is not a state, and a lamp that lights for everything
-                         teaches a person to stop reading lamps. */
-                      <span className="bg-obj-master">
-                        <span className={elsewhere ? "bg-obj-elsewhere" : undefined}>
-                          {masterName}
-                          {elsewhere ? " — mastered elsewhere" : ""}
-                        </span>
-                      </span>
-                    ) : (
-                      /* No declaration row exists. The absence is named; it is
-                         not filled in with a guess or a dash. */
-                      <span className="bg-obj-none">never declared</span>
-                    )}
-                  </td>
-                  <td className="bg-obj-when-cell">
-                    {local ? (
-                      <span className="bg-obj-when">moments ago · by you</span>
-                    ) : o.declaredOn && o.declaredBy ? (
-                      <span className="bg-obj-when">
-                        {o.declaredOn} · by {o.declaredBy}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="bg-obj-act">
-                    {masterName === undefined && (
-                      <button
-                        className="m-btn bg-mini"
-                        data-rank="certified"
-                        aria-label={`Declare ${bridge.name} master of ${o.object}`}
-                        onClick={() => onDeclare(o.object, bridge.name)}
-                      >
-                        <Icon name="key" size={12} />
-                        Declare a master
-                      </button>
-                    )}
+                    {/* The answer this platform does not serve. A declaration
+                        lives on the entity def's `sor` and the defs endpoint
+                        does not project it, so there is nothing to read — not a
+                        dash, and certainly not this connector's own name. */}
+                    <span className="bg-obj-none">
+                      not a read this estate serves
+                    </span>
                   </td>
                 </tr>
-              );
-            })}
+              ))
+            )}
           </tbody>
         </table>
       </div>
+      <p className="bg-note">
+        The catalogue says which objects this connector is <em>able</em> to
+        master. Which system masters each one today is declared on the object
+        itself, and no endpoint returns that declaration — so the column is
+        empty rather than filled with the likeliest guess.
+      </p>
 
       {/* ------------------------------------------------------------ disputes */}
-      {bridge.disputes.length > 0 && (
+      {conflicts.length > 0 && (
         <div className="bg-disputes">
           <h4 className="t-eyebrow">
-            {bridge.disputes.length === 1
+            {conflicts.length === 1
               ? "A DISPUTE AT THIS BRIDGE"
-              : `${bridge.disputes.length} DISPUTES AT THIS BRIDGE`}
+              : `${conflicts.length} DISPUTES AT THIS BRIDGE`}
           </h4>
 
-          {bridge.disputes.map((d) =>
-            settled[d.id] ? (
-              <p className="bg-settled" key={d.id} role="status">
-                <span className="m-lamp" data-positive />
-                <span className="bg-settled-text">
-                  {d.recordId} · {d.recordLabel}
-                </span>
-                <span className="m-chip bg-settled-how">{settled[d.id]}</span>
-              </p>
-            ) : openDispute === d.id ? (
-              <DisputeView
-                key={d.id}
-                dispute={d}
-                onSettle={(how, echo) => onSettle(d.id, how, echo)}
-                /* Re-declaring the master settles this round *and* every future
-                   one, so it does both. It echoes once, as a declaration. */
-                onMasterInstead={() => {
-                  onDeclare(d.object, d.otherSide.system);
-                  onSettle(d.id, `${d.otherSide.system} made master`, null);
-                }}
-              />
+          {conflicts.map((conflict) =>
+            open === conflict.signal_id ? (
+              <DisputeView key={conflict.signal_id} conflict={conflict} />
             ) : (
               <button
                 className="bg-dispute-shut"
-                key={d.id}
+                key={conflict.signal_id}
                 aria-expanded={false}
-                onClick={() => onToggleDispute(d.id)}
+                onClick={() => setOpen(conflict.signal_id)}
               >
-                <span className="m-lamp" data-lit />
+                {/* Unlit. The platform decided this one when it raised it. */}
+                <span className="m-lamp" />
                 <span className="bg-dispute-shut-text">
                   <span className="bg-dispute-shut-title">
-                    {d.recordId} · {d.recordLabel}
+                    {conflict.record_id ?? conflict.signal_id}
+                    {conflict.def_name !== null && ` · ${conflict.def_name}`}
                   </span>
                   <span className="bg-dispute-meta">
-                    {d.masterSide.system} and {d.otherSide.system} disagree on{" "}
-                    {d.fields.filter((f) => f.differs).length} of {d.fields.length}{" "}
-                    fields · found {d.detectedAt}
+                    {Object.keys(conflict.losing_delta).length} field
+                    {Object.keys(conflict.losing_delta).length === 1 ? "" : "s"} were
+                    rejected
+                    {day(conflict.created_at) !== null && ` · ${day(conflict.created_at)}`}
                   </span>
                 </span>
                 <Icon name="chevron" size={14} className="bg-caret" />
@@ -509,11 +687,22 @@ function BridgeCard({
 /*  THE CREDENTIAL — where the platform gap bites                             */
 /* ========================================================================== */
 
-function Credential({ bridge, onEcho }: { bridge: Bridge; onEcho: (msg: string) => void }) {
-  /* Three distinct states, and the whole point of the block is that the third is
-     not the second. A failed credential was FOUND by a sync breaking; an unknown
-     expiry has never been looked at by anything. */
-  if (bridge.credentialFailedAt !== null) {
+/**
+ * Four states, and the whole point of the block is that the last is not the
+ * others. A broken binding was found by a sync failing; a binding with no
+ * credential stored is a fact the endpoint reports; an unknown expiry has never
+ * been looked at by anything at all.
+ */
+function Credential({
+  lastError,
+  expiresAt,
+  hasCredential,
+}: {
+  lastError: string | null;
+  expiresAt: string | null;
+  hasCredential: boolean;
+}) {
+  if (lastError !== null) {
     return (
       <div className="m-well bg-cred" data-expiry="failed">
         <span className="bg-cred-icon" aria-hidden="true">
@@ -521,30 +710,20 @@ function Credential({ bridge, onEcho }: { bridge: Bridge; onEcho: (msg: string) 
         </span>
         <span className="bg-cred-text">
           <span className="bg-cred-state">
-            The credential died, and a sync is how we found out.
+            This bridge broke, and a call failing is how we found out.
           </span>
+          {/* The server's own words, verbatim. Not paraphrased: `last_error` is
+              the only account anybody has of what went wrong. */}
           <span className="bg-cred-why">
-            It failed at {bridge.credentialFailedAt} and nothing has moved since.
-            No sweep predicted this and none could have — see the block above.
-            Reconnecting asks for your passkey, and this bridge also needs
-            somebody at the machine it runs on.
+            {lastError} — no sweep predicted this and none could have. See the
+            block above.
           </span>
         </span>
-        {/* Reconnecting fires the echo and changes nothing else: we have no sync
-            result to report yet, and drawing one would be inventing it. */}
-        <button
-          className="m-btn bg-mini"
-          data-rank="certified"
-          onClick={() => onEcho(`started reconnecting ${bridge.name}`)}
-        >
-          <Icon name="key" size={13} />
-          Reconnect
-        </button>
       </div>
     );
   }
 
-  if (bridge.credentialExpiresAt !== null) {
+  if (expiresAt !== null) {
     /* Unreachable today. Kept because the day the platform writes the field,
        this branch is already correct and nobody has to remember to add it. */
     return (
@@ -553,10 +732,29 @@ function Credential({ bridge, onEcho }: { bridge: Bridge; onEcho: (msg: string) 
           <Icon name="key" size={14} />
         </span>
         <span className="bg-cred-text">
-          <span className="bg-cred-state">Expires {bridge.credentialExpiresAt}.</span>
+          <span className="bg-cred-state">Expires {day(expiresAt)}.</span>
           <span className="bg-cred-why">
-            The nightly sweep reads this date and will raise a hand before it
-            passes.
+            The nightly sweep reads this date and raises a hand a fortnight
+            before it passes.
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  if (!hasCredential) {
+    return (
+      <div className="m-well bg-cred" data-expiry="unknown">
+        <span className="bg-cred-icon" aria-hidden="true">
+          <Icon name="key" size={14} />
+        </span>
+        <span className="bg-cred-text">
+          <span className="bg-cred-state">
+            This binding holds no credential at all.
+          </span>
+          <span className="bg-cred-why">
+            The policy is set and the secret is not. Nothing can authenticate to
+            the far side, so nothing has.
           </span>
         </span>
       </div>
@@ -571,8 +769,8 @@ function Credential({ bridge, onEcho }: { bridge: Bridge; onEcho: (msg: string) 
       <span className="bg-cred-text">
         <span className="bg-cred-state">We do not know when this expires.</span>
         <span className="bg-cred-why">
-          The field exists on this binding and has never been written to. This is
-          not a clean bill of health — it is the absence of one.
+          A credential is stored and no expiry has ever been written beside it.
+          This is not a clean bill of health — it is the absence of one.
         </span>
       </span>
     </div>
@@ -583,111 +781,66 @@ function Credential({ bridge, onEcho }: { bridge: Bridge; onEcho: (msg: string) 
 /*  A DISPUTE AT THE BRIDGE                                                   */
 /* ========================================================================== */
 
-function DisputeView({
-  dispute,
-  onSettle,
-  onMasterInstead,
-}: {
-  dispute: Dispute;
-  onSettle: (how: string, echo: string) => void;
-  onMasterInstead: () => void;
-}) {
-  const d = dispute;
-  const differing = d.fields.filter((f) => f.differs).length;
+/**
+ * One side, because one side is what the signal carries.
+ *
+ * `record_service.py` applies master-wins and *then* raises `sync.conflict`
+ * with `losing_delta` — the write that was refused. The master's own values are
+ * not in the payload and are not readable from anywhere else, so the seam and
+ * its ≠ marks are gone rather than drawn against an invented column.
+ */
+function DisputeView({ conflict }: { conflict: SyncConflict }) {
+  const fields = Object.entries(conflict.losing_delta);
 
   return (
-    <section className="bg-dispute vh-enter-fade" aria-labelledby={`bg-d-${d.id}`}>
+    <section
+      className="bg-dispute vh-enter-fade"
+      aria-labelledby={`bg-d-${conflict.signal_id}`}
+    >
       <header className="bg-dispute-head">
         <div className="bg-dispute-what">
-          <span className="t-eyebrow">{d.object.toUpperCase()} · SYNC CONFLICT</span>
-          <h5 className="bg-dispute-title t-display" id={`bg-d-${d.id}`}>
-            {d.recordId} · {d.recordLabel}
+          <span className="t-eyebrow">
+            {(conflict.def_name ?? "RECORD").toUpperCase()} · SYNC CONFLICT
+          </span>
+          <h5 className="bg-dispute-title t-display" id={`bg-d-${conflict.signal_id}`}>
+            {conflict.record_id ?? conflict.signal_id}
           </h5>
           <span className="bg-dispute-meta">
-            {differing} of {d.fields.length} fields disagree · found {d.detectedAt} ·{" "}
-            {d.id}
+            {fields.length} field{fields.length === 1 ? "" : "s"} rejected
+            {day(conflict.created_at) !== null && ` · ${day(conflict.created_at)}`} ·{" "}
+            {conflict.signal_id}
           </span>
         </div>
-        {/* A dispute nobody has settled is the definition of "this needs you",
-            which is what buys the lit lamp here under §2.1. */}
-        <p className="bg-dispute-waiting">
-          <span className="m-lamp" data-lit />
-          waiting on you
-        </p>
       </header>
 
       <div className="bg-diff-scroll">
         <table className="bg-diff">
           <caption className="vh-sr-only">
-            {d.recordId} as {d.masterSide.system} holds it, beside the same record
-            as {d.otherSide.system} holds it
+            The values this estate tried to write to {conflict.record_id ?? "the record"}{" "}
+            and the external master refused
           </caption>
-          <colgroup>
-            <col />
-            <col />
-            <col className="bg-diff-seam-col" />
-            <col />
-          </colgroup>
           <thead>
             <tr>
               <th scope="col">
                 <span className="t-eyebrow">FIELD</span>
               </th>
               <th scope="col">
-                <span className="bg-side">
-                  <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
-                    <Seal id={d.masterSide.sealId} size={26} />
-                  </span>
-                  <span className="bg-side-text">
-                    <span className="bg-side-name">{d.masterSide.system}</span>
-                    <span className="m-chip bg-side-role" data-selected>
-                      declared master
-                    </span>
-                    <span className="bg-side-when">wrote {d.masterSide.wroteAt}</span>
-                  </span>
-                </span>
-              </th>
-              {/* The seam. It carries no text of its own — the vertical rule is
-                  the whole point, and the ≠ marks land on it row by row. */}
-              <th scope="col" className="bg-seam">
-                <span className="vh-sr-only">Agreement</span>
-              </th>
-              <th scope="col">
-                <span className="bg-side">
-                  <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
-                    <Seal id={d.otherSide.sealId} size={26} />
-                  </span>
-                  <span className="bg-side-text">
-                    <span className="bg-side-name">{d.otherSide.system}</span>
-                    <span className="m-chip bg-side-role">the other side</span>
-                    <span className="bg-side-when">wrote {d.otherSide.wroteAt}</span>
-                  </span>
-                </span>
+                <span className="t-eyebrow">WHAT WE TRIED TO WRITE</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            {d.fields.map((f) => (
-              <tr key={f.field} data-differs={f.differs || undefined}>
+            {fields.map(([field, value]) => (
+              <tr key={field}>
                 <th scope="row">
                   <span className="bg-field">
-                    <span className="bg-field-name">{f.field}</span>
-                    {/* The word, not the colour, is the information. */}
-                    {f.differs && <span className="bg-field-differs">differs</span>}
+                    <span className="bg-field-name">{field}</span>
                   </span>
                 </th>
                 <td>
-                  <span className="bg-val">{f.master}</span>
-                </td>
-                <td className="bg-seam">
-                  {f.differs && (
-                    <span className="bg-seam-mark" aria-hidden="true">
-                      ≠
-                    </span>
-                  )}
-                </td>
-                <td>
-                  <span className="bg-val">{f.other}</span>
+                  <span className="bg-val">
+                    {typeof value === "string" ? value : JSON.stringify(value)}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -695,63 +848,149 @@ function DisputeView({
         </table>
       </div>
 
-      {/* ------------------------------------------------------- the resolution */}
       <div className="bg-resolve">
         <p className="bg-resolve-note">
-          Unless you say otherwise, <strong>{d.masterSide.system} wins</strong> —{" "}
-          {d.masterBecause}. That default is not applied on its own: a
-          disagreement a rule could settle would never have reached you. The
-          other side's values are kept either way, and you can read them in the
-          Undercroft afterwards.
+          <strong>The master already won.</strong> The external system changed
+          this record under us, so the estate&apos;s write was refused rather
+          than applied, and what you are reading is the copy that lost. Nothing
+          is waiting on you and there is nothing here to decide.
         </p>
-        <div className="bg-acts">
-          <button
-            className="m-btn"
-            onClick={() =>
-              onSettle(
-                `${d.masterSide.system} won`,
-                `let ${d.masterSide.system} win on ${d.recordId}`,
-              )
-            }
-          >
-            <Icon name="check" size={13} />
-            Let {d.masterSide.system} win
-          </button>
-          <button
-            className="m-btn"
-            data-rank="quiet"
-            onClick={() =>
-              onSettle(
-                `${d.otherSide.system}'s version kept`,
-                `took ${d.otherSide.system}'s version of ${d.recordId}`,
-              )
-            }
-          >
-            Take {d.otherSide.system}'s version
-          </button>
-          <button
-            className="m-btn"
-            data-rank="quiet"
-            onClick={() =>
-              onSettle("sent to Ravi", `asked Ravi to reconcile ${d.recordId}`)
-            }
-          >
-            <Icon name="colleague" size={13} />
-            Ask Ravi to reconcile it
-          </button>
-          {/* The structural fix rather than the per-record one, and the only act
-              here that is certified — it changes who wins every future round. */}
-          <button
-            className="m-btn"
-            data-rank="certified"
-            onClick={onMasterInstead}
-          >
-            <Icon name="key" size={13} />
-            Make {d.otherSide.system} master of {d.object} instead
-          </button>
-        </div>
+        <p className="bg-note">
+          What the master holds is not on this record. The conflict carries the
+          rejected write and nothing else, and no endpoint returns the winning
+          side — so the other column is absent rather than filled in. Changing
+          which system wins next time is a two-step certified migration on the
+          object itself, and it does not belong on a card about one row.
+        </p>
       </div>
     </section>
+  );
+}
+
+/* ========================================================================== */
+/*  THE GATES COLUMN                                                          */
+/* ========================================================================== */
+
+function GatesColumn({
+  material,
+  onEcho,
+}: {
+  material: GateMaterial;
+  onEcho: (msg: string) => void;
+}) {
+  const act = useCertifiedAct({ renderer: "S", surface: "bridges", onEcho });
+  const { consent, social } = material;
+
+  return (
+    <>
+      {act.problem !== null && (
+        <div className="m-plate bg-problem" role="status">
+          <span className="m-lamp" data-negative aria-hidden="true" />
+          <span className="bg-problem-text">
+            {act.problem.message}
+            {act.problem.kind === "gap" && (
+              <span className="bg-problem-reason">Closed by {act.problem.closedBy}.</span>
+            )}
+          </span>
+          <button className="m-btn" data-rank="quiet" onClick={act.clearProblem}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {consent.channels.length === 0 ? (
+        /* L2. An empty registry is the commonest honest state and the most
+           easily misread: nobody has asked to be left alone, which is not the
+           same as a registry that has been consulted and found clear. */
+        <Empty
+          icon="thread"
+          title="Nobody has asked this estate to stop."
+          body="The consent registry holds a row the moment somebody opts in, opts out, unsubscribes or lands on a do-not-contact list, and it holds none. That is a young estate rather than a permissive one — every send is still checked against this registry before it leaves."
+          note={`asked ${consent.as_of.slice(0, 10)}`}
+        />
+      ) : (
+        consent.channels.map((channel) => (
+          <GateCard
+            key={channel.channel}
+            channel={channel}
+            busy={act.busy}
+            onGrant={() => {
+              void act.run(
+                {
+                  act: "certified.consent",
+                  echo: `opened ${channel.channel} for marketing`,
+                  summary: `open the ${channel.channel} gate for marketing`,
+                  subject: channel.channel,
+                },
+                /* Never reached: `certified.consent` is gate kind `absent`, so
+                   the hook refuses before performing. Present rather than
+                   omitted because the day a write exists, this is the call. */
+                () => Promise.resolve(),
+              );
+            }}
+          />
+        ))
+      )}
+
+      {/* Broadcast gates. A social connection is a page we post to, not a
+          person we contact, so it carries no consent posture and is not given
+          one — it is listed as the different thing it is. */}
+      <section className="m-plate bg-avail" aria-labelledby="bg-social-h">
+        <h3 className="t-eyebrow" id="bg-social-h">
+          BROADCAST · PAGES THIS ESTATE POSTS TO
+        </h3>
+        {social.length === 0 ? (
+          <p className="bg-note">No page is connected to this estate.</p>
+        ) : (
+          social.map((connection, i) => {
+            const platform = connection["platform"];
+            const account = connection["account_name"];
+            const active = connection["is_active"] === true;
+            return (
+              <div className="bg-avail-row" key={String(connection["id"] ?? i)}>
+                <span className="m-portrait-well bg-ident-well" data-sm aria-hidden="true">
+                  <Seal id={String(platform ?? i)} size={28} />
+                </span>
+                <span className="bg-avail-text">
+                  <span className="bg-avail-name">
+                    {typeof platform === "string" ? platform : "a connected page"}
+                  </span>
+                  {typeof account === "string" && account !== "" && (
+                    <span className="bg-avail-what">{account}</span>
+                  )}
+                </span>
+                <span className="m-chip bg-scope">
+                  <span className="m-lamp" data-positive={active || undefined} />
+                  {active ? "connected" : "not connected"}
+                </span>
+              </div>
+            );
+          })
+        )}
+        <p className="bg-note">
+          A broadcast gate reaches nobody in particular, so there is no consent
+          to hold and no do-not-contact list to check. Nothing here is counted
+          into the figures above.
+        </p>
+      </section>
+
+      <p className="bg-cert-note">
+        <Icon name="seal" size={12} />
+        Opening a gate is a certified act and this estate cannot record one yet:{" "}
+        <code>GET /ai/consent</code> is the whole door. Closing one has no
+        control here either, and that is not an oversight — a revocation belongs
+        to the flow that has the person&apos;s own word for it, never to a panel
+        that lists them.
+      </p>
+
+      {act.ceremony !== null && (
+        <StepUpCeremony
+          prompt={act.ceremony}
+          onElevated={act.onElevated}
+          onClose={act.onClose}
+        />
+      )}
+    </>
   );
 }
 
@@ -760,18 +999,15 @@ function DisputeView({
 /* ========================================================================== */
 
 function GateCard({
-  gate,
-  posture,
-  onPosture,
-  onEcho,
+  channel,
+  busy,
+  onGrant,
 }: {
-  gate: Gate;
-  posture: Gate["consent"]["posture"];
-  onPosture: (next: Gate["consent"]["posture"]) => void;
-  onEcho: (msg: string) => void;
+  channel: ConsentChannel;
+  busy: boolean;
+  onGrant: () => void;
 }) {
-  const revoked = posture === "revoked";
-  const perDay = gate.volume.sevenDay === null ? null : Math.round(gate.volume.sevenDay / 7);
+  const purposes = Object.entries(channel.purposes);
 
   return (
     <article className="m-plate bg-gate">
@@ -779,111 +1015,140 @@ function GateCard({
         <div className="bg-ident">
           {/* A channel has no persona either. */}
           <span className="m-portrait-well bg-ident-well" aria-hidden="true">
-            <Seal id={gate.id} size={36} />
+            <Seal id={channel.channel} size={36} />
           </span>
           <span className="bg-ident-text">
-            <h3 className="bg-ident-name t-display">{gate.name}</h3>
-            <span className="bg-ident-sub">{gate.transport}</span>
+            <h3 className="bg-ident-name t-display">{channel.channel}</h3>
+            <span className="bg-ident-sub">the registry&apos;s own answer</span>
           </span>
         </div>
-        <span className="m-chip bg-scope">{gate.kind}</span>
       </div>
 
       <dl className="bg-gate-facts">
         {/* ------------------------------------------------------------ consent */}
         <div className="bg-fact">
-          <dt className="t-eyebrow">CONSENT</dt>
+          <dt className="t-eyebrow">POSTURE</dt>
           <dd className="bg-fact-val">
-            <span className="m-lamp" data-positive={posture === "opt-in" || undefined} />
-            <span>{CONSENT[posture]}</span>
-            {revoked && <span className="m-chip bg-scope">promotions off</span>}
-            {posture !== gate.consent.posture && (
-              <span className="m-chip bg-scope">changed by you, just now</span>
-            )}
+            <span className="m-lamp" data-positive={channel.posture === "open" || undefined} />
+            <span>{POSTURE[channel.posture]}</span>
           </dd>
-          <dd className="bg-fact-why">
-            {posture === gate.consent.posture
-              ? gate.consent.note
-              : revoked
-                ? "Written to the consent registry with your name on it. Every colleague is bound by it from this second, and none of them can override it."
-                : "Restored in the consent registry with your name on it. Promotional intents on this gate will start passing again."}
+          {/* The registry's own reason, verbatim. This surface owns no second
+              copy of the precedence rules — a panel that computed its own
+              answer would eventually disagree with the gate that refuses the
+              send, and the owner would believe the panel. */}
+          <dd className="bg-fact-why">{channel.reason}</dd>
+          <dd className="bg-obj-when">
+            {purposes
+              .map(([purpose, allowed]) => `${purpose}: ${allowed ? "allowed" : "refused"}`)
+              .join(" · ")}
           </dd>
-          {gate.consent.recordedOn !== null && (
-            <dd className="bg-obj-when">
-              scope: {gate.consent.scope} · recorded {gate.consent.recordedOn}
-            </dd>
-          )}
-          {/* recordedOn is null on a legitimate-interest gate because nothing was
-              ever recorded. No date is invented and no dash is drawn — the scope
-              line simply stands alone. */}
-          {gate.consent.recordedOn === null && (
-            <dd className="bg-obj-when">scope: {gate.consent.scope}</dd>
-          )}
+          {/* Recording is not on this list and its absence is deliberate: the
+              registry models marketing and transactional, and publishing a
+              posture for a purpose nothing sets would be inventing one. */}
         </div>
 
         {/* ---------------------------------------------------------------- DNC */}
         <div className="bg-fact">
           <dt className="t-eyebrow">DO NOT CONTACT</dt>
-          {gate.dnc.listed !== null ? (
-            <>
-              <dd className="bg-fact-val">
-                <span className="t-mono">
-                  {gate.dnc.listed.toLocaleString("en-IN")}
-                </span>
-                <span>on the list</span>
-              </dd>
-              <dd className="bg-fact-why">Checked {gate.dnc.enforcedAt}.</dd>
-            </>
-          ) : (
-            /* Nothing is listed because nothing can be: a broadcast gate has no
-               recipient to suppress. That is a sentence, not a zero. */
-            <dd className="bg-fact-why">{gate.dnc.enforcedAt}.</dd>
-          )}
+          <dd className="bg-fact-val">
+            <span className="t-mono">{channel.dnc}</span>
+            <span>on the list</span>
+          </dd>
+          <dd className="bg-fact-why">
+            {channel.unsubscribed} more have unsubscribed. Both are checked
+            before every send, and again at dispatch.
+          </dd>
         </div>
 
-        {/* ------------------------------------------------------------- volume */}
+        {/* --------------------------------------------------------- on record */}
         <div className="bg-fact">
-          <dt className="t-eyebrow">VOLUME · LAST SEVEN DAYS</dt>
-          {gate.volume.sevenDay !== null && perDay !== null ? (
-            <dd className="bg-volume">
-              <span className="bg-volume-figure">
-                {gate.volume.sevenDay.toLocaleString("en-IN")}
-              </span>
-              <span className="bg-volume-unit">
-                {gate.volume.unit} · about {perDay} a day
-                {gate.volume.capPerDay !== null &&
-                  ` · ceiling ${gate.volume.capPerDay.toLocaleString("en-IN")} a day`}
-              </span>
-            </dd>
-          ) : null}
-          {/* Where the count is not ours, there is no figure and no dash — only
-              the reason there is no figure. */}
-          {gate.volume.note !== null && (
-            <dd className="bg-fact-why">{gate.volume.note}</dd>
-          )}
+          <dt className="t-eyebrow">ON RECORD</dt>
+          <dd className="bg-fact-val">
+            <span className="t-mono">{channel.granted}</span>
+            <span>said yes</span>
+            <span className="t-mono">{channel.denied}</span>
+            <span>said no</span>
+          </dd>
+          {/* Volume was a fixture. Nothing counts sends per channel over a
+              window, so there is no seven-day figure and none is drawn. */}
+          <dd className="bg-fact-why">
+            How much has gone out through this gate is not counted anywhere, so
+            there is no volume here and no ceiling to show against it.
+          </dd>
         </div>
       </dl>
 
       <div className="bg-acts">
-        {gate.consent.promotional && (
-          <button
-            className="m-btn bg-mini"
-            data-rank="certified"
-            onClick={() => onPosture(revoked ? "opt-in" : "revoked")}
-          >
-            <Icon name="key" size={13} />
-            {revoked ? "Restore promotions" : "Revoke consent for promotions"}
-          </button>
-        )}
+        {/* The one act, and it is the unsafe direction. Pressing it performs
+            nothing and says why — `certified.consent` maps to no write
+            endpoint, and the hook refuses rather than pretending. */}
         <button
           className="m-btn bg-mini"
-          data-rank="quiet"
-          onClick={() => onEcho(`opened the consent record for ${gate.name}`)}
+          data-rank="certified"
+          disabled={busy}
+          onClick={onGrant}
         >
-          <Icon name="record" size={13} />
-          The consent record
+          <Icon name="key" size={13} />
+          Open this gate for marketing
         </button>
       </div>
     </article>
+  );
+}
+
+/* ========================================================================== */
+/*  THE PENDING STATE                                                         */
+/* ========================================================================== */
+
+/**
+ * The surface's own structure with the words not yet in it (D7 §3.1). No
+ * spinner: this is one of the seventeen.
+ *
+ * The plates are drawn first and the bars go inside them — `vh-skeleton`'s
+ * ground is a ~6/255 delta on the raw canvas, so a bar on the page background
+ * draws nothing at all.
+ */
+function BridgesScaffold() {
+  return (
+    <section className="bg">
+      <Scaffold label="The estate’s edge">
+        <header className="bg-head">
+          <Bar width="xs" />
+          <Bar width="md" tall />
+        </header>
+
+        <div className="bg-edge m-plate">
+          {[0, 1, 2].map((i) => (
+            <div className="bg-edge-item" key={i}>
+              <Bar width="xs" />
+              <Bar width="sm" />
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-cols">
+          {[0, 1].map((column) => (
+            <div className="bg-col" key={column}>
+              <div className="bg-col-head">
+                <Bar width="xs" />
+              </div>
+              {[0, 1].map((i) => (
+                <article className="m-plate bg-bridge" key={i}>
+                  <div className="bg-bridge-head">
+                    <Bar width="sm" tall />
+                  </div>
+                  <div className="m-well bg-cred">
+                    <Lines n={2} />
+                  </div>
+                  <div className="m-well bg-master-scroll">
+                    <Lines n={3} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ))}
+        </div>
+      </Scaffold>
+    </section>
   );
 }

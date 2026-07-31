@@ -4,10 +4,10 @@
 
    **The decisions are an object; the day is prose.** What needs you is drawn as
    a bracketed block at the top with the Tray inside it; everything below is her
-   sentences in a measured column, with a plate only where a story card earns
-   one. A thread in which every line is a card is not a thread, it is a list —
-   and the rhythm between bare prose, a marked voice note and a plate is what
-   lets eleven hours be scanned in three seconds.
+   sentences in a measured column. A thread in which every line is a card is not
+   a thread, it is a list — and after R-4 part W the only rhythm left is the one
+   the conversation seam can actually carry: her turn, and yours, told apart by
+   a name and a hairline rather than by a second material.
 
    **The Tray is mounted, not redrawn (R-3c C4), so this file may only give it
    geometry.** `.tr` is written to be a whole desk room: full height, its own
@@ -17,10 +17,10 @@
    under it means nothing if the act above it is drawn differently here from
    where it is approved.
 
-   **Gold appears twice and both are §2.1's own.** The seam on a voice note is
-   her beam while narrating; the key and the eyebrow on the step-up bar label a
-   certified block. The Tray brings its own, and the frame carries one more on
-   the tab bar — four in a whole screen is the budget, not a starting point. */
+   **Gold appears once and it is §2.1's own.** The key and the eyebrow on the
+   step-up bar label a certified block. The voice note's seam went with the
+   voice note, so this surface now spends less than it was budgeted rather than
+   more — the Tray brings its own, and the frame carries one on the tab bar. */
 
 .th {
   display: flex;
@@ -166,13 +166,9 @@
   color: var(--accent);
 }
 
-.th-step-ref {
-  font-size: 10px;
-  color: var(--fg-muted);
-}
-
-/* The sentence you are agreeing to, and the reason the ref beside it exists.
-   It stays at reading size while the machine's string does not. */
+/* The sentence you are agreeing to. There is no machine string beside it any
+   more: the reference a confirmation binds to is minted by the server when it
+   refuses, so the ceremony prints one and this bar prints none. */
 .th-step-cmd {
   font-size: var(--text-xs);
   color: var(--fg);
@@ -232,7 +228,16 @@
   max-width: 62ch;
 }
 
-/* ------------------------------------------------------------- a plain note */
+/* ----------------------------------------------------------------- one turn
+   Bare prose and no plate. Most of what she says does not need an object drawn
+   around it, and a thread where every line is a card is a list.
+
+   The story card and the voice note that used to live here are gone with the
+   wiring (R-4 part W): `/ai/pragya/history` carries a role, the words and a
+   timestamp, so a card's title and its figure-in-a-well, and a recording's
+   length and its gold seam, had no binding left. §7.1 — the rules are deleted
+   rather than left standing over nothing, which also gives the surface back the
+   one gold it was spending on a note nobody can now mark as spoken. */
 
 .th-note {
   display: flex;
@@ -240,64 +245,32 @@
   gap: var(--s-2);
 }
 
-/* ------------------------------------------------------------- a voice note
-   The seam is the one mark that says she spoke this rather than wrote it, and
-   §2.1 sanctions gold for exactly that — her beam while narrating. It is spent
-   on two turns in a day, which is what keeps it information. */
-
-.th-voice {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding-left: var(--s-4);
-  border-left: 1px solid var(--border-gold);
-}
-
-.th-voice-head {
+.th-note-head {
   display: flex;
   align-items: center;
   gap: var(--s-3);
   flex-wrap: wrap;
 }
 
-/* ------------------------------------------------------------- a story card */
+/* The owner's own turn. Ruled off rather than tinted — the eyebrow beside it
+   already says whose words these are, and the rule is what makes the two
+   speakers legible at a glance without a second colour. Never gold: gold is a
+   raised hand or a certified block, and neither is "you said this". */
+.th-note[data-yours] {
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--rule-strong);
+}
 
-.th-card {
+/* ---------------------------------------------------------------- the ghost
+   A turn that has not arrived. A plate under the bars because `vh-skeleton`'s
+   ground is a ~6/255 delta on the raw canvas — on the page background the bars
+   would be invisible and the pending state would be the blank screen. */
+
+.th-ghost {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-  padding: var(--s-4) var(--s-4) var(--s-5);
-}
-
-.th-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-3);
-}
-
-.th-card-title {
-  font-size: var(--text-lg);
-  color: var(--fg);
-  max-width: 28ch;
-}
-
-/* The figure sits in a well because a number on a plate is a number somebody
-   typed, and a number in a well is one the estate measured. Where the binding
-   produced nothing the element is absent entirely — no empty state, no reserved
-   space, nothing to read as a zero (§7.1). */
-.th-fig {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  align-self: flex-start;
-  max-width: 100%;
-  padding: var(--s-3) var(--s-4);
-}
-
-.th-fig-val {
-  line-height: 1;
-  color: var(--fg);
+  padding: var(--s-4);
 }
 
 /* --------------------------------------------------------------- opened wide

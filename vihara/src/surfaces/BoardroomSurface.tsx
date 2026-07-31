@@ -840,7 +840,7 @@ function PropositionCard({
       <article className="br-prop br-prop-adopted m-plate">
         <span className="m-medallion br-adopt-seal" aria-hidden="true">
           {/* Same struck check as the Tray's certified seal — one grammar. */}
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2a1d08" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6 9 17l-5-5" />
           </svg>
         </span>

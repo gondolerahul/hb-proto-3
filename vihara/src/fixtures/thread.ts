@@ -137,19 +137,20 @@ export const THREAD: ThreadTurn[] = [
   },
 ];
 
-/**
- * `certified.step-up@1`, keyed by the tray card whose gold path it authorises.
+/*
+ * `STEP_UP` stood here: `certified.step-up@1` keyed by the tray card whose gold
+ * path it authorised, carrying a `tier` and a `command_ref`.
  *
- * `tier` and `command_ref` are the server's, not the client's: a ref invented
- * here would let one command's confirmation authorise another, which is the
- * whole reason the field exists (`api/authn.ts`). The fixture stands in for the
- * server exactly as every other fixture in this app does — it does not mint one
- * at render time.
- *
- * `command_summary` is deliberately absent from this table. The Thread reads it
- * off the tray card itself, so the ceremony and the act it authorises cannot be
- * made to name two different things by editing one of them.
+ * It is gone because R-4 part W gave one of those fields a source and proved
+ * the other has none. The tier is on the wire — `certified.tier`, struck by
+ * `genui/trays.py` from the same classification the gate itself runs — so
+ * `ThreadSurface` reads it there, off the act it is actually standing under.
+ * The reference is minted by the server at the moment it refuses
+ * (`enforce_tier(..., command_ref=f"approval:{approval_id}")`) and printed by
+ * the ceremony that was refused with it; nothing carries one before that. This
+ * table's own note said a ref invented on the client would let one command's
+ * confirmation authorise another — and a fixture ref keyed by a fixture id,
+ * looked up with a real approval id, would simply never match, which is a
+ * security control that quietly stops appearing. Both failures are worse than
+ * printing no reference on a bar that is not the ceremony.
  */
-export const STEP_UP: Record<string, { tier: "T2" | "T3"; commandRef: string }> = {
-  "HITL-8841": { tier: "T2", commandRef: "cmd_01J9K4Q7ZR3M8VXB" },
-};

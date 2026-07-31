@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { logout } from "../api/client";
+import { fetchCompanyName } from "../api/identity";
 import { Background } from "../background/Background";
 import { Icon, type IconName } from "../components/Icon";
-import { COMPANY, STILL } from "../fixtures/estate";
-import { SurfaceBoundary } from "../lifecycle";
+import { useLiveEstate } from "../estate/useLiveEstate";
+import { SurfaceBoundary, useResource } from "../lifecycle";
 import { MorningStorySurface } from "./MorningStorySurface";
 import { PocketDesk } from "./PocketDesk";
 import { ThreadSurface } from "./ThreadSurface";
@@ -44,6 +45,27 @@ import "./line.css";
  *    *before* the user goes hunting for a prompt that will never appear. Every
  *    other branch of that state is a different true sentence, and the silence
  *    when a subscription already exists is the last one.
+ *
+ * ## What the frame reads (R-4 part W)
+ *
+ * Two bindings, and both are about not disagreeing with the desk.
+ *
+ * **The beacon is the estate's own beacon list, live.** It was `STILL.handsRaised`
+ * out of a fixture; it is now `beacons.length` off `useLiveEstate`, which is the
+ * same collection depth 0 counts. The stream is shared and reference-counted, so
+ * the frame and the Pocket Desk cost one connection between them. It is
+ * deliberately **live rather than a one-shot read**: the whole promise of this
+ * bar is that a decision arriving while the phone is open lights the tab, and a
+ * `useResource` here would have been honest only at the instant it loaded.
+ *
+ * While the estate has not answered, the beacon is absent rather than zero — an
+ * unlit tab is "nothing is waiting", and claiming that before anything has been
+ * counted is the calm-screen failure part L named.
+ *
+ * **The company name is fail-soft and prints nothing when it is not known.**
+ * `identity.fetchCompanyName` swallows and returns null by design, so there is
+ * no failure branch to draw; a placeholder company would be the first thing a
+ * person reads on this phone and the first thing that is false.
  */
 
 type Tab = "morning" | "thread" | "desk";
@@ -72,6 +94,15 @@ export function LineApp() {
   const [refused, setRefused] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [gone, setGone] = useState(false);
+
+  const live = useLiveEstate();
+  const company = useResource(fetchCompanyName);
+  const name = company.phase === "ready" ? company.value : null;
+  /* The estate's own count, not a second one. `beacons` is every pending
+     approval — the same collection the Still Surface reads for its gold line —
+     so the phone cannot disagree with the desk about how many things are
+     waiting. `null` until the estate answers: see the note above. */
+  const waiting = live.phase === "ready" ? live.estate.beacons.length : null;
 
   useEffect(() => {
     void pushAvailability()
@@ -143,7 +174,8 @@ export function LineApp() {
           <span className="ln-mark" aria-hidden="true">
             <span className="ln-mark-dot" />
           </span>
-          <span className="ln-company t-display">{COMPANY.name}</span>
+          {/* The tenant's own name, or nothing at all. */}
+          {name !== null && <span className="ln-company t-display">{name}</span>}
 
           {/* Presence — never a face, never a floating avatar (D6 §1). */}
           <p className="ln-presence">
@@ -194,10 +226,10 @@ export function LineApp() {
         {/* ================================================== the tab bar */}
         <nav className="ln-tabs m-glass" data-strong aria-label="The Line">
           {TABS.map((t) => {
-            // The estate's own count, not a second one. STILL.handsRaised is the
-            // binding the depth-0 line reads; the phone must never disagree with
-            // the desk about how many things are waiting.
-            const waiting = t.id === "thread" ? STILL.handsRaised : 0;
+            // Only the Thread can carry a beacon: a raised hand is read there
+            // and nowhere else, and a count on a tab that cannot answer it
+            // would be a route the product does not have.
+            const hands = t.id === "thread" ? waiting : null;
             return (
               <button
                 key={t.id}
@@ -209,13 +241,13 @@ export function LineApp() {
                 <Icon name={t.icon} size={20} />
                 <span className="ln-tab-label t-eyebrow">{t.label}</span>
 
-                {waiting > 0 && (
+                {hands !== null && hands > 0 && (
                   <span className="ln-tab-hands">
                     <span className="m-lamp" data-lit data-breathing />
                     {/* Never colour alone: the numeral is the visible carrier,
                         the sentence below is the accessible one. */}
-                    <span className="ln-tab-count t-mono">{waiting}</span>
-                    <span className="vh-sr-only">, {waiting} waiting on you</span>
+                    <span className="ln-tab-count t-mono">{hands}</span>
+                    <span className="vh-sr-only">, {hands} waiting on you</span>
                   </span>
                 )}
               </button>
