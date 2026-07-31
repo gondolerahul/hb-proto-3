@@ -86,3 +86,40 @@ def test_the_refresh_cookie_reads_back():
     assert cookie_refresh_token(
         _request(cookies={"refresh_token": "r1"})) == "r1"
     assert cookie_refresh_token(_request()) is None
+
+
+# ── the cookie paths, which are not symmetrical on purpose ───────────────────
+
+def test_the_csrf_cookie_is_readable_from_the_app_root():
+    """R-4 regression. The CSRF cookie shipped scoped to ``/api/v1/auth`` like
+    the credential beside it, which made it invisible to ``document.cookie`` on
+    a page served from ``/`` — so the client's ``csrfFromCookie`` returned
+    ``None``, every refresh went out without ``X-CSRF-Token``, and each reload
+    read as an expired session.
+
+    The frontend suite could not catch it: its tests mock the API client, so the
+    cookie → header → refresh path had no coverage on either side of the wire.
+    It is asserted here, where the cookie is actually set.
+    """
+    response = Response()
+    set_cookie_mode_cookies(response, "refresh-value")
+    csrf_cookie = next(
+        c for c in response.headers.getlist("set-cookie")
+        if c.startswith("csrf_token="))
+
+    assert "Path=/;" in csrf_cookie or csrf_cookie.rstrip().endswith("Path=/")
+
+
+def test_the_refresh_cookie_stays_pinned_to_the_auth_endpoints():
+    """The other half of the asymmetry, and the half that must not drift wider.
+    The refresh token IS a credential; pinning its path is most of what cookie
+    mode buys. Widening it to ``/`` would attach it to every asset request the
+    browser makes.
+    """
+    response = Response()
+    set_cookie_mode_cookies(response, "refresh-value")
+    refresh = next(
+        c for c in response.headers.getlist("set-cookie")
+        if c.startswith("refresh_token="))
+
+    assert "Path=/api/v1/auth" in refresh

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background } from "../background/Background";
-import { Shell, type Depth } from "../shell/Shell";
+import { Shell, DEPTH_LABELS, type Depth } from "../shell/Shell";
+import { Palette, type PaletteItem } from "../shell/Palette";
 import { StillSurface } from "../surfaces/StillSurface";
 import { TerraceSurface } from "../surfaces/TerraceSurface";
 import { DistrictSurface } from "../surfaces/DistrictSurface";
@@ -16,149 +17,113 @@ import { TalentSurface } from "../surfaces/TalentSurface";
 import { GallerySurface } from "../surfaces/GallerySurface";
 import { TraySurface } from "../surfaces/TraySurface";
 import { HallSurface } from "../surfaces/HallSurface";
-import { BackgroundPick } from "../boards/BackgroundPick";
-import "./prototype.css";
+import {
+  ancestorsOf,
+  parseRoute,
+  pathOf,
+  ROOT,
+  SURFACES,
+  surfaceOf,
+  type Route,
+  type SurfaceId,
+} from "./routes";
+import { endSession } from "./session";
 
 /**
- * R-3b · the prototype, complete.
+ * The estate, behind the session gate.
  *
- * Decision D4: the review artifact is a clickable prototype that already looks
- * finished, because R2 proved wireframe approval does not predict craft approval.
- * So this is real React with the real material system and real content density —
- * not a mockup of one. The consequence, recorded in the charter: **R-4 is a
- * data-source swap, not a rebuild.** Swap `src/fixtures/` for the salvaged API
- * client and delete `PrototypeNav`, and the surfaces carry across untouched.
+ * Decision D4 built this as a clickable prototype so that R-4 would be a
+ * data-source swap rather than a rebuild. R-4 §4 (D7) collects on the other half
+ * of that promise: **`PrototypeNav` is gone.** The review scaffold — a fixed
+ * strip of sixteen buttons and a scene toggle, plus number-key shortcuts that
+ * fired while you were typing — is replaced by the two things the product was
+ * always going to navigate by: ⌘K, and the address bar.
  *
- * All fifteen product surfaces plus the shell, at both renderers. The World
- * surfaces (Terrace, district rooms, the Glasshouse) are drawn in SVG rather than
- * WebGL — `world/iso.ts` — which is why they are here at all: this VM has no GPU,
- * and an SVG territory is the tier-C path and the L9 sheet equivalent
- * simultaneously, at full quality rather than as a fallback.
+ * Four decisions a reader would otherwise have to reverse-engineer:
  *
- * The only thing still needing real hardware is the atmosphere itself, and the
- * obligation art bible §2.1a takes on: measuring that a gold beacon still wins
- * against the gold field.
+ *  1. **The chord lives here, not in `Shell`.** Depth 0 has no shell (D6 §2), and
+ *     a navigator that does not exist at the front door is not the navigator.
+ *     `Prototype` owns the palette's open state and mounts it at every depth;
+ *     the rail keeps only the button that says the chord exists.
+ *
+ *  2. **The back stack is seeded to the depth ladder (N3).** Arriving straight
+ *     at `/tray` — which is exactly what the Line's `notificationclick` does —
+ *     leaves a history with one entry, and Back exits the product from the room
+ *     it just delivered you to. So on arrival the ancestors of the landing route
+ *     are pushed beneath it, and Back *rises*: tray, terrace, still, gone. It is
+ *     done once per document, guarded by a ref rather than by an empty
+ *     dependency array, because StrictMode runs mount effects twice and the
+ *     second run would double the ladder.
+ *
+ *  3. **Breadcrumbs are read off `above`, not written per surface.** The old
+ *     table hard-coded "Collections" and "Meera" — fixture facts that would
+ *     become lies the moment the URL named a different district or colleague.
+ *     The chain is now derived, so a crumb can only ever say what the route
+ *     says. It buys back its specificity in W, when the subject has a name.
+ *
+ *  4. **An unrecognised URL is corrected, not faked.** It resolves to the front
+ *     door *and* rewrites the address bar to match, so the two never disagree.
+ *     A "not found" surface is a real surface with real copy and it belongs to
+ *     the lifecycle round, not to a silent fallback here.
  */
 
-type SurfaceId =
-  | "still"
-  | "terrace"
-  | "district"
-  | "dossier"
-  | "boardroom"
-  | "standup"
-  | "study"
-  | "glasshouse"
-  | "undercroft"
-  | "library"
-  | "bridges"
-  | "talent"
-  | "gallery"
-  | "tray"
-  | "hall"
-  | "bg";
-
-const SURFACE_DEPTH: Record<SurfaceId, Depth> = {
-  still: 0,
-  terrace: 1,
-  district: 2,
-  dossier: 2,
-  boardroom: 2,
-  standup: 1,
-  study: 2,
-  glasshouse: 2,
-  undercroft: 3,
-  library: 2,
-  bridges: 2,
-  talent: 2,
-  gallery: 2,
-  tray: 2,
-  hall: 2,
-  bg: 1,
-};
-
-const SURFACES: { id: SurfaceId; label: string; note: string }[] = [
-  { id: "still", label: "Still surface", note: "depth 0 · finding RD-4" },
-  { id: "terrace", label: "The Terrace", note: "depth 1 · findings RD-1/RD-2" },
-  { id: "district", label: "District room", note: "depth 2 · W+S" },
-  { id: "dossier", label: "Dossier", note: "one-on-one · seals" },
-  { id: "boardroom", label: "Boardroom", note: "brainstorm · review D" },
-  { id: "standup", label: "The Standup", note: "one voice · L2" },
-  { id: "study", label: "The Study", note: "your desk · VP-03" },
-  { id: "glasshouse", label: "The Glasshouse", note: "drained twin · L6" },
-  { id: "undercroft", label: "The Undercroft", note: "depth 3 · manifest" },
-  { id: "library", label: "The Library", note: "provenance · influence" },
-  { id: "bridges", label: "Bridges & Gates", note: "conflicts · consent" },
-  { id: "talent", label: "Talent Office", note: "hire at A1 · VG-18" },
-  { id: "gallery", label: "The Gallery", note: "honestly young · drained" },
-  { id: "tray", label: "The Tray", note: "certified · finding RD-7" },
-  { id: "hall", label: "Registry Hall", note: "dense data · finding RD-7" },
-  { id: "bg", label: "Background pick", note: "decision D2 · closed" },
-];
-
-/** Per-surface breadcrumb, so the shell's trail is data rather than a ternary. */
-const BREADCRUMBS: Partial<
-  Record<SurfaceId, (go: (s: SurfaceId) => void) => { label: string; onClick?: () => void }[]>
-> = {
-  terrace: (go) => [{ label: "Terrace", onClick: () => go("still") }],
-  district: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "Collections" },
-  ],
-  dossier: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "Collections", onClick: () => go("district") },
-    { label: "Meera" },
-  ],
-  boardroom: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "The Boardroom" },
-  ],
-  standup: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "The Standup" },
-  ],
-  // No district above it: the Study is the desk, not a place in the estate.
-  study: () => [{ label: "The Study" }],
-  glasshouse: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "The Glasshouse" },
-  ],
-  undercroft: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "The Undercroft" },
-  ],
-  library: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "The Library" },
-  ],
-  bridges: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "Bridges & Gates" },
-  ],
-  talent: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "Talent Office" },
-  ],
-  gallery: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "The Gallery" },
-  ],
-  tray: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "The Tray" },
-  ],
-  hall: (go) => [
-    { label: "Terrace", onClick: () => go("terrace") },
-    { label: "Halls", onClick: () => go("hall") },
-    { label: "Invoices" },
-  ],
-};
+/** The palette's rung headings. The Line is filed apart because it is a
+ *  different document, not a deeper room. */
+const ELSEWHERE = "Elsewhere";
 
 export function Prototype() {
-  const [surface, setSurface] = useState<SurfaceId>("still");
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
   const [echo, setEcho] = useState<string | null>(null);
-  const [variant, setVariant] = useState<"legacy" | "brand">("brand");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const seeded = useRef(false);
+
+  const def = surfaceOf(route.surface);
+
+  const go = useCallback((next: Route) => {
+    const path = pathOf(next);
+    if (path !== window.location.pathname) {
+      window.history.pushState(next, "", path);
+    }
+    setRoute(next);
+  }, []);
+
+  const goTo = useCallback((id: SurfaceId, subject: string | null = null) => go({ surface: id, subject }), [go]);
+
+  /* N3 — the ladder, seeded beneath wherever the URL dropped us. The first rung
+     REPLACES the entry we arrived on (so no ghost of the raw URL survives, and
+     an unrecognised path is corrected here rather than rendered as itself); the
+     rest are pushed on top. */
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    const here = parseRoute(window.location.pathname);
+    const ladder = [...ancestorsOf(here), here];
+    const bottom = ladder[0]!;
+    window.history.replaceState(bottom, "", pathOf(bottom));
+    for (const rung of ladder.slice(1)) {
+      window.history.pushState(rung, "", pathOf(rung));
+    }
+  }, []);
+
+  /* Back and Forward read the address bar rather than the pushed state: the
+     seeded entries and the entries a person made are then handled by one path,
+     and an entry this app never pushed still resolves rather than throwing. */
+  useEffect(() => {
+    const onPop = () => setRoute(parseRoute(window.location.pathname));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const showEcho = useCallback((msg: string) => {
     setEcho(null);
@@ -167,136 +132,114 @@ export function Prototype() {
     window.setTimeout(() => setEcho(null), 4600);
   }, []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const n = Number(e.key);
-      if (n >= 1 && n <= SURFACES.length) setSurface(SURFACES[n - 1]!.id);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+  const items = useMemo<PaletteItem[]>(() => {
+    const rows: PaletteItem[] = SURFACES.map((s) => ({
+      id: s.id,
+      label: s.label,
+      note: s.note,
+      group: DEPTH_LABELS[s.depth],
+      href: pathOf({ surface: s.id, subject: null }),
+      aka: s.aka,
+    }));
+    rows.push({
+      id: "line",
+      label: "The Line",
+      note: "the same estate, in your pocket",
+      group: ELSEWHERE,
+      href: "/line.html",
+      away: true,
+      aka: "phone mobile pocket thread morning desk push",
+    });
+    return rows;
   }, []);
 
-  if (surface === "bg") {
-    return (
-      <>
-        <BackgroundPick />
-        <PrototypeNav surface={surface} onPick={setSurface} variant={variant} onVariant={setVariant} />
-      </>
-    );
-  }
+  /* Each rung has one canonical room, because the dial is a *place* control and
+     a rung that landed somewhere different each time would not be one. Rung 2 is
+     the district room — the archetypal room, and the only depth-2 surface the
+     ladder above it actually passes through. Clicking the rung you are already
+     on does nothing rather than re-entering the surface. */
+  const onDepth = useCallback(
+    (d: Depth) => {
+      if (d === def.depth) return;
+      goTo(d === 0 ? ROOT.id : d === 1 ? "terrace" : d === 2 ? "district" : "undercroft");
+    },
+    [def.depth, goTo],
+  );
 
-  const depth = SURFACE_DEPTH[surface];
-  // Atmosphere per surface — the addition R-1 §5 describes.
-  const intensity =
-    surface === "still" || surface === "terrace"
-      ? "full"
-      : surface === "hall" || surface === "dossier" || surface === "standup" || surface === "study" || surface === "undercroft" || surface === "library" || surface === "bridges" || surface === "talent" || surface === "gallery"
-        ? "hushed"
-        : "quiet";
+  const breadcrumb = useMemo(() => {
+    const rungs = ancestorsOf(route)
+      // The root is the mark on the rail, not a crumb — every trail would open
+      // with the same word otherwise.
+      .filter((r) => r.surface !== ROOT.id)
+      .map((r) => ({ label: surfaceOf(r.surface).label, onClick: () => go(r) }));
+    return [...rungs, { label: def.label }];
+  }, [route, def.label, go]);
 
   return (
     <>
-      <Background variant={variant} intensity={intensity} />
+      <Background intensity={def.intensity} />
 
-      {surface === "still" ? (
+      {route.surface === "still" ? (
         // Depth 0 has no chrome, because it *is* the chrome (D6 §2).
-        <StillSurface onDescend={() => setSurface("terrace")} />
+        <StillSurface onDescend={() => goTo("terrace")} />
       ) : (
         <Shell
-          depth={depth}
-          onDepth={(d) => {
-            if (d === 0) setSurface("still");
-            if (d === 1) setSurface("terrace");
-          }}
-          breadcrumb={BREADCRUMBS[surface]?.(setSurface) ?? []}
+          depth={def.depth}
+          onDepth={onDepth}
+          breadcrumb={breadcrumb}
           echo={echo}
           onUndo={() => showEcho("undone")}
+          onPalette={() => setPaletteOpen(true)}
+          onLeave={() => endSession("left")}
         >
-          {surface === "terrace" && (
-            <TerraceSurface onOpenDistrict={() => setSurface("district")} onEcho={showEcho} />
+          {route.surface === "terrace" && (
+            <TerraceSurface
+              onOpenDistrict={(code) => goTo("district", code)}
+              onEcho={showEcho}
+            />
           )}
-          {surface === "district" && (
+          {route.surface === "district" && (
             <DistrictSurface
-              code="P08"
-              onOpenHall={() => setSurface("hall")}
-              onOpenDossier={() => setSurface("dossier")}
+              // P08 is the district the room fixture describes, and it is what
+              // this surface has always opened on. W replaces the fallback with
+              // the estate's own first district; it is not a value invented here.
+              code={route.subject ?? "P08"}
+              onOpenHall={() => goTo("hall")}
+              onOpenDossier={(id) => goTo("dossier", id)}
               onEcho={showEcho}
             />
           )}
-          {surface === "dossier" && <DossierSurface onEcho={showEcho} />}
-          {surface === "boardroom" && <BoardroomSurface onEcho={showEcho} />}
-          {surface === "study" && <StudySurface onEcho={showEcho} />}
-          {surface === "glasshouse" && <GlasshouseSurface onEcho={showEcho} />}
-          {surface === "undercroft" && <UndercroftSurface onEcho={showEcho} />}
-          {surface === "library" && <LibrarySurface onEcho={showEcho} />}
-          {surface === "bridges" && <BridgesSurface onEcho={showEcho} />}
-          {surface === "talent" && <TalentSurface onEcho={showEcho} />}
-          {surface === "gallery" && <GallerySurface onEcho={showEcho} />}
-          {surface === "standup" && (
+          {route.surface === "dossier" && <DossierSurface onEcho={showEcho} />}
+          {route.surface === "boardroom" && <BoardroomSurface onEcho={showEcho} />}
+          {route.surface === "study" && <StudySurface onEcho={showEcho} />}
+          {route.surface === "glasshouse" && <GlasshouseSurface onEcho={showEcho} />}
+          {route.surface === "undercroft" && <UndercroftSurface onEcho={showEcho} />}
+          {route.surface === "library" && <LibrarySurface onEcho={showEcho} />}
+          {route.surface === "bridges" && <BridgesSurface onEcho={showEcho} />}
+          {route.surface === "talent" && <TalentSurface onEcho={showEcho} />}
+          {route.surface === "gallery" && <GallerySurface onEcho={showEcho} />}
+          {route.surface === "standup" && (
             <StandupSurface
-              onOpenTray={() => setSurface("tray")}
-              onOpenDossier={() => setSurface("dossier")}
+              onOpenTray={() => goTo("tray")}
+              onOpenDossier={(id) => goTo("dossier", id)}
               onEcho={showEcho}
             />
           )}
-          {surface === "tray" && <TraySurface onEcho={showEcho} />}
-          {surface === "hall" && <HallSurface onEcho={showEcho} />}
+          {route.surface === "tray" && <TraySurface onEcho={showEcho} />}
+          {route.surface === "hall" && <HallSurface onEcho={showEcho} />}
         </Shell>
       )}
 
-      <PrototypeNav surface={surface} onPick={setSurface} variant={variant} onVariant={setVariant} />
+      {paletteOpen && (
+        <Palette
+          items={items}
+          // The row's own `href` is parsed rather than its id trusted: the link
+          // a person could copy and the place clicking it goes are then the same
+          // fact, and they cannot drift apart.
+          onGo={(item) => go(parseRoute(new URL(item.href, window.location.origin).pathname))}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
     </>
-  );
-}
-
-/**
- * Review scaffolding — NOT part of the product. It is how the owner moves
- * between surfaces during R-3 and it is deleted at R-4. Marked so nobody
- * mistakes it for chrome that needs designing.
- */
-function PrototypeNav({
-  surface,
-  onPick,
-  variant,
-  onVariant,
-}: {
-  surface: SurfaceId;
-  onPick: (s: SurfaceId) => void;
-  variant: "legacy" | "brand";
-  onVariant: (v: "legacy" | "brand") => void;
-}) {
-  return (
-    <nav className="pn m-glass" data-strong aria-label="Prototype surfaces">
-      <span className="t-eyebrow pn-tag">R-3a · REVIEW SCAFFOLD</span>
-      <div className="pn-items">
-        {SURFACES.map((s, i) => (
-          <button
-            key={s.id}
-            className="pn-item"
-            data-active={surface === s.id || undefined}
-            onClick={() => onPick(s.id)}
-          >
-            <kbd>{i + 1}</kbd>
-            <span className="pn-item-label">{s.label}</span>
-            <span className="pn-item-note t-mono">{s.note}</span>
-          </button>
-        ))}
-      </div>
-      <div className="m-rule-v pn-div" />
-      <div className="pn-variant">
-        <span className="t-eyebrow">SCENE</span>
-        {(["legacy", "brand"] as const).map((v) => (
-          <button
-            key={v}
-            className="m-chip"
-            data-selected={variant === v || undefined}
-            onClick={() => onVariant(v)}
-          >
-            {v}
-          </button>
-        ))}
-      </div>
-    </nav>
   );
 }

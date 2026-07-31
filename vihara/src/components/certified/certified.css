@@ -1,0 +1,178 @@
+/* ============================================================================
+   CERTIFIED — the ten pinned blocks (R-4 part C, C4).
+
+   These are the only components in the product whose DOM is a golden. That
+   constrains the CSS in a way worth stating: everything here is composition
+   over `m-*` and `t-*`, never a restyle of one, so the structure the goldens
+   pin and the look a person sees can move independently.
+
+   The gold budget is spent three times on a block and no more — the struck
+   seal, the eyebrow, and the single primary action — because a certified block
+   is the sanctioned use of gold and would stop meaning anything if it were
+   made of it (art bible §2.1, finding RD-3).
+   ========================================================================= */
+
+.ce {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  container-type: inline-size;
+}
+
+/* ------------------------------------------------------------------- head */
+
+.ce-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.ce-seal {
+  /* 18px: the seal has to read as a struck medallion rather than a dot, and
+     below ~16 the conic gradient collapses into a flat disc. Optical. */
+  width: 18px;
+  height: 18px;
+  color: var(--on-accent);
+}
+
+.ce-seal svg {
+  /* The icon set is drawn at 1.6 for hairline company; on 18px of metal that
+     disappears. Weight, not size, so the glyph keeps its geometry. */
+  stroke-width: 3.4;
+}
+
+.ce-rule {
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------- body */
+
+.ce-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.ce-prose {
+  /* Narrower than the 64ch default: a certified block is read in a modal or a
+     card column, and prose that reaches the full measure there wraps badly. */
+  max-width: 52ch;
+  font-size: var(--text-base);
+}
+
+.ce-title {
+  font-size: var(--text-lg);
+}
+
+/* ------------------------------------------------------------------ facts */
+
+.ce-facts {
+  padding: var(--s-3);
+}
+
+.ce-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.ce-fact + .ce-fact {
+  margin-top: var(--s-2);
+}
+
+.ce-fact-v {
+  color: var(--fg);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- payment */
+
+.ce-amount {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.ce-amount-cur {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: var(--track-wide);
+  color: var(--fg-muted);
+}
+
+.ce-amount-fig {
+  /* `output` is inline by default and the gradient clip needs a box. */
+  display: block;
+}
+
+/* A rendered gap (DESIGN_CONTRACT §7.4) — quiet mono, never an alarm. It is a
+   statement about the platform, not about the owner's decision. */
+.ce-gap {
+  color: var(--fg-subtle);
+  max-width: 52ch;
+}
+
+/* --------------------------------------------------------------- autonomy */
+
+.ce-band {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.ce-band-arrow {
+  color: var(--fg-subtle);
+}
+
+/* --------------------------------------------------------------- actions */
+
+.ce-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
+}
+
+/* No height of its own: `m-btn`'s 36px already clears DESIGN_CONTRACT §6's
+   32px desktop floor, and a second opinion about button height is how two
+   design systems start. */
+.ce-act {
+  flex: 0 0 auto;
+}
+
+/* --------------------------------------------------------- consent revoke
+   The asymmetry, visible (D3 §3.4). No seal, no rule, no gold, no eyebrow —
+   one sentence and one quiet control. If this ever grows a ceremony's chrome,
+   the safe direction has become harder than the unsafe one. */
+
+.ce-revoke {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 640px) {
+  .ce-fact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-1);
+  }
+
+  .ce-fact-v {
+    text-align: left;
+  }
+
+  .ce-act {
+    /* The Line is a phone: DESIGN_CONTRACT §6's touch floor. */
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+}

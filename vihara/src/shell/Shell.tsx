@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
 import { COMPANY, STILL } from "../fixtures/estate";
 import "./shell.css";
@@ -7,14 +7,24 @@ import "./shell.css";
  * The shell — app-owned, never manifest-composed (D6 §1, carried forward).
  *
  * A manifest composes the *body*. The still line, the depth dial, ⌘K, the echo
- * ribbon and the presence mark are the application, which is what stops a
- * malformed or hostile manifest from removing the user's way out of a surface.
+ * ribbon, the way out and the presence mark are the application, which is what
+ * stops a malformed or hostile manifest from removing the user's way out of a
+ * surface.
  *
  * What the redesign changes here is entirely craft. The first build's chrome was
  * a flat dark strip with pill toggles — correct, and indistinguishable from any
  * other dark app. This one is a glass rail with a real edge, the depth ladder is
  * legible as a *ladder* rather than hidden behind a shortcut nobody discovers,
  * and the still line keeps its promise of being the same words as depth 0.
+ *
+ * **R-4 moves the palette out of this file** (`shell/Palette.tsx`), because the
+ * frame does not exist at depth 0 and the navigator has to. The rail keeps the
+ * trigger; the app owns the state and mounts the palette at every depth.
+ *
+ * **R-4 adds the way out.** `onLeave` is the estate's only logout control and it
+ * does not confirm: on the desk this is a labelled button in a rail that takes a
+ * deliberate click, and the cost of a mis-click is one login. The Line confirms
+ * because a thumb on a 390px bar is a different risk.
  */
 
 export type Depth = 0 | 1 | 2 | 3;
@@ -25,31 +35,36 @@ export interface ShellProps {
   breadcrumb?: { label: string; onClick?: () => void }[];
   echo?: string | null;
   onUndo?: () => void;
+  /** Open the navigator. The chord itself is the app's — it has to work at
+   *  depth 0, where this component is not mounted. */
+  onPalette: () => void;
+  onLeave: () => void;
   children: ReactNode;
 }
 
-const DEPTH_LABELS: Record<Depth, string> = {
+export const DEPTH_LABELS: Record<Depth, string> = {
   0: "Still",
   1: "Terrace",
   2: "Rooms",
   3: "Undercroft",
 };
 
-export function Shell({ depth, onDepth, breadcrumb = [], echo, onUndo, children }: ShellProps) {
-  const [paletteOpen, setPaletteOpen] = useState(false);
-
+export function Shell({
+  depth,
+  onDepth,
+  breadcrumb = [],
+  echo,
+  onUndo,
+  onPalette,
+  onLeave,
+  children,
+}: ShellProps) {
   const rise = useCallback(() => onDepth(Math.max(0, depth - 1) as Depth), [depth, onDepth]);
   const descend = useCallback(() => onDepth(Math.min(3, depth + 1) as Depth), [depth, onDepth]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
-      if (meta && e.key === "k") {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-        return;
-      }
-      if (e.key === "Escape") setPaletteOpen(false);
       if (meta && e.key === "ArrowUp") {
         e.preventDefault();
         rise();
@@ -118,8 +133,8 @@ export function Shell({ depth, onDepth, breadcrumb = [], echo, onUndo, children 
         <div className="sh-rail-right">
           <button
             className="sh-palette-btn m-chip"
-            onClick={() => setPaletteOpen(true)}
-            aria-label="Open the command palette"
+            onClick={onPalette}
+            aria-label="Go to a surface"
           >
             <Icon name="search" size={13} />
             <kbd>⌘K</kbd>
@@ -129,6 +144,10 @@ export function Shell({ depth, onDepth, breadcrumb = [], echo, onUndo, children 
           <button className="sh-presence" aria-label="Pragya is listening">
             <span className="sh-presence-mark" data-state="listening" aria-hidden="true" />
             <span className="t-eyebrow">PRAGYA</span>
+          </button>
+
+          <button className="m-btn sh-leave" data-rank="quiet" onClick={onLeave}>
+            Leave
           </button>
         </div>
       </header>
@@ -187,34 +206,6 @@ export function Shell({ depth, onDepth, breadcrumb = [], echo, onUndo, children 
               Undo
             </button>
           )}
-        </div>
-      )}
-
-      {/* ==================================================== the ⌘K palette */}
-      {paletteOpen && (
-        <div className="sh-palette-scrim" onClick={() => setPaletteOpen(false)}>
-          <div
-            className="sh-palette m-glass"
-            data-strong
-            role="dialog"
-            aria-label="Command palette"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sh-palette-input">
-              <Icon name="search" size={16} className="t-subtle" />
-              <input
-                autoFocus
-                placeholder="Ask, or type a command…"
-                aria-label="Ask Pragya or type a command"
-              />
-              <span className="t-eyebrow">ESC</span>
-            </div>
-            <hr className="m-rule" />
-            <p className="sh-palette-note t-mono">
-              Anything typed here is also an utterance; anything said to Pragya is
-              also a command.
-            </p>
-          </div>
         </div>
       )}
     </div>

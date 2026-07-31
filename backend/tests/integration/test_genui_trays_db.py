@@ -47,6 +47,10 @@ async def tenant():
             await conn.execute(
                 text(f'DROP SCHEMA IF EXISTS "{schema_name_for(cid)}" CASCADE'))
         async with AsyncSessionLocal() as s:
+            # tray_recommendations FKs to human_approvals — the child goes first.
+            for child in ("tray_recommendations", "tray_deliveries"):
+                await s.execute(
+                    text(f"DELETE FROM {child} WHERE company_id = :c"), {"c": str(cid)})
             await s.execute(text(
                 "DELETE FROM human_approvals WHERE run_id IN "
                 "(SELECT id FROM execution_runs WHERE company_id = :c)"), {"c": str(cid)})
@@ -101,6 +105,64 @@ class TestTrays:
         # not copied from the approval row.
         assert tray["sla"]["seconds_left"] is not None
         assert tray["sla"]["on_timeout"] is not None
+
+    async def test_a_reload_still_carries_pragya_s_sentence(self, tenant):
+        """D8 E5, and the bug it closes: the sentence was written once at
+        delivery and never read back, so the first page reload lost it for
+        good. Both composers join the persisted row now, in the contracted
+        object shape."""
+        from src.ai.genui.models import TrayRecommendation
+        from src.common.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            approval_id = await _raise_payout_approval(db, tenant)
+            db.add(TrayRecommendation(
+                approval_id=approval_id, company_id=tenant,
+                sentence="Within the band and the account pays on time — I'd approve.",
+                model_used="m1"))
+            await db.commit()
+
+        async with AsyncSessionLocal() as db:
+            listed = await tray_list(db, tenant)
+            detail = await tray_detail(db, tenant, approval_id)
+
+        expected = {
+            "sentence": "Within the band and the account pays on time — I'd approve.",
+            "why": None,
+        }
+        assert listed[0]["recommendation"] == expected
+        assert detail is not None and detail["recommendation"] == expected
+
+    async def test_a_tray_with_no_sentence_is_null_and_still_a_tray(self, tenant):
+        from src.common.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            approval_id = await _raise_payout_approval(db, tenant)
+        async with AsyncSessionLocal() as db:
+            tray = await tray_detail(db, tenant, approval_id)
+
+        assert tray is not None
+        assert tray["recommendation"] is None
+        assert tray["certified"]["component"] == "certified.payment@1"
+
+    async def test_the_tray_names_the_run_to_click_through_to(self, tenant):
+        """D8 E6 — ``what_happened.object`` was hard-coded null, so the card
+        named nothing the reader could open."""
+        from src.common.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            approval_id = await _raise_payout_approval(db, tenant)
+        async with AsyncSessionLocal() as db:
+            tray = await tray_detail(db, tenant, approval_id)
+            run_id = (await db.execute(text(
+                "SELECT run_id FROM human_approvals WHERE id = :a"),
+                {"a": str(approval_id)})).scalar_one()
+
+        assert tray is not None
+        obj = tray["what_happened"]["object"]
+        assert obj["kind"] == "run"
+        assert obj["id"] == str(run_id)
+        assert obj["label"].endswith("'s run")
 
     async def test_a_foreign_tray_answers_like_an_unknown_one(self, tenant):
         from src.common.database import AsyncSessionLocal

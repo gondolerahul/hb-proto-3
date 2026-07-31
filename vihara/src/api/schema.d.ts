@@ -369,6 +369,16 @@ export interface paths {
     /** Connector Status */
     get: operations["connector_status_api_v1_ai_connectors__connector_id__status_get"];
   };
+  "/api/v1/ai/consent": {
+    /**
+     * Get Consent
+     * @description This company's consent posture and the rows behind it.
+     *
+     * ``channels`` is what a gate panel needs (posture, the registry's own
+     * reason, and the counts); ``entries`` is what the consent bay lists.
+     */
+    get: operations["get_consent_api_v1_ai_consent_get"];
+  };
   "/api/v1/ai/context-sources/upload": {
     /**
      * Upload Context Source
@@ -6485,6 +6495,36 @@ export interface operations {
     parameters: {
       path: {
         connector_id: string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Get Consent
+   * @description This company's consent posture and the rows behind it.
+   *
+   * ``channels`` is what a gate panel needs (posture, the registry's own
+   * reason, and the counts); ``entries`` is what the consent bay lists.
+   */
+  get_consent_api_v1_ai_consent_get: {
+    parameters: {
+      query?: {
+        limit?: number;
       };
     };
     responses: {

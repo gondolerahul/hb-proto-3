@@ -181,3 +181,31 @@ async def test_no_installed_writer_means_no_sentence():
         db, COMPANY, uuid.uuid4(), {}, first_delivery=True)
     assert sentence is None
     assert added == []
+
+
+# ── the shape that goes out on the socket (D8 E5) ────────────────────────────
+
+def test_the_socket_copy_carries_the_composer_s_object_not_a_bare_string():
+    """The bug this closes: the watcher assigned the sentence itself, so a
+    client reading ``recommendation.sentence`` found an object on a reload
+    and a string on a live delivery."""
+    tray = {"tray_id": "t", "recommendation": None}
+    w.apply_recommendation(tray, "within band — I'd approve")
+    assert tray["recommendation"] == {
+        "sentence": "within band — I'd approve", "why": None}
+
+
+def test_a_missing_sentence_never_blanks_what_the_composer_joined():
+    """Set, never clear: ``tray_detail`` reads the persisted row back, and
+    the watcher must not write ``None`` over a card that already has one."""
+    composed = {"sentence": "stored", "why": None}
+    tray = {"tray_id": "t", "recommendation": composed}
+    w.apply_recommendation(tray, None)
+    assert tray["recommendation"] == composed
+
+
+def test_a_tray_with_no_recommendation_at_all_still_goes_out():
+    tray = {"tray_id": "t", "recommendation": None, "certified": {"tier": "T2"}}
+    w.apply_recommendation(tray, None)
+    assert tray["recommendation"] is None
+    assert tray["certified"] == {"tier": "T2"}  # advice lost, never work

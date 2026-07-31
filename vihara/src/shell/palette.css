@@ -1,0 +1,166 @@
+/* ⌘K · the navigator. One floating glass layer over the world and nothing but
+   plates and wells inside it — glass on glass is fog (DESIGN_CONTRACT §2). */
+
+.pl-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: start center;
+  padding-top: 14vh;
+  /* Darker and blurrier than the rail's scrim: the palette is glass, and the
+     estate behind it is a dense working surface — at 0.5 the invoices table
+     legibly read *through* the option list. Depth without a second document. */
+  background: rgba(4, 3, 3, 0.72);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: vh-fade var(--dur-fast) var(--ease-settle) both;
+}
+
+.pl {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 92vw);
+  max-height: 68vh;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  animation: vh-rise var(--dur-base) var(--ease-settle) both;
+}
+
+/* ------------------------------------------------------------------- field */
+
+.pl-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4);
+  flex: none;
+}
+
+.pl-field-icon {
+  flex: none;
+}
+
+.pl-input {
+  flex: 1;
+  min-width: 0;
+  /* 40px: the field is the one control in the dialog, so it carries the
+     desktop touch floor with room to spare (§6). */
+  min-height: 40px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+.pl-input::placeholder {
+  color: var(--fg-faint);
+}
+
+.pl-esc {
+  flex: none;
+}
+
+/* -------------------------------------------------------------------- list */
+
+.pl-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-2) var(--s-3);
+}
+
+.pl-group {
+  padding: var(--s-3) var(--s-3) var(--s-2);
+}
+
+.pl-opt {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  /* 32px is the desktop touch floor (DESIGN_CONTRACT §6); the phone rule below
+     raises it. */
+  min-height: 32px;
+  /* No transition at all, and that is a decision rather than an omission. §1.5
+     forbids animating box-shadow by name, and the cursor here moves on arrow
+     keys — a row that fades in over 200ms is a cursor that lags behind a held
+     key, which reads as the palette being slow to think. Instant is correct. */
+}
+
+/* The active row is surface + hairline, never gold: §4 reserves gold for
+   "needs you" and "certified", and a cursor is neither. */
+.pl-opt[data-active] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim);
+}
+
+.pl-opt-label {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.pl-opt[data-active] .pl-opt-label {
+  color: var(--fg);
+}
+
+/* --fg-muted, not --fg-subtle: this is 12px and it is information, so it owes
+   the 4.5:1 body floor rather than the 3:1 large-text one (§6). */
+.pl-opt-note {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-opt-away {
+  flex: none;
+  align-self: center;
+  color: var(--fg-subtle);
+}
+
+/* Styled here rather than composed from `t-narrative`: the empty state is a
+   sentence in a 640px dialog, not prose at reading measure, and inheriting a
+   64ch/18px role only to override both of its properties is a fight, not
+   composition. */
+.pl-none {
+  padding: var(--s-4) var(--s-3) var(--s-5);
+  max-width: 52ch;
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+}
+
+/* -------------------------------------------------------------------- note */
+
+/* The keyboard contract and a rendered gap both live in here, so it keeps
+   `t-mono`'s --fg-muted. --fg-faint is the disabled step and never carries
+   information (§3). */
+.pl-note {
+  flex: none;
+  padding: var(--s-3) var(--s-5);
+  line-height: 1.6;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .pl-scrim {
+    padding-top: var(--s-5);
+  }
+  .pl {
+    max-height: 80vh;
+  }
+  .pl-opt {
+    min-height: 44px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .pl-opt-note {
+    flex-basis: 100%;
+  }
+}

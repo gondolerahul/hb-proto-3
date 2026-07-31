@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.genui.channel import deliver_tray, hub
 from src.ai.genui.models import PushSubscription, TrayDelivery, TrayRecommendation
-from src.ai.genui.trays import tray_detail
+from src.ai.genui.trays import recommendation_block, tray_detail
 from src.ai.orm.execution import ExecutionRun, HumanApproval
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,24 @@ async def _recommendation_for(
     return draft.sentence
 
 
+def apply_recommendation(tray: dict[str, Any], sentence: str | None) -> None:
+    """Put a freshly written sentence on the tray about to go out (D8 E5).
+
+    Two rules in three lines, both of which used to be broken here:
+
+    * **The shape is the composer's**, so the socket copy and the REST copy
+      of the same card carry the same object. This module used to assign the
+      bare string, which is why a client reading ``recommendation.sentence``
+      worked on a reload and not on a live delivery.
+    * **Set, never clear.** ``tray_detail`` has already joined any persisted
+      sentence in; writing ``None`` back over it would blank a card the
+      composer had correctly filled. A tray with no sentence is delivered
+      exactly as composed — advice lost, never work.
+    """
+    if sentence is not None:
+        tray["recommendation"] = recommendation_block(sentence)
+
+
 async def sweep_once(
     db: AsyncSession,
     *,
@@ -221,9 +239,11 @@ async def sweep_once(
                 continue
             first_delivery = not any(
                 a == approval_id for a, _ in delivered)
-            tray["recommendation"] = await _recommendation_for(
-                db, company_id, approval_id, tray,
-                first_delivery=first_delivery)
+            apply_recommendation(
+                tray,
+                await _recommendation_for(
+                    db, company_id, approval_id, tray,
+                    first_delivery=first_delivery))
 
             for user_id in targets:
                 via = await deliver_tray(

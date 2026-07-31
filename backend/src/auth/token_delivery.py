@@ -42,7 +42,27 @@ def wants_cookie_delivery(request: RequestLike) -> bool:
 def set_cookie_mode_cookies(response: Any, refresh_token: str) -> str:
     """The Strict pair: the HttpOnly refresh cookie and the readable CSRF
     cookie. Returns the CSRF value (it is also readable client-side; the
-    return is a convenience for tests)."""
+    return is a convenience for tests).
+
+    **The two cookies take different paths, and the difference is the point.**
+
+    The refresh token is a credential, so it is pinned to ``/api/v1/auth`` —
+    the only endpoints that ever need it. Nothing else the browser sends
+    carries it, which is most of what cookie mode buys over a token in JS.
+
+    The CSRF cookie is **not** a credential. It is a same-origin proof, and the
+    client has to *read* it (``client.ts``'s ``csrfFromCookie``) to echo it back
+    in the header — which is why it is deliberately not HttpOnly. A cookie
+    scoped to ``/api/v1/auth`` is invisible to ``document.cookie`` on a page
+    served from ``/``, so scoping it like the credential beside it made it
+    unreadable by the one caller that exists: every refresh went out with no
+    ``X-CSRF-Token``, earned a 403, and surfaced as "your session ended" on each
+    reload. It is ``path="/"`` because the app it defends is at ``/``.
+
+    Widening it costs nothing. An attacker on another origin still cannot read
+    it — the same-origin policy is what protects it, never the path — and
+    ``SameSite=Strict`` means it is not sent cross-site at all.
+    """
     csrf = secrets.token_urlsafe(32)
     response.set_cookie(
         key=REFRESH_COOKIE, value=refresh_token,
@@ -51,7 +71,7 @@ def set_cookie_mode_cookies(response: Any, refresh_token: str) -> str:
     response.set_cookie(
         key=CSRF_COOKIE, value=csrf,
         httponly=False, secure=True, samesite="strict",
-        max_age=REFRESH_MAX_AGE, path="/api/v1/auth")
+        max_age=REFRESH_MAX_AGE, path="/")
     return csrf
 
 

@@ -1,0 +1,283 @@
+/* ============================================================================
+   CEREMONY — the step-up modal (R-4 part C, C1).
+
+   The look answers finding RD-4: a quiet surface still has to be *composed*.
+   The temptation on a modal that must feel grave is to make it dark and empty;
+   what makes it grave here is material — a raised plate with corner ticks over
+   a dimmed estate, a machined hairline under the eyebrow, and gold spent only
+   on the lamp, the eyebrow and the one primary control.
+
+   Only `transform`/`opacity` animate. The scrim fades, the panel rises, and the
+   global reduced-motion block stops both.
+   ========================================================================= */
+
+.cy-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  overflow-y: auto;
+  /* Not a token: the scrim is the one place the product goes darker than its
+     own canvas, so the estate reads as *behind* rather than as dimmed. */
+  background: rgba(4, 3, 3, 0.72);
+  /* 4px, one step above the Line's sheet scrim: the estate behind this modal
+     must be recognisable as *the estate* and unreadable as *text*, or the
+     decision competes with the room it was taken in. */
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  animation: vh-fade var(--dur-fast) var(--ease-settle) both;
+}
+
+.cy-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: min(38rem, 100%);
+  padding: var(--s-6);
+  animation: vh-rise var(--dur-slow) var(--ease-settle) both;
+}
+
+/* -------------------------------------------------------------------- head */
+
+.cy-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+/* --------------------------------------------------- the statement, in-file
+   Used only where the pinned block cannot be (locked, no passkey). It carries
+   the same two facts in the same order, so the two paths read as one modal. */
+
+.cy-statement {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* Deliberately the same seal the pinned block draws, at the same size: the
+   locked and passkeyless paths must not look like a lesser modal. */
+.cy-seal {
+  width: 18px;
+  height: 18px;
+  color: var(--on-accent);
+}
+
+.cy-seal svg {
+  stroke-width: 3.4;
+}
+
+.cy-rule {
+  margin: 0;
+}
+
+.cy-ask {
+  font-size: var(--text-xl);
+  max-width: 30ch;
+}
+
+.cy-ref {
+  padding: var(--s-2) var(--s-3);
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------- the block */
+
+.cy-block {
+  display: contents;
+}
+
+/* ------------------------------------------------------- the server's words */
+
+.cy-reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.cy-why {
+  font-size: var(--text-sm);
+  max-width: 52ch;
+  color: var(--fg-muted);
+}
+
+.cy-reason {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-3);
+  color: var(--fg-subtle);
+}
+
+/* The two levels, as a table rather than as a sentence — see `CannotStepUp`. */
+.cy-levels {
+  padding: var(--s-3);
+}
+
+.cy-level {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.cy-level + .cy-level {
+  margin-top: var(--s-2);
+}
+
+.cy-level dd {
+  color: var(--fg);
+  letter-spacing: var(--track-wide);
+}
+
+/* A rendered gap or a device fact — quiet, never an alarm. */
+.cy-gap {
+  max-width: 52ch;
+  color: var(--fg-subtle);
+}
+
+/* The working line. A lamp and a sentence, never a spinner — L5 bans spinners
+   on seventeen of eighteen surfaces and the reasoning applies here twice over:
+   a spinner is what a browser prompt with a wrapper looks like. */
+.cy-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--fg-muted);
+}
+
+/* --------------------------------------------------------- the second factor
+   A word, not a field. §11.3's fallback should cost one click to reach and
+   nothing to ignore — two equally weighted inputs turn a ceremony into a form. */
+
+.cy-alt {
+  align-self: flex-start;
+  /* Padding rather than a height, so the word keeps its baseline while the hit
+     area clears DESIGN_CONTRACT §6's 32px desktop floor. */
+  padding: var(--s-2) 0;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.22em;
+  transition: color var(--dur) var(--ease-out);
+}
+
+.cy-alt:hover {
+  color: var(--fg);
+}
+
+.cy-code {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.cy-code-row {
+  display: flex;
+  gap: var(--s-3);
+}
+
+.cy-code-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 36px is `m-btn`'s height: the field and the Verify button beside it have to
+     share a baseline, and a well that is a pixel taller than its button reads
+     as two components that met by accident. */
+  min-height: 36px;
+  padding: 0 var(--s-3);
+  font-size: var(--text-base);
+  /* A one-time code is read off a screen and typed once — wide tracking is the
+     difference between transcribing it and re-reading it. */
+  letter-spacing: 0.28em;
+  color: var(--fg);
+}
+
+.cy-verify {
+  flex: none;
+}
+
+.cy-send {
+  align-self: flex-start;
+}
+
+/* ----------------------------------------------------------------- failure */
+
+.cy-fail {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  box-shadow: var(--edge-line);
+}
+
+.cy-fail .m-lamp {
+  /* Optical: line the lamp up with the cap height of the first line. */
+  margin-top: 6px;
+}
+
+.cy-fail-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.cy-fail-count {
+  color: var(--fg-subtle);
+}
+
+/* -------------------------------------------------------------------- foot */
+
+.cy-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding-top: var(--s-2);
+}
+
+.cy-leave {
+  align-self: flex-start;
+}
+
+/* `--fg-subtle`, never `--fg-faint`: DESIGN_CONTRACT §3 reserves the faint step
+   for disabled, and this sentence is the only place the modal explains what an
+   elevation is and is not. Quiet is not the same as unreadable. */
+.cy-note {
+  max-width: 52ch;
+  color: var(--fg-subtle);
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 640px) {
+  .cy-scrim {
+    /* On the Line the ceremony is a sheet at the thumb, not a centred card. */
+    place-items: end center;
+    padding: var(--s-3);
+  }
+
+  .cy-panel {
+    padding: var(--s-5);
+    gap: var(--s-3);
+  }
+
+  .cy-code-input,
+  .cy-verify,
+  .cy-send,
+  .cy-alt,
+  .cy-leave {
+    min-height: 44px;
+  }
+
+  .cy-alt {
+    display: inline-flex;
+    align-items: center;
+  }
+}

@@ -1,7 +1,14 @@
 /**
- * The GenUI seam clients (D5): registry, estate, manifests, trays, echo.
+ * The GenUI seam clients (D5): the registry, manifests and echo.
  * The manifest arrives as two NDJSON lines (scaffold, fill); parsing is a
  * pure function so the protocol is testable without a wire.
+ *
+ * The estate reads moved to `./estate` (R-4 part P) — they grew a real type
+ * and a district sibling, and they are read by `src/estate/` rather than by
+ * the manifest layer. Trays live in `./trays`: `fetchTrays()` used to sit here
+ * over the same `/ai/genui/trays` path with a `Promise<unknown[]>` return, so
+ * whichever of the two a surface imported decided whether it got the composed
+ * tray or an array of `unknown`. It is deleted (R-4 §7).
  */
 import { assessManifest, type Assessment } from "../manifest/refusals";
 import {
@@ -120,12 +127,22 @@ export async function fetchManifest(
   return { manifest: parsed.manifest, assessment };
 }
 
-export async function fetchEstate(): Promise<Record<string, unknown>> {
-  return (await api.get<Record<string, unknown>>("/ai/genui/estate")).data;
+/**
+ * The served component registry (D3 §1, §7).
+ *
+ * `src/manifest/registry/*.json` is the authored source and the backend mirrors
+ * it, so this read is not how the client resolves a manifest — it is how the
+ * Undercroft's manifest bay can *show* which registry version a render resolved
+ * against, and how a mirror drift becomes visible in the product rather than
+ * only in CI. The ETag is content-addressed; a repeat read is a 304.
+ */
+export interface ServedRegistry {
+  registry_version: string;
+  entries: { type: string; version: number; class: string; [key: string]: unknown }[];
 }
 
-export async function fetchTrays(): Promise<unknown[]> {
-  return (await api.get<unknown[]>("/ai/genui/trays")).data;
+export async function fetchServedRegistry(): Promise<ServedRegistry> {
+  return (await api.get<ServedRegistry>("/ai/genui/registry")).data;
 }
 
 export interface EchoInput {

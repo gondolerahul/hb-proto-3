@@ -1,0 +1,184 @@
+/* Pre-session. Conventional on purpose (R2 ruling): one column, one plate, the
+   fields in the order everyone already knows. The estate's vocabulary is used —
+   plate, well, ticks, hairline — but none of its *behaviour*: nothing floats,
+   nothing breathes, nothing is loaded that this screen does not draw. */
+
+.ps {
+  height: 100%;
+  overflow-y: auto;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6) var(--s-4);
+  /* One very soft warm pool behind the column, so the plate has somewhere to
+     sit. Not the estate's atmosphere — a static gradient, no canvas, no probe. */
+  background:
+    radial-gradient(62% 44% at 50% 30%, rgba(237, 171, 72, 0.05) 0%, transparent 72%),
+    var(--bg);
+}
+
+.ps-col {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+/* ------------------------------------------------------------------- brand */
+
+.ps-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
+  padding-bottom: var(--s-2);
+}
+
+/* The mark is defined here rather than borrowed from shell.css: this screen
+   must not depend on the estate's chrome being in the bundle to look right.
+   22px against the rail's 20px — optical, because it sits beside larger type. */
+.ps-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--border-gold);
+  flex: none;
+}
+
+.ps-mark-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gradient-gold);
+  box-shadow: 0 0 8px rgba(237, 171, 72, 0.6);
+}
+
+.ps-word {
+  font-family: var(--font-logo);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  letter-spacing: 0.01em;
+  color: var(--fg);
+}
+
+/* -------------------------------------------------------------------- card */
+
+.ps-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-6) var(--s-5) var(--s-5);
+  border-radius: var(--r-lg);
+}
+
+.ps-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.ps-label {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+/* Data lives in a well (§2), and a form field is the smallest case of that.
+   Control heights are px because §6's touch floor is stated in px — 38 clears
+   the 32px desktop floor, and the phone rule below raises everything to 44. */
+.ps-input {
+  min-height: 38px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+/* Chrome paints its own pale-blue fill over the well otherwise, which is the one
+   place a browser puts a colour this product does not own. An inset shadow, not
+   the usual `transition: background-color 100000s` trick — that is an animation
+   on a paint property, and §5 does not make exceptions for clever ones. */
+.ps-input:-webkit-autofill,
+.ps-input:-webkit-autofill:hover,
+.ps-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--fg);
+  -webkit-box-shadow: inset 0 0 0 1000px var(--ink-900);
+}
+
+.ps-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg);
+}
+
+/* Optical: nudged down onto the first line's x-height rather than its top. */
+.ps-problem-lamp {
+  margin-top: 6px;
+}
+
+.ps-submit {
+  min-height: 40px;
+  margin-top: var(--s-1);
+}
+
+.ps-return {
+  color: var(--fg-muted);
+}
+
+/* ---------------------------------------------------------- swap, and the gap */
+
+.ps-swap {
+  display: flex;
+  justify-content: center;
+}
+
+.ps-swap-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-xs);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.22em;
+  transition: color var(--dur) var(--ease-out);
+}
+
+.ps-swap-btn:hover {
+  color: var(--fg);
+}
+
+.ps-rule {
+  margin: var(--s-2) 0;
+}
+
+.ps-gap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* Keeps `t-mono`'s --fg-muted: a stated platform gap is information, and 12px
+   information owes the 4.5:1 floor (§6). */
+.ps-gap-note {
+  line-height: 1.65;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 640px) {
+  .ps {
+    place-items: start center;
+    padding: var(--s-5) var(--s-4);
+  }
+  .ps-input,
+  .ps-submit,
+  .ps-swap-btn {
+    min-height: 44px;
+  }
+}

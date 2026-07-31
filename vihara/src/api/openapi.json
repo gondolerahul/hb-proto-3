@@ -10430,6 +10430,59 @@
     ]
    }
   },
+  "/api/v1/ai/consent": {
+   "get": {
+    "description": "This company's consent posture and the rows behind it.\n\n``channels`` is what a gate panel needs (posture, the registry's own\nreason, and the counts); ``entries`` is what the consent bay lists.",
+    "operationId": "get_consent_api_v1_ai_consent_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 200,
+       "maximum": 1000,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Consent Api V1 Ai Consent Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Get Consent",
+    "tags": [
+     "Consent"
+    ]
+   }
+  },
   "/api/v1/ai/context-sources/upload": {
    "post": {
     "description": "Upload a file as a context source for an entity.\n\nSaves as an Artifact, extracts text content for text-based files,\nand ingests into a CORTEX tree. Returns artifact metadata for\nthe frontend to store as a context source reference.\n\nMax file size: 500 MB.\nSupported: PDF, DOCX, TXT, CSV, XLSX, PPTX, images, audio, video.",

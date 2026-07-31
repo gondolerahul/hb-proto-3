@@ -56,7 +56,8 @@ async def tenant():
                 "DELETE FROM human_approvals WHERE run_id IN "
                 "(SELECT id FROM execution_runs WHERE company_id = :c)"), {"c": str(cid)})
             for tbl in ("execution_runs", "signals", "trigger_registry",
-                        "budget_envelopes", "loop_runtime"):
+                        "budget_envelopes", "loop_runtime",
+                        "consent_records", "dnc_entries", "unsubscribe_log"):
                 await s.execute(
                     text(f"DELETE FROM {tbl} WHERE company_id = :c"), {"c": str(cid)})
             await s.execute(
@@ -153,6 +154,54 @@ class TestEstateComposition:
             g for g in estate["gatehouses"] if g["channel"] == "whatsapp")
         assert whatsapp["parked"] == 1
         assert whatsapp["inbound_today"] == 1
+
+    async def test_a_gate_carries_its_consent_posture(self, tenant):
+        """D8 E2 — the posture belongs at the door it governs. An unset
+        tenant is permissive by Increment 2 decision 8, and the door says so
+        in the registry's own words rather than showing nothing."""
+        from src.common.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await _activated(db, tenant)
+            await db.commit()
+
+        async with AsyncSessionLocal() as db:
+            estate = await estate_view(db, tenant)
+
+        email = next(g for g in estate["gatehouses"] if g["channel"] == "email")
+        assert email["consent"]["posture"] == "open"
+        assert email["consent"]["reason"]
+        assert email["consent"] == {
+            "posture": "open", "reason": email["consent"]["reason"],
+            "dnc": 0, "unsubscribed": 0}
+
+    async def test_a_refused_purpose_shows_at_the_door_with_its_count(self, tenant):
+        from src.ai.trust.consent_registry import (
+            record_unsubscribe,
+            set_channel_posture,
+        )
+        from src.ai.trust.models import ConsentPurpose, ConsentStatus
+        from src.common.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            await _activated(db, tenant)
+            await set_channel_posture(
+                db, tenant, "email", ConsentPurpose.MARKETING, ConsentStatus.DENIED)
+            await record_unsubscribe(
+                db, tenant, "email", "bye@example.com", ConsentPurpose.MARKETING)
+            await db.commit()
+
+        async with AsyncSessionLocal() as db:
+            estate = await estate_view(db, tenant)
+
+        email = next(g for g in estate["gatehouses"] if g["channel"] == "email")
+        assert email["consent"]["posture"] == "restricted"
+        assert "marketing" in email["consent"]["reason"]
+        assert email["consent"]["unsubscribed"] == 1
+        # The tenant's own switch is a posture, never a counterparty count.
+        assert email["consent"]["dnc"] == 0
+        # Every other door is untouched by one channel's posture.
+        voice = next(g for g in estate["gatehouses"] if g["channel"] == "voice")
+        assert voice["consent"]["posture"] == "open"
 
     async def test_a_hibernating_district_is_moonlit(self, tenant):
         from src.common.database import AsyncSessionLocal

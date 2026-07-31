@@ -208,6 +208,80 @@ the new shell only gestures at. It gets its own round.
 shipped tables; they are domain modelling that Increment 7 acquires because the
 alternative was shipping invented data that looks live.
 
+## 10a. Build notes — parts G · A · N · C · P · S and E-small ✅ BUILT 2026-07-30
+
+**Remaining: parts L (lifecycle) and W (wire), and E3/E4** — the colleague charter
+and the talent brief, which D8 accepted as real domain design.
+
+**Gates:** tsc · lint · **vitest 216** (from 65) · build clean, index 159.4 KB gz ·
+line 87.9 KB gz, both of 220 · `gen:api` idempotent · tokens match · backend
+**2265** unit + 2 parity · typecheck **347** files.
+
+**Six deltas worth reading.**
+
+**1. A real auth defect, found by the sweep and not by any test.** Cookie mode set
+*both* cookies with `path=/api/v1/auth`. The refresh token belongs there — it is a
+credential and pinning it is most of what cookie mode buys. **The CSRF cookie does
+not.** It is a same-origin *proof* that the client must be able to **read**
+(`csrfFromCookie`), which is why it is deliberately not HttpOnly — and a cookie
+scoped to `/api/v1/auth` is invisible to `document.cookie` on a page served from
+`/`. So every refresh went out with no `X-CSRF-Token`, earned a 403, and surfaced
+as "your session ended" **on every reload**. No deep link into the estate worked.
+
+The frontend suite could not catch it: its tests mock the API client, so the
+cookie → header → refresh path had no coverage on either side of the wire. It is
+now pinned in `test_token_delivery.py`, where the cookie is actually set, and
+mutation-tested. Verified against a real RFC 6265 cookie jar: `csrf_token` is
+visible at `/`, and `refresh_token` still is not.
+
+*The lesson is the one this increment keeps teaching: **a mock at the seam is a
+hole in the gate.** The two ends were each individually correct and disagreed
+about the middle.*
+
+**2. Widening the CSRF cookie costs nothing.** Worth stating because it looks like
+a loosening. What protects a double-submit is the **same-origin policy**, never
+the path — an attacker on another origin cannot read the cookie to echo it, and
+`SameSite=Strict` means it is not sent cross-site at all.
+
+**3. The §1.5 motion gate existed and reached one directory.** It walked
+`src/components/certified/` only, and its regex read just the *first* property of
+a comma-separated list — so `transition: background …, box-shadow …` passed on the
+strength of its first clause. Rewritten as `tests/motion.test.ts` over **every**
+stylesheet, every clause, and every `@keyframes` body.
+
+Running it for the first time found the rule broken in **22 files, including the
+shared design system the other twenty-one inherit from**. Two new violations this
+round were fixed properly (both now fade an overlay's opacity). The rest is frozen
+in a per-property debt list that **cannot grow**, with a fourth test that fails if
+a forgiven entry is fixed and left listed. **`width` in `standup.css` is the one
+to fix first** — every other entry is paint-only; `width` triggers layout on every
+frame and §1.5 names it explicitly. Burning the list down is R-5's.
+
+**4. The certified boundary is real where it can be, and currently vacuous.**
+`useCertifiedAct` exists, `RunnableCertifiedType` makes "schedule a ceremony as
+the act it guards" a compile error, and three source-scan tests forbid a gated
+route string outside the certified layer. But **all three pass vacuously today**:
+no surface imports the hook yet, because wiring is part W. Recorded rather than
+claimed — the guards have never been exercised against a real consumer, and they
+need a non-emptiness assertion when W lands.
+
+**5. `GET /ai/consent` is company-scoped by construction.** There is no
+`company_id` parameter on the signature at all; it is taken from the session, and
+every query filters on it. Passing one is silently ignored. That is the shape to
+copy — an unscoped read here would be a cross-tenant disclosure on a surface whose
+whole subject is who may be contacted.
+
+**6. E8 resolved to same-origin, not to wider CORS.** The refresh cookie is
+`SameSite=Strict`, so a genuinely cross-origin deployment means **weakening
+VP-01**, not adjusting config. Dev keeps the Vite proxy; production is an Apache
+path-mount.
+
+**Honest limits.** The browser round-trip has not been re-run since the cookie fix
+— it needs seeded credentials the sweep documents nowhere, which is itself a gap
+worth closing. The wire-level proof above is the cookie jar and the unit test, not
+a live login. And the surfaces still read `src/fixtures/`: parts L and W are what
+change that.
+
 ## 11. Gates
 
 R-4 is complete when:
