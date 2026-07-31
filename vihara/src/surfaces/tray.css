@@ -250,6 +250,107 @@
   font-weight: 500;
 }
 
+/* Pragya's sentence, when one was written. A second gold seam beside
+   `.tr-because` would double the §2.1 spend on one card, so her advice is set
+   off by an indent and an eyebrow instead — the block below the reason, in the
+   reading order a person actually wants: what happened, then what she thinks. */
+.tr-advice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--rule);
+}
+
+.tr-advice .t-narrative {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 66ch;
+}
+
+.tr-advice-why {
+  color: var(--fg-subtle);
+}
+
+/* 5b · what each path does ----------------------------------------------- */
+
+/* Consequence and basis sit under the row, never inside the buttons. A path is
+   a decision; the consequence is why you would take it, and it is a sentence
+   rather than a caption on a control. */
+.tr-consequences {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-1);
+}
+
+.tr-consequence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.tr-consequence dd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.tr-consequence-text {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+/* A platform absence, said quietly rather than filled in (§7.1, §7.4). Mono at
+   caption size — it is evidence for whoever wants it, never the message.
+   `--fg-muted` and not `--fg-subtle`: §6 wants 4.5:1 for anything that is not
+   large text, and at 11px this is small text. */
+.tr-gap {
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: var(--lh-normal);
+  color: var(--fg-muted);
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------ a failed or refused act */
+
+.tr-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: min(780px, 100%);
+  margin: 0 auto;
+  padding: var(--s-3) var(--s-4);
+}
+
+.tr-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+  color: var(--fg);
+}
+
+.tr-problem-reason {
+  font-size: 11px; /* optical: caption mono, matching .tr-gap */
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.tr-problem .m-lamp {
+  translate: 0 5px;
+}
+
 .tr-cert-note {
   display: flex;
   align-items: flex-start;
@@ -282,4 +383,50 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- scaffold
+   The pending state (D7 §3.1). Not a loading state and not styled as one: the
+   plates are the real ones, and the bars stand where the words will be.
+
+   `vh-skeleton`'s ground is a 6/255 delta on the raw canvas, so a bar drawn on
+   the page background is invisible and the scaffold would read as a blank room
+   rather than as an early one. Everything here therefore lives inside a
+   `.tr-card`, which is what makes the bars land on a lit surface. */
+
+.tr-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+.tr-ghost-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: 260px;
+  max-width: 60%;
+}
+
+.tr-ghost-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.tr-ghost-head > .lc-bar {
+  flex: none;
+}
+
+.tr-ghost-ask {
+  margin-top: var(--s-4);
+  max-width: 34ch;
+}
+
+.tr-ghost-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin-top: var(--s-4);
 }

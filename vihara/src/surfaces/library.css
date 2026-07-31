@@ -4,10 +4,16 @@
    across the top, a document on the left shelf, and everything the estate can
    *say* about that document is on the right. The middle is the document, and it
    is the honest part of the surface — there are no page images anywhere in the
-   platform, so the viewer renders the structure retrieval actually projects
-   (heading path, chunk index, page) and the passages it actually returned. It is
-   built to read as an instrument (corner ticks, a page gutter, hairlines) rather
-   than as a preview that failed to load. */
+   platform, so the viewer renders what retrieval actually projects (the chunk
+   index, the heading path) and the text that was actually stored. It is built
+   to read as an instrument (corner ticks, a page gutter, hairlines) rather than
+   as a preview that failed to load.
+
+   R-4 part W removed the citation list, the cited-by portraits and the read-by
+   districts, and their rules with them: `retrieval_usages` holds every one of
+   those facts and no endpoint exposes a row of it. §7.1 — a binding that
+   cannot be answered renders nothing, and a stylesheet for markup that no
+   longer exists is the next reader's false lead. */
 
 .li {
   display: flex;
@@ -479,31 +485,11 @@ button.li-sec-row:hover {
   color: var(--fg);
 }
 
-.li-passage-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-  margin-bottom: var(--s-3);
-}
-
-.li-passage-switch .m-chip {
-  height: 22px;
-  font-size: 10px;
-}
-
 .li-passage-text {
   font-family: var(--font-body);
   font-size: var(--text-sm);
   line-height: var(--lh-relaxed);
   color: var(--fg);
-  max-width: 68ch;
-}
-
-.li-passage-foot {
-  margin-top: var(--s-3);
-  font-size: 10px;
-  line-height: 1.65;
-  color: var(--fg-subtle);
   max-width: 68ch;
 }
 
@@ -568,13 +554,6 @@ button.li-sec-row:hover {
   gap: var(--s-3);
 }
 
-.li-block-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-3);
-}
-
 .li-facts {
   display: flex;
   flex-direction: column;
@@ -616,11 +595,6 @@ button.li-sec-row:hover {
 
 .li-origin[data-noface] {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.li-origin-well {
-  width: 38px;
-  height: 38px;
 }
 
 .li-origin-text {
@@ -780,13 +754,6 @@ button.li-sec-row:hover {
   font-weight: 600;
 }
 
-.li-infl-basis {
-  font-size: 10px;
-  line-height: 1.65;
-  color: var(--fg-subtle);
-  max-width: 60ch;
-}
-
 /* ------------------------------------------------------------- counters
    All three, with the bound one named. The operator detail that stops the next
    reader from printing a row count as a question count. */
@@ -850,142 +817,6 @@ button.li-sec-row:hover {
 }
 
 /* ------------------------------------------------------------- cited by */
-
-.li-cited-by {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-
-.li-citer {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--s-3);
-}
-
-.li-citer-well {
-  width: 30px;
-  height: 30px;
-}
-
-.li-citer-name {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.li-citer-who {
-  font-family: var(--font-display);
-  font-size: var(--text-xs);
-  color: var(--fg);
-}
-
-.li-citer-role {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--fg-subtle);
-}
-
-.li-citer-count {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--fg-subtle);
-}
-
-/* ------------------------------------------------------------- citations */
-
-.li-cites {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-
-/* A citation is a place, so it is shaped like one: the heading path on top, the
-   page and chunk index beneath, and a caret that says it goes somewhere. */
-.li-cite {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 14px;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-3);
-  border-radius: var(--r-sm);
-  text-align: left;
-  background: var(--surface);
-  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
-  transition:
-    background var(--dur) var(--ease-out),
-    box-shadow var(--dur) var(--ease-out),
-    translate 120ms var(--ease-out);
-}
-
-.li-cite:hover {
-  background: var(--surface-2);
-  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-md);
-  translate: 1px 0;
-}
-
-.li-cite[data-open] {
-  background: var(--surface-2);
-  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-sm);
-}
-
-.li-cite-text {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-
-.li-cite-q {
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  line-height: 1.5;
-  color: var(--fg-muted);
-  overflow-wrap: anywhere;
-}
-
-.li-cite[data-open] .li-cite-q {
-  color: var(--fg);
-}
-
-.li-cite-where {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--fg-subtle);
-}
-
-.li-cite-caret {
-  color: var(--fg-subtle);
-}
-
-/* A citation dated after the supersede. Marked with the negative rim and the
-   word, so the needs-you block above has something to point at. */
-.li-cite[data-after] {
-  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm), inset 3px 0 0 var(--negative);
-}
-
-.li-cite-after {
-  color: var(--negative);
-}
-
-/* ------------------------------------------------------------- read by */
-
-.li-districts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-}
-
-.li-districts .m-chip {
-  height: 24px;
-  font-size: 10px;
-}
 
 /* ------------------------------------------------------------- the acts */
 
@@ -1064,4 +895,42 @@ button.li-sec-row:hover {
   .li-passage {
     margin-left: 44px;
   }
+}
+
+/* ==========================================================================
+   R-4 part W — what wiring added, and where an absence is drawn.
+
+   Nothing here is a new look: these are the states the surface could not have
+   before its data came off a network. §7.1 says a binding that cannot be
+   answered renders nothing, and §7.4 says a platform gap is rendered rather
+   than drawn over — both of which need somewhere quiet to be said.
+   ========================================================================== */
+
+/* A chunk that carries no heading path. The absence is stated in the same mono
+   register as every other absence on this surface, never left blank. */
+.li-path-none {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.li-source-uri {
+  overflow-wrap: anywhere;
+}
+
+/* The scaffold. Bars go *inside* plates: `vh-skeleton`'s ground is a 6/255
+   delta on the raw canvas, so a bar laid on the page background draws nothing
+   and the pending state would be three blank columns. */
+
+.li-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.li-ghost-room {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  height: 100%;
+  min-height: 0;
 }

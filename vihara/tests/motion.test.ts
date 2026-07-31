@@ -71,7 +71,11 @@ const KNOWN_DEBT: Record<string, string[]> = {
   "design/motion.css": ["box-shadow", "background-position"],
   "shell/shell.css": ["background", "color"],
   "surfaces/bridges.css": ["background", "box-shadow"],
-  "surfaces/district.css": ["background", "box-shadow", "color"],
+  /* `box-shadow` delisted 2026-07-31 by R-4 part W: it lived on
+     `.di-traffic-item:hover`, and the traffic strip stopped being a control
+     when wiring found it echoing an act it did not perform. The debt was paid
+     by deleting the affordance, not by rewriting the animation. */
+  "surfaces/district.css": ["background", "color"],
   "surfaces/dossier.css": ["background", "box-shadow"],
   "surfaces/gallery.css": ["background", "box-shadow"],
   "surfaces/glasshouse.css": ["box-shadow"],

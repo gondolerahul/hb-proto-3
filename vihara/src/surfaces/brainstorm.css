@@ -1,9 +1,11 @@
 /* Tabling a matter — the owner-initiated front of the STRAT pipeline.
 
    It reuses the Boardroom's own idioms on purpose: the same gold-bordered
-   "because" quote, the same lever rows, the same `.br-grade` seal. A separate
-   visual language here would say this is a separate kind of strategy, and the
-   whole point of decision D's answer is that it is not. */
+   "because" quote for her words, the same well for the facts underneath them.
+   A separate visual language here would say this is a separate kind of
+   strategy, and the whole point of owner review D's answer is that it is not —
+   what you table becomes a Proposition record, and that record adopts by the
+   same certified act as any other. */
 
 .bs {
   display: flex;
@@ -32,12 +34,7 @@
   gap: var(--s-2);
 }
 
-.bs-lamp {
-  translate: 0 -1px;
-}
-
-.bs-lead,
-.bs-reading-lead {
+.bs-lead {
   font-size: var(--text-sm);
   line-height: var(--lh-relaxed);
   color: var(--fg-muted);
@@ -67,158 +64,99 @@
   color: var(--fg-faint);
 }
 
-.bs-suggests {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  flex-wrap: wrap;
-}
-
-/* --------------------------------------------------------------- reading --- */
-
-.bs-block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-}
-
-/* What she knows: the figure leads, because a figure is the only thing here
-   that is not an opinion. */
-.bs-knows {
-  display: flex;
-  flex-direction: column;
-}
-
-.bs-know {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: var(--s-4);
-  align-items: baseline;
-  padding: var(--s-3) 0;
-  box-shadow: inset 0 -1px 0 var(--rule-faint);
-}
-
-.bs-know:last-child {
-  box-shadow: none;
-}
-
-.bs-know-figure {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: var(--text-lg);
-  line-height: 1;
-  letter-spacing: -0.025em;
-  font-variant-numeric: tabular-nums;
-  color: var(--white);
-  text-align: right;
-}
-
-.bs-know-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.bs-know-note {
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  line-height: 1.55;
-  color: var(--fg-subtle);
-  max-width: 70ch;
-}
-
-/* What she does not have. Unlit lamps: an absence is not a fault. */
-.bs-missing {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-
-.bs-miss {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-3);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  line-height: 1.55;
-  color: var(--fg-subtle);
-}
-
-/* Questions ------------------------------------------------------------- */
-
-.bs-q-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-3);
-}
-
-.bs-progress {
-  font-size: 10px;
-  color: var(--fg-faint);
-}
-
-.bs-questions {
-  display: flex;
-  flex-direction: column;
-}
-
-.bs-question {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-3) 0;
-}
-
-.bs-question[data-answered] {
-  opacity: 0.72;
-}
-
-.bs-question[data-answered]:hover {
-  opacity: 1;
-}
-
-.bs-asks {
-  font-family: var(--font-body);
-  font-weight: 380;
-  font-size: var(--text-md);
-  line-height: 1.45;
-  color: var(--fg);
-  max-width: 62ch;
-}
-
-/* Why she is asking. Set as mono at caption size so it reads as a note on the
-   question rather than as part of it. */
-.bs-because-note {
+/* What you tabled, echoed back above her answer — so a reply that drifted is
+   visibly a reply to something you did not ask. */
+.bs-matter {
   font-size: 10px;
   line-height: 1.6;
   color: var(--fg-subtle);
   max-width: 74ch;
 }
 
-.bs-options {
-  display: flex;
-  gap: var(--s-2);
-  flex-wrap: wrap;
+/* ---------------------------------------------------------------- the turn --
+   What the exchange actually did. A well, because these are facts the runtime
+   reported rather than an argument it made. */
+
+.bs-facts {
+  padding: var(--s-3) var(--s-4);
 }
 
-.bs-answered {
+.bs-facts dl {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--s-2);
+}
+
+.bs-fact {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s-4);
+}
+
+.bs-fact-value {
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Consequences of the turn. Lamp plus a sentence, never a lamp alone. */
+.bs-flags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.bs-flag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.bs-gap {
   font-size: 10px;
-  color: var(--positive);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 74ch;
 }
 
-/* --------------------------------------------------------------- drafted --- */
-
-.bs-draft-title {
-  font-size: var(--text-lg);
-  line-height: 1.3;
-  color: var(--white);
-  max-width: 40ch;
+/* The write's own answer, in the record service's vocabulary. */
+.bs-filed,
+.bs-broke {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 72ch;
 }
+
+.bs-filed-id,
+.bs-broke-reason {
+  font-size: 10px;
+  color: var(--fg-subtle);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------- answered --
+
+   The four scripted beats — what she already knows, what she does not have,
+   her questions and their options — were removed in R-4 part W and their rules
+   went with them. `POST /ai/pragya/chat` answers one `reply` and a set of
+   flags about the turn; there is no knows-list, no missing-list and no
+   question set on the wire, and §7.1 says a binding that cannot be answered
+   renders nothing. What is left below is the register the reply keeps: her
+   words in the Boardroom's own gold-edged quote, and the turn's own facts in a
+   well beneath it. */
 
 .bs-because {
   padding-left: var(--s-4);
@@ -232,96 +170,6 @@
   max-width: 72ch;
 }
 
-.bs-because cite {
-  display: block;
-  margin-top: var(--s-2);
-  font-style: normal;
-  font-size: 10px;
-  color: var(--fg-faint);
-}
-
-/* Her objection to her own draft. In a well, because it is evidence rather than
-   argument — and set at the same size as the "because", so it carries equal
-   weight on the page. A proposition that argues only for itself is advocacy. */
-.bs-concerns {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3) var(--s-4);
-}
-
-.bs-concerns-body {
-  font-size: var(--text-sm);
-  line-height: var(--lh-relaxed);
-  color: var(--fg-muted);
-  max-width: 72ch;
-}
-
-.bs-levers {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-
-.bs-lever {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-2) var(--s-4);
-  border-radius: var(--r-sm);
-  background: var(--surface-3);
-  box-shadow: var(--edge-line);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--fg-muted);
-}
-
-.bs-lever-vals {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  white-space: nowrap;
-}
-
-.bs-lever-from {
-  color: var(--fg-subtle);
-  text-decoration: line-through;
-  text-decoration-color: var(--fg-faint);
-}
-
-.bs-lever-arrow {
-  color: var(--fg-faint);
-}
-
-.bs-lever-to {
-  color: var(--fg);
-}
-
-.bs-expected {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--fg-muted);
-}
-
-.bs-expected-icon {
-  color: var(--fg-subtle);
-}
-
-.bs-expected-val {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--fg);
-}
-
-.bs-grade {
-  padding: var(--s-3) var(--s-4);
-}
-
 /* ------------------------------------------------------------------ acts --- */
 
 .bs-acts {
@@ -329,10 +177,6 @@
   align-items: center;
   gap: var(--s-3);
   flex-wrap: wrap;
-}
-
-.bs-gh {
-  opacity: 0.55;
 }
 
 .bs-gh-note {

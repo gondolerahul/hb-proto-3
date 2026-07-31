@@ -13,6 +13,39 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+/* Pending and failed have no header and no rail — one child, filling the room.
+   The empty story is NOT marked this way: it keeps its real header. */
+.su[data-pending] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* --------------------------------------------------------------- the scaffold
+   D7 §3.1: the pending state is this surface's own structure, never a spinner.
+   Plates first with the bars inside them — `vh-skeleton`'s ground is a ~6/255
+   delta on the raw canvas, so bars laid straight over the background are
+   correctly measured invisible. */
+
+.su-scaffold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-height: 0;
+}
+
+.su-scaffold-head,
+.su-scaffold-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-5);
+  border-radius: var(--r-md);
+}
+
+.su-scaffold-card {
+  gap: var(--s-4);
+  max-width: 74ch;
+}
+
 /* ------------------------------------------------------------------ header */
 
 .su-head {
@@ -44,6 +77,21 @@
   line-height: 1.55;
   color: var(--fg-subtle);
   max-width: 76ch;
+}
+
+/* Where the morning came from, and what it does not carry (§7.4). One line, in
+   the caption ramp, said once for the whole surface rather than repeated on
+   every card — a gap restated five times reads as five gaps. */
+.su-elsewhere {
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: 1.55;
+  /* `--fg-muted`, not the `--fg-subtle` of the voice line above it. §6 wants
+     4.5:1 for anything that is not large text, and `contrast.test.ts` measures
+     the subtle step against the 3:1 large-text floor only. This line carries
+     information — which morning you are reading, and what it does not hold. */
+  color: var(--fg-muted);
+  max-width: 76ch;
+  text-wrap: pretty;
 }
 
 .su-head-side {
@@ -155,12 +203,20 @@
   color: var(--fg-subtle);
 }
 
-/* Attribution, not authorship. */
-.su-prepared {
-  font-size: 10px;
-  color: var(--fg-faint);
-  white-space: nowrap;
+/* "This colleague is waiting on you", in the head where the name is. Replaces
+   the fixture's `prepared by X · 07:04`: the morning composition carries no
+   per-card timestamp, and L2's attribution is stated once in the header rather
+   than five times down the sheet. Same idiom as the Line's card, deliberately. */
+.su-waiting-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   padding-top: var(--s-2);
+  white-space: nowrap;
+}
+
+.su-waiting-word {
+  color: var(--gold-300);
 }
 
 /* Her sentence. The one piece of prose on the card, and the reason the card
@@ -177,29 +233,12 @@
   color: var(--fg);
 }
 
-/* The colleague's own output, as data. */
-.su-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  padding: var(--s-2) var(--s-4);
-}
-
-.su-fact {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3) 0;
-  box-shadow: inset 0 -1px 0 var(--rule-faint);
-}
-
-.su-facts > .su-fact:nth-last-child(-n + 1) {
-  box-shadow: none;
-}
-
-.su-fact-val {
-  font-size: var(--text-xs);
-  color: var(--fg);
-}
+/* The facts well, the `moved` KPI row and the grade seal are gone with the
+   fields that fed them: `GET /ai/genui/line/morning` carries her sentences, a
+   name, a district, an id and one boolean. Their rules are deleted rather than
+   left unreachable — dead CSS is the quietest way for a surface to look like it
+   still has a feature. What would bring them back is named in the header copy
+   and in the report, not here. */
 
 /* ---------------------------------------------------------------- the foot */
 
@@ -208,24 +247,6 @@
   align-items: center;
   gap: var(--s-4);
   flex-wrap: wrap;
-}
-
-.su-moved {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--text-xs);
-  color: var(--fg-subtle);
-}
-
-.su-moved-icon {
-  color: var(--fg-faint);
-}
-
-.su-moved-val {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--fg);
 }
 
 .su-needs {
@@ -295,7 +316,7 @@
 /* --------------------------------------------------------------- responsive */
 
 @media (max-width: 900px) {
-  .su-prepared {
+  .su-waiting-mark {
     width: 100%;
     padding-top: 0;
   }

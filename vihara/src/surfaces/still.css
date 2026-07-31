@@ -158,6 +158,38 @@
   background: linear-gradient(90deg, var(--rule-strong) 0%, var(--rule-strong) 62%, transparent);
 }
 
+/* -------------------------------------------------------------- the notices
+   `Empty` and `Failed` size themselves for a page column. Inside the Still's
+   measured column they take its width instead of their content's, and lose the
+   auto margin that would otherwise centre them against a left-ranged block.
+   Composition on this file's own container — the lifecycle classes themselves
+   are untouched. */
+
+.st-column > .lc-notice {
+  width: 100%;
+  margin: 0;
+}
+
+/* --------------------------------------------------------------- the scaffold
+   D7 §3.1: the pending state is this surface's own structure, not a spinner.
+
+   The plate is drawn FIRST and the bars sit inside it, because `vh-skeleton`'s
+   ground is a ~6/255 delta on the raw canvas — bars laid straight over the
+   background are, correctly measured, invisible, and the pending state would
+   have been the blank screen finding RD-4 rejected. */
+
+.st-scaffold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: min(620px, 100%);
+  padding: var(--s-6);
+  border-radius: var(--r-md);
+  /* Matches the loaded column's optical centring, so nothing shifts vertically
+     when the words arrive. */
+  margin-bottom: 6vh;
+}
+
 /* ---------------------------------------------------------------- the pulse */
 
 .st-pulse {
@@ -185,6 +217,36 @@
     opacity: 0.9;
     scale: 1;
   }
+}
+
+/* ---------------------------------------------------------------- the wire
+   S3: a dropped stream is stale and says so. An empty box at rest, so the
+   column does not reflow when the sentence appears — and so the live region
+   exists in the accessibility tree before it has anything to announce.
+
+   Terracotta on the lamp, never on the type: the estate's grammar is a lamp
+   plus a word (§4), and the word here is the whole of the information. */
+
+/* Deliberately NOT `:empty { display: none }`. A live region hidden with
+   `display: none` is out of the accessibility tree, and several screen readers
+   never announce content inserted into a region that was hidden when they
+   registered it — which would silence the one message on this surface that
+   nobody asked for. It stays in the tree and costs one gap of the column. */
+
+.st-stale-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  max-width: 62ch;
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: var(--lh-normal);
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
+.st-stale-text .m-lamp {
+  flex: none;
+  translate: 0 -1px; /* optical: a 7px dot floats against an 11px line */
 }
 
 /* -------------------------------------------------------------- go deeper

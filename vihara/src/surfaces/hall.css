@@ -174,14 +174,6 @@
   color: var(--fg);
 }
 
-.hl-age {
-  font-size: var(--text-xs);
-}
-
-.hl-age[data-hot] {
-  color: var(--negative);
-}
-
 .hl-state {
   display: inline-flex;
   align-items: center;
@@ -207,6 +199,27 @@
   color: var(--fg-faint);
 }
 
+/* A withdrawn record. Soft-deleted rows still come back on the wire, and
+   hiding them would make a register disagree with its own audit trail — so
+   they are shown, receded, with a negative lamp and the word "Withdrawn" on
+   the selected rail. Never colour alone, and never colour at all here: the
+   row simply sits back. */
+.hl-table tbody tr[data-withdrawn] td {
+  color: var(--fg-subtle);
+}
+
+/* A platform absence, said quietly rather than filled in (§7.1, §7.4). Mono at
+   caption size — evidence for whoever wants it, never the message.
+   `--fg-muted` and not `--fg-subtle`: §6 wants 4.5:1 for anything that is not
+   large text, and at 11px this is small text. */
+.hl-gap {
+  flex: none;
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: var(--lh-normal);
+  color: var(--fg-muted);
+  max-width: 74ch;
+}
+
 /* ------------------------------------------------------------ selected rail */
 
 .hl-selected {
@@ -221,17 +234,67 @@
 .hl-selected-id {
   font-size: var(--text-sm);
   color: var(--fg);
+  white-space: nowrap;
 }
 
-.hl-selected-acts {
+/* The fields the table could not fit, on the row you asked about. The rail
+   used to hold three buttons that echoed and wrote nothing; this is the same
+   strip carrying something true instead. */
+.hl-selected-fields {
   display: flex;
-  gap: var(--s-2);
+  align-items: center;
+  gap: var(--s-5);
   margin-left: auto;
+  min-width: 0;
+  overflow-x: auto;
 }
 
-.hl-selected-acts .m-btn {
-  min-height: 32px;
-  padding: 0 var(--s-3);
+.hl-selected-fields > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  flex: none;
+}
+
+.hl-selected-fields dd {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- scaffold
+   The pending state (D7 §3.1). The well is drawn first and the bars go inside
+   it: `vh-skeleton`'s ground is a 6/255 delta on the raw canvas, so a bar on
+   the page background is invisible and the room would read as blank rather
+   than as early. */
+
+.hl-ghost-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: 220px;
+}
+
+.hl-ghost-well {
+  padding: var(--s-4) var(--s-4) var(--s-5);
+  overflow: hidden;
+}
+
+.hl-ghost-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+/* The columns are the real count, so the scaffold makes the same spatial claim
+   the table is about to. */
+.hl-ghost-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  gap: var(--s-4);
 }
 
 .hl-selected-close {
@@ -252,20 +315,19 @@
 /* --------------------------------------------------------------- responsive */
 
 @media (max-width: 1000px) {
-  /* The two columns a phone can lose without losing the row's meaning. */
+  /* The one column a phone can lose without losing the row's meaning. The
+     record column stays: it now carries the lamp that says whether the row has
+     been withdrawn, and dropping it would take a state with it. */
   .hl-td-updated,
-  .hl-th-updated,
-  .hl-td-id,
-  .hl-th-id {
+  .hl-th-updated {
     display: none;
   }
   .hl-selected {
     flex-wrap: wrap;
     border-radius: var(--r-lg);
   }
-  .hl-selected-acts {
+  .hl-selected-fields {
     width: 100%;
     margin-left: 0;
-    overflow-x: auto;
   }
 }

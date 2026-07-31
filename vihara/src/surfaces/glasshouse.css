@@ -124,6 +124,7 @@
 }
 
 .gh-pane-note {
+  align-self: start;
   font-size: 10px;
   line-height: 1.6;
   color: var(--fg-subtle);
@@ -133,7 +134,13 @@
 /* ------------------------------------------------------------- the ribbon
    Sanctioned gold inside the twin (art bible §5): the divergence ribbon and
    certified seals are the only gold in a simulation, so the one thing your eye
-   finds is the thing that differs from reality. */
+   finds is the thing that differs from reality.
+
+   **It renders its absent state and nothing else today**, and the two rules
+   below are what it will wear when it has a second reading to hold. A
+   divergence needs a baseline run to measure against, and `TwinRun.is_baseline`
+   is written by nothing in the platform — so there is one number and a ribbon
+   between one number and nothing invents the second. */
 
 .gh-ribbon {
   display: flex;
@@ -283,103 +290,12 @@
   flex: none;
 }
 
-/* Levers ----------------------------------------------------------------- */
-
-.gh-lever {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-
-.gh-lever-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-3);
-}
-
-.gh-lever-label {
-  font-size: var(--text-xs);
-  color: var(--fg-muted);
-}
-
-.gh-lever-vals {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--text-xs);
-}
-
-.gh-lever-real {
-  color: var(--fg-subtle);
-  text-decoration: line-through;
-  text-decoration-color: var(--fg-faint);
-}
-
-.gh-lever-arrow {
-  color: var(--fg-faint);
-}
-
-/* The twin value is silver, like everything the twin reports. */
-.gh-lever-twin {
-  color: #dfe3e7;
-}
-
-.gh-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 6px;
-  border-radius: var(--r-pill);
-  background: var(--ink-900);
-  box-shadow: var(--edge-line), var(--ao-well);
-}
-
-.gh-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #dfe3e7;
-  box-shadow: var(--contact-md), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  cursor: grab;
-}
-
-.gh-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 0;
-  border-radius: 50%;
-  background: #dfe3e7;
-  box-shadow: var(--contact-md);
-  cursor: grab;
-}
-
-.gh-slider:active::-webkit-slider-thumb {
-  cursor: grabbing;
-}
-
-/* A moved lever invalidates the reading, and the surface says so. A stale number
-   beside a moved lever is the most convincing wrong number in the product. */
-.gh-stale {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-  padding: var(--s-3) var(--s-4);
-  border-radius: var(--r-sm);
-  background: var(--surface-3);
-  box-shadow: var(--edge-line);
-  font-size: 10px;
-  line-height: 1.6;
-  color: var(--fg-muted);
-}
-
-.gh-stale svg {
-  translate: 0 1px;
-  color: var(--negative);
-  flex: none;
-}
+/* The lever sliders were removed in R-4 part W, and their rules with them.
+   `GET /ai/twin/scenarios` does not return a scenario's levers and no endpoint
+   writes them — the only place levers are accepted is at creation — so the
+   panel was a control that could neither read its value nor save one. What
+   stands in its slot is `.gh-runs`, below, which is what
+   `GET /scenarios/{id}/runs` is actually for. */
 
 .gh-grade-well {
   padding: var(--s-3) var(--s-4);
@@ -466,6 +382,9 @@
 
 .gh-blocked,
 .gh-note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
   font-size: 10px;
   line-height: 1.6;
   color: var(--fg-subtle);
@@ -474,6 +393,119 @@
 
 .gh-note {
   color: var(--fg-faint);
+}
+
+/* ============================================================== the runs
+   What `GET /scenarios/{id}/runs` answers, in the slot the lever sliders used
+   to hold. The sliders had no binding in either direction — no endpoint reads
+   a scenario's levers and none writes them — and this is what the endpoint is
+   actually for. */
+
+.gh-runs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.gh-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line);
+}
+
+.gh-run-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.gh-run-at,
+.gh-run-cost {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.gh-run-method {
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--fg-subtle);
+}
+
+.gh-run-refused {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--negative);
+}
+
+/* ============================================ THE ONE PERMITTED LOADING STATE
+   D7 §3.1 names the Glasshouse — and only the Glasshouse — as allowed a
+   visible loading state, because a twin run is genuinely slow and pretending
+   otherwise would be the lie.
+
+   It is spent on WORDS. There is no rotating mark here, and `lifecycle.test`
+   scans this file to be sure of it: a spinner says "wait" and tells you
+   nothing, while a sentence says how long and what is happening.
+
+   The lamp beside it is UNLIT and does not breathe. Gold means "this needs
+   you" or "this is certified" (§2.1) and the breathing lamp is the beacon's —
+   the product's one looping animation. A run in flight is neither, so it gets
+   the plain lamp and the sentence carries the meaning. */
+
+.gh-running {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+/* The metric legend under a pane. The room's flat labels are short by
+   necessity; the word for what each number counts belongs here, where there is
+   line width for a phrase. */
+
+.gh-pane-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: 0 var(--s-4) var(--s-3);
+}
+
+.gh-legend-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* The scaffold. Bars sit inside plates — `vh-skeleton`'s ground is a 6/255
+   delta on the raw canvas, so a bar on the page background draws nothing. */
+
+.gh-ghost,
+.gh-ghost-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.gh-ghost-block {
+  padding: var(--s-4) var(--s-5);
 }
 
 /* --------------------------------------------------------------- responsive */

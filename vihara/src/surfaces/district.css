@@ -11,6 +11,14 @@
 
 /* ------------------------------------------------------------------ header */
 
+/* The three-row grid is the room. An empty, unknown or failed district has no
+   room in it, so the surface falls back to a plain block — a lifecycle notice
+   stretched down a 1fr stage reads as a broken layout rather than an answer. */
+.di-flat {
+  display: block;
+  grid-template-rows: none;
+}
+
 .di-head {
   display: flex;
   align-items: flex-end;
@@ -38,6 +46,37 @@
 .di-weather-mark {
   width: 28px;
   height: 28px;
+}
+
+/* ---- the two states the shared material never got ------------------------
+   `material.css` ships textures for clear · busy · fog · storm · frost; the
+   backend emits clear · storm · heat-shimmer · moonlit. The same two-state hole
+   the Terrace hit (gap R-4-W-2), filled the same way: composed on THIS file's
+   own class rather than by restyling `.m-weather`, and borrowing the shared
+   drift keyframe so the estate keeps one motion vocabulary. §1.5 holds —
+   `translate` only. */
+
+/* heat-shimmer — the envelope is running out. Rising, warm, unhurried. */
+.di-weather-mark[data-state="heat-shimmer"]::after {
+  /* optical: hatch pitch and softening, in the same literals material.css's own
+     weather textures use — a texture's stripe is a drawing, not a step on the
+     space scale. */
+  background: repeating-linear-gradient(
+    92deg,
+    rgba(255, 246, 230, 0.15) 0 1px,
+    transparent 1px 6px
+  );
+  filter: blur(0.9px);
+  animation: m-weather-drift 3.6s linear infinite;
+}
+
+/* moonlit — hibernating, nothing scheduled. Entirely still. */
+.di-weather-mark[data-state="moonlit"]::after {
+  background: radial-gradient(
+    70% 70% at 32% 26%,
+    rgba(255, 246, 230, 0.16),
+    transparent 68%
+  );
 }
 
 .di-weather-sentence {
@@ -133,12 +172,6 @@
   color: var(--fg);
 }
 
-.di-panel-body {
-  font-size: var(--text-sm);
-  line-height: var(--lh-relaxed);
-  color: var(--fg-muted);
-}
-
 .di-panel-note {
   display: flex;
   align-items: flex-start;
@@ -187,6 +220,17 @@
 .di-legend-foot {
   font-size: 10px;
   color: var(--fg-faint);
+}
+
+/* A dropped stream, said where the numbers are (S3). Terracotta lamp plus the
+   words — never the lamp alone. */
+.di-stale {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
 }
 
 /* ------------------------------------------------------------ the colleague */
@@ -244,53 +288,59 @@
   color: var(--gold-300);
 }
 
-/* ------------------------------------------------------------------- the KPI */
+/* ------------------------------------------------------------- the readings
 
-.di-kpi-row {
+   There was a meter here — a track, a target tick and a terracotta overrun past
+   it. The tick had no source: no KPI on the platform declares a target, so the
+   line the reading was being measured to was this file's invention. The whole
+   instrument is gone rather than rescaled, and the readings are a list. */
+
+.di-kpis {
+  display: flex;
+  flex-direction: column;
+}
+
+.di-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.di-kpi:last-child {
+  box-shadow: none;
+}
+
+.di-kpi-name {
   display: flex;
   align-items: baseline;
-  gap: var(--s-4);
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
 }
 
-.di-kpi-drift {
+.di-kpi-key {
+  font-size: 9px;
+  color: var(--fg-faint);
+}
+
+.di-kpi-figure {
+  font-size: var(--text-2xl);
+  color: var(--fg);
+}
+
+/* An absence reads as a sentence, never as a dash in a figure slot. */
+.di-kpi-absent {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--s-2);
-}
-
-.di-meter {
-  position: relative;
-  height: 8px;
-  border-radius: var(--r-pill);
-  background: var(--ink-900);
-  box-shadow: var(--edge-line), var(--ao-well);
-  overflow: hidden;
-}
-
-.di-meter-fill,
-.di-meter-over {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  display: block;
-}
-
-.di-meter-fill {
-  left: 0;
-  background: linear-gradient(180deg, rgba(255, 246, 230, 0.34), rgba(255, 246, 230, 0.22));
-}
-
-.di-meter-over {
-  background: linear-gradient(180deg, rgba(212, 102, 79, 0.75), rgba(212, 102, 79, 0.5));
-}
-
-.di-meter-tick {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: var(--fg-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-subtle);
 }
 
 /* ---------------------------------------------------------------- treasury */
@@ -311,28 +361,15 @@
   background: linear-gradient(180deg, rgba(255, 246, 230, 0.3), rgba(255, 246, 230, 0.18));
 }
 
-/* The protected reserve — the one gold thing on this gauge (art bible §2.1),
-   pinned to the cap end because it is the last money and never drains. */
-.di-gauge-reserve {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  background: var(--gradient-gold-metallic);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
-}
+/* The protected reserve was a gold seam pinned to the cap end, and a legend
+   swatch beside the sentence that explained it. Both are gone: the projection
+   reports `reserve_protected` as a **boolean**, so there is no width to draw a
+   seam to and nothing for a key to key (gap R-4-P-1). The fact is stated in
+   words in the panel instead — which leaves this room spending gold on exactly
+   one thing, a raised hand. */
 
 .di-treasury-facts {
   margin-top: calc(var(--s-1) * -1);
-}
-
-.di-reserve-key {
-  width: 14px;
-  height: 5px;
-  border-radius: var(--r-pill);
-  background: var(--gradient-gold-metallic);
-  flex: none;
-  translate: 0 4px;
 }
 
 /* ---------------------------------------------------------------- live runs */
@@ -355,10 +392,9 @@
   box-shadow: none;
 }
 
-.di-run[data-paused] {
-  opacity: 0.6;
-}
-
+/* `.di-run-open` was a button and is now a span: there is no per-run read this
+   room can open. `GET /ai/executions/{id}/trace` exists but is typed `unknown`
+   on the wire, and a trace panel would have to guess a shape. */
 .di-run-open {
   display: flex;
   align-items: baseline;
@@ -366,8 +402,6 @@
   flex: 1;
   min-width: 0;
   text-align: left;
-  border-radius: var(--r-xs);
-  transition: color var(--dur) var(--ease-out);
 }
 
 .di-run-doing {
@@ -377,10 +411,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.di-run-open:hover .di-run-doing {
-  color: var(--fg);
 }
 
 .di-run-id {
@@ -393,27 +423,31 @@
   color: var(--fg-subtle);
 }
 
-.di-run-pause {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-xs);
-  color: var(--fg-subtle);
-  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+/* The server's own stamp, not a relative age: `created_at` is naive and carries
+   no offset, so "4 h ago" would be wrong by the reader's timezone. */
+.di-run-when {
+  font-size: 9px;
+  color: var(--fg-faint);
+  white-space: nowrap;
 }
 
-.di-run-pause:hover {
-  background: var(--surface-3);
-  color: var(--fg);
-}
+/* ----------------------------------------------------------------- traffic
 
-/* ----------------------------------------------------------------- traffic */
+   These were buttons that echoed "descended to the ledger" and descended
+   nowhere — this surface has no way to reach the Undercroft. They are readouts
+   now, so the hover state and its transition went with the affordance. */
 
 .di-traffic {
   display: flex;
   align-items: center;
   gap: var(--s-2);
+}
+
+.di-traffic-list {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
 }
 
 .di-traffic-item {
@@ -424,12 +458,6 @@
   border-radius: var(--r-pill);
   background: var(--surface);
   box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
-  transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
-}
-
-.di-traffic-item:hover {
-  background: var(--surface-2);
-  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-sm);
 }
 
 .di-traffic-value {
@@ -440,6 +468,50 @@
   margin-left: auto;
   font-size: 10px;
   color: var(--fg-faint);
+}
+
+/* ---------------------------------------------------------------- scaffold
+
+   D7 §3.1: the layout on screen before the data. Plates first, bars inside
+   them — `vh-skeleton`'s ground is a ~6/255 delta on the raw canvas, so a bar
+   drawn on the page background would be invisible. */
+
+.di-scaffold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  height: 100%;
+}
+
+.di-scaffold-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-lg);
+}
+
+.di-scaffold-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 26rem);
+  gap: var(--s-4);
+  flex: 1;
+  min-height: 0;
+}
+
+.di-scaffold-stage {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  border-radius: var(--r-lg);
+}
+
+.di-scaffold-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-lg);
 }
 
 /* --------------------------------------------------------------- responsive */
@@ -461,5 +533,8 @@
   }
   .di-traffic-hint {
     display: none;
+  }
+  .di-scaffold-body {
+    grid-template-columns: 1fr;
   }
 }

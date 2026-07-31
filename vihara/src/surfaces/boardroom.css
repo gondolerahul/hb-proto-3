@@ -6,11 +6,18 @@
    the grades are told apart by SHAPE and TEXTURE — which also means they survive
    greyscale, a squint, and a colour-blind reader. */
 
+/* A column rather than two fixed grid rows. R-4 part W puts a refusal notice
+   between the header and the body when an act does not go through, and a
+   two-row grid gave that notice the 1fr track and pushed the room itself into
+   an implicit one — the body collapsed at exactly the moment somebody needed
+   to read it. A flex column takes any number of children and still gives the
+   remainder to the body. */
 .br {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--s-4);
   height: 100%;
+  min-height: 0;
   padding: var(--s-5) var(--s-5) var(--s-4);
 }
 
@@ -29,18 +36,65 @@
   font-size: var(--text-2xl);
 }
 
-.br-head-meta {
+/* ------------------------------------------------------------------ problem
+   An act that did not go through. Plate rather than well: this is news being
+   broken, not data being displayed — the same shape `tray.css` uses, because
+   two rooms reporting a refused act differently would teach two grammars. */
+
+.br-problem {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-3);
-  padding-bottom: 4px;
+  padding: var(--s-3) var(--s-4);
 }
 
-.br-listening {
+.br-problem-text {
   display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  color: var(--gold-300);
+  flex-direction: column;
+  gap: var(--s-1);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.br-problem-reason {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* A quiet, stated gap. Mono at caption size, per §7.4 — the platform's own
+   limits said once and never dressed up as a feature. */
+.br-gap {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 74ch;
+}
+
+/* The scaffold. Bars go *inside* plates: `vh-skeleton`'s ground is a 6/255
+   delta on the raw canvas, so a bar laid on the page background draws nothing
+   and the pending state would be a blank room. */
+
+.br-ghost,
+.br-ghost-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.br-ghost-block {
+  padding: var(--s-4) var(--s-5);
+}
+
+.br-ghost-room {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  height: 100%;
+  min-height: 0;
 }
 
 /* -------------------------------------------------------------------- body */
@@ -49,6 +103,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
   gap: var(--s-4);
+  flex: 1;
   min-height: 0;
 }
 
@@ -112,6 +167,27 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+}
+
+/* Both figures, and the window they were measured over. Tabular so a column of
+   readings lines up on the decimal rather than shimmering. */
+.br-agenda-figs {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.br-agenda-now {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.br-agenda-was,
+.br-agenda-window {
+  font-size: 10px;
+  color: var(--fg-subtle);
 }
 
 .br-agenda-label {
@@ -227,17 +303,21 @@
   gap: var(--s-4);
 }
 
-/* Pragya's reasoning. Deliberately the narrative register at reading size —
-   this is the paragraph an owner decides on — but held to --text-sm so it does
-   not outweigh the proposition's own title. The `.t-narrative` on the element
-   would otherwise win at --text-md. */
+/* The proposition's rationale. Deliberately the narrative register at reading
+   size — this is the paragraph an owner decides on — but held to --text-sm so
+   it does not outweigh the proposition's own title. `.t-narrative` sits on the
+   inner paragraph and would otherwise win at --text-md, so the override is
+   made by reaching one level in rather than by `!important` (§1.4). */
 .br-because {
   padding-left: var(--s-4);
   border-left: 1px solid var(--border-gold);
-  font-size: var(--text-sm) !important;
+  max-width: 70ch;
+}
+
+.br-because .t-narrative {
+  font-size: var(--text-sm);
   line-height: var(--lh-relaxed);
   color: var(--fg-muted);
-  max-width: 70ch;
 }
 
 /* Levers — what the proposition would change. */
@@ -267,16 +347,6 @@
   align-items: center;
   gap: var(--s-2);
   white-space: nowrap;
-}
-
-.br-lever-from {
-  color: var(--fg-subtle);
-  text-decoration: line-through;
-  text-decoration-color: var(--fg-faint);
-}
-
-.br-lever-arrow {
-  color: var(--fg-faint);
 }
 
 .br-lever-to {
@@ -450,8 +520,16 @@
   flex-wrap: wrap;
 }
 
-.br-gh-btn {
-  opacity: 0.55;
+/* Live since R-4 part W: the scenario runner was verified end to end before
+   this button stopped being drawn-and-disabled. It puts the proposition on the
+   shelf and spends nothing — pricing and running are the Glasshouse's. */
+
+.br-gh-done {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 10px;
+  color: var(--fg-muted);
 }
 
 .br-glasshouse-note {
@@ -499,9 +577,12 @@
   gap: var(--s-3);
 }
 
+/* Not gold. Minutes accrue by being filed, and there is nothing here that
+   needs you — spending the §2.1 budget on "this list is live" is exactly the
+   drift the budget exists to stop. */
 .br-minutes-live {
   font-size: 10px;
-  color: var(--gold-300);
+  color: var(--fg-faint);
 }
 
 .br-minutes-list {
@@ -530,11 +611,6 @@
   background: var(--fg-faint);
 }
 
-.br-minute[data-kind="resolution"] .br-minute-mark {
-  background: var(--gradient-gold);
-  box-shadow: 0 0 6px rgba(237, 171, 72, 0.5);
-}
-
 .br-minute-at {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -542,13 +618,16 @@
 }
 
 .br-minute-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   font-family: var(--font-body);
   font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--fg-muted);
 }
 
-.br-minute[data-kind="resolution"] .br-minute-text {
+.br-minute-title {
   color: var(--fg);
 }
 

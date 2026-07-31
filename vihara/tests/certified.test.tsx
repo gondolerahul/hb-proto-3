@@ -494,16 +494,31 @@ describe("hard to call a gated endpoint without the hook (C2)", () => {
     // regression this catches.
     const GATED_WRAPPERS = ["respondToApproval", "adoptProposition", "bindConnector"];
     const offenders: string[] = [];
+    const routed: string[] = [];
     for (const file of walk(SRC)) {
       if (OWN(file)) continue;
       const body = codeOf(file);
       const named = GATED_WRAPPERS.filter((w) => new RegExp(`\\b${w}\\b`).test(body));
       if (named.length === 0) continue;
-      if (!/\buseCertifiedAct\b/.test(body)) {
-        offenders.push(`${path.relative(SRC, file)} → ${named.join(", ")}`);
-      }
+      if (/\buseCertifiedAct\b/.test(body)) routed.push(path.relative(SRC, file));
+      else offenders.push(`${path.relative(SRC, file)} → ${named.join(", ")}`);
     }
     expect(offenders, offenders.join("\n")).toEqual([]);
+
+    /* R-4 part W closes the debt §10a recorded against this file: until a
+       surface imported the hook, the loop above ran over an EMPTY set and
+       reported the property it was not checking. `TraySurface` is the first
+       real consumer — `POST /ai/approvals/{id}/respond` is `enforce_tier` in
+       the handler body, so it 403s a plain session and the refusal has to
+       become the ceremony. Without this line, deleting every call site would
+       turn the guard green rather than red. */
+    expect(
+      routed,
+      "no module outside the certified layer calls a gated wrapper at all — " +
+        "the guard above passed over an empty set, which is how a source scan " +
+        "grades its own homework",
+    ).not.toEqual([]);
+    expect(routed).toContain(path.join("surfaces", "TraySurface.tsx"));
   });
 });
 

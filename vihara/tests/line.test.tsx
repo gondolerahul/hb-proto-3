@@ -1,7 +1,53 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * R-4 part W wired `TraySurface` to `GET /ai/genui/trays`, so the Thread's
+ * certified section now paints a scaffold first and its content on the next
+ * tick. The endpoint is mocked here with one composed tray built from the same
+ * fixture card `ThreadSurface` itself still reads, so the two halves of the
+ * Line keep naming the same act — and the assertions below wait for hydration
+ * rather than reading synchronously.
+ */
+vi.mock("../src/api/trays", async (importOriginal) => {
+  const { TRAY: cards } = await import("../src/fixtures/estate");
+  const card = cards.find((c) => c.kind === "certified")!;
+  const composed = {
+    tray_id: card.id,
+    approval_id: card.id,
+    checkpoint_key: "before_outbound_payout_above_band",
+    what_happened: { sentence: card.because, object: null },
+    recommendation: null,
+    paths: card.paths.map((p, i) => ({
+      key: i === 0 ? "approve" : "decline",
+      label: p.label,
+      consequence: i === 0 ? `${card.title} proceeds.` : `${card.title} does not happen.`,
+      cost: null,
+    })),
+    certified: {
+      component: "certified.payment@1",
+      tier: "T2",
+      props: {
+        approval_id: card.id,
+        checkpoint_key: "before_outbound_payout_above_band",
+        summary: card.title,
+        amount: 184000,
+        currency: null,
+        tier: "T2",
+      },
+      manifest_hash: "sha256:8f2c1a440b7e4d519a632c8e5f0a7b1988f0c1de2b4a7690",
+    },
+    sla: { seconds_left: 2040, on_timeout: "AUTO_DENY" },
+    prepared_by: { entity_id: card.raisedById, name: card.raisedBy },
+  };
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    fetchTrayList: () => Promise.resolve([composed]),
+    respondToApproval: () => Promise.resolve(),
+  };
+});
 
 import { TRAY } from "../src/fixtures/estate";
 import { MORNING } from "../src/fixtures/morning";
@@ -98,13 +144,24 @@ describe("the Thread's certified section is the Tray itself", () => {
     }
   });
 
-  it("renders the Tray subtree the desk renders, to the byte", () => {
+  it("renders the Tray subtree the desk renders, to the byte", async () => {
     const desk = render(<TraySurface onEcho={vi.fn()} />);
+    /* Hydrated, not scaffolded: two scaffolds are byte-equal for free, which
+       would make this assertion pass without comparing any of the Tray's real
+       markup. Settled on the scaffold being GONE rather than on `.tr-list`
+       appearing — the scaffold draws ghost cards inside a `.tr-list` of its
+       own, so that condition was satisfied by the very state it meant to skip. */
+    await waitFor(() =>
+      expect(desk.container.querySelector('[data-lifecycle="scaffold"]')).toBeNull(),
+    );
     const atTheDesk = desk.container.querySelector(".tr")?.outerHTML;
     expect(atTheDesk).toBeDefined();
     cleanup();
 
     const line = render(<ThreadSurface onEcho={vi.fn()} />);
+    await waitFor(() =>
+      expect(line.container.querySelector('[data-lifecycle="scaffold"]')).toBeNull(),
+    );
     const onTheLine = line.container.querySelector(".tr")?.outerHTML;
 
     expect(
@@ -199,21 +256,51 @@ describe("the step-up bar", () => {
     );
   });
 
-  it("goes when the command it stands under is settled", () => {
-    const { container } = render(<ThreadSurface onEcho={vi.fn()} />);
-    expect(container.querySelector(".th-step")).not.toBeNull();
+  /**
+   * The bar must not stand under an act that is already done — a ceremony
+   * offered for a settled command is the clearest way to teach someone that
+   * the ceremony is decorative.
+   *
+   * Driven through a stand-in Tray rather than the real one, and that is the
+   * assertion sharpening rather than weakening. `ThreadSurface.relay` decides
+   * "settled" by looking for the card's **id inside the echo sentence**, which
+   * is what the fixture-era Tray emitted (`"Release the payment · HITL-8841"`).
+   * Part W's Tray echoes the sentence §8 asks for — the user's own words, past
+   * tense — and carries the id on `action_ref.params.subject`, where an id
+   * belongs. So this test isolates the Thread's own relay, which is what it was
+   * always about, instead of coupling it to the Tray's echo copy.
+   *
+   * **The coupling itself is a live defect**, recorded here rather than hidden:
+   * against real data the Thread's bar names a *fixture* card while the Tray
+   * shows the estate's actual trays, so the two can name different acts. It
+   * closes when the Thread is wired — `ThreadSurface.tsx` says so itself.
+   */
+  it("goes when the command it stands under is settled", async () => {
+    vi.resetModules();
+    vi.doMock("../src/surfaces/TraySurface", () => ({
+      TraySurface: ({ onEcho }: { onEcho: (msg: string) => void }) => (
+        <button className="tr-path" onClick={() => onEcho(`approved ${CERTIFIED.id}`)}>
+          {CERTIFIED.paths.find((p) => p.rank === "certified")!.label}
+        </button>
+      ),
+    }));
 
-    const goldPath = CERTIFIED.paths.find((p) => p.rank === "certified")!;
-    const button = [...container.querySelectorAll("button.tr-path")].find((b) =>
-      b.textContent?.includes(goldPath.label),
-    );
-    expect(button, `no path button for "${goldPath.label}"`).toBeDefined();
-    fireEvent.click(button as HTMLElement);
+    try {
+      const { ThreadSurface: Fresh } = await import("../src/line/ThreadSurface");
+      const { container } = render(<Fresh onEcho={vi.fn()} />);
+      expect(container.querySelector(".th-step")).not.toBeNull();
 
-    expect(
-      container.querySelector(".th-step"),
-      "a ceremony left standing under an act that is already done",
-    ).toBeNull();
+      fireEvent.click(container.querySelector("button.tr-path") as HTMLElement);
+
+      expect(
+        container.querySelector(".th-step"),
+        "a ceremony left standing under an act that is already done",
+      ).toBeNull();
+    } finally {
+      cleanup();
+      vi.doUnmock("../src/surfaces/TraySurface");
+      vi.resetModules();
+    }
   });
 
   it("says in words, not only in colour, whether this browser can raise it", () => {
@@ -261,11 +348,13 @@ describe("the Thread's own content", () => {
     expect(card!.querySelector(".th-fig-val")?.textContent).toBe(withFigure.figure.value);
   });
 
-  it("puts one heading at the top of its outline, and it is the Tray's", () => {
+  it("puts one heading at the top of its outline, and it is the Tray's", async () => {
     const { container } = render(<ThreadSurface onEcho={vi.fn()} />);
-    const headings = [...container.querySelectorAll("h1")];
+    // The Tray's `<h1>` arrives with its data (D7 §3.1) — the scaffold is
+    // structure, and a heading with nothing in it would be a claim.
+    await waitFor(() => expect(container.querySelectorAll("h1")).toHaveLength(1));
 
-    expect(headings).toHaveLength(1);
+    const headings = [...container.querySelectorAll("h1")];
     expect(headings[0]!.className).toContain("tr-title");
   });
 });

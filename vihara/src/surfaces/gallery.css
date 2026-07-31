@@ -280,12 +280,22 @@
   padding: var(--s-2) 1px;
 }
 
-/* ============================================================== THE CHAPTER */
+/* ============================================================== THE CHAPTER
+   One adopted decision, opened. It was "one season, told"; the season object
+   does not exist, and the decision does. */
 
 .ga-chapter-head {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
+}
+
+/* A decision has no persona, so it wears a struck seal rather than a bust —
+   art bible §7 direction C, the automatic fallback for an act of the estate. */
+.ga-chapter-seal {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--s-2);
 }
 
 .ga-chapter-name {
@@ -302,102 +312,14 @@
   max-width: 70ch;
 }
 
-.ga-after {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding-left: var(--s-4);
-  box-shadow: inset 1px 0 0 var(--rule);
-}
+/* `.ga-after` — "and afterwards" — went with the season it belonged to: a
+   period's consequence is editorial, and nothing on the platform writes one.
 
-.ga-after-text {
-  font-size: var(--text-sm);
-  line-height: var(--lh-relaxed);
-  color: var(--fg-muted);
-  max-width: 70ch;
-}
-
-/* ---------------------------------------------------------- the monuments */
-
-.ga-mons {
-  display: flex;
-  flex-direction: column;
-}
-
-.ga-mon {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: var(--s-4);
-  align-items: start;
-  padding: var(--s-4) 0;
-  box-shadow: inset 0 -1px 0 var(--rule-faint);
-}
-
-.ga-mon:last-child {
-  box-shadow: none;
-}
-
-.ga-mon-well {
-  width: 52px;
-  height: 52px;
-}
-
-/* A dismantled monument is past, so its mark drains — the same material as the
-   colleagues on the wall and as the twin. */
-.ga-mon-well[data-past] {
-  background: var(--ink-900);
-}
-
-.ga-mon-text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  min-width: 0;
-}
-
-.ga-mon-name {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-  font-family: var(--font-display);
-  font-size: var(--text-base);
-  color: var(--fg);
-}
-
-/* The certified medallion — the only gold this surface spends on content, and it
-   spends it on the one meaning gold has here. */
-.ga-medallion {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  color: var(--on-accent);
-}
-
-.ga-mon-what {
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  color: var(--fg-muted);
-  max-width: 66ch;
-}
-
-.ga-mon-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--fg-subtle);
-}
-
-.ga-mon-kind {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
+   `.ga-mon*` and `.ga-medallion` went with the monuments. A monument was a
+   thing raised by a certified act, and the Resolution row keeps no stamp saying
+   a ceremony happened — so the medallion had nothing to attach to, and gold
+   spent on a guess is the one thing §2.1 will not have. The decisions are the
+   spine now, and they carry no seal of approval this screen awarded itself. */
 
 .ga-empty {
   font-family: var(--font-body);
@@ -682,117 +604,50 @@
   max-width: 68ch;
 }
 
-/* ============================================================= THE MANDATES */
+/* ============================================================= THE MANDATES
 
-.ga-mandates {
-  display: flex;
-  flex-direction: column;
-}
+   `.ga-mandate*` and the whole `.ga-version*` / `.ga-diff*` ledger are gone.
 
-.ga-mandate {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4) 0;
-  box-shadow: inset 0 -1px 0 var(--rule-faint);
-}
+   The ledger is the harder loss and it is worth naming: the SEGA version
+   history was this wall's best idea — every mandate diffable, one flip away —
+   and **there is no read for it.** `GET /ai/tenant/records` serves the current
+   row and `TenantRecordOut` carries a version *number*; nothing serves the
+   versions themselves. A diff panel would have had to compose the history it
+   was displaying. The mandates now live inside the bets panel, which is where
+   the one door the platform does have (`reviews-due`) puts them. */
 
-.ga-mandate:last-child {
-  box-shadow: none;
-}
+/* `.ga-acts` is gone with the two controls it held — "walk back to R-14" and
+   the twin-run chip. Both echoed and opened nothing: the Gallery has no route
+   to the Glasshouse and no read for a proposition, so the lineage and the run
+   are printed as facts. An echo for an act that did not happen is worse than
+   no affordance (the Terrace settled this for the estate). */
 
-.ga-mandate-top {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-}
-
-.ga-mandate-id {
-  font-size: 11px;
-  color: var(--fg-subtle);
-}
-
-.ga-mandate-title {
-  font-size: var(--text-base);
-  color: var(--fg);
-  margin-right: auto;
-}
-
-.ga-mandate-meta {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1.7;
-  color: var(--fg-subtle);
-  max-width: 70ch;
-}
-
-.ga-acts {
-  display: flex;
+/* A review that has come due is the one thing in this room waiting on the
+   owner, which is the one meaning gold carries (§2.1) — and it is the only
+   gold on the surface now that the certified medallion has gone. */
+.ga-due {
+  display: inline-flex;
   align-items: center;
   gap: var(--s-2);
-  flex-wrap: wrap;
+  color: var(--gold-300);
 }
 
-.ga-acts .m-btn {
-  min-height: 30px;
-  padding: 0 var(--s-3);
-  font-size: var(--text-xs);
+/* Where a skeleton's bars sit while a panel's own read is in flight. A well
+   first, bars inside it: `vh-skeleton` over the raw canvas is a ~6/255 delta
+   and would draw nothing at all. */
+.ga-ghost-well {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
 }
 
-/* ------------------------------------------------------- the version ledger */
-
-.ga-versions {
+.ga-scaffold-card {
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-  padding: var(--s-3) var(--s-4);
-}
-
-.ga-version {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.ga-version + .ga-version {
-  padding-top: var(--s-3);
-  box-shadow: inset 0 1px 0 var(--rule-faint);
-}
-
-.ga-version-head {
-  font-size: 10px;
-  color: var(--fg-subtle);
-}
-
-/* A diff is signed, not coloured: sage and terracotta mean good and bad, and a
-   removed line is neither. The sign is the word. */
-.ga-diff {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
-  gap: var(--s-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.ga-diff[data-op="del"] {
-  color: var(--fg-subtle);
-}
-
-/* The rule is on the text and not on the row: a decoration set on an ancestor
-   cannot be cancelled by a descendant, and a struck-through "−" is a smudge. */
-.ga-diff[data-op="del"] > span:last-child {
-  text-decoration: line-through;
-  text-decoration-color: var(--fg-faint);
-}
-
-.ga-diff[data-op="add"] {
-  color: var(--fg);
-}
-
-.ga-diff-sign {
-  color: var(--fg-faint);
+  padding: var(--s-5) var(--s-4);
+  border-radius: var(--r-sm);
 }
 
 /* =========================================================== COLLEAGUES PAST */
@@ -880,13 +735,5 @@
   .ga-pair-row {
     grid-template-columns: 60px minmax(0, 1fr) auto;
     gap: var(--s-2);
-  }
-  .ga-mon {
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: var(--s-3);
-  }
-  .ga-mon-well {
-    width: 44px;
-    height: 44px;
   }
 }

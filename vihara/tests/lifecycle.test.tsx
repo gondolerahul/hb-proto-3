@@ -63,6 +63,105 @@ vi.mock("../src/fixtures/talent", async (importOriginal) => ({
   CANDIDATES: [],
 }));
 
+/* --------------------------------------------------------------------------
+   The empty responses, part W edition.
+
+   As each of the seven stops reading a module constant and starts reading the
+   network, emptying its fixture stops producing the empty case — the surface
+   simply ignores the fixture. So a wired surface gets its endpoint mocked to
+   an empty response here instead, and the fixture mock above stays for the
+   ones that are still unwired. The assertions below wait rather than reading
+   synchronously, which holds for both: a surface that renders its empty state
+   on the first pass satisfies a `waitFor` immediately.
+
+   Add one line per surface as it is wired. The Tray is the first.
+   -------------------------------------------------------------------------- */
+
+vi.mock("../src/api/trays", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchTrayList: () => Promise.resolve([]),
+}));
+
+/* The Boardroom reads three collections; the empty case is all three empty.
+   `fetchBusinessKpis` is mocked too because an unmocked one reaches axios and
+   turns this file's empty case into a *failure* case — which is a different
+   designed state and would pass this test for the wrong reason. */
+vi.mock("../src/api/strategy", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchBusinessKpis: () => Promise.resolve([]),
+}));
+vi.mock("../src/api/tenant", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchRecords: () => Promise.resolve([]),
+}));
+
+/* The Glasshouse: an estate that has never run a twin. */
+vi.mock("../src/api/twin", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchScenarios: () => Promise.resolve([]),
+}));
+
+/* The Library: nothing has been uploaded and nothing has been written. */
+vi.mock("../src/api/library", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchDocuments: () => Promise.resolve([]),
+}));
+
+/* The Dossier: nobody has been hired. `fetchEntities` is the roster read, and
+   emptying it is the whole empty case — the dossier itself is never requested,
+   because there is no colleague to request one for. */
+vi.mock("../src/api/talent", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchEntities: () => Promise.resolve([]),
+}));
+
+/* The Talent Office reads three seams, not one. Part W wired it to E4's brief
+   and past-case reads, and `fetchEntities` moved to `api/entities` — so mocking
+   only `api/talent` left two of the three reaching axios, and the surface drew
+   its *failure* state while this file asserted its *empty* one. Both are
+   designed and they are not interchangeable: "no candidates came back" and "we
+   could not ask" are different sentences, and a test that accepts either is
+   testing neither. */
+vi.mock("../src/api/talentBrief", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  /* The empty case is the SHAPE with nothing in it, not `[]`. Both reads answer
+     an object carrying its own `absent` list, and returning a bare array here
+     crashed `Office` on `briefs.briefs.length` — a mock that is the wrong shape
+     tests the surface against a response the server cannot send. */
+  fetchBriefs: () => Promise.resolve({ briefs: [], absent: [] }),
+  fetchPastCases: () =>
+    Promise.resolve({
+      as_of: "2026-07-31T00:00:00Z",
+      cases: [],
+      replayable_means: "a case is replayable when the twin can materialise its window",
+      max_window_days: 30,
+      absent: [],
+    }),
+}));
+
+vi.mock("../src/api/entities", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchEntities: () => Promise.resolve([]),
+}));
+
+/* The Gallery reads four things and every one of them is empty on a company
+   with no history. `fetchSeasonMaterial` is mocked whole rather than through
+   its two parts: it composes `fetchRecords` and `fetchKpiHistory`, and the
+   second would otherwise reach axios and turn this file's *empty* case into a
+   *failure* case — a different designed state that would pass for the wrong
+   reason. The spread keeps `firstMeasurableOn`, which is a pure derivation the
+   surface still needs. */
+vi.mock("../src/api/gallery", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchSeasonMaterial: () =>
+    Promise.resolve({
+      resolutions: [],
+      history: { from: "2026-05-02", to: "2026-07-31", series: [] },
+    }),
+  fetchAlumni: () => Promise.resolve([]),
+  fetchReviewsDue: () => Promise.resolve([]),
+}));
+
 import { Empty } from "../src/lifecycle/Empty";
 import { Failed } from "../src/lifecycle/Failed";
 import { Bar, Lines, Scaffold } from "../src/lifecycle/Scaffold";
@@ -127,8 +226,14 @@ const SEVEN: [string, () => JSX.Element, string][] = [
   ["The Dossier", () => <DossierSurface onEcho={vi.fn()} />, "not hired anyone yet"],
   ["The Glasshouse", () => <GlasshouseSurface onEcho={vi.fn()} />, "Nothing has been tried in here"],
   ["The Library", () => <LibrarySurface onEcho={vi.fn()} />, "has read nothing yet"],
-  ["The Gallery", () => <GallerySurface onEcho={vi.fn()} />, "no seasons behind it yet"],
-  ["The Talent Office", () => <TalentSurface onEcho={vi.fn()} />, "No candidates have come back"],
+  /* Was "no seasons behind it yet". Part W found that **the platform stores no
+     season object at all**, so the surface no longer counts them — the walk is
+     the adopted decisions, and its empty state is about those. */
+  ["The Gallery", () => <GallerySurface onEcho={vi.fn()} />, "Nothing has been decided here yet"],
+  /* Was "No candidates have come back". Part W wired the room to E4's brief
+     read, and a brief is the precondition for a shortlist — so the empty state
+     of this room is now about the ask, not about the answers. */
+  ["The Talent Office", () => <TalentSurface onEcho={vi.fn()} />, "have not asked for a colleague yet"],
 ];
 
 describe("L1 — an empty collection is a state, not a TypeError", () => {
@@ -139,24 +244,32 @@ describe("L1 — an empty collection is a state, not a TypeError", () => {
     expect(() => render(mount())).not.toThrow();
   });
 
-  it.each(SEVEN)("%s says what the emptiness means", (_name, mount, phrase) => {
+  it.each(SEVEN)("%s says what the emptiness means", async (_name, mount, phrase) => {
+    /* `waitFor` rather than a synchronous read, for the reason given beside
+       the API mocks above: a wired surface paints its scaffold first (D7 §3.1)
+       and its empty state on the next tick, and an unwired one satisfies this
+       on the first pass. One assertion covers both sides of part W. */
     const { container } = render(mount());
-    expect(container.textContent).toContain(phrase);
+    await waitFor(() => expect(container.textContent).toContain(phrase));
   });
 
-  it("the Tray reaches the copy it already carried", () => {
+  it("the Tray reaches the copy it already carried", async () => {
     /* The sharpest case in the readiness report: `TraySurface` has said
        "Nothing needs you." since it was written, eleven lines below the
        `TRAY[0]!` that stopped it ever being rendered. */
     const { container } = render(<TraySurface onEcho={vi.fn()} />);
-    expect(container.querySelector(".tr-title")?.textContent).toBe("Nothing needs you.");
+    await waitFor(() =>
+      expect(container.querySelector(".tr-title")?.textContent).toBe("Nothing needs you."),
+    );
   });
 
-  it("the Tray prints no figure where it has no figure", () => {
-    /* `Math.max()` of nothing is `-Infinity`. "oldest waited -Infinitym" is a
-       number nobody measured, which §7.1 forbids more strictly than it forbids
-       a blank. */
+  it("the Tray prints no figure where it has no figure", async () => {
+    /* `Math.min()` of nothing is `Infinity`. "soonest Infinitym" is a number
+       nobody measured, which §7.1 forbids more strictly than it forbids a
+       blank. (It was `Math.max()` and "oldest waited -Infinitym" before the
+       Tray was wired; the trap is the same one either way round.) */
     const { container } = render(<TraySurface onEcho={vi.fn()} />);
+    await waitFor(() => expect(container.querySelector(".tr-title")).not.toBeNull());
     expect(container.textContent).not.toContain("Infinity");
     expect(container.textContent).not.toContain("NaN");
     expect(container.querySelector(".tr-head-meta")).toBeNull();
