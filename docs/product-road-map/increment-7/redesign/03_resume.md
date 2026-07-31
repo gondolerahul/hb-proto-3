@@ -2,7 +2,7 @@
 
 > **Start-of-session document.** HANDOFF.md is the whole programme; this is the
 > hundred lines that matter for the redesign. Written 2026-07-30.
-> **Branch:** `inc7/redesign`, **30 commits** ahead of `master`, working tree clean, **on no remote**.
+> **Branch:** `inc7/redesign`, **40 commits** ahead of `master`, working tree clean, **on no remote**.
 > **Read after this:** [00_redesign_charter.md](./00_redesign_charter.md) (**eight** locked decisions — D1–D4 and §3a's D5–D8) · [04_r4_readiness.md](./04_r4_readiness.md) (what measuring the tree found) · [02_prototype_r3a.md](./02_prototype_r3a.md) §5a–§5e (what was built and what verification found).
 
 > ## ⚠️ 2026-07-30 — THIS DOCUMENT WAS WRONG IN THREE PLACES, AND THEY ARE FIXED BELOW
@@ -18,88 +18,104 @@
 > Line was never rebuilt; charter **D6** rebuilt it as
 > [R-3c](./05_r3c_private_line.md).
 >
-> ### ✅ Since then, two rounds have landed
+> ### ✅ Since then: R-3c and **the whole of R-4** have landed
 >
-> * **R-4 part G — the gates are honest again.** Both red gates green, the three
->   missing gate scripts restored, and **CI exists** (`.github/workflows/gates.yml`)
->   — which is the actual fix, because nothing had ever run a gate unless a human
->   typed it. Lint went green by moving the three.js modules to the path the rule
->   names, not by widening the rule.
-> * **R-3c — the eighteen are complete.** Thread, Morning Story and Pocket Desk
->   built; the PWA shell, service worker and second entry carried across.
+> * **R-3c — the eighteen are complete.** Thread, Morning Story, Pocket Desk, plus the PWA shell and a second Vite entry.
+> * **R-4 — all nine parts.** Gates honest + CI (G) · auth entry (A) · ⌘K navigator and `pushState` URLs (N) · fetch lifecycle (L) · step-up ceremony (C) · every surface wired (W) · the missing client wrappers (P) · the live SSE estate (S) · four new backend endpoints (E, incl. E3's colleague dossier and E4's talent brief).
+> * **Nothing under `src/surfaces/`, `src/line/` or `src/shell/` reads `src/fixtures/`.** The fixtures stay on disk for tests.
 >
-> **Now measured, all green:** tsc · lint · **vitest 65** · **sweep 19/19** ·
-> build with **two entries** (index 139.5 KB gz, line 87.8 KB gz, 220 each) ·
-> `gen:api` no drift · token mirror · backend **2242** unit + 2 parity ·
-> typecheck 345.
+> **✅ Proven live 2026-07-31: `all 18 surfaces clean`**, three consecutive sweeps
+> against a real backend and a real session — the first end-to-end browser proof
+> of this increment. It found three defects 384 green unit tests could not: an
+> unbounded SSE stream that froze the API under `--reload`, a sweep that was
+> measuring the scaffold, and **the Line having no session gate at all**. All
+> three fixed; see [06](./06_r4_wiring.md) §10d.
 >
-> **Next: R-4 parts A · N · L · C · W · P · S, and the E backend track**
-> ([06_r4_wiring.md](./06_r4_wiring.md)). Part G is done.
+> **Next is R-5**, the honesty pass: re-walk the parity register against the
+> rebuilt app (v1.4), burn down `tests/motion.test.ts`'s frozen debt list
+> (`width` in `standup.css` first — it is the only layout-triggering one), and
+> decide onboarding staging + `world.ghost`, whose retirement claim in parity
+> row 4 is currently **false in fact**.
 
 ---
 
 ## 1. Where this stands in one paragraph
 
-Increment 7 shipped all eight workstreams and the **frontend was then rejected on
-design** at owner review (2026-07-30). The backend half is untouched and still
-good. `vihara/` was preserved as `vihara-review-rejected/` and a new `vihara/` was
-built from the visual layer up. **All fifteen product surfaces plus the shell now
-stand**, at pixel-final quality, with the owner's first review round implemented.
-What remains is **R-4: wire it to the backend.**
+Increment 7 shipped all eight workstreams and the **frontend was rejected on
+design** at owner review (2026-07-30). The backend was untouched. `vihara/` was
+preserved as `vihara-review-rejected/` and a new `vihara/` was built from the
+visual layer up. **All eighteen surfaces plus the shell now stand and are wired
+to the API** — R-3c added the Private Line, R-4 wired everything — and the whole
+thing is **proven live: `all 18 surfaces clean`**. What remains is **R-5**, the
+honesty pass, plus the owner-side legs.
 
 ## 2. Run it
+
+```bash
+cd /home/rahul/workspace/hb-proto-3/backend && .venv/bin/python -m uvicorn src.main:app --port 8000
+```
 
 ```bash
 cd /home/rahul/workspace/hb-proto-3/vihara && npm run dev
 ```
 
-<http://localhost:4044> · keys `1`–`9` pick a surface, past nine click the scaffold
-bottom-right · `⌘K` palette · `⌘↑`/`⌘↓` the depth ladder · on the Terrace, drag to
-pan, scroll to zoom, double-click to reframe.
+<http://localhost:4044> — the estate, behind a login · <http://localhost:4044/line.html> — the Line.
+`⌘K` is the navigator, `⌘↑`/`⌘↓` the depth ladder, and every surface has a URL.
 
-**No backend needed.** Every surface reads `src/fixtures/`. That is R-4's whole job.
+**A backend is now required.** Nothing reads `src/fixtures/` except tests. Need an
+account?
+
+```bash
+cd backend && .venv/bin/python scripts/ensure_sweep_user.py
+```
+
+It prints the credentials and refuses to run against a non-local database.
+
+> ⚠️ **Do not run the API with `--reload` while a browser has the app open** unless
+> you are on a build with the bounded stream ([06](./06_r4_wiring.md) §10d). Before
+> that fix an open SSE connection made graceful shutdown hang forever, and the
+> backend stopped answering while still holding its port.
 
 ## 3. Gates, and how to run them
 
 ```bash
 cd vihara
 npx tsc --noEmit                  # strict + noUncheckedIndexedAccess
-npx vitest run                    # 28 tests
-npx vite build                    # shell must stay under 220 KB gz
-npm run lint                      # ⚠️ RED — 8 errors (see below)
-node scripts/sweep.mjs            # visits all 16 surfaces, needs npm run dev
+npm run lint                      # covers src AND tests
+npx vitest run                    # 384
+npm run build                     # both entries, each under its own 220 KB gz
+npm run gen:api && git diff --exit-code -- src/api/schema.d.ts   # contract drift
+npm run check:tokens              # the design-token mirror
 ```
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/unit -q   # ⚠️ RED — 4 failures
+cd backend
+.venv/bin/python scripts/typecheck_ai.py      # mypy --strict, 352 files
+.venv/bin/python -m pytest tests/unit tests/parity -q
 ```
 
-Last measured 2026-07-30: **tsc clean · vitest 28 · sweep 16/16 · build clean,
-shell 140.98 KB gz of the 220 budget** — and **two red gates that were not on this
-list**:
+**And the one that has caught what every other gate missed** — needs both servers up:
 
-* **`npm run lint` — 8 errors.** `.eslintrc.cjs` allowlists `src/renderers/world/`
-  and `src/components/world/` for three.js; the redesign's three.js lives in
-  `src/background/`, so the allowlist matches nothing. The *rule* still holds
-  (`vite.config.ts` still quarantines the chunk); its enforcement does not.
-* **`pytest tests/unit` — 4 failures**, all `test_genui_fixture_export.py`: the
-  cross-language wire gate, missing `vihara/tests/fixtures/*.ndjson` because they
-  lived in the tree that was replaced.
+```bash
+VIHARA_SWEEP_EMAIL=… VIHARA_SWEEP_PASSWORD=… node scripts/sweep.mjs
+```
 
-**Three gate scripts D3's salvage list named were not carried across:**
-`gen_api.mjs` (so `npm run gen:api` does not exist), `check_bundle_budget.mjs` (so
-the 220 KB budget is a guideline with no mechanism) and `sync_tokens.mjs`. Plus
-`axe-core`. R-4 part **G** restores all of them and adds CI.
+Last measured 2026-07-31, all green: **tsc · lint · vitest 384 · build clean
+(index 183.7, line 117.7 KB gz of 220 each) · no API drift · tokens match ·
+backend 2329 unit + 2 parity · typecheck 352 · sweep `all 18 surfaces clean`.**
 
-Four harnesses beyond the tests, and each one found a real defect — do not treat
+**CI runs all of it** (`.github/workflows/gates.yml`) except the sweep, which needs
+a browser and a live backend, and the integration suite, which needs Postgres and
+Redis. Both absences are recorded in the file.
+
+The harnesses beyond the tests — each one has found a real defect, so do not treat
 them as optional:
 
 | Script | What it is for |
 |---|---|
-| `sweep.mjs` | Every surface: console errors, page errors, empty bodies. Typecheck is not render |
-| `shoot_variants.mjs <out> "<nav label>" <name>` | The same surface under `prefers-reduced-motion` and at 720px. Found 165 lines of dead CSS |
-| `shoot_surface.mjs <out> <name> "<nav label>" [selector]` | One surface, optionally after a click |
-| `shoot_flow.mjs` / `shoot_click.mjs` | Multi-beat flows (the Boardroom's tabling exchange) |
+| `sweep.mjs` | All 18 surfaces: console errors, page errors, empty bodies, horizontal spill. **Typecheck is not render, and jsdom is not a browser** |
+| `shoot_variants.mjs` | The same surface under `prefers-reduced-motion`, at 720px and at 390px. Found 165 lines of dead CSS |
+| `shoot_surface.mjs` / `shoot_flow.mjs` / `shoot_click.mjs` | One surface, optionally after a click; multi-beat flows |
 
 ## 4. The four locked decisions — do not re-litigate
 
