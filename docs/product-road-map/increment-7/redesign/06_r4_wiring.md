@@ -430,6 +430,62 @@ seen once during a concurrent run and has not reproduced in five subsequent runs
 including under load; it is recorded rather than called fixed. `useResource`'s
 Glasshouse loading exemption is still unexercised.
 
+## 10d. The first live proof — ✅ 2026-07-31. **`all 18 surfaces clean`.**
+
+Every round before this one ended with the same honest limit: *nothing has been
+run against a live backend*. That is now closed, and closing it found three
+defects that 384 green unit tests could not.
+
+**The blocker was a missing account, so the account is now a script.**
+`sweep.mjs` needs credentials and aborts loudly without them — correctly. But
+*which* account was documented nowhere, so the sweep has been unrunnable since
+the app went behind a session gate, and with it every browser-level proof this
+increment could have had. `backend/scripts/ensure_sweep_user.py` mints one
+on demand and refuses to run against a non-local database, because a password in
+a document is a password somebody eventually creates in production. Its first
+version used `sweep@vihara.local` and could never log in: `.local` is a reserved
+TLD and `EmailStr` refuses it — a 422 from the validator, not a 401.
+
+**Defect 1 — the SSE stream had no lifetime, and it froze the API.**
+`stream_events` ran `while True` with a `max_ticks` bound that only tests passed.
+uvicorn's graceful shutdown waits for open connections, so **once any browser had
+the app open, `--reload` — the command `start_services.sh` actually runs — hung
+on "Waiting for connections to close" forever**, and the backend stopped
+answering while still holding its port. I hit this by editing a file. It is
+bounded at ten minutes now; the client already owns a reconnect ladder with
+jitter, so a close is a path it exercises rather than an error it reports, and
+replay is snapshot-on-connect so nothing is lost across the seam.
+
+**Defect 2 — the sweep was measuring the scaffold.** It reported **EMPTY on
+fourteen surfaces that render perfectly in a browser**. Before part W the
+surfaces read module constants, so their content was in the first paint and a
+fixed dwell sufficed; now every one paints a scaffold and fills it a round-trip
+later. The harness now settles on `[data-lifecycle="scaffold"]` being gone —
+*the same lesson as the unit tests' settle conditions, one level up, and the
+fifth instance of this shape in the increment.*
+
+**Defect 3 — the Line had no session gate at all.** `line/main.tsx` mounted
+`LineApp` unconditionally, so its default tab fired reads with **no access
+token**: a 401 storm on The Line · Morning. Part A gave the estate a gate and the
+second entry never got one, because nothing in a mocked unit test can see it.
+`Session` now takes its destination as `children` — `main.tsx` hands it the
+estate, `line/main.tsx` hands it the Line — which also keeps the estate's fifteen
+surfaces out of the Line's budget, the entire reason the Line is a second HTML
+entry. Cost: **1.8 KB gz**, 115.9 → 117.7 of 220.
+
+**Measured, live:**
+
+* `all 18 surfaces clean` — three consecutive runs, against a real backend and a real session.
+* The cookie fix confirmed **on the wire**: `csrf_token … Path=/` beside `refresh_token … Path=/api/v1/auth`. The asymmetry is real, not just unit-tested.
+* The Shell's rail reads the tenant's actual name.
+* tsc · lint · **vitest 384** · build clean, index 183.7 · line 117.7 KB gz · `gen:api` no drift · tokens match · backend **2329** unit + 2 parity · typecheck 352.
+
+**What this still does not prove.** A real device, a real phone call, a push
+arriving as a tray, a fingerprint approving a payment — all owner-side, all in
+[15a_launch_protocols.md](../15a_launch_protocols.md). And the sweep walks a
+tenant with almost no data: it proves every surface *loads, hydrates and renders
+without error*, not that a busy estate looks right.
+
 ## 11. Gates
 
 R-4 is complete when:

@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getAccessToken, refreshAccessToken } from "../api/client";
 import { PreSession } from "./PreSession";
-import { Prototype } from "./Prototype";
-import { parseRoute, ROOT, surfaceOf } from "./routes";
 import { SESSION_ENDED, type SessionEnding } from "./session";
 import "./presession.css";
 
@@ -25,6 +23,16 @@ import "./presession.css";
  *     error boundary. The one thing this must never do is treat a cold visitor
  *     as a fault.
  *
+ *  2a. **The door is shared; what is behind it is not.** Both entries need the
+ *     same bootstrap, the same "a failed refresh is a state" rule and the same
+ *     login screen — the Line shipped without any of it and fired its first
+ *     reads with no token, which the sweep caught as a 401 storm on its default
+ *     tab. So the gate takes its destination as `children` rather than naming
+ *     one: `main.tsx` hands it the estate, `line/main.tsx` hands it the Line.
+ *     Importing `Prototype` here would have pulled the estate's fifteen surfaces
+ *     into the Line's own 220 KB budget, which is the entire reason the Line is
+ *     a second HTML entry and not a route.
+ *
  *  2. **The URL is the memory of where you were.** VP-01 forbids storage, and it
  *     turns out none is needed: N2 already puts the surface in the address bar,
  *     so an expiry leaves it there and `Prototype` reads it again after the next
@@ -39,7 +47,17 @@ import "./presession.css";
 
 type Phase = "bootstrapping" | "in" | "out";
 
-export function Session() {
+export interface SessionProps {
+  /** The app behind the door. */
+  children: ReactNode;
+  /** Where the session ended, for the "you will land back on…" line. The estate
+   *  reads it off the address bar; the Line has no depth ladder and no surface
+   *  URLs, so it passes nothing and the line is simply absent rather than
+   *  naming a room the phone does not have. */
+  placeOf?: () => string | null;
+}
+
+export function Session({ children, placeOf }: SessionProps) {
   const [phase, setPhase] = useState<Phase>("bootstrapping");
   /** Where the session ended, when it ended somewhere worth naming. */
   const [returningTo, setReturningTo] = useState<string | null>(null);
@@ -64,11 +82,10 @@ export function Session() {
       window.history.replaceState(null, "", "/");
       setReturningTo(null);
     } else {
-      const def = surfaceOf(parseRoute(window.location.pathname).surface);
-      setReturningTo(def.id === ROOT.id ? null : def.label);
+      setReturningTo(placeOf?.() ?? null);
     }
     setPhase("out");
-  }, []);
+  }, [placeOf]);
 
   useEffect(() => {
     const onEnded = (e: Event) => {
@@ -123,5 +140,5 @@ export function Session() {
     );
   }
 
-  return <Prototype />;
+  return <>{children}</>;
 }

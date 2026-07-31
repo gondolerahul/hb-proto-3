@@ -214,16 +214,21 @@ describe("the session gate (A2, A4)", () => {
       register: vi.fn(),
       logout: vi.fn(),
     }));
-    vi.doMock("../src/app/Prototype", () => ({ Prototype: () => <div>ESTATE-MOUNTED</div> }));
-
+    /* The destination is a prop now, not an import to stand in for: the Line
+       goes through this same gate and must not drag the estate's surfaces into
+       its bundle. A child rendered here would mean the gate let a cold visitor
+       past. */
     const { Session } = await import("../src/app/Session");
-    const { container, findByText } = render(<Session />);
+    const { container, findByText } = render(
+      <Session>
+        <div>ESTATE-MOUNTED</div>
+      </Session>,
+    );
     await findByText(/ENTER THE ESTATE/);
 
     expect(container.textContent).not.toMatch(/error|failed|something went wrong/i);
     expect(container.textContent).not.toContain("ESTATE-MOUNTED");
     vi.doUnmock("../src/api/client");
-    vi.doUnmock("../src/app/Prototype");
   });
 
   it("renders the estate when the refresh succeeds", async () => {
@@ -235,13 +240,27 @@ describe("the session gate (A2, A4)", () => {
       register: vi.fn(),
       logout: vi.fn(),
     }));
-    vi.doMock("../src/app/Prototype", () => ({ Prototype: () => <div>ESTATE-MOUNTED</div> }));
-
     const { Session } = await import("../src/app/Session");
-    const { findByText } = render(<Session />);
+    const { findByText } = render(
+      <Session>
+        <div>ESTATE-MOUNTED</div>
+      </Session>,
+    );
     expect(await findByText("ESTATE-MOUNTED")).toBeDefined();
     vi.doUnmock("../src/api/client");
-    vi.doUnmock("../src/app/Prototype");
+  });
+
+  it("gates the Line's entry too, not only the estate's", async () => {
+    /* The defect this closes: `line/main.tsx` mounted `LineApp` unconditionally,
+       so the Line's default tab fired its reads with no access token. Every unit
+       test passed — they mock the API — and the first live sweep found a 401
+       storm on The Line · Morning. Asserted at the source, because mounting the
+       real entry would `createRoot` into the document. */
+    const entry = readFileSync(path.join(SRC, "line", "main.tsx"), "utf8");
+    expect(entry).toMatch(/import\s*\{\s*Session\s*\}\s*from\s*"\.\.\/app\/Session"/);
+    expect(entry).toMatch(/<Session[\s>]/);
+    // And it must not reach the estate through the door it shares with it.
+    expect(entry).not.toContain("Prototype");
   });
 });
 

@@ -2,6 +2,16 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./design/index.css";
 import { Session } from "./app/Session";
+import { Prototype } from "./app/Prototype";
+import { parseRoute, ROOT, surfaceOf } from "./app/routes";
+
+/** The estate names the room you were in when the session ended — N2 already
+ *  put it in the address bar, so nothing needs storing. The Line has no surface
+ *  URLs and passes nothing. */
+function placeOfEstate(): string | null {
+  const def = surfaceOf(parseRoute(window.location.pathname).surface);
+  return def.id === ROOT.id ? null : def.label;
+}
 
 /**
  * The estate's entry.
@@ -21,6 +31,8 @@ if (!root) throw new Error("no #root");
 
 createRoot(root).render(
   <StrictMode>
-    <Session />
+    <Session placeOf={placeOfEstate}>
+      <Prototype />
+    </Session>
   </StrictMode>,
 );

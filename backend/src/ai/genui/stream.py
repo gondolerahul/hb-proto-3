@@ -38,6 +38,26 @@ from src.ai.genui.estate import estate_view
 
 STREAM_INTERVAL_SECONDS = 3.0
 
+# How long one SSE connection lives before it closes and invites a reconnect.
+#
+# The stream used to run `while True` with no bound, and the cost was not
+# theoretical: uvicorn's graceful shutdown waits for open connections, so once a
+# browser had the app open, `--reload` — the command `start_services.sh` actually
+# runs — hung on "Waiting for connections to close" forever, and the API stopped
+# answering while still holding its port. A code change could not be picked up
+# without killing the process by hand.
+#
+# A bound is right for more than that. Proxies and load balancers cut long
+# connections on their own schedule, so a stream that never ends is a stream
+# somebody else ends less gracefully; and the client already owns a reconnect
+# ladder with jitter (`sharedStream.ts`), so a close is a path it exercises
+# rather than an error it reports. Ten minutes is long enough that reconnects
+# are rare and short enough that a deploy is not blocked on one.
+#
+# Nothing is lost across the seam: replay is snapshot-on-connect, so the first
+# frame after a reconnect is the whole estate.
+STREAM_MAX_SECONDS = 600.0
+
 #: Sampled event types — a newer value supersedes a missed one.
 SAMPLED = ("traffic", "pulse", "envelope.burn")
 
@@ -136,6 +156,11 @@ async def stream_events(
     reader = read_estate or _read_estate_fresh
     prev: dict[str, Any] | None = None
     tick = 0
+    # `max_ticks` is the tests' bound; this is production's. Whichever comes
+    # first ends the stream.
+    ticks_allowed = max_ticks
+    if ticks_allowed is None and interval > 0:
+        ticks_allowed = max(1, int(STREAM_MAX_SECONDS / interval))
     while True:
         cur = await reader(company_id)
         events = diff_estate(prev, cur)
@@ -147,7 +172,7 @@ async def stream_events(
             yield ": keepalive\n\n"
         prev = cur
         tick += 1
-        if max_ticks is not None and tick >= max_ticks:
+        if ticks_allowed is not None and tick >= ticks_allowed:
             return
         await asyncio.sleep(interval)
 

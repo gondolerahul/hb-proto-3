@@ -130,6 +130,30 @@ async function record(label, problems) {
 /* ======================================================== the estate · 1600px */
 
 await page.setViewport({ width: 1600, height: 1000, deviceScaleFactor: 1 });
+/** Wait for the surface to HYDRATE, not merely to mount.
+ *
+ *  Before R-4 part W the surfaces read module constants, so their content was
+ *  on screen in the first paint and a fixed dwell was enough. Now every one of
+ *  them paints a scaffold and fills it a round-trip later — so a dwell samples
+ *  whatever happened to be there, and the walk reported EMPTY on fourteen
+ *  surfaces that render perfectly in a browser.
+ *
+ *  The condition is the scaffold being GONE, for the same reason the unit tests
+ *  settle that way: waiting for a content class is satisfied by a scaffold that
+ *  draws one. A surface still scaffolding after this budget is a genuine
+ *  finding, so the timeout falls through to the emptiness check rather than
+ *  throwing. */
+async function hydrated(page) {
+  await page
+    .waitForFunction(
+      () => document.querySelector('[data-lifecycle="scaffold"]') === null,
+      { timeout: 15000, polling: 120 },
+    )
+    .catch(() => undefined);
+  // One frame past hydration, so React has committed the filled tree.
+  await new Promise((r) => setTimeout(r, 250));
+}
+
 await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 60000 });
 
 // The gate resolves to one of two screens. Waiting for either — rather than for
@@ -185,7 +209,7 @@ for (const surface of surfaces) {
   // surface sweeps the deep link and the session bootstrap along with the render.
   await page.goto(`${BASE}${surface.href}`, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForSelector(".sh-body, .st, .ps-card", { timeout: 30000 }).catch(() => undefined);
-  await new Promise((r) => setTimeout(r, 1500));
+  await hydrated(page);
   await record(surface.label, await problemsOf({ overflow: false }));
 }
 
@@ -202,7 +226,7 @@ await page.goto(`${BASE}/line.html`, { waitUntil: "domcontentloaded", timeout: 6
 // attaches is a click that silently does nothing, after which the sweep would
 // report a clean surface it had never actually opened.
 await page.waitForSelector(".ln-tabs .ln-tab", { timeout: 30000 });
-await new Promise((r) => setTimeout(r, 1200));
+await hydrated(page);
 
 const tabs = await page.evaluate(() =>
   [...document.querySelectorAll(".ln-tab .ln-tab-label")].map((n) => n.textContent.trim()),
@@ -215,7 +239,7 @@ for (const tab of tabs) {
     );
     btn?.click();
   }, tab);
-  await new Promise((r) => setTimeout(r, 1500));
+  await hydrated(page);
   await record(`The Line · ${tab}`, await problemsOf({ overflow: true }));
 }
 

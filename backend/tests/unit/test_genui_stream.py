@@ -154,3 +154,57 @@ async def test_the_loop_snapshots_then_diffs_then_keeps_alive():
     assert "event: beacon.raised" in frames[0]
     assert any(frame == ": keepalive\n\n" for frame in frames)
     assert "event: beacon.cleared" in joined
+
+
+# ── the stream ends, so a deploy is not blocked on a browser tab ─────────────
+
+def test_the_production_stream_is_bounded():
+    """R-4 regression. `stream_events` ran `while True` with no bound, and
+    uvicorn's graceful shutdown waits for open connections — so once any browser
+    had the app open, `--reload` (what `start_services.sh` runs) hung on
+    "Waiting for connections to close" indefinitely and the API stopped
+    answering while still holding its port.
+
+    Asserted on the derived tick budget rather than by running the loop for ten
+    minutes: the property is that production gets a bound at all, and that the
+    bound is the wall-clock one rather than a tick count somebody has to keep in
+    step with the interval.
+    """
+    from src.ai.genui.stream import STREAM_INTERVAL_SECONDS, STREAM_MAX_SECONDS
+
+    assert STREAM_MAX_SECONDS > 0
+    ticks = int(STREAM_MAX_SECONDS / STREAM_INTERVAL_SECONDS)
+    # Long enough that reconnects are rare, short enough that a deploy is not
+    # held hostage by one open tab.
+    assert 60 <= ticks <= 1000
+
+
+def test_the_stream_actually_stops_without_max_ticks(monkeypatch):
+    """The bound is exercised, not merely declared. `max_ticks` stays None — the
+    tests' lever — so what stops this loop is the production budget itself.
+
+    The budget is wall-clock divided by interval, so a SMALL interval gives a
+    LARGE tick count; shrinking the wall-clock is the only way to make it quick.
+    """
+    import asyncio
+    import uuid
+
+    from src.ai.genui import stream as stream_module
+
+    monkeypatch.setattr(stream_module, "STREAM_MAX_SECONDS", 0.001)
+
+    async def read(_company: uuid.UUID) -> dict[str, object]:
+        return _estate()
+
+    async def drain() -> int:
+        frames = 0
+        async for _ in stream_module.stream_events(
+            uuid.uuid4(), interval=0.0001, read_estate=read
+        ):
+            frames += 1
+            if frames > 500:  # a runaway guard, not the assertion
+                raise AssertionError("the stream did not stop on its own")
+        return frames
+
+    frames = asyncio.run(drain())
+    assert frames > 0
