@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "../components/Icon";
 import { Room, type RoomItem } from "../world/Room";
 import { GradeSeal } from "./BoardroomSurface";
+import { Empty, useChoice } from "../lifecycle";
 import { PROMOTION_CHAIN, SCENARIOS, TWIN_SPEND, type Lever } from "../fixtures/glasshouse";
 import "./glasshouse.css";
 
@@ -31,9 +32,28 @@ import "./glasshouse.css";
  * cost the tenant chose to incur is a cost they are owed a number for.
  */
 export function GlasshouseSurface({ onEcho }: { onEcho: (msg: string) => void }) {
-  const [activeId, setActiveId] = useState(SCENARIOS[0]!.id);
+  /* L1: was `useState(SCENARIOS[0]!.id)` — a TypeError before render on an
+     estate that has never run a twin, which is every estate on its first day. */
+  const { chosen: scenario, chosenId: activeId, choose } = useChoice(SCENARIOS, (s) => s.id);
   const [levers, setLevers] = useState<Record<string, number>>({});
-  const scenario = SCENARIOS.find((s) => s.id === activeId) ?? SCENARIOS[0]!;
+
+  /* L2. Both panes, the ribbon, the shelf and the levers are all one scenario's
+     — there is no partial Glasshouse to draw, so with nothing on the shelf the
+     room says what it is for. It does not offer a "run one" act: nothing on
+     this surface starts a twin run, and a button that went nowhere would be a
+     worse answer than a sentence. */
+  if (scenario === undefined) {
+    return (
+      <section className="gh">
+        <Empty
+          alone
+          icon="trend"
+          title="Nothing has been tried in here yet."
+          body="The Glasshouse holds a drained copy of the estate, so a plan can be run against it without touching anything real. A scenario appears here once Pragya proposes one or you send one down from the Boardroom — until then there is nothing to compare the real against."
+        />
+      </section>
+    );
+  }
 
   const leverValue = (l: Lever) => levers[`${scenario.id}:${l.key}`] ?? l.twin;
   const touched = scenario.levers.some((l) => leverValue(l) !== l.twin);
@@ -159,7 +179,7 @@ export function GlasshouseSurface({ onEcho }: { onEcho: (msg: string) => void })
                 className="gh-card m-plate"
                 data-active={s.id === activeId || undefined}
                 onClick={() => {
-                  setActiveId(s.id);
+                  choose(s.id);
                   onEcho(`opened scenario ${s.id}`);
                 }}
               >

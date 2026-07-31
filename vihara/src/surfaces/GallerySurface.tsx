@@ -3,6 +3,7 @@ import { Icon } from "../components/Icon";
 import { Portrait } from "../components/Portrait";
 import { Seal } from "../components/Seal";
 import { GradeSeal } from "./BoardroomSurface";
+import { Empty, useChoice } from "../lifecycle";
 import {
   ALUMNI,
   GHOSTS,
@@ -12,7 +13,6 @@ import {
   SEASONS,
   STILL_SERVING,
   type Ghost,
-  type Season,
 } from "../fixtures/gallery";
 import "./gallery.css";
 
@@ -79,12 +79,34 @@ function compare(g: Ghost, predicted: number): { text: string; tone: "positive" 
 }
 
 export function GallerySurface({ onEcho }: { onEcho: (msg: string) => void }) {
-  const [seasonId, setSeasonId] = useState<string>(
-    (SEASONS.find((s) => s.current) ?? SEASONS[0]!).id,
+  /* L1: was `(SEASONS.find((s) => s.current) ?? SEASONS[0]!).id` — the same
+     assertion twice, once in the initialiser and once on the read, and a
+     TypeError before render on a company with no seasons behind it. "Which
+     season is open" is a preference over the collection, so `prefer` carries
+     the current-season intent rather than an index somebody has to keep true. */
+  const { chosen: season, choose } = useChoice(
+    SEASONS,
+    (s) => s.id,
+    (s) => s.current,
   );
   const [openLedger, setOpenLedger] = useState<string | null>(null);
 
-  const season: Season = SEASONS.find((s) => s.id === seasonId) ?? SEASONS[0]!;
+  /* L2. Every panel below is one season's, and the lead sentence counts seasons
+     — with none, the surface would open by telling a new company it has had
+     nothing happen to it. It says the useful thing instead. */
+  if (season === undefined) {
+    return (
+      <section className="ga">
+        <Empty
+          alone
+          icon="trend"
+          title="The company has no seasons behind it yet."
+          body="A season closes when enough changes at once that the period before it stopped describing the same company. Nothing has been raised, retired or predicted here yet, so there is no journey to walk — this room fills itself as the estate is used."
+        />
+      </section>
+    );
+  }
+
   const seasonIndex = SEASONS.findIndex((s) => s.id === season.id);
   const raised = MONUMENTS.filter((m) => m.seasonId === season.id);
   const nameOf = (id: string) => SEASONS.find((s) => s.id === id)?.name ?? id;
@@ -133,7 +155,7 @@ export function GallerySurface({ onEcho }: { onEcho: (msg: string) => void }) {
                   aria-checked={s.id === season.id}
                   data-told={!s.measured || undefined}
                   onClick={() => {
-                    setSeasonId(s.id);
+                    choose(s.id);
                     onEcho(`opened ${s.name.toLowerCase()}`);
                   }}
                 >

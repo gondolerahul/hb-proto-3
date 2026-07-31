@@ -164,6 +164,11 @@ app.include_router(talent_router, prefix="/api/v1")
 # Undercroft's consent bay). The tables shipped in trust001 behind no router.
 from src.ai.trust.router import router as consent_router
 app.include_router(consent_router, prefix="/api/v1")
+# Inc-7 D8 E3 — the colleague dossier (charter, competencies, authority). Its
+# own router rather than a route on the legacy /ai one: the read is a composed
+# projection with an honest-absence contract, and it is strict-typed.
+from src.ai.dossier.router import router as dossier_router
+app.include_router(dossier_router, prefix="/api/v1")
 # Inc-7 SEAM — the Vihara seams: registry, estate, stream, manifests, trays,
 # echo, push; plus Pragya's event channel (VG-07) and its echo fan-out.
 from src.ai.genui.router import router as genui_router

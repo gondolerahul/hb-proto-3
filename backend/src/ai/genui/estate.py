@@ -95,7 +95,11 @@ _CHANNEL_PREFIXES: tuple[tuple[str, str], ...] = (
     ("broadcast.", "broadcast"),
 )
 
-_ACTIVE_RUN_STATUSES = ("PENDING", "RUNNING")
+#: A run that has not finished. Public because the dossier read (D8 E3) counts
+#: the same thing for one colleague, and two definitions of "still running"
+#: would eventually disagree on the same screen.
+ACTIVE_RUN_STATUSES = ("PENDING", "RUNNING")
+_ACTIVE_RUN_STATUSES = ACTIVE_RUN_STATUSES
 
 
 # ── pure helpers (no DB — unit-tested directly) ──────────────────────────────

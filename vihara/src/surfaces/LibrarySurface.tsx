@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../components/Icon";
 import { Portrait } from "../components/Portrait";
 import { Seal } from "../components/Seal";
+import { Empty, useChoice } from "../lifecycle";
 import {
   COLLECTIONS,
   DOCS,
@@ -102,7 +103,10 @@ function StaleLamp({ state }: { state: Staleness }) {
 
 export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
   const [collection, setCollection] = useState<Collection>("uploads");
-  const [docId, setDocId] = useState<string>(DOCS[0]!.id);
+  /* L1: was `useState<string>(DOCS[0]!.id)` — a TypeError before render on a
+     library nobody has uploaded to, which is every library on day one. */
+  const { chosen: doc, choose } = useChoice(DOCS, (d) => d.id);
+  const docId = doc?.id;
   const [query, setQuery] = useState("");
   const [openCite, setOpenCite] = useState<string | null>(null);
   /** Marked superseded here, by hand, with no replacement named. */
@@ -119,7 +123,45 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
     );
   }, [collection, query]);
 
-  const doc: Doc = DOCS.find((d) => d.id === docId) ?? DOCS[0]!;
+  const citesBySection = useMemo(() => {
+    const map = new Map<number, Citation[]>();
+    if (doc === undefined) return map;
+    doc.citations.forEach((c) => {
+      const i = doc.sections.findIndex(
+        (s) => c.chunkIndex >= s.chunkFrom && c.chunkIndex <= s.chunkTo,
+      );
+      if (i < 0) return;
+      map.set(i, [...(map.get(i) ?? []), c]);
+    });
+    return map;
+  }, [doc]);
+
+  /* The landing. scrollIntoView rather than an animation — nothing here animates
+     a layout property, and the reduced-motion preference is honoured because a
+     smooth scroll is motion whatever fires it. */
+  useEffect(() => {
+    const row = openRow.current;
+    if (!row) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+  }, [openCite, docId]);
+
+  /* L2. Every column below is one document's, so with no documents there is no
+     partial library to draw. The copy names what an upload buys, because an
+     empty library is the one state where the room has to explain itself. */
+  if (doc === undefined) {
+    return (
+      <section className="li">
+        <Empty
+          alone
+          icon="document"
+          title="The estate has read nothing yet."
+          body="Anything you put here is chunked, indexed and quotable — a colleague answering a question can then cite the page it came from instead of asserting it. Nothing has been uploaded, and nothing has been written by a colleague either, so there is nothing to cite."
+        />
+      </section>
+    );
+  }
+
   const isMarked = markedStale.includes(doc.id);
   const isWithdrawn = withdrawn.includes(doc.id);
   const staleness: Staleness = isMarked ? "superseded" : doc.staleness;
@@ -136,29 +178,7 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
   const sectionOf = (c: Citation) =>
     doc.sections.findIndex((s) => c.chunkIndex >= s.chunkFrom && c.chunkIndex <= s.chunkTo);
 
-  const citesBySection = useMemo(() => {
-    const map = new Map<number, Citation[]>();
-    doc.citations.forEach((c) => {
-      const i = doc.sections.findIndex(
-        (s) => c.chunkIndex >= s.chunkFrom && c.chunkIndex <= s.chunkTo,
-      );
-      if (i < 0) return;
-      map.set(i, [...(map.get(i) ?? []), c]);
-    });
-    return map;
-  }, [doc]);
-
   const openSection = cite ? sectionOf(cite) : -1;
-
-  /* The landing. scrollIntoView rather than an animation — nothing here animates
-     a layout property, and the reduced-motion preference is honoured because a
-     smooth scroll is motion whatever fires it. */
-  useEffect(() => {
-    const row = openRow.current;
-    if (!row) return;
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    row.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
-  }, [openCite, docId]);
 
   const stillIndexing = DOCS.filter((d) => d.indexingNote !== null).length;
 
@@ -169,14 +189,17 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
   const needsYou = staleness === "superseded" && citedAfter.length > 0 && !isWithdrawn;
 
   function pickDoc(next: Doc) {
-    setDocId(next.id);
+    choose(next.id);
     setOpenCite(null);
   }
 
-  function openAt(c: Citation) {
+  /* An arrow rather than a `function`: a hoisted declaration could in principle
+     be called before the guard above, so TypeScript drops the narrowing on
+     `doc` inside one. The arrow is created after it and keeps it. */
+  const openAt = (c: Citation) => {
     setOpenCite(c.id);
     onEcho(`opened ${doc.filename} at page ${c.page}`);
-  }
+  };
 
   return (
     <section className="li">
@@ -238,10 +261,25 @@ export function LibrarySurface({ onEcho }: { onEcho: (msg: string) => void }) {
           </div>
 
           {shelf.length === 0 ? (
+            /* L2. Two different emptinesses, and they were one sentence before:
+               a filter that matched nothing is a fact about the query, and an
+               empty collection is a fact about the estate. Telling someone
+               "nothing matches that" when they have typed nothing is telling
+               them the wrong thing about their own library. */
             <p className="li-shelf-empty">
-              Nothing in this collection matches that. The box reads filenames
-              only — searching inside a document is retrieval’s work, and it
-              happens when you or a colleague asks a question.
+              {query.trim() === "" ? (
+                <>
+                  Nothing has been filed under this collection. The others above
+                  still have documents in them — the count beside each one is the
+                  whole of it.
+                </>
+              ) : (
+                <>
+                  Nothing in this collection matches that. The box reads filenames
+                  only — searching inside a document is retrieval’s work, and it
+                  happens when you or a colleague asks a question.
+                </>
+              )}
             </p>
           ) : (
             <ul className="li-docs">

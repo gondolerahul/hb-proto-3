@@ -1,24 +1,71 @@
-"""talent/router.py — the termination endpoint (DRIVER D7, VG-18).
+"""talent/router.py — the Talent Office's doors.
 
-A **plain governed act** by owner decision (11_driver.md §2.3): stopping
-a colleague must never be harder than hiring one, so there is no
-``enforce_*`` call here — deliberately, and R5's correspondence test
-would fail if one appeared without a certified surface.
+Termination (DRIVER D7, VG-18) is a **plain governed act** by owner
+decision (11_driver.md §2.3): stopping a colleague must never be harder
+than hiring one, so there is no ``enforce_*`` call here — deliberately,
+and R5's correspondence test would fail if one appeared without a
+certified surface.
+
+The two reads (D8 E4) are the brief and the exam. Both return an
+``absent`` block naming what the platform does not hold, because the
+region they feed must render a stated absence rather than a blank —
+see ``brief_read`` and ``past_cases`` for what each one cannot answer
+and why.
+
+Company-scoped from the session on every route, never from a parameter
+(D5 §2.2, the VG-05 rule): a cross-tenant read is not expressible here.
 """
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.ai.talent.brief_read import MAX_BRIEFS, brief_view
+from src.ai.talent.past_cases import MAX_CASES, past_cases_view
 from src.ai.talent.termination import terminate_colleague
 from src.auth.dependencies import get_current_user
 from src.auth.models import User
 from src.common.database import get_db
 
 router = APIRouter(prefix="/ai/talent", tags=["Talent"])
+
+
+@router.get("/brief")
+async def get_brief(
+    limit: int = Query(20, ge=1, le=MAX_BRIEFS),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """This company's hiring briefs, newest first (D8 E4).
+
+    A brief is the ``capability_build`` delegation that started the
+    Meta-Agent board — the subject the owner asked for, when, Pragya's
+    promised sentence and the board run. The conversation the surface
+    renders is **not** here: nothing marks a run of Pragya turns as a
+    brief, and ``absent`` says so.
+    """
+    return await brief_view(
+        db, cast(uuid.UUID, current_user.company_id), limit=limit)
+
+
+@router.get("/past-cases")
+async def get_past_cases(
+    limit: int = Query(20, ge=1, le=MAX_CASES),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """The exam: work this company has actually handled (D8 E4).
+
+    Each case is a consumed signal, the records it named, and the run
+    that answered it. ``replayable`` is TWIN's own window and backend
+    constraints evaluated at their most generous setting — and is
+    ``null``, with ``unknown_because``, where they cannot be evaluated.
+    """
+    return await past_cases_view(
+        db, cast(uuid.UUID, current_user.company_id), limit=limit)
 
 
 @router.get("/colleagues-past")

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Background } from "../background/Background";
+import { SurfaceBoundary } from "../lifecycle";
 import { Shell, DEPTH_LABELS, type Depth } from "../shell/Shell";
 import { Palette, type PaletteItem } from "../shell/Palette";
 import { StillSurface } from "../surfaces/StillSurface";
@@ -180,8 +181,12 @@ export function Prototype() {
       <Background intensity={def.intensity} />
 
       {route.surface === "still" ? (
-        // Depth 0 has no chrome, because it *is* the chrome (D6 §2).
-        <StillSurface onDescend={() => goTo("terrace")} />
+        // Depth 0 has no chrome, because it *is* the chrome (D6 §2) — which is
+        // also why it gets its own boundary rather than sharing the one inside
+        // `Shell`: there is no shell here to survive the fall.
+        <SurfaceBoundary surface={def.label}>
+          <StillSurface onDescend={() => goTo("terrace")} />
+        </SurfaceBoundary>
       ) : (
         <Shell
           depth={def.depth}
@@ -192,6 +197,12 @@ export function Prototype() {
           onPalette={() => setPaletteOpen(true)}
           onLeave={() => endSession("left")}
         >
+          {/* One boundary inside the Shell, not one per surface: a room that
+              throws must not take the rail, the palette and the way out down
+              with it (L4). It keys off nothing — React unmounts the failed
+              subtree itself — and clears when `surface` changes, so a broken
+              room does not follow you to the next one. */}
+          <SurfaceBoundary surface={def.label}>
           {route.surface === "terrace" && (
             <TerraceSurface
               onOpenDistrict={(code) => goTo("district", code)}
@@ -227,6 +238,7 @@ export function Prototype() {
           )}
           {route.surface === "tray" && <TraySurface onEcho={showEcho} />}
           {route.surface === "hall" && <HallSurface onEcho={showEcho} />}
+          </SurfaceBoundary>
         </Shell>
       )}
 

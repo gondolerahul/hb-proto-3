@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
+import { Empty, useChoice } from "../lifecycle";
 import { TRAY, type TrayCard } from "../fixtures/estate";
 import "./tray.css";
 
@@ -25,10 +26,17 @@ import "./tray.css";
  * so the absence is a rendering rule and `tests/tray_cost.test.tsx` holds it.
  */
 export function TraySurface({ onEcho }: { onEcho: (msg: string) => void }) {
-  const [openId, setOpenId] = useState<string>(TRAY[0]!.id);
+  /* L1. This line was `useState<string>(TRAY[0]!.id)`, which threw before
+     render on an empty tray — eleven lines above the copy that exists for
+     exactly that case. The open card is derived from the tray now, so an empty
+     one is a state this surface can reach rather than a crash. */
+  const { chosenId: openId, choose } = useChoice(TRAY, (c) => c.id);
   const [settled, setSettled] = useState<Record<string, string>>({});
 
   const pending = TRAY.filter((c) => !settled[c.id]);
+  /* `Math.max()` of nothing is `-Infinity`, and printing "oldest waited
+     -Infinitym" would be inventing a number under §7.1. No cards, no figure. */
+  const oldest = TRAY.length === 0 ? null : Math.max(...TRAY.map((c) => c.waitedMinutes));
 
   return (
     <section className="tr">
@@ -41,32 +49,45 @@ export function TraySurface({ onEcho }: { onEcho: (msg: string) => void }) {
               : `${pending.length} ${pending.length === 1 ? "thing needs" : "things need"} you`}
           </h1>
         </div>
-        <div className="tr-head-meta">
-          <span className="m-chip">
-            <Icon name="clock" size={12} />
-            oldest waited {Math.max(...TRAY.map((c) => c.waitedMinutes))}m
-          </span>
-        </div>
+        {oldest !== null && (
+          <div className="tr-head-meta">
+            <span className="m-chip">
+              <Icon name="clock" size={12} />
+              oldest waited {oldest}m
+            </span>
+          </div>
+        )}
       </header>
 
-      <div className="tr-list vh-stagger">
-        {TRAY.map((card, i) => (
-          <TrayCardView
-            key={card.id}
-            card={card}
-            index={i}
-            open={openId === card.id && !settled[card.id]}
-            settledAs={settled[card.id]}
-            onOpen={() => setOpenId(card.id)}
-            onSettle={(pathLabel) => {
-              setSettled((s) => ({ ...s, [card.id]: pathLabel }));
-              onEcho(`${pathLabel} · ${card.id}`);
-              const next = TRAY.find((c) => c.id !== card.id && !settled[c.id]);
-              if (next) setOpenId(next.id);
-            }}
-          />
-        ))}
-      </div>
+      {TRAY.length === 0 ? (
+        /* L2. The title above already says "Nothing needs you."; this says what
+           that means, because the dangerous reading of an empty tray is that
+           nothing is happening rather than that nothing has been escalated. */
+        <Empty
+          alone
+          title="Your colleagues are working without needing you."
+          body="Nothing has been escalated. Work is still running — a card arrives here only when a colleague reaches something it is not allowed to decide alone, and none of them has today."
+        />
+      ) : (
+        <div className="tr-list vh-stagger">
+          {TRAY.map((card, i) => (
+            <TrayCardView
+              key={card.id}
+              card={card}
+              index={i}
+              open={openId === card.id && !settled[card.id]}
+              settledAs={settled[card.id]}
+              onOpen={() => choose(card.id)}
+              onSettle={(pathLabel) => {
+                setSettled((s) => ({ ...s, [card.id]: pathLabel }));
+                onEcho(`${pathLabel} · ${card.id}`);
+                const next = TRAY.find((c) => c.id !== card.id && !settled[c.id]);
+                if (next) choose(next.id);
+              }}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -3,6 +3,7 @@ import { logout } from "../api/client";
 import { Background } from "../background/Background";
 import { Icon, type IconName } from "../components/Icon";
 import { COMPANY, STILL } from "../fixtures/estate";
+import { SurfaceBoundary } from "../lifecycle";
 import { MorningStorySurface } from "./MorningStorySurface";
 import { PocketDesk } from "./PocketDesk";
 import { ThreadSurface } from "./ThreadSurface";
@@ -177,9 +178,16 @@ export function LineApp() {
         {/* ================================================== the surface */}
         <main className="ln-body" id="ln-body" tabIndex={-1}>
           <div className="ln-swap vh-enter-fade" key={tab}>
-            {tab === "morning" && <MorningStorySurface onEcho={showEcho} />}
-            {tab === "thread" && <ThreadSurface onEcho={showEcho} />}
-            {tab === "desk" && <PocketDesk onEcho={showEcho} />}
+            {/* The Line has no way out of a white screen — no palette, no depth
+                ladder, and on an installed PWA no address bar either. So the
+                boundary sits inside the tab body: a tab that throws loses the
+                tab, never the rail and the other two (L4). `surface={tab}`
+                clears it on the way to the next one. */}
+            <SurfaceBoundary surface={tab}>
+              {tab === "morning" && <MorningStorySurface onEcho={showEcho} />}
+              {tab === "thread" && <ThreadSurface onEcho={showEcho} />}
+              {tab === "desk" && <PocketDesk onEcho={showEcho} />}
+            </SurfaceBoundary>
           </div>
         </main>
 

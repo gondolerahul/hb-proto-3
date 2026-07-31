@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
 import { Portrait } from "../components/Portrait";
+import { Empty, useChoice } from "../lifecycle";
 import {
   AUTONOMY_MEANS,
   BRIEF,
@@ -13,7 +14,6 @@ import {
   TERMINATION,
   VERDICT_MEANS,
   type BriefTurn,
-  type Candidate,
 } from "../fixtures/talent";
 import "./talent.css";
 
@@ -60,18 +60,23 @@ import "./talent.css";
 export function TalentSurface({ onEcho }: { onEcho: (msg: string) => void }) {
   const [turns, setTurns] = useState<BriefTurn[]>(BRIEF.turns);
   const [draft, setDraft] = useState("");
-  const [activeId, setActiveId] = useState<string>(
-    CANDIDATES.find((c) => c.recommended)?.id ?? CANDIDATES[0]!.id,
+  /* L1: was `CANDIDATES.find((c) => c.recommended)?.id ?? CANDIDATES[0]!.id` —
+     the `?.` guarded the *recommendation* and then the assertion threw anyway on
+     an empty shortlist. Sourcing takes days; a brief with no candidates back yet
+     is the ordinary state of this room on the day you open it. */
+  const { chosen: active, choose } = useChoice(
+    CANDIDATES,
+    (c) => c.id,
+    (c) => c.recommended,
   );
   const [openTrace, setOpenTrace] = useState<string | null>(null);
   const [hiredId, setHiredId] = useState<string | null>(null);
 
-  const active: Candidate = CANDIDATES.find((c) => c.id === activeId) ?? CANDIDATES[0]!;
   const hired = hiredId ? (CANDIDATES.find((c) => c.id === hiredId) ?? null) : null;
 
   /* Counts are computed, never authored — the summary sentence beside them is
      the engine's own words, and the two must not be able to disagree. */
-  const answers = active.interview.answers;
+  const answers = active?.interview.answers ?? [];
   const replayed = answers.filter((a) => a.grade === "replay").length;
   const notRun = answers.filter((a) => a.grade === "untested").length;
 
@@ -248,6 +253,26 @@ export function TalentSurface({ onEcho }: { onEcho: (msg: string) => void }) {
           </div>
         </div>
 
+        {/* L2. The shortlist and the interview are both one candidate's; the
+            brief column above is not, and it stays. A brief with nothing back
+            yet is a working room, not a broken one, so the two right-hand
+            columns collapse into one statement rather than two empty panels. */}
+        {active === undefined ? (
+          <div className="ta-col">
+            <div className="ta-col-head">
+              <h2 className="t-eyebrow">SHORTLIST</h2>
+              <span className="ta-col-note t-mono">nothing back from the board yet</span>
+            </div>
+            <div className="ta-col-scroll">
+              <Empty
+                icon="colleague"
+                title="No candidates have come back against this brief."
+                body="Pragya puts the brief to the meta-agent board and waits for shapes that fit it; none has answered yet. Adding to the brief on the left changes what she is asking for, and a shortlist appears here with an interview already run against your own past cases."
+              />
+            </div>
+          </div>
+        ) : (
+          <>
         {/* ===================================================== the shortlist */}
         <div className="ta-col">
           <div className="ta-col-head">
@@ -376,7 +401,7 @@ export function TalentSurface({ onEcho }: { onEcho: (msg: string) => void }) {
                         <button
                           className="m-btn"
                           onClick={() => {
-                            setActiveId(c.id);
+                            choose(c.id);
                             setOpenTrace(null);
                             onEcho(`interviewed ${c.name} against your March cases`);
                           }}
@@ -645,6 +670,8 @@ export function TalentSurface({ onEcho }: { onEcho: (msg: string) => void }) {
             )}
           </section>
         </div>
+          </>
+        )}
       </div>
     </section>
   );

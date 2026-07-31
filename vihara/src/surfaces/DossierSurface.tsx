@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
 import { Portrait } from "../components/Portrait";
+import { Empty, useChoice } from "../lifecycle";
 import {
   AUTONOMY_MEANS,
   DOSSIERS,
@@ -49,13 +50,32 @@ const STANDING_LABEL: Record<Dossier["standing"], string> = {
 };
 
 export function DossierSurface({ onEcho }: { onEcho: (msg: string) => void }) {
-  const [activeId, setActiveId] = useState<string>(DOSSIERS[0]!.id);
+  /* L1: was `useState<string>(DOSSIERS[0]!.id)` plus a `?? DOSSIERS[0]!` on the
+     read — a TypeError before render with no colleagues, and, with colleagues,
+     a silent substitution of somebody else's dossier if the roster changed
+     under a stored id. Both go away by deriving. */
+  const { chosen: dossier, choose } = useChoice(DOSSIERS, (d) => d.id);
   const [asGovernance, setAsGovernance] = useState(false);
   const [openTraces, setOpenTraces] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState("");
   const [spoken, setSpoken] = useState<Record<string, Proposal[]>>({});
 
-  const dossier = DOSSIERS.find((d) => d.id === activeId) ?? DOSSIERS[0]!;
+  /* L2. The whole surface is one colleague, so with no colleagues there is no
+     partial room to draw — an empty roster beside an empty sheet would read as
+     a dossier that failed to open. It is stated once, as the surface. */
+  if (dossier === undefined) {
+    return (
+      <section className="do">
+        <Empty
+          alone
+          icon="colleague"
+          title="You have not hired anyone yet."
+          body="A dossier is a colleague's standing record — their charter in their own words, what they are trusted to decide alone, and every decision they have made under it. There is nothing to keep until somebody is working for you."
+        />
+      </section>
+    );
+  }
+
   const proposals = [...dossier.proposals, ...(spoken[dossier.id] ?? [])];
 
   const speak = (e: FormEvent) => {
@@ -83,7 +103,7 @@ export function DossierSurface({ onEcho }: { onEcho: (msg: string) => void }) {
             key={d.id}
             className="do-roster-item"
             data-selected={d.id === dossier.id || undefined}
-            onClick={() => setActiveId(d.id)}
+            onClick={() => choose(d.id)}
           >
             <Portrait id={d.id} size={52} />
             <span className="do-roster-name">{d.name}</span>

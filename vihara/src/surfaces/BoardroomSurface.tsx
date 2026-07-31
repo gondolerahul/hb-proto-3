@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../components/Icon";
+import { Empty, useChoice } from "../lifecycle";
 import { Brainstorm } from "./Brainstorm";
 import {
   AGENDA,
@@ -87,7 +88,9 @@ const DRIFT: Record<
 };
 
 export function BoardroomSurface({ onEcho }: { onEcho: (msg: string) => void }) {
-  const [openId, setOpenId] = useState<string>(PROPOSITIONS[0]!.id);
+  /* L1: was `useState<string>(PROPOSITIONS[0]!.id)`, a TypeError before render
+     on a sitting with nothing tabled — which is a perfectly ordinary sitting. */
+  const { chosenId: openId, choose } = useChoice(PROPOSITIONS, (p) => p.id);
   const [adopted, setAdopted] = useState<Record<string, string>>({});
   const [minutes, setMinutes] = useState<Minute[]>(MINUTES);
 
@@ -106,7 +109,7 @@ export function BoardroomSurface({ onEcho }: { onEcho: (msg: string) => void }) 
     ]);
     onEcho(`adopted resolution ${p.resolutionId}`);
     const next = PROPOSITIONS.find((q) => q.id !== p.id && !adopted[q.id]);
-    if (next) setOpenId(next.id);
+    if (next) choose(next.id);
   };
 
   return (
@@ -194,23 +197,36 @@ export function BoardroomSurface({ onEcho }: { onEcho: (msg: string) => void }) 
           <section className="br-props" aria-label="Propositions" style={{ ["--i" as string]: 2 }}>
             <header className="br-block-head">
               <span className="t-eyebrow">FROM HER · PROPOSITIONS</span>
-              <span className="br-block-note t-mono">
-                {PROPOSITIONS.length} tabled · graded before you bet · four grades, not three
-              </span>
+              {PROPOSITIONS.length > 0 && (
+                <span className="br-block-note t-mono">
+                  {PROPOSITIONS.length} tabled · graded before you bet · four grades, not three
+                </span>
+              )}
             </header>
 
-            <div className="br-props-list">
-              {PROPOSITIONS.map((p) => (
-                <PropositionCard
-                  key={p.id}
-                  prop={p}
-                  open={openId === p.id && !adopted[p.id]}
-                  adoptedAs={adopted[p.id]}
-                  onOpen={() => setOpenId(p.id)}
-                  onAdopt={() => adopt(p)}
-                />
-              ))}
-            </div>
+            {PROPOSITIONS.length === 0 ? (
+              /* L2. A sitting with nothing tabled is not a broken boardroom, and
+                 the brainstorm above is still the way in — so the copy points at
+                 it rather than leaving the person with a dead column. */
+              <Empty
+                icon="record"
+                title="Pragya has tabled nothing this sitting."
+                body="She tables a proposition when she has a bet worth grading and evidence to grade it against; with neither, she says nothing rather than filling the agenda. What you bring above is still the meeting."
+              />
+            ) : (
+              <div className="br-props-list">
+                {PROPOSITIONS.map((p) => (
+                  <PropositionCard
+                    key={p.id}
+                    prop={p}
+                    open={openId === p.id && !adopted[p.id]}
+                    adoptedAs={adopted[p.id]}
+                    onOpen={() => choose(p.id)}
+                    onAdopt={() => adopt(p)}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         </div>
 

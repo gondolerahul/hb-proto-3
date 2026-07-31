@@ -282,6 +282,68 @@ worth closing. The wire-level proof above is the cookie jar and the unit test, n
 a live login. And the surfaces still read `src/fixtures/`: parts L and W are what
 change that.
 
+## 10b. Build notes — parts L and E3/E4 ✅ BUILT 2026-07-30
+
+**Remaining in R-4: part W only** — the surfaces still read `src/fixtures/`.
+
+**Gates:** tsc · lint · **vitest 267** · build clean, index 162.1 · line 89.6 KB gz
+of 220 each · `gen:api` idempotent and carrying all three new endpoints · backend
+**2327** unit + 2 parity · typecheck **352** files.
+
+**What E3 and E4 refused to invent, which is the point of them.**
+
+D8 said build these rather than render a gap. It did not license inventing data,
+and the read models are unusually disciplined about the difference. Each ships an
+`absent` list travelling *with* the payload — so the surface is **told** where to
+render an absence rather than discovering an empty field.
+
+* **There is no SLO target anywhere on the platform**, so no dial can be drawn. The *readings* exist and are what the demotion sweep acts on, so they ship as `reliability` — a name that promises no target — with `demotion_bar` named as itself. `failure_rate` is `null` when there are no runs, never `0.0`, because zero reads as "never fails".
+* **A competency's note is omitted when the registry cannot resolve the tool.** The templates grant `send_email`; the registered tool is `email_send`. A lesser read model would have printed a description for a tool that cannot be called.
+* **Authority asks `evaluate_policy` verbatim** rather than re-deriving the §9.3 matrix. A panel that computes its own answer eventually disagrees with the control that actually refuses the act, and the tenant believes the panel. Where the gate's real answer depends on an amount the dossier does not have, that is surfaced as `conditional_on_amount` rather than flattened to "autonomous".
+* Two constants were made public instead of duplicated (`FAILED_STATUSES`, `ACTIVE_RUN_STATUSES`). A dossier that counted failures differently from the sweep that removes a level would make every demotion look arbitrary.
+
+**Three defects the verification pass caught, all fixed.**
+
+**1. The backend suite was red and `gen:api` was a false green.** Three endpoints
+existed in the live app and were never exported, so `openapi.json` described an
+app that no longer existed — and `gen:api` regenerated `schema.d.ts` from that
+stale file, staying perfectly self-consistent while the frontend had no types for
+any of them. **A generator is only as honest as its input**, and this is why the
+contract gate lives on the backend where the live app can be compared.
+
+**2. `Dossier.decisions` acquired neither a value nor a declared absence** — the
+single field unaccounted for in either direction, in a module whose whole rule is
+that an unanswerable field must be named. Now declared, with the real reason:
+`GET /ai/executions` takes **no parameters at all** and returns every root
+execution the company ever ran, so a dossier cannot ask for its own colleague's.
+Naming the decisions needs a filterable execution read first.
+
+**3. `SurfaceBoundary` was built, correct, tested — and mounted nowhere.** A
+TypeError in any of the eighteen rooms still took the whole tree down, which is
+exactly the failure its own docstring described. **A component that protects
+nothing passes every test written about the component.** It is now mounted inside
+`Shell` (so a room that throws loses the room, never the rail and the way out),
+separately at depth 0 (which renders no Shell to survive), and inside the Line's
+tab body (which has no palette, no depth ladder, and on an installed PWA no
+address bar — a white screen there has no way out at all). Verified by mutation
+in both directions: with the boundary the siblings survive; without it they do not.
+
+**And a fourth, found while fixing the third.** The test written to pin the mount
+matched only `surface={…}`, so mutating a mount to `surface="a room"` matched
+*nothing* and the loop passed over an empty set — a vacuous test reporting the
+property it was not checking. It now matches both forms and asserts it examined
+at least three mounts. *This is the second vacuous test this increment (the
+certified guards were the first). A source-scan test needs a non-emptiness
+assertion or it grades its own homework.*
+
+**Honest limits.** `useResource` and `Scaffold` are unwired — nothing fetches
+until part W, so the Glasshouse's permitted loading state has never been
+exercised. Roughly a dozen collections still need bespoke empty copy; the most
+consequential is **Registry Hall, which prints `₹0` for an empty register** —
+the exact bug `tray_cost.test.tsx` exists to prevent, one surface over. And
+`vh-skeleton`'s ground is a 6/255 delta on the raw canvas, so part W's scaffolds
+must draw their plates first and put bars inside them.
+
 ## 11. Gates
 
 R-4 is complete when:

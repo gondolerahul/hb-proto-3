@@ -39,13 +39,20 @@ from src.ai.signals.service import emit_signal
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["WINDOW_DAYS", "gather_observations", "apply_demotions"]
+__all__ = [
+    "FAILED_STATUSES", "WINDOW_DAYS", "gather_observations", "apply_demotions",
+]
 
 #: The observation window. Long enough that a bad afternoon does not demote an
 #: agent, short enough that a genuinely failing one does not run for weeks.
 WINDOW_DAYS = 7
 
-_FAILED_STATUSES = ("FAILED", "ERROR", "TIMEOUT")
+#: What counts as a failed run. Public because the dossier read (D8 E3) shows
+#: the owner the same reading this sweep judges on, and a dossier that counted
+#: failures differently from the thing that takes a level away would make the
+#: demotion look arbitrary.
+FAILED_STATUSES = ("FAILED", "ERROR", "TIMEOUT")
+_FAILED_STATUSES = FAILED_STATUSES
 
 
 def _autonomy_of(entity: HierarchicalEntity) -> AutonomyLevel:

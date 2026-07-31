@@ -450,6 +450,17 @@ export interface paths {
      */
     post: operations["convert_entity_to_template_api_v1_ai_entities__entity_id__convert_to_template_post"];
   };
+  "/api/v1/ai/entities/{entity_id}/dossier": {
+    /**
+     * Get Dossier
+     * @description One colleague's terms of engagement.
+     *
+     * ``absent`` travels with the payload: it names, per field, what the platform
+     * cannot answer and why, so the surface renders a deliberate absence instead
+     * of finding an empty field and filling it in.
+     */
+    get: operations["get_dossier_api_v1_ai_entities__entity_id__dossier_get"];
+  };
   "/api/v1/ai/execute": {
     /** Trigger Execution */
     post: operations["trigger_execution_api_v1_ai_execute_post"];
@@ -909,6 +920,19 @@ export interface paths {
      */
     get: operations["reviews_due_api_v1_ai_strategy_reviews_due_get"];
   };
+  "/api/v1/ai/talent/brief": {
+    /**
+     * Get Brief
+     * @description This company's hiring briefs, newest first (D8 E4).
+     *
+     * A brief is the ``capability_build`` delegation that started the
+     * Meta-Agent board — the subject the owner asked for, when, Pragya's
+     * promised sentence and the board run. The conversation the surface
+     * renders is **not** here: nothing marks a run of Pragya turns as a
+     * brief, and ``absent`` says so.
+     */
+    get: operations["get_brief_api_v1_ai_talent_brief_get"];
+  };
   "/api/v1/ai/talent/colleagues-past": {
     /**
      * Colleagues Past
@@ -920,6 +944,18 @@ export interface paths {
   "/api/v1/ai/talent/colleagues/{entity_id}/terminate": {
     /** Terminate */
     post: operations["terminate_api_v1_ai_talent_colleagues__entity_id__terminate_post"];
+  };
+  "/api/v1/ai/talent/past-cases": {
+    /**
+     * Get Past Cases
+     * @description The exam: work this company has actually handled (D8 E4).
+     *
+     * Each case is a consumed signal, the records it named, and the run
+     * that answered it. ``replayable`` is TWIN's own window and backend
+     * constraints evaluated at their most generous setting — and is
+     * ``null``, with ``unknown_because``, where they cannot be evaluated.
+     */
+    get: operations["get_past_cases_api_v1_ai_talent_past_cases_get"];
   };
   "/api/v1/ai/templates": {
     /** List Templates */
@@ -6881,6 +6917,37 @@ export interface operations {
       };
     };
   };
+  /**
+   * Get Dossier
+   * @description One colleague's terms of engagement.
+   *
+   * ``absent`` travels with the payload: it names, per field, what the platform
+   * cannot answer and why, so the surface renders a deliberate absence instead
+   * of finding an empty field and filling it in.
+   */
+  get_dossier_api_v1_ai_entities__entity_id__dossier_get: {
+    parameters: {
+      path: {
+        entity_id: string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   /** Trigger Execution */
   trigger_execution_api_v1_ai_execute_post: {
     requestBody: {
@@ -8288,6 +8355,39 @@ export interface operations {
     };
   };
   /**
+   * Get Brief
+   * @description This company's hiring briefs, newest first (D8 E4).
+   *
+   * A brief is the ``capability_build`` delegation that started the
+   * Meta-Agent board — the subject the owner asked for, when, Pragya's
+   * promised sentence and the board run. The conversation the surface
+   * renders is **not** here: nothing marks a run of Pragya turns as a
+   * brief, and ``absent`` says so.
+   */
+  get_brief_api_v1_ai_talent_brief_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
    * Colleagues Past
    * @description The Gallery's roster (D6 §11): terminated colleagues, from the
    * stamp termination wrote — a query, never a new table.
@@ -8309,6 +8409,38 @@ export interface operations {
     parameters: {
       path: {
         entity_id: string;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Get Past Cases
+   * @description The exam: work this company has actually handled (D8 E4).
+   *
+   * Each case is a consumed signal, the records it named, and the run
+   * that answered it. ``replayable`` is TWIN's own window and backend
+   * constraints evaluated at their most generous setting — and is
+   * ``null``, with ``unknown_because``, where they cannot be evaluated.
+   */
+  get_past_cases_api_v1_ai_talent_past_cases_get: {
+    parameters: {
+      query?: {
+        limit?: number;
       };
     };
     responses: {
