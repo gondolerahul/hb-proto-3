@@ -10430,6 +10430,59 @@
     ]
    }
   },
+  "/api/v1/ai/consent": {
+   "get": {
+    "description": "This company's consent posture and the rows behind it.\n\n``channels`` is what a gate panel needs (posture, the registry's own\nreason, and the counts); ``entries`` is what the consent bay lists.",
+    "operationId": "get_consent_api_v1_ai_consent_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 200,
+       "maximum": 1000,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Consent Api V1 Ai Consent Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Get Consent",
+    "tags": [
+     "Consent"
+    ]
+   }
+  },
   "/api/v1/ai/context-sources/upload": {
    "post": {
     "description": "Upload a file as a context source for an entity.\n\nSaves as an Artifact, extracts text content for text-based files,\nand ingests into a CORTEX tree. Returns artifact metadata for\nthe frontend to store as a context source reference.\n\nMax file size: 500 MB.\nSupported: PDF, DOCX, TXT, CSV, XLSX, PPTX, images, audio, video.",
@@ -11208,6 +11261,57 @@
     "summary": "Convert Entity To Template",
     "tags": [
      "AI Hierarchical Agent Platform"
+    ]
+   }
+  },
+  "/api/v1/ai/entities/{entity_id}/dossier": {
+   "get": {
+    "description": "One colleague's terms of engagement.\n\n``absent`` travels with the payload: it names, per field, what the platform\ncannot answer and why, so the surface renders a deliberate absence instead\nof finding an empty field and filling it in.",
+    "operationId": "get_dossier_api_v1_ai_entities__entity_id__dossier_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "entity_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Entity Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Dossier Api V1 Ai Entities  Entity Id  Dossier Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Get Dossier",
+    "tags": [
+     "Dossier"
     ]
    }
   },
@@ -13836,6 +13940,59 @@
     ]
    }
   },
+  "/api/v1/ai/talent/brief": {
+   "get": {
+    "description": "This company's hiring briefs, newest first (D8 E4).\n\nA brief is the ``capability_build`` delegation that started the\nMeta-Agent board \u2014 the subject the owner asked for, when, Pragya's\npromised sentence and the board run. The conversation the surface\nrenders is **not** here: nothing marks a run of Pragya turns as a\nbrief, and ``absent`` says so.",
+    "operationId": "get_brief_api_v1_ai_talent_brief_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "maximum": 100,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Brief Api V1 Ai Talent Brief Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Get Brief",
+    "tags": [
+     "Talent"
+    ]
+   }
+  },
   "/api/v1/ai/talent/colleagues-past": {
    "get": {
     "description": "The Gallery's roster (D6 \u00a711): terminated colleagues, from the\nstamp termination wrote \u2014 a query, never a new table.",
@@ -13913,6 +14070,59 @@
      }
     ],
     "summary": "Terminate",
+    "tags": [
+     "Talent"
+    ]
+   }
+  },
+  "/api/v1/ai/talent/past-cases": {
+   "get": {
+    "description": "The exam: work this company has actually handled (D8 E4).\n\nEach case is a consumed signal, the records it named, and the run\nthat answered it. ``replayable`` is TWIN's own window and backend\nconstraints evaluated at their most generous setting \u2014 and is\n``null``, with ``unknown_because``, where they cannot be evaluated.",
+    "operationId": "get_past_cases_api_v1_ai_talent_past_cases_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "maximum": 100,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Past Cases Api V1 Ai Talent Past Cases Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "security": [
+     {
+      "OAuth2PasswordBearer": []
+     }
+    ],
+    "summary": "Get Past Cases",
     "tags": [
      "Talent"
     ]

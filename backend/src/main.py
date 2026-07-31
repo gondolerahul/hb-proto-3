@@ -6,6 +6,25 @@ from src.common.database import engine, Base
 app = FastAPI(title="HireBuddha Platform", version="0.2.0")
 
 # CORS middleware
+#
+# Vihara is deliberately absent from this list beyond its dev ports (D8 E8).
+# It is served **same-origin**: `deploy/apache/vihara.hirebuddha.com-le-ssl.conf`
+# path-mounts `/api` onto the backend on the app's own vhost, and the Vite dev
+# server proxies `/api` the same way — so a browser on
+# https://vihara.hirebuddha.com never makes a cross-origin call at all.
+#
+# That is a VP-01 requirement, not a deployment convenience. Cookie-mode auth
+# sets the refresh cookie and the readable `csrf_token` cookie SameSite=Strict,
+# Secure, host-only, path=/api/v1/auth. Host-only is the binding constraint: a
+# csrf cookie set by another host cannot be read by the app's JavaScript, so
+# the double-submit the refresh route enforces cannot be satisfied from a
+# different origin. Making Vihara genuinely cross-origin would mean widening
+# that cookie's Domain or moving the token into a response body — weakening
+# VP-01 to save an Apache stanza that already exists.
+#
+# The two dev entries below cover the unproxied case only (a preview build or
+# a tool calling :8000 directly from the dev page); nothing in the shipping
+# path needs them.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -16,7 +35,10 @@ app.add_middleware(
         "https://app.hirebuddha.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        "https://gateway.hirebuddha.com"
+        "https://gateway.hirebuddha.com",
+        # Vihara's dev server (vite.config.ts: port 4044, strictPort).
+        "http://localhost:4044",
+        "http://127.0.0.1:4044",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -138,6 +160,15 @@ app.include_router(strategy_router, prefix="/api/v1")
 # Inc-7 DRIVER D7 — VG-18: termination as workflow (a plain governed act).
 from src.ai.talent.router import router as talent_router
 app.include_router(talent_router, prefix="/api/v1")
+# Inc-7 D8 E1 — the consent registry read (Bridges' gate panel, the
+# Undercroft's consent bay). The tables shipped in trust001 behind no router.
+from src.ai.trust.router import router as consent_router
+app.include_router(consent_router, prefix="/api/v1")
+# Inc-7 D8 E3 — the colleague dossier (charter, competencies, authority). Its
+# own router rather than a route on the legacy /ai one: the read is a composed
+# projection with an honest-absence contract, and it is strict-typed.
+from src.ai.dossier.router import router as dossier_router
+app.include_router(dossier_router, prefix="/api/v1")
 # Inc-7 SEAM — the Vihara seams: registry, estate, stream, manifests, trays,
 # echo, push; plus Pragya's event channel (VG-07) and its echo fan-out.
 from src.ai.genui.router import router as genui_router

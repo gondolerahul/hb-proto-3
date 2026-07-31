@@ -1,0 +1,219 @@
+/* The Terrace — chrome only.
+
+   Every glyph on the territory lives in the DRAWING now, as flat SVG text styled
+   in world/territory.css (owner review A2). This file styles what surrounds it:
+   the weather sentence, the stage the drawing sits in, and the footer. */
+
+.te {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5) var(--s-4);
+}
+
+/* A pending, failed or empty Terrace has no three-row composition to hold —
+   there is no territory. One row, and the notice or the scaffold fills it. */
+.te[data-pending] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* ---------------------------------------------------------------- the weather */
+
+.te-weather {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+/* Size only — the mark itself is the shared .m-weather material. */
+.te-weather-mark {
+  width: 38px;
+  height: 38px;
+}
+
+/* ---- the two states the shared material never got ------------------------
+   `material.css` ships textures for clear · busy · fog · storm · frost. The
+   backend emits clear · storm · heat-shimmer · moonlit. So two of the four
+   states this surface can actually receive have no texture, and three of the
+   five textures name states no code path can produce (gap R-4-W-2 in the
+   report; the fix belongs in material.css, which this task does not own).
+
+   These compose on THIS file's own class rather than restyling `.m-weather`,
+   and they borrow the shared `m-weather-drift` keyframe so the estate keeps one
+   motion vocabulary. §1.5 holds: `translate` only. */
+
+/* heat-shimmer — the envelope is running out. Rising, warm, unhurried: an
+   80%-spent budget is a pressure, not an emergency. */
+.te-weather-mark[data-state="heat-shimmer"]::after {
+  /* optical: hatch pitch and softening, in the same literals material.css's own
+     four weather textures use — a texture's stripe is a drawing, not a step on
+     the space scale. */
+  background: repeating-linear-gradient(
+    92deg,
+    rgba(255, 246, 230, 0.15) 0 1px,
+    transparent 1px 6px
+  );
+  filter: blur(0.9px);
+  animation: m-weather-drift 3.6s linear infinite;
+}
+
+/* moonlit — hibernating, nothing scheduled. Entirely still, and the only one
+   of the four that is a pool rather than a hatch: nothing is moving. */
+.te-weather-mark[data-state="moonlit"]::after {
+  background: radial-gradient(
+    70% 70% at 32% 26%,
+    rgba(255, 246, 230, 0.16),
+    transparent 68%
+  );
+}
+
+.te-weather-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.te-weather-sentence {
+  font-family: var(--font-body);
+  font-weight: 340;
+  font-size: var(--text-md);
+  line-height: 1.4;
+  color: var(--fg);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+
+/* The two live readings, in one announcing region. Right-ranged so the header
+   reads left-to-right as: what the weather is, then what it means for you. */
+.te-live {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+  margin-left: auto;
+  flex: none;
+}
+
+.te-hands {
+  height: 30px;
+  color: var(--gold-300);
+  flex: none;
+}
+
+/* S3 — a dropped stream is stale and says so, beside the count it makes
+   doubtful. Terracotta on the lamp, never on the type: the grammar is a lamp
+   plus a word (§4), and the word carries the information. */
+.te-stale {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  max-width: 44ch;
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: var(--lh-normal);
+  color: var(--fg-muted);
+  text-align: right;
+  text-wrap: pretty;
+}
+
+.te-stale .m-lamp {
+  flex: none;
+  translate: 0 -1px; /* optical: a 7px dot floats against an 11px line */
+}
+
+/* ---------------------------------------------------------------- the stage */
+
+.te-stage {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* The drawing's box. The SVG fills it; labels are inside the drawing now, so
+   nothing here has to stay in sync with a projection. */
+.te-plane {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: 1320px;
+}
+
+/* The label layer that used to live here is gone. Owner review A2 moved every
+   glyph into the drawing as flat SVG text (see world/territory.css), so the DOM
+   layer, its percentage positioning, its side-switching and its hover card are
+   all deleted rather than left as unreachable rules. ~170 lines removed.
+
+   The responsive rule that hid `.te-labels` below 900px is deleted with them, and
+   it is not replaced: SVG text scales with the viewBox, so the labels stay
+   proportionate and legible at 720px. Verified with scripts/shoot_variants.mjs
+   rather than assumed — which is how the dead rule was found in the first place. */
+
+/* --------------------------------------------------------------- the scaffold
+   D7 §3.1: the pending state is this surface's own structure — a header band
+   and the ground it will draw on — never a spinner. The plates are drawn first
+   and the bars sit inside them, because `vh-skeleton`'s ground is a ~6/255
+   delta on the raw canvas and a bare bar over the background draws nothing. */
+
+.te-scaffold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  height: 100%;
+  min-height: 0;
+}
+
+.te-scaffold-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-md);
+}
+
+.te-scaffold-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  flex: 1;
+  min-height: 0;
+  padding: var(--s-5);
+  border-radius: var(--r-md);
+}
+
+/* --------------------------------------------------------------- the footer */
+
+.te-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+}
+
+.te-foot-still {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  max-width: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.te-foot-hops {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------- responsive
+   The territory keeps its labels at every width — SVG text scales with the
+   viewBox. What changes is the chrome: the hop-list goes full width so the
+   estate stays clickable by name when plots are small. */
+
+@media (max-width: 900px) {
+  .te-foot-hops {
+    width: 100%;
+  }
+  .te-weather-sentence {
+    font-size: var(--text-sm);
+  }
+}

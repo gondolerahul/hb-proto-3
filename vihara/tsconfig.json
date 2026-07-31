@@ -22,5 +22,19 @@
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+
+  /* The verbatim background port (redesign decision D2) is byte-identical to
+     `frontend/src/components/layout/AnimatedBackground.tsx` and
+     `tests/background_verbatim.test.ts` fails if that changes. It predates
+     `noUncheckedIndexedAccess`, so under this config it does not typecheck —
+     and the correct resolution is to exclude it, not to edit it. The
+     type-safe equivalent of the same scene is
+     `src/renderers/world/hexField.ts`, which IS checked; the verbatim file
+     exists to prove the port is faithful. Excluded from the build too: it is
+     imported by nothing.
+
+     It lives under `renderers/world/` because that is a path D7 §3.3's
+     three.js allowlist names — the same reason `hexField.ts` moved there. */
+  "exclude": ["src/renderers/world/LegacyBackground.tsx"]
 }

@@ -1,0 +1,381 @@
+/* The Pocket Desk. Two questions on a 390px column: is anything wrong, and what
+   did I pin.
+
+   Four decisions carry the file.
+
+   **The band is the one floating layer, so it is the one piece of glass.** It is
+   sticky rather than fixed above the scroll, because the whole point of glass is
+   that the world passes under it — a band the cards stop short of is a header,
+   not a pinned instrument. It keeps `--s-2` of air at the top for the same
+   reason: a floating thing that touches the ceiling has stopped floating. Its own
+   readings sit in wells, which is what makes "readable over anything" true rather
+   than asserted: every ground on the Line is within one step of the canvas, so
+   the strong tint's floor is bounded, and the figures never sit on the tint at
+   all.
+
+   **A pinned reading is an object; the catalogue is data.** Plates for the first,
+   one well with hairline rows for the second. That is the whole visual difference
+   between "these are mine, on my desk" and "these exist, and could be" — and it
+   costs a material rather than a colour, which is finding RD-3 answered in the
+   small.
+
+   **Every line under a figure begins with a lamp, and after R-4 part W none of
+   them is lit.** The lamp is the left edge of the card's instrument column, so
+   the sentences line up down the card instead of stepping in and out as the
+   states change. It used to go sage or terracotta on the trend; nothing on the
+   wire says which way is good — `KpiDefinition` declares no direction and no
+   target — so the colour was this file deciding, and it is gone with the meter
+   that had the same problem. The one lamp that still lights on this surface is
+   the raised hand in the band, and the notice that says the wire has dropped.
+
+   **Nothing here is gold except a raised hand** — the rule `line.css` sets for
+   the frame, kept by the surface it frames. A phone screen holds one meaning of
+   gold at a time, and on this one it is §2.1's first: this needs you. */
+
+.pd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  width: 100%;
+  /* The Line is phone-first but it is a web page: the sweep opens it at 1600px
+     and a push tapped on a tablet lands here too. A 34rem column keeps the
+     figures a hand's width apart instead of a screen's. */
+  max-width: 34rem;
+  height: 100%;
+  margin-inline: auto;
+  /* The frame's rail and tab bar pay their own notch insets (line.css); the
+     surfaces between them pay theirs, or a landscape phone puts the vitals under
+     the camera housing. --s-3 at the top, not --s-4: the band is a floating slab
+     and it wants less air above it than a column of prose does. */
+  padding: var(--s-3) calc(var(--s-4) + env(safe-area-inset-right)) var(--s-8)
+    calc(var(--s-4) + env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ================================================================ the vitals */
+
+.pd-vitals {
+  position: sticky;
+  top: var(--s-2);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  /* Even top and bottom. The strip of glass below the wells is where the world
+     passing underneath is most visible, and past --s-3 it stops reading as the
+     band's own edge and starts reading as a gap the cards are showing through. */
+  padding: var(--s-3) var(--s-4);
+}
+
+.pd-vitals-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.pd-hands {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* The word, not the lamp, is what a person reads — so it carries the gold and
+   the lamp only agrees with it. Set from this class rather than by reaching into
+   `.t-eyebrow`, and never `data-certified`, which would claim a certification
+   that has nothing to do with a raised hand. */
+.pd-hands-word {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--fg-muted);
+}
+
+.pd-hands-word[data-lit] {
+  color: var(--gold-300);
+}
+
+/* The estate's own sentence. --text-xl and not the h1 default: it is the title
+   of the screen, but it stands above three readings and a scroll, and 30px of
+   Space Grotesk at the top of a 390px column leaves the cards no room to be
+   cards. */
+.pd-still {
+  font-size: var(--text-xl);
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+/* The strip. `grid-auto-flow: column` rather than three named tracks, because
+   two of the three cells honestly disappear: the deadline when no beacon carries
+   one, and the lead measure when nothing in the estate is measurable yet. A
+   layout that has to be edited when a reading vanishes is a layout that will one
+   day render an empty box instead — which is how a `Math.min()` of nothing ends
+   up on a screen as a figure. */
+.pd-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--s-2);
+}
+
+.pd-cell {
+  display: grid;
+  /* The label takes the flexible row so every figure sits on the same baseline,
+     whether its label wrapped to one line or two. */
+  grid-template-rows: 1fr auto;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+}
+
+/* .t-eyebrow sets line-height: 1 for a label that fits on one line; a third of a
+   phone is not that, and two tracked lines at 1 collide. */
+.pd-cell dt {
+  line-height: 1.4;
+}
+
+.pd-cell-figure {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  letter-spacing: var(--track-tight);
+  line-height: 1;
+  color: var(--fg);
+}
+
+/* The wire, when it has dropped (part S, S3). Inside the band because that is
+   what has stopped being true — an estate that says "nothing waiting on you"
+   while it has stopped listening is the one lie this surface must not tell. */
+.pd-stale {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: 48ch;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* A pin the store refused. Outside the band and above the columns, because its
+   subject is the act you just took rather than the estate's state. */
+.pd-refused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: 48ch;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* =============================================================== the sections */
+
+.pd-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* The rule the surface lives by, said once. --fg-muted rather than --fg-subtle
+   for the reason `.ln-notice-how` gives: `tests/contrast.test.ts` holds
+   --fg-subtle to the 3:1 large-text floor and this is 11px. */
+.pd-note {
+  margin-top: calc(var(--s-2) * -1);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* ---------------------------------------------------------------- no pins yet
+   A plate set *into* the ground rather than sitting on it: an empty desk is a
+   place waiting to hold something, and a raised card would be an object claiming
+   to be the very thing that is absent. */
+
+.pd-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-5);
+}
+
+.pd-empty-prose {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 46ch;
+}
+
+/* ================================================================= the cards */
+
+.pd-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* The pending state's cards. The band above it is drawn first and the bars go
+   inside both — `vh-skeleton`'s ground is a ~6/255 delta on the raw canvas, so a
+   bar on the page background draws nothing and the scaffold would be the blank
+   screen it exists to prevent. */
+.pd-scaffold-list {
+  margin-top: var(--s-5);
+}
+
+.pd-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  /* Shorter at the top than the foot: the head's own control is 44px tall and
+     already carries the air a card wants above its first line. */
+  padding: var(--s-2) var(--s-4) var(--s-4);
+}
+
+.pd-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.pd-card-title {
+  font-size: var(--text-md);
+  color: var(--fg);
+  /* The measure a KPI's name needs and no more — "Days sales outstanding" is
+     three words and "Unreconciled invoices" is two, and neither should be pushed
+     into the act beside it. */
+  max-width: 22ch;
+}
+
+/* 44px, not m-btn's 36: the mobile touch floor, and the same explicit override
+   the frame's own controls make in line.css. A mis-tap here removes a reading
+   from the desk, which is cheap to undo and annoying to discover. */
+.pd-act {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--s-4);
+}
+
+/* ------------------------------------------------------------- the reading */
+
+.pd-read {
+  display: flex;
+  align-items: baseline;
+  /* The figure is the card. --s-1 above it and the instrument lines close
+     beneath: the number and what it means are one block, not four rows. */
+  margin-top: var(--s-1);
+}
+
+.pd-figure {
+  color: var(--fg);
+}
+
+/* The unit is what the number is *in*, not part of how big it is, so it drops a
+   step and loses the figure's tracking. The 1px is optical: `t-figure` tightens
+   by -0.035em, which at 38px pulls the unit into the numeral's last stroke. */
+.pd-unit {
+  margin-left: 1px;
+  font-size: var(--text-lg);
+  letter-spacing: 0;
+  color: var(--fg-muted);
+}
+
+.pd-line {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.pd-line .t-mono {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------- the meter that is gone
+   There was a rule with a mark on it here: the reading, the overshoot, and a
+   hairline where the target was. R-4 part W deleted it rather than rescaling
+   it, because **there is no target anywhere on the platform** — `KpiDefinition`
+   declares a formula, a baseline and a unit, and nothing to aim at — so the only
+   number the mark could have been drawn to was one this file chose. The Dossier
+   lost its three arc gauges to the same finding. The rules are removed rather
+   than left standing over markup nothing renders: a stylesheet that describes a
+   component the surface no longer has is a stylesheet that will one day be used
+   to bring it back. */
+
+/* --------------------------------------------------------------- no reading
+   The state a young estate is in for a quarter, drawn as a statement: a label,
+   the reason, and where the record begins. The card keeps its shape around it —
+   head, name, then this — so it reads as a card that says something rather than
+   a card missing its middle. */
+
+.pd-absent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+  /* Ruled off on the left rather than boxed. A well here would be a container
+     drawn around an absence, which is the one thing that would make it look like
+     a slot waiting to be filled. */
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--rule-strong);
+}
+
+.pd-absent-why {
+  font-size: 11px;
+  line-height: 1.55;
+  max-width: 42ch;
+  color: var(--fg-muted);
+}
+
+.pd-absent-from {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* =============================================================== the shelf */
+
+.pd-shelf {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--s-4);
+}
+
+.pd-shelf-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  /* Interior rules rather than a border on each row — a list with six visible
+     boxes in it reads as a form. */
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.pd-shelf-row:last-child {
+  box-shadow: none;
+}
+
+.pd-shelf-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.pd-shelf-title {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+}
+
+/* The figure sits between the name and the act, in mono, so the column of them
+   reads as a column. Where a reading has none, the space simply closes — there
+   is no dash holding a place open for a number that does not exist. */
+.pd-shelf-figure {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}

@@ -1,0 +1,242 @@
+/* The drawn territory.
+
+   Everything here is geometry. There is not one glyph in this stylesheet, by
+   design — finding RD-1 was text painted onto the ground plane, and the fix is
+   architectural: labels are DOM, in `terrace.css`. */
+
+.tv-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* ------------------------------------------------------------------- faces
+   Every face carries a hairline of its own. A solid fill with no edge is a
+   silhouette; a fill plus a 0.14 edge is an object with a corner. */
+
+.tv-face {
+  stroke: rgba(255, 244, 226, 0.14);
+  stroke-width: 0.09;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The top face catches the key, so its edge is the brightest line on the
+   drawing — this is what reads as a lit corner. */
+.tv-volume-top {
+  stroke: rgba(255, 246, 232, 0.3);
+  stroke-width: 0.14;
+}
+
+.tv-slab-top {
+  stroke: rgba(255, 246, 232, 0.22);
+  stroke-width: 0.12;
+}
+
+.tv-plot[data-twin] .tv-face {
+  /* Cool-neutral edge inside the twin only (--twin-line). */
+  stroke: rgba(228, 232, 236, 0.28);
+}
+
+.tv-contact {
+  fill: rgba(0, 0, 0, 0.62);
+}
+
+.tv-lamp-pool {
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------- roads */
+
+.tv-road {
+  fill: none;
+  /* Owner review A4: more muted still. A road is context — it should be
+     legible when looked for and invisible when not. */
+  stroke: rgba(246, 241, 233, 0.075);
+  stroke-width: 0.14;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* Dashed, so a road reads as a route rather than as a drawn line. Kept
+     quieter than the built form — a route is context, not subject. */
+  stroke-dasharray: 0.5 0.7;
+}
+
+.tv-road[data-twin] {
+  stroke: rgba(228, 232, 236, 0.16);
+  stroke-dasharray: 0.5 1.3;
+}
+
+/* Owner review A4: signals are much smaller — a moving speck, not a bead. */
+.tv-traffic-dot {
+  fill: rgba(246, 241, 233, 0.68);
+  offset-distance: 0%;
+  animation: tv-travel 4.8s linear infinite;
+}
+
+@keyframes tv-travel {
+  from {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  to {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------- plots */
+
+.tv-plot {
+  transition: opacity var(--dur-base) var(--ease-settle);
+}
+
+.tv-plot[data-interactive] {
+  cursor: pointer;
+}
+
+/* Hover raises attention by dimming everything else rather than by lighting the
+   target. Lighting the target would need a colour, and the only colour available
+   is gold — which under §2.1 must not mean "your pointer is here". */
+.tv-plot[data-dimmed] {
+  opacity: 0.42;
+}
+
+.tv-select {
+  fill: none;
+  stroke: rgba(255, 246, 232, 0);
+  stroke-width: 0.2;
+  vector-effect: non-scaling-stroke;
+  transition: stroke var(--dur-base) var(--ease-settle);
+}
+
+.tv-plot[data-hovered] .tv-select {
+  stroke: rgba(255, 246, 232, 0.55);
+}
+
+/* ------------------------------------------------------------------ beacons
+   Sanctioned gold — hands raised (§2.1). The only breathing thing in the
+   territory, and the only gold in it. */
+
+.tv-beacon-tip {
+  fill: rgba(253, 200, 113, 0.9);
+}
+
+.tv-beacon-tip-core {
+  fill: var(--gold-100);
+}
+
+.tv-beacon {
+  animation: tv-beacon-breathe 3.4s var(--ease-in-out) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes tv-beacon-breathe {
+  0%,
+  100% {
+    opacity: 0.82;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The beacon must read identically at every hour (spec §4) — no day/night rule
+   touches it, and that omission is deliberate. */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Traffic stops rather than freezing mid-path at a random offset. */
+  .tv-traffic-dot {
+    offset-distance: 50%;
+    opacity: 1;
+  }
+  .tv-beacon {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   FLAT GROUND LABELS — owner review A2.
+   Real SVG text lying on the floor beside each structure. Sheared by the
+   isometric floor transform, which was never the defect finding RD-1 named:
+   collision and size were. So these are set LARGE, on clear ground, with the
+   paint-order guarantee that they are drawn after their plot.
+   ======================================================================== */
+
+.tv-label {
+  pointer-events: none;
+  /* Text on a floor needs its own separation from the floor, and a stroke reads
+     better than a shadow under a shear — a sheared blur smears along the wrong
+     axis. Paint-order puts the stroke behind the fill so glyph shapes stay true. */
+  paint-order: stroke fill;
+  stroke: rgba(6, 5, 4, 0.85);
+  stroke-linejoin: round;
+}
+
+.tv-label-head {
+  font-family: var(--font-display);
+  font-size: 1.5px;
+  font-weight: 500;
+  letter-spacing: -0.01px;
+  fill: var(--white);
+  stroke-width: 0.34px;
+}
+
+.tv-label-line {
+  font-family: var(--font-mono);
+  font-size: 0.86px;
+  letter-spacing: 0.02px;
+  fill: rgba(246, 241, 233, 0.72);
+  stroke-width: 0.26px;
+}
+
+/* Gold, and only ever "this needs you" (§2.1). */
+.tv-label-callout {
+  font-family: var(--font-mono);
+  font-size: 0.86px;
+  letter-spacing: 0.03px;
+  fill: var(--gold-300);
+  stroke-width: 0.26px;
+}
+
+.tv-label[data-drained] .tv-label-head {
+  fill: #dfe3e7;
+}
+
+.tv-label[data-drained] .tv-label-line {
+  fill: rgba(223, 227, 231, 0.6);
+}
+
+/* A dimmed plot dims its label with it — the hover model is subtractive. */
+.tv-plot[data-dimmed] .tv-label {
+  opacity: 0.3;
+}
+
+/* ==========================================================================
+   THE CAMERA — owner review A3.
+   Pan and zoom move the viewBox, so this is a true vector zoom: hairlines stay
+   hairlines and text stays text. A CSS scale() would resample every edge the
+   material system works to keep sharp.
+   ======================================================================== */
+
+.tv-svg[data-navigable] {
+  cursor: grab;
+  /* The wheel handler is non-passive and calls preventDefault; this stops the
+     browser from also treating a two-finger drag as a page gesture. */
+  touch-action: none;
+}
+
+.tv-svg[data-navigable][data-panning] {
+  cursor: grabbing;
+}
+
+/* While panning, nothing inside should intercept the pointer or animate. */
+.tv-svg[data-panning] .tv-plot {
+  pointer-events: none;
+}

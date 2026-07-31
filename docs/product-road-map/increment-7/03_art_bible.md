@@ -44,6 +44,43 @@ Everything else in the world is built from the **warm-white ramp at varying alph
 
 The consequence is the product's most important visual property: **on a still estate with nothing to do, there is almost no gold on screen.** The silence L1 promises becomes literally visible, and the first gold beacon to appear is unmissable because it is the only gold in the frame. A design that spends gold on decoration cannot make that promise.
 
+### 2.1a AMENDED 2026-07-30 — the atmosphere exemption
+
+> **Amendment forced by redesign decision D2.** The owner chose the **brand re-key** of the legacy hex-field background, whose crack-of-light colour is `--gold-500`. Gold is therefore present in the atmosphere layer of every surface, which §2.1 as written forbids. Recorded here rather than left as a silent violation — see [redesign/00_redesign_charter.md](./redesign/00_redesign_charter.md) D2 and [redesign/01_background_port.md](./redesign/01_background_port.md).
+
+**The amendment, stated as narrowly as it can be:**
+
+> Gold in the **atmosphere layer** — behind all content, never on or bounding an element, never at element scale — is exempt from the budget. Everywhere a user can point at, §2.1 is unchanged.
+
+Three reasons this is a principled carve-out and not a loophole:
+
+1. **It cannot be mistaken for state.** The budget exists so that gold on a *thing* means that thing needs you. The atmosphere is not a thing: it has no edge, no hit target, no label, and no state. A user cannot ask "why is that gold?" of a floor 60 pixels behind a card.
+2. **The distinguishing channel was never hue.** A beacon wins the eye by being a small, bright, *local* point with a bloom halo against a large, dim, low-frequency field. That contrast is luminance and spatial frequency, and both survive the two sharing a hue. What would kill it is a gold field at beacon *luminance*, which is why §2.1a carries the measurement obligation below.
+3. **The veil already enforces it where it matters.** `Background`'s `intensity` drops the field to `quiet` in rooms and `hushed` behind dense working surfaces, so on exactly the surfaces where gold carries the most meaning, there is least gold behind it.
+
+**The obligation this amendment takes on.** The exemption is only safe if the beacon still wins, and that is now an empirical claim rather than a design one. Before R-3b closes, the beacon-against-atmosphere contrast is measured at all three intensities on real hardware, and if a raised hand is not unmistakable at `full`, the fix is the field's luminance — not the beacon's, because brightening the beacon to compete is how an estate stops being still.
+
+**What is explicitly *not* exempted:** the territory's built form, roads, traffic, weather, portraits at rest, chart series, KPI figures, headings, links, active states, and every element in the Sheet and Card renderers. The exemption is one layer deep and stops at the first element.
+
+### 2.1b Ground labels are not gold — and the flat-label reversal
+
+> **Recorded 2026-07-30, owner review A2.** The redesign first moved every
+> territory label into screen-space DOM, arguing that finding RD-1 (unreadable
+> skewed labels) was caused by flatness. The owner reversed it, and was right:
+> RD-1 was three defects arriving together — skewed **and** colliding **and** too
+> small — and flatness took the blame for what collision and size did.
+
+Labels now lie on the ground plane, as the [inspiration set](./inspiration/) does.
+Three properties keep them legible, and they are construction rather than taste:
+
+1. **Placement is outside the slab**, along the plot's outward vector, so a label can never land on built form.
+2. **One heading plus at most one detail line**, stroked against the floor (`paint-order: stroke fill`) so glyphs keep their edges under shear.
+3. **They remain real SVG `<text>`** — selectable, in the accessibility tree. Flatness never cost accessibility; only the first implementation did.
+
+**Ground labels are warm-white, never gold.** The only gold a label may carry is a
+`needs you` callout, which is §2.1's first meaning exactly. A district's name, its
+code, its KPI figure and its drift are all ramp — a name is not a request.
+
 ### 2.2 The one exception, and why it is not one
 
 Charts need more than one distinguishable series. Rather than break the palette, chart series use the **warm-white ramp plus the two semantic hues** (`--positive` sage, `--negative` terracotta) and, past three series, **texture** (dash patterns, dot density) rather than new hues. The brand's rule that semantic colours stay desaturated so they never compete with gold is what makes this work: a five-series chart still has no gold in it, so a beacon appearing beside it still wins the eye.
@@ -135,6 +172,50 @@ That matters beyond style. L7 requires portraits that are "unmistakably non-huma
 Direction **C is procedurally generatable in SVG from the entity id**, which means: no ADC, no illustrator, no raster assets, no drift between a colleague's portrait and its versions, and a Gallery that can render a colleague terminated two years ago without an asset store. It is the only direction with no production cost at all.
 
 The honest counter is that seals are cold, and spec §5's dossier and one-on-one surfaces are built on the premise that you *meet* a colleague. A room of seals is a filing cabinet.
+
+### 7.2a RESOLVED 2026-07-30 — direction A ships, and it was never blocked
+
+> **Owner review:** the procedural halftone bust was not personified enough. It
+> read as a *figure*, not a *person* — and a generic silhouette cannot carry a
+> name. Direction **A** is now generated for real.
+
+Charter decision 8 recorded the A rasters as "blocked on working ADC or the
+owner's own image tool". **They were not blocked.** The user ADC is expired and
+cannot refresh non-interactively, but the VM has an *attached service account*
+(`hirebuddha-vertex-ai`, cloud-platform scope) on the metadata server — the path
+`backend/.env` already documents and the backend already uses. Twelve portraits
+drawn on `imagen-4.0-generate-001` via `vihara/scripts/portraits.py`.
+
+What is reused unchanged, because it was reviewed: the **STYLE block byte-identical**
+and **T4 luminous**, the treatment picked from four on 2026-07-29. What changed is
+only the cast — the pre-redesign personas were written per *role*, and the
+redesign's colleagues are named people whose ids mean something else, so reusing
+those assets would have put a bespectacled bookkeeper's face on Meera in
+Collections.
+
+Three properties the pipeline holds, and the reasons:
+
+1. **One locked style block.** Twelve figures start from the same bytes, so the cast reads as one house rather than as twelve prompts. A persona adds silhouette only — build, hair, one garment, because that is what a dot lattice carries.
+2. **The tracer has no style opinion.** Dot presence, size and shade all come from the model's own luminance. If a portrait looks wrong the fix is its prompt, never the tracer — otherwise the *medium* drifts per portrait and §7's disclosure-by-medium stops being one medium.
+3. **A promoted portrait does not change by accident.** `promote` refuses to overwrite without `--force`, and `public/portraits/manifest.json` records what was drawn and from which persona.
+
+**Two sizing findings worth keeping.** The tracer must crop to content — Imagen
+centres the bust in a wide black margin, and tracing the raw square spends a third
+of the lattice on empty ground. And a 112-dot lattice **greys out below ~56px**,
+where its dots fall under a device pixel: every portrait therefore grew wherever
+the person is the subject. That is a sizing fix rather than a medium fix — at 38px
+a face is too small whatever it is made of.
+
+**Direction C is unchanged and still load-bearing.** `components/Seal.tsx` is what
+an entity with no persona gets — a gateway, a connector, a Meta-Agent role, a newly
+seeded agent — and the procedural bust remains the floor for any id with no drawn
+asset, so nothing is ever portrait-less and adding a colleague cannot break a
+surface while it waits for an art run.
+
+**One consequence beyond portraits, found in the Library.** Once the halftone means
+*"this is a synthetic agent"*, its **absence means "human"** — so the tenant gets
+neither a bust nor a seal, only their name. Hanging one on a person would run the
+L7 disclosure backwards while looking entirely deliberate.
 
 **Resolved at R1 (2026-07-29): the seal stays the fallback, not the floor.** The owner chose direction A as the house style with C as the automatic fallback — the recommendation as written. A colleague with a defined persona gets a halftone bust; everything else gets a seal, so nothing is ever portrait-less and nothing waits on an art pipeline. The raster round for the A busts remains a **pre-G1 obligation** (charter decision 8), blocked on working ADC or the owner's own image tool.
 

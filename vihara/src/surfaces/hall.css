@@ -1,0 +1,333 @@
+/* Registry Hall — the dense-data room. */
+
+.hl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  min-height: 0;
+}
+
+/* ----------------------------------------------------------------- the head */
+
+.hl-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex: none;
+}
+
+.hl-title {
+  margin-top: var(--s-2);
+  font-size: var(--text-2xl);
+}
+
+.hl-summary {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-5);
+  padding-bottom: 4px;
+}
+
+.hl-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: flex-end;
+}
+
+.hl-summary-val {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.hl-summary-div {
+  align-self: stretch;
+}
+
+/* ------------------------------------------------------------- the controls */
+
+.hl-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+  flex: none;
+}
+
+.hl-control-group {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.hl-control-icon {
+  color: var(--fg-faint);
+  margin-right: var(--s-1);
+}
+
+/* ---------------------------------------------------------------- the table
+   Set into a well. The scroll container is the well, so the sticky header
+   sticks to the carved edge rather than to the page. */
+
+.hl-table-well {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+}
+
+.hl-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+}
+
+/* Header ----------------------------------------------------------------- */
+
+.hl-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+  /* Opaque, because rows scroll beneath it. A translucent sticky header over
+     moving text is unreadable however pretty the blur. */
+  background: var(--ink-800);
+  box-shadow: inset 0 -1px 0 var(--rule-strong);
+}
+
+.hl-table thead th.hl-num {
+  text-align: right;
+}
+
+.hl-th-updated {
+  text-align: right;
+}
+
+/* Body ------------------------------------------------------------------- */
+
+.hl-table tbody tr {
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.hl-table tbody td {
+  padding: var(--s-3) var(--s-4);
+  /* Interior rules only, at 5%. Present when looked for, gone when reading. */
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+  color: var(--fg-muted);
+  vertical-align: middle;
+}
+
+.hl-table tbody tr:last-child td {
+  box-shadow: none;
+}
+
+.hl-table tbody tr:hover td {
+  background: rgba(255, 246, 230, 0.028);
+}
+
+.hl-table tbody tr:focus-visible {
+  outline: none;
+}
+
+.hl-table tbody tr:focus-visible td {
+  background: rgba(255, 246, 230, 0.05);
+  box-shadow: inset 0 -1px 0 var(--rule-faint), inset 0 1px 0 var(--border-gold);
+}
+
+.hl-table tbody tr[data-selected] td {
+  background: rgba(237, 171, 72, 0.055);
+}
+
+/* A left marker on the selected row rather than a gold background — gold as a
+   fill here would spend the §2.1 budget on "you clicked this". */
+.hl-table tbody tr[data-selected] td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent), inset 0 -1px 0 var(--rule-faint);
+}
+
+/* Columns ---------------------------------------------------------------- */
+
+.hl-td-id .t-mono {
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+}
+
+.hl-td-party {
+  color: var(--fg);
+  min-width: 22ch;
+}
+
+.hl-num {
+  text-align: right;
+}
+
+.hl-td-amount .t-mono {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.hl-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  white-space: nowrap;
+  font-size: var(--text-xs);
+}
+
+/* The owner is who to talk to when a row is wrong, which makes it functional
+   rather than metadata. `--fg-faint` is the disabled step and put it below the
+   4.5:1 floor; `--fg-subtle` at 11px clears it. */
+.hl-owner {
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.hl-td-updated {
+  text-align: right;
+}
+
+.hl-td-updated .t-mono {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+/* A withdrawn record. Soft-deleted rows still come back on the wire, and
+   hiding them would make a register disagree with its own audit trail — so
+   they are shown, receded, with a negative lamp and the word "Withdrawn" on
+   the selected rail. Never colour alone, and never colour at all here: the
+   row simply sits back. */
+.hl-table tbody tr[data-withdrawn] td {
+  color: var(--fg-subtle);
+}
+
+/* A platform absence, said quietly rather than filled in (§7.1, §7.4). Mono at
+   caption size — evidence for whoever wants it, never the message.
+   `--fg-muted` and not `--fg-subtle`: §6 wants 4.5:1 for anything that is not
+   large text, and at 11px this is small text. */
+.hl-gap {
+  flex: none;
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: var(--lh-normal);
+  color: var(--fg-muted);
+  max-width: 74ch;
+}
+
+/* ------------------------------------------------------------ selected rail */
+
+.hl-selected {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex: none;
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  border-radius: var(--r-pill);
+}
+
+.hl-selected-id {
+  font-size: var(--text-sm);
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+/* The fields the table could not fit, on the row you asked about. The rail
+   used to hold three buttons that echoed and wrote nothing; this is the same
+   strip carrying something true instead. */
+.hl-selected-fields {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  margin-left: auto;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.hl-selected-fields > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  flex: none;
+}
+
+.hl-selected-fields dd {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- scaffold
+   The pending state (D7 §3.1). The well is drawn first and the bars go inside
+   it: `vh-skeleton`'s ground is a 6/255 delta on the raw canvas, so a bar on
+   the page background is invisible and the room would read as blank rather
+   than as early. */
+
+.hl-ghost-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: 220px;
+}
+
+.hl-ghost-well {
+  padding: var(--s-4) var(--s-4) var(--s-5);
+  overflow: hidden;
+}
+
+.hl-ghost-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+}
+
+/* The columns are the real count, so the scaffold makes the same spatial claim
+   the table is about to. */
+.hl-ghost-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.hl-selected-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--fg-subtle);
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+
+.hl-selected-close:hover {
+  background: var(--surface-3);
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1000px) {
+  /* The one column a phone can lose without losing the row's meaning. The
+     record column stays: it now carries the lamp that says whether the row has
+     been withdrawn, and dropping it would take a state with it. */
+  .hl-td-updated,
+  .hl-th-updated {
+    display: none;
+  }
+  .hl-selected {
+    flex-wrap: wrap;
+    border-radius: var(--r-lg);
+  }
+  .hl-selected-fields {
+    width: 100%;
+    margin-left: 0;
+  }
+}

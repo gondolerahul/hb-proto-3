@@ -1,0 +1,163 @@
+[
+  {
+    "type": "narrative.story-card",
+    "class": "narrative",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "template": {"type": "string"},
+        "title": {"type": "string"}
+      },
+      "required": ["template"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["kpi.current", "records.aggregate", "runs.history", "approval.detail"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "article", "label_from": "props.title"}
+  },
+  {
+    "type": "narrative.standup-line",
+    "class": "narrative",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "template": {"type": "string"},
+        "entity_id": {"type": "string"}
+      },
+      "required": ["template", "entity_id"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["runs.history", "kpi.current"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "listitem", "label_from": "props.entity_id"}
+  },
+  {
+    "type": "narrative.review",
+    "class": "narrative",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "template": {"type": "string"},
+        "review_id": {"type": "string"}
+      },
+      "required": ["template", "review_id"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["strategy.review", "kpi.series"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "article", "label_from": "props.review_id"}
+  },
+  {
+    "type": "narrative.season-marker",
+    "class": "narrative",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "template": {"type": "string"},
+        "period": {"type": "string"}
+      },
+      "required": ["template", "period"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["kpi.series"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "article", "label_from": "props.period"}
+  },
+  {
+    "type": "narrative.mandate",
+    "class": "narrative",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "template": {"type": "string"},
+        "mandate_id": {"type": "string"}
+      },
+      "required": ["template", "mandate_id"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["strategy.mandate"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "article", "label_from": "props.mandate_id"}
+  },
+  {
+    "type": "narrative.still-line",
+    "class": "narrative",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "template": {"type": "string"}
+      },
+      "required": ["template"],
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.pulse", "kpi.current", "estate.beacon"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "status", "label_from": "props.template"}
+  }
+]

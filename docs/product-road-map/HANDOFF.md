@@ -1,12 +1,38 @@
 # Product Road-Map — Development Handoff
 
 > **Purpose:** resume development in a fresh session with full context.
-> **Last updated:** 2026-07-29 · **Author:** Claude (session with Rahul)
-> **Read next:** [build_roadmap.md](./build_roadmap.md) (the plan) · [roadmap_gap_register.md](./roadmap_gap_register.md) (findings) · the `increment-1/` and `increment-2/` folders (per-workstream design + build notes).
+> **Last updated:** 2026-07-30 · **Author:** Claude (session with Rahul)
+> **Read next:** **if you are here for Vihara, read [increment-7/redesign/03_resume.md](./increment-7/redesign/03_resume.md) first** — it is a hundred lines and this file is a programme history. Otherwise: [build_roadmap.md](./build_roadmap.md) (the plan) · [roadmap_gap_register.md](./roadmap_gap_register.md) (findings) · the per-increment folders.
 
 ---
 
 ## 0. TL;DR — where we are
+
+> ## ⚠️ 2026-07-30 — THE VIHARA FRONTEND WAS REJECTED ON DESIGN, AND REDESIGNED
+>
+> **Everything about the Vihara *look* below this box is superseded.** The
+> Increment-7 narrative in this section is still correct about the backend and about
+> what each workstream *did*; it is out of date about the frontend, which was
+> rebuilt from the visual layer up.
+>
+> **Read [increment-7/redesign/03_resume.md](./increment-7/redesign/03_resume.md) to
+> resume.** Charter and four locked decisions:
+> [redesign/00_redesign_charter.md](./increment-7/redesign/00_redesign_charter.md).
+>
+> * **What happened.** All eight workstreams merged, then three unplanned polish rounds followed — which was the signal the look was not converging. At owner review the app was rejected on craft: it did not read as though every element had been designed with care. `vihara/` is preserved as **`vihara-review-rejected/`** (a parts bin, not a base). **`backend/src/ai/genui/`, migration `genui003` and every D5 contract are untouched** — the rejection is frontend-only.
+> * **Where it is now.** A new `vihara/` on branch **`inc7/redesign`** (30 commits, tree clean, **on no remote**). **Fifteen of the eighteen product surfaces plus the shell stand** at pixel-final quality: Still · Terrace · district room · Dossier · Boardroom · Standup · Study · Glasshouse · Undercroft · Library · Bridges & Gates · Talent Office · Gallery · Tray · Registry Hall. **The three missing are the Private Line** (Thread · Morning Story · Pocket Desk) — never rebuilt, and nothing recorded dropping them. Gates: **tsc clean · vitest 28 · sweep 16/16 · build clean, shell 141 KB gz** of the 220 budget — **and two red gates that no list mentioned**: `npm run lint` (8 errors) and `pytest tests/unit` (4 failures, the cross-language wire gate). **No CI runs any gate**, which is how both survived a full workstream and two reviews.
+> * **The seven findings (RD-1…RD-7)** are in the charter §2, diagnosed by *rendering* the R2-approved boards rather than from recollection. **RD-7 is the structural one:** L9's "every W surface owes a sheet" guarantee gave the nine surfaces a business owner actually works in a *fallback's* design budget.
+> * **Owner decisions since:** the **brand re-key** background ships (D2 closed), which put gold in the atmosphere and forced **art bible §2.1a** — an exemption one layer deep carrying a measurement obligation. Owner review round 1 (A1–A4, B, C, D) is implemented, including a **reversal of one of my own decisions** that was correct (§2.1b). Review comment D exposed a real product gap: there was **no way for an owner to brainstorm**, now `Brainstorm.tsx`.
+> * **Portraits are real.** Art bible direction A finally shipped — twelve generated on Imagen 4 and traced to dot lattices (`vihara/scripts/portraits.py`). Charter decision 8 called this "blocked on working ADC"; **it was not.** The user ADC is expired but the VM's attached service account (`hirebuddha-vertex-ai`, metadata server) works. See art bible **§7.2a**.
+> * **A readiness assessment ran 2026-07-30 before R-4** ([redesign/04_r4_readiness.md](./increment-7/redesign/04_r4_readiness.md)) — every gate run rather than read, every doc claim checked against the tree. It produced **four more owner decisions** (charter §3a): **D5** R-4 is one round of nine parts, not three mechanical steps — six prerequisites were unlisted (auth entry, fetch lifecycle, step-up ceremony, navigation, `gen:api`, SSE client) · **D6** the Private Line is **rebuilt** as R-3c, before R-4 · **D7** navigation is the ⌘K palette plus `pushState`, because L8 makes a push *a tray or nothing* and a push that cannot deep-link drops you at the front door · **D8** all four unsourced regions get real endpoints, accepting that two of them are new domain design.
+> * **✅ R-4 part G is BUILT** ([redesign/06](./increment-7/redesign/06_r4_wiring.md) §2): both red gates green, the three missing gate scripts restored (`gen:api`, the bundle budget, the token mirror), and **CI now exists** — `.github/workflows/gates.yml`, two independent jobs, which is the real fix since nothing had ever run a gate unless a human typed it. Lint went green by moving the three.js modules to the path the allowlist names rather than widening the allowlist to wherever the code had drifted.
+> * **✅ R-3c is BUILT — the eighteen surfaces are complete** ([redesign/05](./increment-7/redesign/05_r3c_private_line.md) §6a). Thread · Morning Story · Pocket Desk, plus the second Vite entry, service worker and webmanifest. The load-bearing invariant holds and is **mutation-tested**: the Thread's certified section *is* `TraySurface`, the component, mounted. The Line's honest cost is **87.8 KB gz**, not the first build's 3.5 — a shared chunk is now charged to both entries, because a cold visit to either page pays for it.
+> * **Now measured, all green:** tsc · lint · **vitest 65** · **sweep 19/19** · build with **two entries** (index 139.5, line 87.8 KB gz of 220 each) · `gen:api` no drift · tokens match · backend **2242** unit + 2 parity · typecheck 345 files.
+> * **✅ R-4 is COMPLETE — all nine parts** ([redesign/06](./increment-7/redesign/06_r4_wiring.md)): gates + CI (G) · auth entry (A) · ⌘K navigator and `pushState` URLs (N) · fetch lifecycle (L) · step-up ceremony (C) · every surface wired (W) · the missing wrappers (P) · the live SSE estate (S) · four new backend endpoints (E — including E3's colleague dossier and E4's talent brief, the two D8 accepted as real domain design). **Nothing under `src/surfaces/`, `src/line/` or `src/shell/` reads `src/fixtures/`.**
+> * **✅ PROVEN LIVE 2026-07-31 — `all 18 surfaces clean`**, three consecutive sweeps against a real backend and a real session. The first end-to-end browser proof of the increment, and it found three defects **384 green unit tests could not**: the SSE stream had no lifetime and **froze the API under `--reload`** (uvicorn waits for open connections); the sweep was measuring the scaffold and called fourteen working surfaces empty; and **the Line had no session gate at all**, firing its first reads with no token. All three fixed — [redesign/06](./increment-7/redesign/06_r4_wiring.md) §10d.
+> * **Gates, measured:** tsc · lint · **vitest 384** · build clean (index 183.7, line 117.7 KB gz of 220 each) · `gen:api` no drift · tokens match · backend **2329** unit + 2 parity · typecheck **352** · sweep **18/18**.
+> * **Next is R-5** — the honesty pass: re-walk the parity register (v1.4), burn down the frozen motion-debt list (`width` in `standup.css` first, the only layout-triggering one), and decide onboarding staging + `world.ghost`, whose retirement claim in parity row 4 is **false in fact** today.
+> * **Do not "finish" the rendered gaps — but three of the seven are now stale.** Talent termination, TWIN's scenario runner and the tray cost estimator **all shipped 2026-07-29**, and the surfaces still draw them blocked; one fixture denying a contract was authored the day *after* it shipped. Four rows still hold. The rule — close the backend gap and the rendered gap in the same commit — was violated in the direction nobody watches. Corrected table in resume doc §6.
 
 * **Increment 1 (One-Loop Foundations) — ✅ BUILT & MERGED to `master`.** Four workstreams: **SIG** (signal bus), **GOV** (governance + PolicyGate), **SCH** (tenant schema / records / data plane), **LOOP+ENV** (Loop runtime, budget envelopes, wallet holds). Register findings B1/B2/B3/B5/B6/B8/E3/A6 closed.
 * **Increment 2 (The Solo Pack — the sellable MVP) — DESIGNED + SLICE, PACK, KAR built; ONBOARD backend built.**
@@ -35,9 +61,9 @@
 
 ---
 
-## 1. ⚠️ The push is BEHIND AGAIN (measured 2026-07-28: `origin/master` is **49 commits** behind)
+## 1. ⚠️ The push is BEHIND AGAIN (measured 2026-07-30: `origin/master` is **79 commits** behind)
 
-**As of 2026-07-28, `git rev-list --left-right --count origin/master...master` returns `0 49`.** Increment 6, the voice go-live work and Increment-7 Phase A are all local-only. The section below is the 2026-07-24 history; the *capability* is proven (it was published once from a credentialed host), so this is a task rather than a blocker.
+**As of 2026-07-30, `git rev-list --left-right --count origin/master...master` returns `0 79`** — and that counts `master` only. **The redesign adds 28 more on `inc7/redesign`, which has never been pushed at all.** Increment 6, the voice go-live work, Increment-7 Phase A *and* the whole of Phase B are local-only. This VM has no git credentials; the *capability* is proven (it was published once from a credentialed host), so this is a task rather than a blocker — but it is now the largest single piece of unpushed work in the project's history.
 
 > **2026-07-24 (history):** `git ls-remote origin master` returned **`a403cda`**, byte-identical to local `master`. The long-standing "this VM has no write credentials" action is **closed**.
 

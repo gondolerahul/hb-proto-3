@@ -57,6 +57,7 @@ from src.ai.orm.execution import ExecutionRun, HumanApproval
 from src.ai.signals.models import Signal, SignalStatus, TriggerRegistration
 from src.ai.tenant_schema.data_plane import tenant_data_plane
 from src.ai.tenant_schema.models import TenantEntityDef, TenantRecord
+from src.ai.trust.consent_read import channel_consent
 from src.ai.twin.models import TwinRun, TwinScenario
 from src.auth.models import Company
 from src.common.config import settings
@@ -94,7 +95,11 @@ _CHANNEL_PREFIXES: tuple[tuple[str, str], ...] = (
     ("broadcast.", "broadcast"),
 )
 
-_ACTIVE_RUN_STATUSES = ("PENDING", "RUNNING")
+#: A run that has not finished. Public because the dossier read (D8 E3) counts
+#: the same thing for one colleague, and two definitions of "still running"
+#: would eventually disagree on the same screen.
+ACTIVE_RUN_STATUSES = ("PENDING", "RUNNING")
+_ACTIVE_RUN_STATUSES = ACTIVE_RUN_STATUSES
 
 
 # ── pure helpers (no DB — unit-tested directly) ──────────────────────────────
@@ -172,6 +177,25 @@ def envelope_days_left(refreshed_at: datetime, cycle: str, now: datetime) -> int
     length = 7 if cycle == "weekly" else 30
     end = refreshed_at + timedelta(days=length)
     return max(0, (end - now).days)
+
+
+def gate_consent_block(block: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A gatehouse's consent posture, trimmed to what a door shows (D8 E2).
+
+    The registry's read model carries more (the per-purpose breakdown, the
+    granted/denied record counts) and ``GET /ai/consent`` serves all of it;
+    the door shows the posture, the registry's own reason for it, and the
+    two counts of counterparties it would refuse. ``None`` when the registry
+    was not asked about this channel — an absence, never a cheerful "open".
+    """
+    if block is None:
+        return None
+    return {
+        "posture": block["posture"],
+        "reason": block["reason"],
+        "dnc": block["dnc"],
+        "unsubscribed": block["unsubscribed"],
+    }
 
 
 async def _tenant_plane_regions(company_id: uuid.UUID) -> dict[str, Any]:
@@ -454,6 +478,16 @@ async def estate_view(
         if status == SignalStatus.PARKED:
             parked_by_channel[channel] = parked_by_channel.get(channel, 0) + int(count)
 
+    # Consent, at the door it applies to (D8 E2). A gatehouse is a channel,
+    # and the registry answers exactly one question about a channel — may
+    # this tenant send on it, and for which purposes — so the posture is
+    # read from the registry rather than recomputed here. The counts beside
+    # it are the counterparties the gate would refuse: the same hold the
+    # district shows as PARKED, seen from the door's end of the road.
+    gate_consent = await channel_consent(
+        db, company_id,
+        [gateway_channel(e) for e in entities if is_gateway(e)])
+
     # ── assemble districts ────────────────────────────────────────────────
     districts: list[dict[str, Any]] = []
     quarters_seen: dict[str, list[str]] = {}
@@ -592,6 +626,8 @@ async def estate_view(
                 "health": "ok",
                 "inbound_today": inbound_today.get(gateway_channel(e), 0),
                 "parked": parked_by_channel.get(gateway_channel(e), 0),
+                "consent": gate_consent_block(
+                    gate_consent.get(gateway_channel(e))),
             }
             for e in entities if is_gateway(e)
         ],

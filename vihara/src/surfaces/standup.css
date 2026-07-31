@@ -1,0 +1,333 @@
+/* The Standup. A card sequence at novice density, one sheet at operator — two
+   genuinely different registers, not one layout at two sizes. */
+
+.su {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--s-4);
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+}
+
+.su[data-density="operator"] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* Pending and failed have no header and no rail — one child, filling the room.
+   The empty story is NOT marked this way: it keeps its real header. */
+.su[data-pending] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* --------------------------------------------------------------- the scaffold
+   D7 §3.1: the pending state is this surface's own structure, never a spinner.
+   Plates first with the bars inside them — `vh-skeleton`'s ground is a ~6/255
+   delta on the raw canvas, so bars laid straight over the background are
+   correctly measured invisible. */
+
+.su-scaffold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-height: 0;
+}
+
+.su-scaffold-head,
+.su-scaffold-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-5);
+  border-radius: var(--r-md);
+}
+
+.su-scaffold-card {
+  gap: var(--s-4);
+  max-width: 74ch;
+}
+
+/* ------------------------------------------------------------------ header */
+
+.su-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-6);
+  flex-wrap: wrap;
+}
+
+.su-head-lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.su-title {
+  font-size: var(--text-2xl);
+}
+
+/* L2, stated on the surface. A promise the product keeps but never mentions is a
+   promise the user cannot rely on. */
+.su-voice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--fg-subtle);
+  max-width: 76ch;
+}
+
+/* Where the morning came from, and what it does not carry (§7.4). One line, in
+   the caption ramp, said once for the whole surface rather than repeated on
+   every card — a gap restated five times reads as five gaps. */
+.su-elsewhere {
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: 1.55;
+  /* `--fg-muted`, not the `--fg-subtle` of the voice line above it. §6 wants
+     4.5:1 for anything that is not large text, and `contrast.test.ts` measures
+     the subtle step against the 3:1 large-text floor only. This line carries
+     information — which morning you are reading, and what it does not hold. */
+  color: var(--fg-muted);
+  max-width: 76ch;
+  text-wrap: pretty;
+}
+
+.su-head-side {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.su-waiting {
+  height: 30px;
+  color: var(--gold-300);
+}
+
+.su-density {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* ------------------------------------------------------- novice — the stage */
+
+.su-stage {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-2) 0;
+}
+
+/* ----------------------------------------------------- operator — the sheet */
+
+.su-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--s-8);
+}
+
+/* -------------------------------------------------------------- the card */
+
+.su-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  width: 100%;
+}
+
+.su-card[data-expanded] {
+  max-width: 74ch;
+  padding: var(--s-5) var(--s-6) var(--s-6);
+}
+
+.su-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.su-who {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-1);
+  margin: calc(var(--s-1) * -1);
+  border-radius: var(--r-md);
+  text-align: left;
+  transition: background var(--dur) var(--ease-out);
+}
+
+.su-who:hover {
+  background: rgba(255, 246, 230, 0.04);
+}
+
+.su-portrait {
+  width: 66px;
+  height: 66px;
+}
+
+.su-card[data-expanded] .su-portrait {
+  width: 90px;
+  height: 90px;
+}
+
+.su-who-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.su-who-name {
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+.su-card[data-expanded] .su-who-name {
+  font-size: var(--text-lg);
+}
+
+.su-who-meta {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* "This colleague is waiting on you", in the head where the name is. Replaces
+   the fixture's `prepared by X · 07:04`: the morning composition carries no
+   per-card timestamp, and L2's attribution is stated once in the header rather
+   than five times down the sheet. Same idiom as the Line's card, deliberately. */
+.su-waiting-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-top: var(--s-2);
+  white-space: nowrap;
+}
+
+.su-waiting-word {
+  color: var(--gold-300);
+}
+
+/* Her sentence. The one piece of prose on the card, and the reason the card
+   exists — so it gets the narrative register and the measure to match. */
+.su-line {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.su-card[data-expanded] .su-line {
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+/* The facts well, the `moved` KPI row and the grade seal are gone with the
+   fields that fed them: `GET /ai/genui/line/morning` carries her sentences, a
+   name, a district, an id and one boolean. Their rules are deleted rather than
+   left unreachable — dead CSS is the quietest way for a surface to look like it
+   still has a feature. What would bring them back is named in the header copy
+   and in the report, not here. */
+
+/* ---------------------------------------------------------------- the foot */
+
+.su-card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.su-needs {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------- the rail */
+
+.su-rail {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.su-pips {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1;
+}
+
+/* A pip per colleague. Wide when current, so the rail reads as progress rather
+   than as a set of dots. */
+.su-pip {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--ink-700);
+  transition: background var(--dur-base) var(--ease-settle), width var(--dur-base) var(--ease-settle);
+}
+
+.su-pip:hover {
+  background: var(--ink-500);
+}
+
+.su-pip[data-passed] {
+  background: var(--ink-500);
+}
+
+.su-pip[data-active] {
+  width: 46px;
+  background: rgba(246, 241, 233, 0.7);
+}
+
+/* A hand raised on a line you have not reached yet. Sanctioned gold (§2.1) —
+   this is literally "this needs you". */
+.su-pip-hand {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  translate: -50% 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gold-300);
+  box-shadow: 0 0 6px rgba(237, 171, 72, 0.6);
+}
+
+.su-count {
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .su-waiting-mark {
+    width: 100%;
+    padding-top: 0;
+  }
+  .su-needs {
+    margin-left: 0;
+    width: 100%;
+  }
+  .su-pip {
+    width: 18px;
+  }
+  .su-pip[data-active] {
+    width: 32px;
+  }
+}

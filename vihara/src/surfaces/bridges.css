@@ -1,0 +1,1003 @@
+/* ============================================================================
+   BRIDGES & GATES — the estate's edge.
+
+   Three material ideas carry this surface, and each of them replaces a colour
+   that a lesser version would have used:
+
+   1 · **A dispute is a seam, not a banner.** The two sides are two columns of
+       one table with a machined vertical rule between them, and the rule goes
+       gold only on the rows that actually disagree. Gold is sanctioned there
+       because an unresolved dispute is literally "this needs you" (§2.1).
+
+   2 · **Under repair is scaffolding.** A diagonal monochrome hatch, dense and
+       still, laid over the card's top edge and behind its credential block. No
+       terracotta flood: a broken bridge is not an error message, it is a thing
+       with a tarpaulin over it.
+
+   3 · **Unknown is a dot lattice.** Deliberately a *different* texture from the
+       hatch, because "we never learned this" and "this is broken" must not read
+       as the same state. A dotted field is the instrument register for a gauge
+       with no reading behind it.
+
+   Nothing on this surface uses --fg-faint to carry information, and every lamp
+   is followed by a word.
+   ========================================================================= */
+
+.bg {
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-9);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ------------------------------------------------------------------ the head */
+
+.bg-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-width: 72ch;
+  margin-bottom: var(--s-4);
+}
+
+.bg-title {
+  font-size: var(--text-2xl);
+}
+
+.bg-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 70ch;
+}
+
+/* ------------------------------------------------------- the state of the edge
+   A single instrument strip. Corner ticks give it the panel register without
+   spending a drop of gold (RD-3: material, not alpha). */
+
+.bg-edge {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+  padding: var(--s-4) var(--s-5);
+  margin-bottom: var(--s-5);
+}
+
+.bg-edge-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.bg-edge-val {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The expiry cell is prose, not a figure, because there is no figure to give.
+   It is pushed to the far end of the strip rather than allowed to grow, so the
+   three counts read as a gauge cluster and the sentence reads as a caveat set
+   against them — and the measure rule still applies inside an instrument. */
+.bg-edge-item[data-wide] {
+  flex: 1 1 34ch;
+  max-width: 58ch;
+}
+
+.bg-edge-item[data-wide] .bg-edge-val {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+.bg-edge-div {
+  align-self: stretch;
+  flex: none; /* a 1px flex item will otherwise shrink to nothing */
+}
+
+/* ------------------------------------------------------------- the two columns
+   Bridges take the larger share: a dispute lives inside one, and two facing
+   versions of a record need real width to stop reading as a list. */
+
+.bg-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.24fr) minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+
+.bg-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.bg-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.bg-col-count {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: sits on the eyebrow's baseline at 10px */
+  color: var(--fg-subtle);
+}
+
+.bg-note {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono, one step under t-mono */
+  line-height: 1.7;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.bg-note strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* ================================================================== the gap
+   The security-relevant absence, given its own block at the top of the Bridges
+   column rather than a footnote under it. The dot lattice is the material claim:
+   this panel has no reading behind it. */
+
+.bg-gap {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+}
+
+.bg-gap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* The unknown texture. Still, sparse, and nothing like the repair hatch.
+     Not `mix-blend-mode: overlay` — over a near-black ground overlay multiplies
+     toward black and the lattice disappears, which is the one thing this
+     texture is not allowed to do. Plain alpha, tuned to read at 1×. */
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 246, 230, 0.1) 1px, transparent 1px);
+  background-size: 7px 7px; /* optical: lattice pitch, tuned by eye at 1× */
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-gap-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-subtle);
+}
+
+.bg-gap-body {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+/* The sentence the whole gap exists for. Warm-white, full weight — this is the
+   one line that must not read as a caption. */
+.bg-gap-body[data-key] {
+  color: var(--fg);
+}
+
+.bg-gap-body strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* ================================================================== a bridge */
+
+.bg-bridge {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+/* ---- under repair -------------------------------------------------------- */
+
+/* The scaffold band: dense diagonal hatch along the card's top edge. Reads as
+   a tarpaulin over the entrance, and costs no hue at all. */
+.bg-bridge[data-repair]::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px; /* optical: a tape band, thick enough to see, thin enough to ignore */
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 246, 230, 0.24) 0 3px,
+    rgba(255, 246, 230, 0.04) 3px 7px
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+.bg-bridge[data-repair] {
+  background: var(--ink-900);
+}
+
+/* ---- identity ------------------------------------------------------------ */
+
+.bg-bridge-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.bg-ident {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.bg-ident-well {
+  width: 42px;
+  height: 42px;
+  padding: 3px; /* optical: keeps the seal's outer ring off the well's rim */
+}
+
+/* The small well — a catalogue row and the two sides of a dispute, where the
+   mark identifies rather than announces. */
+.bg-ident-well[data-sm] {
+  width: 34px;
+  height: 34px;
+  padding: 2px; /* optical: the same 3px rim, scaled down with the well */
+}
+
+.bg-ident-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px; /* optical: name-to-subtitle, tighter than --s-1 reads as one unit */
+  min-width: 0;
+}
+
+.bg-ident-name {
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+.bg-ident-sub {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: transport strings are long; 10px keeps them on one line */
+  color: var(--fg-subtle);
+  overflow-wrap: anywhere;
+}
+
+/* ---- health: lamp plus word, never colour alone ------------------------- */
+
+.bg-health {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px; /* optical: matches m-chip's mono size so they align in a row */
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.bg-health strong {
+  font-weight: 500;
+  color: var(--fg);
+}
+
+/* ---- the credential block ----------------------------------------------- */
+
+.bg-cred {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+}
+
+.bg-cred .m-btn {
+  flex: none;
+  margin-left: auto;
+}
+
+/* Expiry not known — the dot lattice again, so the same absence wears the same
+   material wherever it appears on this surface. */
+.bg-cred[data-expiry="unknown"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 246, 230, 0.1) 1px, transparent 1px);
+  background-size: 7px 7px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Failed — the scaffold hatch, matching the card's band. */
+.bg-cred[data-expiry="failed"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 246, 230, 0.075) 0 4px,
+    transparent 4px 10px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-cred-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-xs);
+  color: var(--fg-subtle);
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim);
+  flex: none;
+}
+
+.bg-cred-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.bg-cred-state {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.bg-cred-why {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono */
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 64ch;
+}
+
+/* ---- scopes -------------------------------------------------------------- */
+
+.bg-scopes {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.bg-scope {
+  height: 21px;
+  padding: 0 var(--s-2);
+  font-size: 10px; /* optical: scope strings are dense; the chip stays small */
+}
+
+/* ---- mastering ----------------------------------------------------------- */
+
+/* The well is the scroll container, so the mastering table can be wider than a
+   narrow card without the page ever scrolling sideways. */
+.bg-master-scroll {
+  overflow-x: auto;
+}
+
+.bg-master-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+}
+
+.bg-master-table thead th {
+  padding: var(--s-2) var(--s-4);
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+  background: var(--ink-800);
+  box-shadow: inset 0 -1px 0 var(--rule-strong);
+}
+
+.bg-master-table thead th:last-child {
+  text-align: right;
+}
+
+.bg-master-table tbody td,
+.bg-master-table tbody th {
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  font-weight: 400;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+  color: var(--fg-muted);
+  vertical-align: middle;
+}
+
+.bg-master-table tbody tr:last-child td,
+.bg-master-table tbody tr:last-child th {
+  box-shadow: none;
+}
+
+.bg-obj-name {
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.bg-obj-master {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+
+/* Mastered somewhere else. Not a problem — the declaration working. */
+.bg-obj-elsewhere {
+  color: var(--fg-muted);
+}
+
+/* Never declared. The absence is named, in the same mono as a value would be,
+   at --fg-subtle rather than --fg-faint, because it is information. */
+.bg-obj-none {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+}
+
+.bg-obj-when {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: provenance line, one step under the value */
+  color: var(--fg-subtle);
+}
+
+.bg-obj-act {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bg-mini {
+  min-height: 28px;
+  padding: 0 var(--s-3);
+  font-size: var(--text-xs);
+}
+
+/* ============================================================== the dispute
+   The most interesting state on the surface, and it is built as a confrontation:
+   two identified sides, a machined seam between them, and the rows that disagree
+   marked on the seam itself. */
+
+.bg-disputes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.bg-dispute {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-4) var(--s-5);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim), var(--edge-base), var(--contact-md);
+}
+
+.bg-dispute-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.bg-dispute-what {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.bg-dispute-title {
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+.bg-dispute-meta {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono */
+  color: var(--fg-subtle);
+}
+
+/* A dispute waiting on a person is the definition of "this needs you", so the
+   lamp is lit. It does not breathe — breathing is reserved for a raised hand. */
+.bg-dispute-waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+/* ---- the two sides ------------------------------------------------------- */
+
+.bg-diff-scroll {
+  overflow-x: auto;
+}
+
+.bg-diff {
+  width: 100%;
+  min-width: 46ch;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+}
+
+.bg-diff col.bg-diff-seam-col {
+  width: 34px; /* optical: exactly wide enough for the ≠ mark plus its rule */
+}
+
+.bg-diff thead th {
+  padding: var(--s-3);
+  text-align: left;
+  font-weight: 400;
+  vertical-align: bottom;
+  box-shadow: inset 0 -1px 0 var(--rule-strong);
+}
+
+.bg-side {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.bg-side-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px; /* optical: as .bg-ident-text */
+  min-width: 0;
+}
+
+.bg-side-name {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.bg-side-when {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono */
+  color: var(--fg-subtle);
+}
+
+.bg-side-role {
+  height: 19px;
+  padding: 0 var(--s-2);
+  font-size: 9px; /* optical: a role tag inside a table head; 9px keeps it subordinate */
+  align-self: flex-start;
+}
+
+/* The seam. A vertical hairline down the middle of the table, drawn on the
+   seam column's cells so it runs the full height without a spanning element. */
+.bg-diff th.bg-seam,
+.bg-diff td.bg-seam {
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  background: linear-gradient(180deg, transparent, var(--rule) 12%, var(--rule) 88%, transparent);
+  background-size: 1px 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.bg-diff tbody th {
+  padding: var(--s-3);
+  text-align: left;
+  font-weight: 400;
+  vertical-align: middle;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.bg-diff tbody td {
+  padding: var(--s-3);
+  vertical-align: middle;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+  color: var(--fg-muted);
+}
+
+.bg-diff tbody tr:last-child th,
+.bg-diff tbody tr:last-child td {
+  box-shadow: none;
+}
+
+.bg-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.bg-field-name {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+/* The word that carries the state. The seam mark is decoration; this is the
+   information (WCAG 1.4.1). */
+.bg-field-differs {
+  font-family: var(--font-mono);
+  font-size: 9px; /* optical: a tag, subordinate to the field name above it */
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  /* Warm-white, not gold: the seam already spends the panel's gold and this
+     word only has to be unmissable, which contrast does better than hue. */
+  color: var(--fg);
+}
+
+.bg-val {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.bg-diff tr[data-differs] .bg-val {
+  color: var(--fg);
+}
+
+/* Only the disagreeing rows are warmed, and only faintly — the point is that
+   most of the record agrees and the argument is narrow. */
+.bg-diff tr[data-differs] th,
+.bg-diff tr[data-differs] td {
+  background: rgba(237, 171, 72, 0.045);
+}
+
+.bg-diff tr[data-differs] td.bg-seam {
+  background:
+    linear-gradient(180deg, transparent, var(--border-gold) 10%, var(--border-gold) 90%, transparent),
+    linear-gradient(rgba(237, 171, 72, 0.045), rgba(237, 171, 72, 0.045));
+  background-size: 1px 100%, 100% 100%;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+}
+
+.bg-seam-mark {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* ---- resolution ---------------------------------------------------------- */
+
+.bg-resolve {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.bg-resolve-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.65;
+  color: var(--fg-muted);
+  max-width: 68ch;
+}
+
+.bg-resolve-note strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.bg-acts {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* A settled dispute collapses to one line. It does not vanish — the record of
+   what you decided is the more useful thing once the argument is over. */
+.bg-settled {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim);
+}
+
+.bg-settled-text {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  min-width: 0;
+}
+
+.bg-settled-how {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* ---- the collapsed second dispute --------------------------------------- */
+
+.bg-dispute-shut {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  text-align: left;
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
+  transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+
+.bg-dispute-shut:hover {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-md);
+}
+
+.bg-dispute-shut-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px; /* optical: as .bg-ident-text */
+  min-width: 0;
+}
+
+.bg-dispute-shut-title {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.bg-caret {
+  margin-left: auto;
+  color: var(--fg-subtle);
+  flex: none;
+}
+
+/* ================================================================== a gate */
+
+.bg-gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+.bg-gate-facts {
+  display: flex;
+  flex-direction: column;
+}
+
+.bg-fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.bg-fact:last-child {
+  box-shadow: none;
+}
+
+.bg-fact-val {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  flex-wrap: wrap;
+}
+
+/* t-mono ships at --fg-muted; inside a fact value the figure is the point, so it
+   comes back up to full contrast rather than sitting under its own caption. */
+.bg-fact-val .t-mono {
+  color: var(--fg);
+}
+
+.bg-fact-why {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 62ch;
+}
+
+/* Volume reads as an instrument: the figure large and tabular, the rate and the
+   ceiling as mono beside it. No gauge — at 6% of a 1,000/day ceiling a bar
+   would be a decoration pretending to be a reading. */
+.bg-volume {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.bg-volume-figure {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1;
+  letter-spacing: var(--track-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.bg-volume-unit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* ------------------------------------------------------------- not connected */
+
+.bg-avail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+}
+
+.bg-avail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.bg-avail-row:last-of-type {
+  box-shadow: none;
+}
+
+.bg-avail-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* optical: name over a four-word gloss */
+  min-width: 0;
+}
+
+.bg-avail-name {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.bg-avail-what {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono */
+  color: var(--fg-subtle);
+}
+
+.bg-avail-row .m-btn {
+  margin-left: auto;
+}
+
+/* --------------------------------------------------------- the certified note */
+
+.bg-cert-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono, as the Tray's own note */
+  line-height: 1.7;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.bg-cert-note svg {
+  margin-top: 2px; /* optical: optical centring of a 12px glyph on a 1.7 line */
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1100px) {
+  .bg-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .bg-edge {
+    gap: var(--s-4);
+  }
+  .bg-edge-div {
+    display: none;
+  }
+  .bg-bridge-head,
+  .bg-dispute-head {
+    flex-direction: column;
+  }
+  /* Provenance is the column a phone can lose without losing the declaration. */
+  .bg-obj-when-cell,
+  .bg-obj-when-head {
+    display: none;
+  }
+}
+
+/* ============================================================ R-4 part W ==
+   Three additions, all for states that could not exist while the surface read
+   a fixture: a named absence where a control or a value used to sit, and the
+   certified layer's refusal notice.
+   ========================================================================= */
+
+/* An absence standing where a value or a control would have been. Mono at
+   caption size and --fg-subtle, never --fg-faint: the faint step is the
+   disabled one, and "we cannot answer this" is information (§3). */
+.bg-absent {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono, as .bg-avail-what */
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 46ch;
+  text-align: right;
+  margin-left: auto;
+}
+
+.bg-scopes .bg-absent,
+.bg-master-table .bg-absent {
+  text-align: left;
+  margin-left: 0;
+}
+
+/* The certified layer's answer when an act did not happen. A plate rather than
+   a well: this reports a result, which is why it is also the one block in this
+   column with role="status". */
+.bg-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+.bg-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg);
+  min-width: 0;
+}
+
+.bg-problem-reason {
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono, as .bg-cert-note */
+  color: var(--fg-subtle);
+}
+
+.bg-problem .m-btn {
+  margin-left: auto;
+  flex: none;
+}

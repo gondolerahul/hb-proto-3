@@ -1,0 +1,485 @@
+/* The Study — the desk you sit at. Four calm panels in a masonry-ish grid, all
+   the same material, none of them shouting. This is the one surface where the
+   right feeling is "nothing here is going to surprise me". */
+
+.sy {
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-9);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sy-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-width: 74ch;
+  margin-bottom: var(--s-5);
+}
+
+.sy-title {
+  font-size: var(--text-2xl);
+}
+
+.sy-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+}
+
+.sy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.sy-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+/* Billing spans the full width — it is the panel with the most to say and the
+   one a worried tenant came here for. */
+.sy-wallet {
+  grid-column: 1 / -1;
+}
+
+.sy-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.sy-count {
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* Notes are mono at caption size — an explanation, not part of the control. */
+.sy-note {
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+.sy-note strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.sy-panel-acts {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------- you */
+
+.sy-facts {
+  display: flex;
+  flex-direction: column;
+}
+
+.sy-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.sy-fact:last-child {
+  box-shadow: none;
+}
+
+.sy-fact-val {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  text-align: right;
+}
+
+/* ---------------------------------------------------------------- passkeys */
+
+.sy-keys {
+  display: flex;
+  flex-direction: column;
+}
+
+.sy-key {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.sy-key:last-child {
+  box-shadow: none;
+}
+
+.sy-key-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--ao-well);
+  color: var(--fg-subtle);
+}
+
+.sy-key-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sy-key-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.sy-key-here {
+  height: 19px;
+  padding: 0 var(--s-2);
+  font-size: 9px;
+}
+
+.sy-key-meta {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.sy-key-remove {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--fg-faint);
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+
+.sy-key-remove:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--negative);
+}
+
+/* ---------------------------------------------------------------- density */
+
+.sy-density {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2);
+}
+
+.sy-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  text-align: left;
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim), var(--contact-sm);
+  transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+
+.sy-choice:hover {
+  background: var(--surface-2);
+}
+
+/* Selected is surface + a strong edge, never gold — a chosen preference is not
+   "this needs you" (§2.1). */
+.sy-choice[data-selected] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-md);
+}
+
+.sy-choice-name {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.sy-choice[data-selected] .sy-choice-name {
+  color: var(--fg);
+}
+
+.sy-choice-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+
+/* ----------------------------------------------------------- notifications */
+
+.sy-toggles {
+  display: flex;
+  flex-direction: column;
+}
+
+.sy-toggle {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.sy-toggle:last-child {
+  box-shadow: none;
+}
+
+.sy-switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: var(--r-pill);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+  transition: background var(--dur-base) var(--ease-settle);
+  margin-top: 2px;
+}
+
+.sy-switch[aria-checked="true"] {
+  background: rgba(246, 241, 233, 0.26);
+}
+
+.sy-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  box-shadow: var(--contact-sm);
+  transition: translate var(--dur-base) var(--ease-settle), background var(--dur-base) var(--ease-settle);
+}
+
+.sy-switch[aria-checked="true"] .sy-switch-knob {
+  translate: 16px 0;
+  background: var(--white);
+}
+
+.sy-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sy-toggle-label {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.sy-toggle-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-subtle);
+  max-width: 62ch;
+}
+
+/* The namespace, shown. This is an operator detail on a surface with no operator
+   secrets, so it is simply present and quiet. */
+.sy-toggle-key {
+  font-size: 9px;
+  color: var(--fg-faint);
+}
+
+/* ------------------------------------------------------------------ wallet */
+
+.sy-balance {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.sy-balance-side {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--fg-muted);
+}
+
+.sy-runway {
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 74ch;
+}
+
+.sy-runway strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.sy-plan {
+  height: 22px;
+  font-size: 10px;
+}
+
+/* --------------------------------------------------------------- the ladder
+   Always visible. The tone is the design: it explains rather than warns, and it
+   never uses terracotta, because a tenant reading this is already worried and a
+   red panel would only tell them to panic. */
+
+.sy-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.sy-ladder-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.sy-ladder-note {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.sy-rungs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s-3);
+}
+
+.sy-rung {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line);
+}
+
+.sy-rung-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-500);
+  margin-top: 5px;
+}
+
+/* Where you actually are. Gold is sanctioned: at that rung this is precisely
+   "this needs you". */
+.sy-rung[data-here] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim);
+}
+
+.sy-rung[data-here] .sy-rung-mark {
+  background: var(--gradient-gold);
+  box-shadow: 0 0 8px rgba(237, 171, 72, 0.55);
+}
+
+.sy-rung-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.sy-rung-label {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.sy-rung-what {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .sy-density {
+    grid-template-columns: 1fr;
+  }
+  .sy-fact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-2);
+  }
+  .sy-fact-val {
+    text-align: left;
+  }
+}
+
+/* ============================================================ R-4 part W ==
+   Three additions, each for a state that could not exist while the desk read a
+   fixture: a unit beside a figure that is not money, an inline mark on a note
+   that names a gap, and a notification row that is an absence rather than a
+   switch.
+   ========================================================================= */
+
+/* The balance is credits, not rupees — the endpoint sends buckets of credits
+   and stamps no currency on any of them. The unit rides beside the figure so
+   the number is never read as money in a rupee-shaped app. */
+.sy-balance-unit {
+  margin-left: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 10px; /* optical: caption mono against a 38px figure */
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+
+/* A note that names a platform gap carries the same triangle the credential
+   block on Bridges uses. Baseline-nudged rather than centred: the glyph sits
+   on the first line of a paragraph, not in the middle of the block. */
+.sy-note svg {
+  margin-right: var(--s-2);
+  vertical-align: -2px; /* optical: 12px glyph on a 10px/1.65 line */
+  color: var(--fg-subtle);
+}
+
+/* A notification the platform does not read. It keeps the row's shape so the
+   list still scans as one thing, and it wears an unlit lamp where the switch
+   would be — an absence is not a fault, and a terracotta dot here would teach
+   a tenant that something is broken rather than unbuilt. */
+.sy-toggle[data-absent] .sy-toggle-label,
+.sy-toggle[data-absent] .sy-toggle-note {
+  color: var(--fg-subtle);
+}
+
+.sy-toggle-mark {
+  display: grid;
+  place-items: center;
+  /* optical: the switch's own box, so the rows in this list keep one text
+     column whether or not a row has a control in it. */
+  width: 38px;
+  height: 22px;
+  margin-top: 2px;
+}

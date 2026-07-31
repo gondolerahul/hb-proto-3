@@ -1,0 +1,260 @@
+/* ============================================================================
+   LIFECYCLE — the four things every surface does before it has its data.
+
+   These components are seen on every surface, so they are designed to the same
+   standard as one (DESIGN_CONTRACT §RD-7). Three material decisions carry them,
+   and each of them was already made once on the Bridges surface — reusing them
+   is the point, because a texture that means one thing in one room and another
+   thing in the next teaches nothing.
+
+   1 · **Empty is a dot lattice.** `bridges.css` established the lattice as "the
+       instrument register for a gauge with no reading behind it". An empty
+       collection is exactly that: the query worked, the answer is nothing. Same
+       absence, same texture.
+
+   2 · **Failure is the repair hatch.** The same diagonal monochrome hatch that
+       says "under repair" on a bridge. A failed load and an empty estate look
+       identical if only one of them is designed (D7/R-4 §5), so they are given
+       *different materials* as well as different words — the distinction
+       survives being glanced at, and it survives the colour being taken away.
+
+   3 · **The scaffold is a sweep, never a spinner.** D7 §3.1 defines first
+       scaffold as layout on screen and explicitly not the moment data arrives;
+       the Glasshouse is the only surface permitted a visible loading state. So
+       there is no spinner in this file to reach for — the pending state is the
+       surface's own structure, drawn in `vh-skeleton` from `motion.css`.
+
+   §1.5: nothing here transitions or animates a property outside
+   transform/opacity. The lattice and the hatch are static backgrounds.
+   ========================================================================= */
+
+/* ==========================================================================
+   THE NOTICE — the shared anatomy of empty and failed.
+
+   Icon · a state sentence · the reason · optionally an act. Lifted straight
+   from `bridges.css`'s credential block, which is the shape the estate already
+   uses for "here is a condition, and here is why it holds".
+   ======================================================================== */
+
+.lc-notice {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+}
+
+/* Standing alone as the whole of a surface rather than sitting in a column.
+   It gets air and one step of type, because a small well floating in a large
+   empty room reads as a component that failed to fill, not as an answer. */
+.lc-notice[data-alone] {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-4);
+  margin: var(--s-7) auto;
+  max-width: 62ch;
+  padding: var(--s-6) var(--s-6) var(--s-7);
+  /* Several surface roots are grids drawn for something else — the Dossier's
+     roster-plus-sheet, the Glasshouse's three rows. A lone notice dropped into
+     one would be sized and placed by a track it has nothing to do with, so it
+     spans every column and centres itself. Both declarations are inert on a
+     flex or block parent, which is the rest of them. */
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+/* ---- the absence texture · empty ---------------------------------------- */
+
+.lc-notice[data-state="empty"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 246, 230, 0.1) 1px,
+    transparent 1px
+  );
+  background-size: 7px 7px; /* optical: lattice pitch, matched to bridges.css */
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ---- the repair texture · failed ---------------------------------------- */
+
+.lc-notice[data-state="failed"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 246, 230, 0.075) 0 4px,
+    transparent 4px 10px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* The texture is behind the words, never over them. */
+.lc-notice > * {
+  position: relative;
+  z-index: 1;
+}
+
+.lc-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-xs);
+  color: var(--fg-subtle);
+  background: var(--surface);
+  box-shadow: var(--edge-line), var(--edge-rim);
+  flex: none;
+}
+
+/* Terracotta on the mark, not on the panel. A flooded card reads as an alarm;
+   the estate's grammar is a lamp and a word (§4), and the mark is the lamp's
+   larger cousin at the head of a block. */
+.lc-notice[data-state="failed"] .lc-mark {
+  color: var(--negative);
+}
+
+.lc-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.lc-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+.lc-notice[data-alone] .lc-title {
+  font-size: var(--text-md);
+}
+
+/* The lamp sits on the first line of the title and never carries the meaning
+   on its own — the sentence beside it is the information (§4). Baseline-nudged
+   by 1px because a 7px dot optically floats against a 16px line. */
+.lc-title .m-lamp {
+  flex: none;
+  translate: 0 -1px;
+}
+
+.lc-body {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+
+.lc-notice[data-alone] .lc-body {
+  font-size: var(--text-base);
+}
+
+.lc-body strong {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* The machine's own words. Kept, never swallowed — but kept at caption size,
+   because it is evidence for whoever wants it and not the message.
+   `--fg-muted`, not `--fg-subtle`: §6 wants 4.5:1 for anything that is not
+   large text, and `tests/contrast.test.ts` measures the subtle step against the
+   3:1 large-text floor only. At 11px this is small text, so it is quietened by
+   face and size rather than by dropping a step of the ramp. */
+.lc-reason {
+  font-family: var(--font-mono);
+  font-size: 11px; /* optical: caption mono, one step under --text-xs */
+  line-height: var(--lh-normal);
+  color: var(--fg-muted);
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+}
+
+.lc-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-top: var(--s-1);
+}
+
+/* ==========================================================================
+   THE SCAFFOLD — layout on screen, before the data.
+
+   Not a loading state and not styled as one: no overlay, no dimming, no
+   spinner. The surface draws its own structure and these bars stand in for the
+   text that has not arrived, which is what makes the 300ms budget in D7 §3.1
+   about layout rather than about latency.
+   ======================================================================== */
+
+.lc-scaffold {
+  display: contents;
+}
+
+.lc-bar {
+  display: block;
+  height: 12px;
+  width: 100%;
+}
+
+.lc-bar[data-tall] {
+  height: 26px;
+}
+
+/* Presets rather than an inline width: §1.4 allows an inline style only for the
+   stagger index, and five widths cover every skeleton anyone needs. */
+.lc-bar[data-width="xs"] {
+  width: 18%;
+}
+
+.lc-bar[data-width="sm"] {
+  width: 34%;
+}
+
+.lc-bar[data-width="md"] {
+  width: 52%;
+}
+
+.lc-bar[data-width="lg"] {
+  width: 74%;
+}
+
+.lc-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* A paragraph's last line is short. Without this a block of skeleton lines
+   reads as a barcode; with it, it reads as prose that has not arrived yet. */
+.lc-lines > .lc-bar:last-child:not(:only-child) {
+  width: 62%;
+}
+
+/* --------------------------------------------------------------- NARROW
+   The mobile breakpoint. The notice keeps its anatomy and loses only the side
+   padding — the copy is the component, and it is what must survive. */
+
+@media (max-width: 720px) {
+  .lc-notice {
+    padding: var(--s-4);
+  }
+
+  .lc-notice[data-alone] {
+    margin: var(--s-5) auto;
+    padding: var(--s-5) var(--s-4) var(--s-6);
+  }
+}

@@ -52,6 +52,46 @@ export async function fetchTrayList(): Promise<Tray[]> {
   return (await api.get<Tray[]>("/ai/genui/trays")).data;
 }
 
+/** One composed tray. 404 on unknown *and* cross-tenant alike, so a caller
+ * must not read it as "this tray was already answered". */
+export async function fetchTray(trayId: string): Promise<Tray> {
+  return (await api.get<Tray>(`/ai/genui/trays/${encodeURIComponent(trayId)}`)).data;
+}
+
+/* ────────────────────────────────────────── R-4 part P: the raw pending list */
+
+/**
+ * A pending approval as the governance console serves it
+ * (`GET /ai/approvals/pending`).
+ *
+ * **This is not a tray and does not replace one.** `fetchTrayList` returns
+ * spec §6.1's composed object — Pragya's sentence, the paths and their costs,
+ * the certified block. This returns the approval row underneath it: the
+ * checkpoint, the context snapshot, the SLA. Two views of one queue, and the
+ * distinction is worth keeping because the tray is what a person answers while
+ * this is what an operator audits.
+ *
+ * The reason a surface still needs it: `sla_seconds` here is the checkpoint's
+ * *budget*, whereas a tray carries `sla.seconds_left`, the remainder. A
+ * countdown needs both to draw a proportion, and neither endpoint has both.
+ */
+export interface PendingApproval {
+  id: string;
+  run_id: string;
+  checkpoint_trigger: string | null;
+  checkpoint_key: string | null;
+  context_snapshot: Record<string, unknown>;
+  status: string;
+  requested_at: string;
+  /** `null` when no checkpoint SLA governs this category — never zero. */
+  sla_seconds: number | null;
+  on_timeout: string | null;
+}
+
+export async function fetchPendingApprovals(): Promise<PendingApproval[]> {
+  return (await api.get<PendingApproval[]>("/ai/approvals/pending")).data;
+}
+
 export type TrayDecision = "APPROVED" | "REJECTED";
 
 /**

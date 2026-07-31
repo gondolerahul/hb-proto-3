@@ -59,3 +59,72 @@ export async function fetchPassage(
     })
   ).data;
 }
+
+/* ─────────────────────────────────────────────── R-4 part P: write and search */
+
+/**
+ * What an upload answers with — an id and a status, and nothing else.
+ *
+ * `upload_status` is the whole point: extraction and embedding happen after
+ * the response, so a document is present before it is readable. A surface that
+ * lists it as ready on the strength of a 200 is lying about a document nobody
+ * can cite yet, and the influence counter would read zero for a reason that is
+ * not "unused".
+ */
+export interface UploadAccepted {
+  id: string;
+  status: string;
+}
+
+/**
+ * Upload a document (`POST /ai/documents/upload`).
+ *
+ * `multipart/form-data`, and the `Content-Type` is deliberately **not** set
+ * here: the browser has to write the boundary parameter, and setting the
+ * header by hand omits it and produces a 422 that reads like a bad file.
+ */
+export async function uploadDocument(
+  file: File,
+  entityId?: string,
+): Promise<UploadAccepted> {
+  const body = new FormData();
+  body.append("file", file);
+  return (
+    await api.post<UploadAccepted>("/ai/documents/upload", body, {
+      params: entityId !== undefined ? { entity_id: entityId } : {},
+    })
+  ).data;
+}
+
+/**
+ * One retrieved chunk. `similarity` is the retriever's own score and is not a
+ * confidence: it ranks these results against each other and says nothing about
+ * whether the document answers the question.
+ */
+export interface SearchHit {
+  chunk_id: string;
+  document_id: string;
+  filename: string;
+  content: string;
+  similarity: number;
+}
+
+/**
+ * Search the library (`POST /ai/documents/search`).
+ *
+ * A POST whose arguments are **query parameters**, not a body — the shipped
+ * signature, and the reason this wrapper exists rather than each caller
+ * guessing. An empty result is a real answer: the library may hold the
+ * document and not yet have embedded it (see `UploadAccepted`).
+ */
+export async function searchDocuments(
+  query: string,
+  options?: { entityId?: string; topK?: number },
+): Promise<SearchHit[]> {
+  const params: Record<string, string | number> = {
+    query,
+    top_k: options?.topK ?? 5,
+  };
+  if (options?.entityId !== undefined) params["entity_id"] = options.entityId;
+  return (await api.post<SearchHit[]>("/ai/documents/search", null, { params })).data;
+}

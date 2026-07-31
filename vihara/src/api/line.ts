@@ -1,6 +1,11 @@
 /**
- * The Line's own reads (LINE L5–L9): the morning story, the thread's
- * history, and the push subscribe flow over SEAM T7.
+ * The Line's own reads (LINE L5–L9): the morning story and the push subscribe
+ * flow over SEAM T7.
+ *
+ * The thread's history moved to `./pragya` (R-4 part P) — it reads
+ * `/ai/pragya/history`, which is the conversation seam rather than the Line's,
+ * and it now sits beside the turn endpoint the Brainstorm posts to. One path,
+ * one wrapper.
  */
 import { api } from "./client";
 
@@ -22,17 +27,6 @@ export interface MorningStory {
 
 export async function fetchMorningStory(): Promise<MorningStory> {
   return (await api.get<MorningStory>("/ai/genui/line/morning")).data;
-}
-
-export interface ThreadTurn {
-  role: string;
-  content: string;
-  at: string;
-}
-
-export async function fetchThreadHistory(): Promise<ThreadTurn[]> {
-  const { data } = await api.get<ThreadTurn[]>("/ai/pragya/history");
-  return data;
 }
 
 export async function fetchVapidKey(): Promise<string | null> {

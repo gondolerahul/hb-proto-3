@@ -1,0 +1,287 @@
+/* The Thread. Pragya's day on a 390px column, read with one thumb.
+
+   Three decisions shape the whole file.
+
+   **The decisions are an object; the day is prose.** What needs you is drawn as
+   a bracketed block at the top with the Tray inside it; everything below is her
+   sentences in a measured column. A thread in which every line is a card is not
+   a thread, it is a list — and after R-4 part W the only rhythm left is the one
+   the conversation seam can actually carry: her turn, and yours, told apart by
+   a name and a hairline rather than by a second material.
+
+   **The Tray is mounted, not redrawn (R-3c C4), so this file may only give it
+   geometry.** `.tr` is written to be a whole desk room: full height, its own
+   scroller, desk padding, desk touch targets. Inside the thread it is a section
+   of somebody else's scroller on a phone, so it gives those back and takes the
+   44px floor — and not one colour, type role or material more. The step-up bar
+   under it means nothing if the act above it is drawn differently here from
+   where it is approved.
+
+   **Gold appears once and it is §2.1's own.** The key and the eyebrow on the
+   step-up bar label a certified block. The voice note's seam went with the
+   voice note, so this surface now spends less than it was budgeted rather than
+   more — the Tray brings its own, and the frame carries one on the tab bar. */
+
+.th {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  height: 100%;
+  /* The frame's rail and tab bar pay their own notch insets (line.css); the
+     surfaces between them pay theirs, or a landscape phone puts her prose under
+     the camera housing. */
+  padding: var(--s-5) calc(var(--s-4) + env(safe-area-inset-right)) var(--s-8)
+    calc(var(--s-4) + env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ------------------------------------------------------------------- the head
+   No <h1> here on purpose: the Tray below brings the only one, so the document
+   outline says what the layout says — the thing that needs you is the title of
+   this screen. */
+
+.th-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.th-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 46ch;
+}
+
+/* ============================================================ what needs you
+   Bracketed rather than boxed. `m-ticks` gives the certified block the
+   instrument-panel register for the price of four hairlines and no gold, and a
+   plate here would be a third surface stacked under the Tray's own plates —
+   which is how a phone screen turns to mush. The padding is what the brackets
+   need to stand in: below --s-4 they land on the first tray card's own rim. */
+
+.th-certified {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4);
+}
+
+/* ------------------------------------------------------- the Tray, as itself */
+
+.th-tray .tr {
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  gap: var(--s-4);
+}
+
+/* The phone's touch floor is 44px and the desk's is 32 (DESIGN_CONTRACT §6).
+   The Tray sizes its controls for the desk it was written for; the Line owes
+   them the difference, and geometry is the one thing this file may give it. */
+.th-tray .tr-card-head,
+.th-tray .tr-path {
+  min-height: 44px;
+}
+
+/* The Tray has two two-column heads and a phone has room for neither.
+   The surface head is title-left, "oldest waited"-right; the card head is
+   who-raised-it-left, category · waited · caret-right, and that right cluster
+   is `flex: none` because on a desk it must never be squeezed. Both rules are
+   correct where they were written and both are a few pixels wider than 390.
+
+   So the phone stacks them, and only the phone: past 640 the columns fit again
+   and the Tray gets its own head back untouched, down to the 5px optical
+   offset on the chip. */
+@media (max-width: 639px) {
+  .th-tray .tr-head,
+  .th-tray .tr-card-head {
+    display: block;
+  }
+
+  .th-tray .tr-head-meta {
+    margin-top: var(--s-3);
+    padding-bottom: 0;
+  }
+
+  .th-tray .tr-head-right {
+    flex-wrap: wrap;
+    margin-top: var(--s-3);
+  }
+}
+
+/* ------------------------------------------------------------ the step-up bar
+   A well: the ceremony's terms are cut into the certified block rather than
+   stacked on it as one more object. Not glass — the frame already spends both
+   of the Line's glass layers on the rail and the tab bar (line.css), and a
+   third one over two of them is fog. */
+
+.th-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+}
+
+.th-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* --fg-muted, not --fg-subtle: `tests/contrast.test.ts` holds --fg-subtle to the
+   3:1 large-text floor, and this is 10px carrying whether the phone in your hand
+   can finish the act above it. */
+.th-step-state {
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.th-step-line {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 56ch;
+}
+
+/* What the ceremony is bound to. An interior hairline rather than a border, the
+   same device the Tray's fact table uses — four visible boxes in a well read as
+   a form. */
+.th-step-bound {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin-top: var(--s-1);
+  padding-top: var(--s-3);
+  box-shadow: inset 0 1px 0 var(--rule-faint);
+}
+
+/* Gold on a key that labels a certified act — §2.1's second sanctioned meaning,
+   and the same treatment `.tr-cert-note` gives it two blocks up. */
+.th-step-bound svg {
+  translate: 0 2px;
+  color: var(--accent);
+}
+
+/* The sentence you are agreeing to. There is no machine string beside it any
+   more: the reference a confirmation binds to is minted by the server when it
+   refuses, so the ceremony prints one and this bar prints none. */
+.th-step-cmd {
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+
+/* ------------------------------------------------------------------ the rule */
+
+.th-rule {
+  /* `flex: none` is load-bearing, not tidiness. `.th` is a column flex scroller
+     whose content is four screens tall, and a 1px child with no content has an
+     automatic minimum size of zero — so it is the one item that will shrink
+     itself out of existence to make the overflow fit. It did, silently, and the
+     section break simply was not there. */
+  flex: none;
+  /* A fading rule reads machined; a full-width one reads like a divider in a
+     settings app. It is inset so the fade has somewhere to happen. */
+  margin: 0 var(--s-2);
+}
+
+/* ================================================================== the day */
+
+.th-turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.th-turns-note {
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 54ch;
+}
+
+.th-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  margin-top: var(--s-3);
+}
+
+/* Timestamps are how a thread is read backwards, so they are information and
+   sit on the muted step — not on --fg-faint, which is the disabled rung. */
+.th-when {
+  font-size: 10px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+/* Her prose. --text-base rather than t-narrative's 18px: seven turns at 18px is
+   a screen and a half of scrolling before the first story card, and 16px on a
+   phone held at arm's length is already the comfortable measure. */
+.th-prose {
+  font-size: var(--text-base);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 62ch;
+}
+
+/* ----------------------------------------------------------------- one turn
+   Bare prose and no plate. Most of what she says does not need an object drawn
+   around it, and a thread where every line is a card is a list.
+
+   The story card and the voice note that used to live here are gone with the
+   wiring (R-4 part W): `/ai/pragya/history` carries a role, the words and a
+   timestamp, so a card's title and its figure-in-a-well, and a recording's
+   length and its gold seam, had no binding left. §7.1 — the rules are deleted
+   rather than left standing over nothing, which also gives the surface back the
+   one gold it was spending on a note nobody can now mark as spoken. */
+
+.th-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.th-note-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+/* The owner's own turn. Ruled off rather than tinted — the eyebrow beside it
+   already says whose words these are, and the rule is what makes the two
+   speakers legible at a glance without a second colour. Never gold: gold is a
+   raised hand or a certified block, and neither is "you said this". */
+.th-note[data-yours] {
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--rule-strong);
+}
+
+/* ---------------------------------------------------------------- the ghost
+   A turn that has not arrived. A plate under the bars because `vh-skeleton`'s
+   ground is a ~6/255 delta on the raw canvas — on the page background the bars
+   would be invisible and the pending state would be the blank screen. */
+
+.th-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+/* --------------------------------------------------------------- opened wide
+   The Line is phone-first and it is still a web page: the R-4 sweep opens it at
+   1600px, and a tablet gets it from a push. A 62ch column stretched across a
+   desktop window is not generosity, so past the phone the thread stops growing
+   where its prose stops and stays centred under the frame's own bars. */
+
+@media (min-width: 640px) {
+  .th > * {
+    width: min(46rem, 100%);
+    margin-inline: auto;
+  }
+}

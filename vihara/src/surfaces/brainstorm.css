@@ -1,0 +1,187 @@
+/* Tabling a matter — the owner-initiated front of the STRAT pipeline.
+
+   It reuses the Boardroom's own idioms on purpose: the same gold-bordered
+   "because" quote for her words, the same well for the facts underneath them.
+   A separate visual language here would say this is a separate kind of
+   strategy, and the whole point of owner review D's answer is that it is not —
+   what you table becomes a Proposition record, and that record adopts by the
+   same certified act as any other. */
+
+.bs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  flex: none;
+}
+
+.bs-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.bs-drafted-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.bs-head .t-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.bs-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+/* --------------------------------------------------------------- compose --- */
+
+.bs-form {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.bs-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  box-shadow: var(--edge-line), var(--ao-well);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.bs-input::placeholder {
+  color: var(--fg-faint);
+}
+
+/* What you tabled, echoed back above her answer — so a reply that drifted is
+   visibly a reply to something you did not ask. */
+.bs-matter {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 74ch;
+}
+
+/* ---------------------------------------------------------------- the turn --
+   What the exchange actually did. A well, because these are facts the runtime
+   reported rather than an argument it made. */
+
+.bs-facts {
+  padding: var(--s-3) var(--s-4);
+}
+
+.bs-facts dl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.bs-fact {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s-4);
+}
+
+.bs-fact-value {
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Consequences of the turn. Lamp plus a sentence, never a lamp alone. */
+.bs-flags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.bs-flag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.bs-gap {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 74ch;
+}
+
+/* The write's own answer, in the record service's vocabulary. */
+.bs-filed,
+.bs-broke {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.bs-filed-id,
+.bs-broke-reason {
+  font-size: 10px;
+  color: var(--fg-subtle);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------- answered --
+
+   The four scripted beats — what she already knows, what she does not have,
+   her questions and their options — were removed in R-4 part W and their rules
+   went with them. `POST /ai/pragya/chat` answers one `reply` and a set of
+   flags about the turn; there is no knows-list, no missing-list and no
+   question set on the wire, and §7.1 says a binding that cannot be answered
+   renders nothing. What is left below is the register the reply keeps: her
+   words in the Boardroom's own gold-edged quote, and the turn's own facts in a
+   well beneath it. */
+
+.bs-because {
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--border-gold);
+}
+
+.bs-because .t-narrative {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+/* ------------------------------------------------------------------ acts --- */
+
+.bs-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.bs-gh-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-faint);
+  max-width: 70ch;
+}

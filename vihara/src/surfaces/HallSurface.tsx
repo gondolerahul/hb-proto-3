@@ -1,0 +1,729 @@
+import { useMemo, useState } from "react";
+
+import { Icon } from "../components/Icon";
+import {
+  Bar,
+  Empty,
+  Failed,
+  Lines,
+  Scaffold,
+  useChoice,
+  useResource,
+} from "../lifecycle";
+import {
+  fetchDefs,
+  fetchRecords,
+  type EntityDef,
+  type EntityDefField,
+  type TenantRecordOut,
+} from "../api/tenant";
+import "./hall.css";
+
+/**
+ * Registry Hall · depth 2 · S (D6 §7). Wired in R-4 part W.
+ *
+ * The dense-data case, and the clearest example of finding **RD-7**: full CRUD
+ * over the record service was built as the "sheet equivalent" of a world
+ * surface and inherited a fallback's design budget. Under decision D1 it is a
+ * first-class room, and the three choices that make a dense table feel designed
+ * rather than dumped are unchanged:
+ *
+ *  - **The table is set into a well**, not drawn on a plate. Carved-out reads as
+ *    data; drawn-on-top reads as a screenshot of a spreadsheet.
+ *  - **State is a lamp plus a word**, never colour alone (art bible §8, WCAG
+ *    1.4.1). The lamp is the fast read; the word is the correct one.
+ *  - **Row rules are interior box-shadows at 5% alpha**, so the grid is present
+ *    when you look for it and gone when you are reading one row.
+ *
+ * ## The ₹0 bug, and why it was not a formatting slip
+ *
+ * This surface printed `₹{rows.reduce(...).toLocaleString()}`, so an empty
+ * register — or a filter matching nothing — rendered **₹0**. That is the exact
+ * defect `tests/tray_cost.test.tsx` exists to prevent, one surface over, and on
+ * a register of money it is worse: a total is a claim about the estate, and
+ * "₹0" is a claim that everything is settled.
+ *
+ * Three things were wrong at once, and wiring exposed all three.
+ *
+ * 1. **A sum over nothing is not zero, it is nothing.** The VALUE pair is not
+ *    rendered at all when there are no rows (§7.1).
+ * 2. **The currency was invented.** `₹` was hard-coded and the amounts were
+ *    strings with a rupee in them. On the wire a `money` field is
+ *    `{amount, currency}` and the currency is frequently absent, so a figure is
+ *    printed with the currency the record states and with **none** when it
+ *    states none — plus the sentence saying so, which is the idiom
+ *    `certified.payment` already ships.
+ * 3. **A partial sum is a wrong sum.** Where some rows state an amount and
+ *    others do not, or where two currencies are present, no figure is drawn and
+ *    the reason is named. Adding rupees to dollars silently is how a register
+ *    lies with arithmetic nobody can see.
+ *
+ * ## Why the columns are read off the def
+ *
+ * The seven columns this surface used to draw — REFERENCE, PARTY, AMOUNT, AGE,
+ * STATE, OWNER, UPDATED — are Invoice's. `GET /ai/tenant/records` serves *any*
+ * tenant def, and `TenantRecordOut.data` is free-form, so hard-coded columns
+ * would print an empty cell in every row of every other register. The table's
+ * shape is therefore taken from `def.fields` and the *design* is unchanged: a
+ * well, a sticky opaque header, tabular right-ranged numerics, one wide column
+ * for the value with real-world length variance.
+ *
+ * Two fields that used to be columns are gone because nothing answers them.
+ * **OWNER** is not on the record wire at all. **UPDATED** is not either —
+ * `TenantRecordOut` carries `created_at` and no update time — and the age
+ * column went with it: `created_at` is a naive `DateTime` serialised with no
+ * offset, so `Date.parse` reads it as local time and "47d" would be wrong by
+ * the viewer's timezone. The server's own timestamp is printed instead of a
+ * relative age derived from a clock that disagrees with it.
+ *
+ * ## The bulk act
+ *
+ * `bulkRecords` is gated (`enforce_kind(BULK_DATA_OPERATION)`, T2) and this
+ * surface still draws no control for it. That is deliberate rather than
+ * deferred: the backend's own docstring calls it "a *ceremony-only* gate …
+ * rather than an eleventh certified component", so there is no
+ * `RunnableCertifiedType` for it and `useCertifiedAct` — whose whole guard is a
+ * closed set of named acts — could not carry it. Drawing the button first would
+ * mean routing a certified write around the layer built to make that
+ * impossible. See the report.
+ */
+
+/** Stable empties: a fresh `[]` per render hands `useChoice` a new identity for
+ *  no change in what is on screen. */
+const NO_DEFS: readonly EntityDef[] = [];
+const NO_ROWS: readonly TenantRecordOut[] = [];
+
+/** Types with no cell shape. `json` is a nested object — printing `[object
+ *  Object]` or a key count would both be inventions — and a def's own `ref`
+ *  fields are link ids the record service materialises elsewhere. */
+const UNRENDERABLE = new Set(["json"]);
+
+const NUMERIC = new Set(["integer", "decimal", "money"]);
+
+/* Sentinels for "every def" and "recently touched". The leading NUL cannot
+   collide with a real record-def name, which is the whole point — but it is
+   written as an ESCAPE, never as a raw byte. A literal 0x00 in the source makes
+   git treat the file as binary (no diff, no review) and makes grep exit silently
+   without matching anything in it, so every text-based audit of the largest file
+   in this surface set skips it and says nothing. */
+const ALL = "\u0000all";
+const RECENT = "\u0000recent";
+
+interface Column {
+  name: string;
+  label: string;
+  type: string;
+  values: string[];
+}
+
+/** How many of a def's fields the table shows before it stops being a table.
+ *  The rest are not dropped — the selected row's rail carries them. */
+const COLUMN_CAP = 6;
+
+function labelOf(field: EntityDefField): string {
+  const label = field["label"];
+  return typeof label === "string" && label !== "" ? label : field.name;
+}
+
+function columnsOf(def: EntityDef): { shown: Column[]; hidden: Column[] } {
+  const usable = def.fields
+    .filter((field) => field["lifecycle"] !== "hidden")
+    .filter((field) => !UNRENDERABLE.has(field.type))
+    .map<Column>((field) => ({
+      name: field.name,
+      label: labelOf(field),
+      type: field.type,
+      values: field.values ?? [],
+    }));
+  /* Required first: a def's required fields are the ones it says identify a
+     record, which is a better answer to "which six" than declaration order. */
+  const required = usable.filter((column) =>
+    def.fields.some((field) => field.name === column.name && field.required === true),
+  );
+  const rest = usable.filter((column) => !required.includes(column));
+  const ordered = [...required, ...rest];
+  return { shown: ordered.slice(0, COLUMN_CAP), hidden: ordered.slice(COLUMN_CAP) };
+}
+
+/** `{amount, currency}` as `validation.py` defines it, or `null`. The currency
+ *  is `null` rather than guessed when the record did not state one. */
+function moneyOf(value: unknown): { amount: number; currency: string | null } | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const fields = value as Record<string, unknown>;
+  const amount = fields["amount"];
+  if (typeof amount !== "number" || !Number.isFinite(amount)) return null;
+  const currency = fields["currency"];
+  return {
+    amount,
+    currency: typeof currency === "string" && currency !== "" ? currency : null,
+  };
+}
+
+/**
+ * Three-digit grouping, by hand and locale-free — `toLocaleString` reformats
+ * money with whatever ICU data the machine carries, so the same register would
+ * read differently on two browsers. It groups and does nothing else: no
+ * rounding, no padding to two decimals, no symbol.
+ */
+function grouped(value: number): string {
+  const text = String(value);
+  const negative = text.startsWith("-");
+  const bare = negative ? text.slice(1) : text;
+  const [whole, ...rest] = bare.split(".");
+  if (whole === undefined || !/^\d+$/.test(whole)) return text;
+  let out = "";
+  for (let i = 0; i < whole.length; i += 1) {
+    if (i > 0 && (whole.length - i) % 3 === 0) out += ",";
+    out += whole[i]!;
+  }
+  return `${negative ? "-" : ""}${out}${rest.length > 0 ? `.${rest.join(".")}` : ""}`;
+}
+
+/** The server's own ISO timestamp, to the second. Not "3 days ago": the column
+ *  is naive and carries no offset, so a relative age is off by the viewer's
+ *  timezone (see the module note). */
+function stamp(iso: string): string {
+  return iso.replace("T", " ").slice(0, 19);
+}
+
+export function HallSurface({ onEcho }: { onEcho: (msg: string) => void }) {
+  const defs = useResource(fetchDefs);
+  const list = defs.phase === "ready" ? defs.value : NO_DEFS;
+  const { chosen: def, chosenId: defName, choose } = useChoice(list, (d) => d.name);
+
+  if (defs.phase === "pending") return <HallScaffold />;
+
+  if (defs.phase === "failed") {
+    return (
+      <section className="hl">
+        <Failed what="the Registry Hall" reason={defs.reason} onRetry={defs.retry} />
+      </section>
+    );
+  }
+
+  if (def === undefined) {
+    return (
+      <section className="hl">
+        <header className="hl-head">
+          <div className="hl-head-title">
+            <span className="t-eyebrow">REGISTRY HALL</span>
+            <h1 className="hl-title t-display">The register</h1>
+          </div>
+        </header>
+        <Empty
+          alone
+          icon="record"
+          title="This estate keeps no registers yet."
+          body="A register appears here when a module declares one — an Invoice, an Order, a Customer. Until a colleague or a connector defines the shape of a record, there is nothing for this hall to hold."
+        />
+      </section>
+    );
+  }
+
+  /* `key` is load-bearing. `useResource` captures its reader once, on purpose —
+     re-running the effect per render would put a surface in a fetch loop — so
+     the only honest way to read a *different* register is a different hook
+     instance. Remounting on the def's name is that, and it also clears the
+     sort, the filter and the selection, which belong to the register you were
+     looking at and not to the one you just opened. */
+  return (
+    <Register
+      key={def.name}
+      def={def}
+      defs={list}
+      chosenDef={defName}
+      onChooseDef={choose}
+      onEcho={onEcho}
+    />
+  );
+}
+
+function Register({
+  def,
+  defs,
+  chosenDef,
+  onChooseDef,
+  onEcho,
+}: {
+  def: EntityDef;
+  defs: readonly EntityDef[];
+  chosenDef: string | undefined;
+  onChooseDef: (name: string) => void;
+  onEcho: (msg: string) => void;
+}) {
+  const records = useResource(() => fetchRecords(def.name, 200));
+  const [sort, setSort] = useState<string>(RECENT);
+  const [filter, setFilter] = useState<string>(ALL);
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const { shown, hidden } = useMemo(() => columnsOf(def), [def]);
+  const state = shown.find((column) => column.type === "enum" && column.values.length > 0);
+  const money = shown.find((column) => column.type === "money");
+  const wide = shown.find((column) => column.type === "string" || column.type === "text");
+  const sortable = [
+    { key: RECENT, label: "newest" },
+    ...(money !== undefined ? [{ key: money.name, label: money.label.toLowerCase() }] : []),
+    ...(wide !== undefined ? [{ key: wide.name, label: wide.label.toLowerCase() }] : []),
+  ];
+
+  const all = records.phase === "ready" ? records.value : NO_ROWS;
+
+  const rows = useMemo(() => {
+    const matching = all.filter(
+      (record) =>
+        filter === ALL || state === undefined || record.data[state.name] === filter,
+    );
+    return [...matching].sort((a, b) => {
+      if (sort === RECENT) return b.created_at.localeCompare(a.created_at);
+      const left = a.data[sort];
+      const right = b.data[sort];
+      const leftMoney = moneyOf(left);
+      const rightMoney = moneyOf(right);
+      if (leftMoney !== null || rightMoney !== null) {
+        return (rightMoney?.amount ?? 0) - (leftMoney?.amount ?? 0);
+      }
+      if (typeof left === "number" && typeof right === "number") return right - left;
+      return String(left ?? "").localeCompare(String(right ?? ""));
+    });
+  }, [all, filter, sort, state]);
+
+  /* The ₹0 fix. A total is drawn only when every visible row states an amount
+     and they all state the same currency; anything else is named rather than
+     summed. `null` here means "no VALUE pair at all", which is what an empty
+     register must show (§7.1). */
+  const total = useMemo(() => {
+    if (money === undefined || rows.length === 0) return null;
+    const amounts = rows.map((record) => moneyOf(record.data[money.name]));
+    const stated = amounts.filter((amount): amount is NonNullable<typeof amount> => amount !== null);
+    /* Derived, never asserted: `stated[0]!` would be a TypeError on a shape the
+       guards above already exclude, and a crash inside a memo is the one
+       failure `SurfaceBoundary` cannot make legible. */
+    const first = stated[0];
+    if (first === undefined || stated.length !== rows.length) {
+      return { figure: null, why: `not every ${def.name} here states ${money.label}` };
+    }
+    const currencies = new Set(stated.map((amount) => amount.currency));
+    if (currencies.size > 1) {
+      return { figure: null, why: "these records are in more than one currency" };
+    }
+    const currency = first.currency;
+    const sum = stated.reduce((running, amount) => running + amount.amount, 0);
+    return {
+      figure: currency === null ? grouped(sum) : `${currency} ${grouped(sum)}`,
+      why: currency === null ? "the records state no currency for it" : null,
+    };
+  }, [def.name, money, rows]);
+
+  const chosen = selected === null ? null : rows.find((record) => record.id === selected);
+
+  /* Opening a row is the one act this hall takes today, so it is the one that
+     echoes (§8). Closing is not an act — an echo per dismissal would fill the
+     L10 ribbon with the user's own housekeeping. */
+  function pick(record: TenantRecordOut): void {
+    if (selected === record.id) {
+      setSelected(null);
+      return;
+    }
+    setSelected(record.id);
+    onEcho(`opened ${def.name} ${record.id.slice(0, 8)}`);
+  }
+
+  /* `ready` gates the summary, and it is not a nicety. "0 of 0" while the read
+     is still in flight is a measurement nobody made — the same §7.1 failure as
+     ₹0, one line up — and "0 of 0" beside a designed empty state is that
+     failure's tidy twin: the prose already says the register is empty, and a
+     pair of zeroes beside it reads as an instrument that failed to fill. A
+     count is drawn once there is something counted. "0 of 2" under a filter is
+     a real measurement and stays. */
+  const head = (ready: boolean) => (
+    <>
+      <header className="hl-head">
+        <div className="hl-head-title">
+          <span className="t-eyebrow">REGISTRY HALL · {def.module.toUpperCase()}</span>
+          <h1 className="hl-title t-display">{def.name}</h1>
+        </div>
+
+        {ready && all.length > 0 && (
+          <dl className="hl-summary">
+            <div>
+              <dt className="t-eyebrow">SHOWING</dt>
+              <dd className="hl-summary-val t-mono">
+                {rows.length} of {all.length}
+              </dd>
+            </div>
+            {/* The ₹0 fix, in one condition: no rows, or no money column, or a
+                sum that cannot be made honestly — and the pair is not drawn at
+                all. Where the sum was refused the reason is said under the
+                table rather than squeezed into a right-ranged figure slot. */}
+            {total?.figure != null && money !== undefined && (
+              <>
+                <div className="m-rule-v hl-summary-div" />
+                <div>
+                  <dt className="t-eyebrow">{money.label.toUpperCase()}</dt>
+                  <dd className="hl-summary-val t-mono">{total.figure}</dd>
+                </div>
+              </>
+            )}
+          </dl>
+        )}
+      </header>
+
+      <div className="hl-controls">
+        {defs.length > 1 && (
+          <div className="hl-control-group" role="group" aria-label="Choose a register">
+            <Icon name="record" size={13} className="hl-control-icon" />
+            {defs.map((entry) => (
+              <button
+                key={entry.name}
+                className="m-chip"
+                data-selected={chosenDef === entry.name || undefined}
+                onClick={() => onChooseDef(entry.name)}
+              >
+                {entry.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* No enum field, no filter group — a control with nothing behind it is
+            worse than no control (§7.4). */}
+        {state !== undefined && (
+          <div className="hl-control-group" role="group" aria-label={`Filter by ${state.label}`}>
+            <Icon name="filter" size={13} className="hl-control-icon" />
+            <button
+              className="m-chip"
+              data-selected={filter === ALL || undefined}
+              onClick={() => setFilter(ALL)}
+            >
+              everything
+            </button>
+            {state.values.map((value) => (
+              <button
+                key={value}
+                className="m-chip"
+                data-selected={filter === value || undefined}
+                onClick={() => setFilter(value)}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="hl-control-group" role="group" aria-label="Sort">
+          <span className="t-eyebrow">SORT</span>
+          {sortable.map((option) => (
+            <button
+              key={option.key}
+              className="m-chip"
+              data-selected={sort === option.key || undefined}
+              onClick={() => setSort(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
+  if (records.phase === "pending") {
+    return (
+      <section className="hl">
+        {head(false)}
+        <HallTableScaffold columns={shown.length} />
+      </section>
+    );
+  }
+
+  if (records.phase === "failed") {
+    return (
+      <section className="hl">
+        {head(false)}
+        <Failed
+          what={`the ${def.name} register`}
+          reason={records.reason}
+          onRetry={records.retry}
+        />
+      </section>
+    );
+  }
+
+  return (
+    <section className="hl">
+      {head(true)}
+
+      {/* The two empties. They are different facts about the estate and they
+          are answered differently: one asks a colleague to file something, the
+          other asks you to widen what you are looking at. Rendering the same
+          sentence for both is how a filtered-to-nothing table gets read as an
+          empty business. */}
+      {all.length === 0 ? (
+        <Empty
+          alone
+          icon="record"
+          title={`Nothing has been filed as ${def.name} yet.`}
+          body={`The register exists — ${def.module} declares it, at version ${def.version} — and no record has been written into it. A colleague filing one, or a connector syncing one in, is what puts the first row here.`}
+        />
+      ) : rows.length === 0 ? (
+        <Empty
+          alone
+          icon="filter"
+          title="Nothing here matches what you are looking for."
+          body={`This register holds records; none of them is in this state. The filter above is what is narrowing it, not the estate.`}
+          note={`${all.length} ${def.name} ${all.length === 1 ? "record" : "records"} in total`}
+          act={{ label: "Show everything", onClick: () => setFilter(ALL), icon: "filter" }}
+        />
+      ) : (
+        <div className="m-well hl-table-well">
+          <table className="hl-table">
+            <caption className="vh-sr-only">
+              {def.name} records, sorted by{" "}
+              {sortable.find((option) => option.key === sort)?.label ?? "newest"}
+              {state !== undefined && filter !== ALL ? `, filtered to ${filter}` : ""}
+              {hidden.length > 0
+                ? `. ${shown.length} of ${shown.length + hidden.length} fields are columns; the rest are on the selected row.`
+                : ""}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className="hl-th-id">
+                  <span className="t-eyebrow">RECORD</span>
+                </th>
+                {shown.map((column) => (
+                  <th
+                    key={column.name}
+                    scope="col"
+                    className={NUMERIC.has(column.type) ? "hl-num" : undefined}
+                  >
+                    <span className="t-eyebrow">{column.label.toUpperCase()}</span>
+                  </th>
+                ))}
+                <th scope="col" className="hl-th-updated">
+                  <span className="t-eyebrow">FILED</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((record) => (
+                <tr
+                  key={record.id}
+                  data-selected={selected === record.id || undefined}
+                  data-withdrawn={record.deleted_at !== null || undefined}
+                  onClick={() => pick(record)}
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      pick(record);
+                    }
+                  }}
+                >
+                  <td className="hl-td-id">
+                    <span className="hl-state">
+                      {/* Lamp plus word, and the one polarity the platform
+                          really states: a soft-deleted record is withdrawn.
+                          A def declares enum *values* and no polarity, so no
+                          enum value lights a lamp — deciding which of a
+                          tenant's own states is bad is not this client's to
+                          make up. */}
+                      <span
+                        className="m-lamp"
+                        data-negative={record.deleted_at !== null || undefined}
+                      />
+                      <span className="t-mono">{record.id.slice(0, 8)}</span>
+                    </span>
+                  </td>
+
+                  {shown.map((column) => (
+                    <td
+                      key={column.name}
+                      className={
+                        NUMERIC.has(column.type)
+                          ? "hl-num hl-td-amount"
+                          : column === wide
+                            ? "hl-td-party"
+                            : undefined
+                      }
+                    >
+                      <Cell column={column} value={record.data[column.name]} />
+                    </td>
+                  ))}
+
+                  <td className="hl-td-updated">
+                    <span className="t-mono">{stamp(record.created_at)}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* One sentence under the table rather than a marker in two hundred
+          cells. Two absences can land here and they are different: a total that
+          was refused, and a figure with no unit on it. Neither is filled in — a
+          bare amount in a rupee-shaped app is read as rupees whether or not
+          anyone said so (§7.1, §7.4). */}
+      {total?.why != null && (
+        <p className="hl-gap t-mono">
+          {total.figure === null
+            ? `No total is shown: ${total.why}.`
+            : `The total above carries no currency — ${total.why}.`}
+        </p>
+      )}
+
+      {chosen != null && (
+        <footer className="hl-selected m-glass vh-enter">
+          <span className="t-eyebrow">SELECTED</span>
+          <span className="hl-selected-id t-mono">{chosen.id}</span>
+
+          {/* The fields the table could not fit, on the row you asked about.
+              Nothing is invented here: a field the record does not carry is
+              simply not listed. */}
+          <dl className="hl-selected-fields">
+            {hidden.map((column) => {
+              const value = chosen.data[column.name];
+              if (value === undefined || value === null) return null;
+              return (
+                <div key={column.name}>
+                  <dt className="t-eyebrow">{column.label.toUpperCase()}</dt>
+                  <dd>
+                    <Cell column={column} value={value} />
+                  </dd>
+                </div>
+              );
+            })}
+            <div>
+              <dt className="t-eyebrow">VERSION</dt>
+              <dd className="t-mono">
+                {chosen.version} of def v{chosen.def_version}
+              </dd>
+            </div>
+            {chosen.sor !== null && (
+              <div>
+                {/* The master's seal (Inc-4 SoR). The backend serialises it for
+                    this hall and for nothing else. */}
+                <dt className="t-eyebrow">MASTERED BY</dt>
+                <dd className="t-mono">
+                  {chosen.sor}
+                  {chosen.synced ? " · synced" : ""}
+                </dd>
+              </div>
+            )}
+            {chosen.deleted_at !== null && (
+              <div>
+                <dt className="t-eyebrow">WITHDRAWN</dt>
+                <dd className="t-mono">{stamp(chosen.deleted_at)}</dd>
+              </div>
+            )}
+          </dl>
+
+          <button
+            className="hl-selected-close"
+            onClick={() => setSelected(null)}
+            aria-label="Clear the selection"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        </footer>
+      )}
+    </section>
+  );
+}
+
+/** One cell. An absent value renders **nothing** — not a dash, not "unknown"
+ *  (§7.1). Every branch here is a shape the def's own type vocabulary declares
+ *  (`tenant_schema/validation.py`). */
+function Cell({ column, value }: { column: Column; value: unknown }) {
+  if (value === undefined || value === null) return null;
+
+  if (column.type === "money") {
+    const amount = moneyOf(value);
+    if (amount === null) return null;
+    return (
+      <span className="t-mono">
+        {amount.currency !== null && `${amount.currency} `}
+        {grouped(amount.amount)}
+      </span>
+    );
+  }
+
+  if (column.type === "integer" || column.type === "decimal") {
+    return typeof value === "number" ? (
+      <span className="t-mono">{grouped(value)}</span>
+    ) : null;
+  }
+
+  if (column.type === "boolean") {
+    return (
+      <span className="hl-state">
+        <span className="m-lamp" />
+        {value === true ? "Yes" : "No"}
+      </span>
+    );
+  }
+
+  if (column.type === "enum") {
+    return (
+      <span className="hl-state">
+        <span className="m-lamp" />
+        {String(value)}
+      </span>
+    );
+  }
+
+  if (column.type === "date" || column.type === "datetime") {
+    return <span className="t-mono">{stamp(String(value))}</span>;
+  }
+
+  if (column.type === "ref") {
+    return <span className="t-mono hl-owner">{String(value).slice(0, 8)}</span>;
+  }
+
+  return <>{String(value)}</>;
+}
+
+/**
+ * The pending state (D7 §3.1): the hall's own structure, standing, with the
+ * words not yet in it. No spinner — this is one of the seventeen.
+ *
+ * The well is drawn first and the bars go inside it, because `vh-skeleton`'s
+ * ground is a 6/255 delta on the raw canvas and a bar on the page background
+ * would be invisible.
+ */
+function HallScaffold() {
+  return (
+    <section className="hl">
+      <Scaffold label="The Registry Hall">
+        <header className="hl-head">
+          <div className="hl-ghost-title">
+            <Bar width="xs" />
+            <Bar width="sm" tall />
+          </div>
+        </header>
+        <div className="m-well hl-table-well hl-ghost-well">
+          <Lines n={8} />
+        </div>
+      </Scaffold>
+    </section>
+  );
+}
+
+function HallTableScaffold({ columns }: { columns: number }) {
+  return (
+    <Scaffold label="The register">
+      <div className="m-well hl-table-well hl-ghost-well">
+        <div className="hl-ghost-rows">
+          {Array.from({ length: 9 }, (_, row) => (
+            <div className="hl-ghost-row" key={row}>
+              {Array.from({ length: Math.max(2, columns) }, (_, cell) => (
+                <Bar key={cell} width={cell === 0 ? "sm" : "md"} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Scaffold>
+  );
+}

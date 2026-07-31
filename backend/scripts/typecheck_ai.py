@@ -60,6 +60,7 @@ CLEAN_PACKAGES: list[str] = [
     "twin",
     "genui",
     "talent",
+    "dossier",
 ]
 
 

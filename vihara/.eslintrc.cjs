@@ -61,5 +61,25 @@ module.exports = {
         ],
       },
     },
+    {
+      /**
+       * `LegacyBackground.tsx` is not authored code. It is the owner's approved
+       * background carried across byte-for-byte (D2), and
+       * `tests/background_verbatim.test.ts` goes red the moment it stops being
+       * identical to `frontend/src/components/layout/AnimatedBackground.tsx`.
+       *
+       * Its one `exhaustive-deps` finding — a ref read in an effect cleanup — is
+       * therefore unactionable by construction: the edit that silences it is the
+       * edit that destroys the property the file exists to prove. It is silenced
+       * here rather than in the file because a disable comment is itself a byte
+       * change, and would fail the same test.
+       *
+       * Scoped to this one frozen file and this one rule. It grants nothing about
+       * three.js: the file sits inside `renderers/world/` and is bound by the
+       * confinement above exactly like every other module there.
+       */
+      files: ["src/renderers/world/LegacyBackground.tsx"],
+      rules: { "react-hooks/exhaustive-deps": "off" },
+    },
   ],
 };

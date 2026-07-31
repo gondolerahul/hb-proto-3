@@ -1,0 +1,605 @@
+/* The colleague dossier — a one-on-one, not a record view.
+
+   The layout decision that carries the surface: a **single measured column**,
+   like the Tray. A one-on-one is read, not scanned. The only wide element is the
+   charter / competencies / SLO band, because that is reference material rather
+   than prose and benefits from being side by side. */
+
+.do {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-5);
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-8);
+  overflow: hidden;
+}
+
+/* No roster and no sheet — an empty estate, a failed read, or the scaffold —
+   so the two-column grid has nothing to hold apart. */
+.do-flat {
+  display: block;
+  overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------- the roster
+   A rail of seals. Vertical, narrow, and quiet — switching colleague is a
+   sidestep, not a navigation. */
+
+.do-roster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-top: var(--s-2);
+  flex: none;
+  overflow-y: auto;
+}
+
+.do-roster-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  width: 74px;
+  padding: var(--s-2) var(--s-1);
+  border-radius: var(--r-md);
+  transition: background var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+
+.do-roster-item:hover {
+  background: rgba(255, 246, 230, 0.04);
+}
+
+.do-roster-item[data-selected] {
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim);
+}
+
+.do-roster-name {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+
+.do-roster-item[data-selected] .do-roster-name {
+  color: var(--fg);
+}
+
+/* ----------------------------------------------------------------- the sheet */
+
+.do-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: var(--s-2);
+}
+
+/* ------------------------------------------------------------------ the head */
+
+.do-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-5);
+  padding: var(--s-5) var(--s-6);
+}
+
+.do-head-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.do-name {
+  font-size: var(--text-3xl);
+  line-height: 1;
+  color: var(--white);
+}
+
+.do-head-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+/* The band and what it means, always together — "A2" alone is engineer-speak
+   on a page a business owner reads. */
+.do-autonomy {
+  margin-top: var(--s-2);
+  color: var(--fg-muted);
+}
+
+.do-head-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-3);
+  flex: none;
+}
+
+.do-id {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.do-hand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--gold-300);
+  white-space: nowrap;
+}
+
+.do-doing {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------- the absences
+
+   `.do-words` used to live here — a pull quote in her own voice. No
+   first-person charter statement is stored anywhere, so the block is now one of
+   seven absences, each rendered in the place the thing would have been.
+
+   A well rather than a plate: an absence is *carved out* of the sheet, which is
+   the same register `m-well` carries everywhere else — where data lives, and
+   here where it does not. Not a fault material and not terracotta: the platform
+   is young, not broken. */
+
+.do-absences {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s-3);
+}
+
+.do-absence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+
+/* Inside a cell that is already a plate, the well's own edge would be a second
+   frame around a third of the panel. */
+.do-absence-flat {
+  padding: var(--s-3) 0 0;
+}
+
+.do-absence-lead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-weight: 340;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 60ch;
+}
+
+/* The endpoint's own reason, verbatim, at caption size. Evidence for whoever
+   wants it — never the message, and never dropped to keep the sheet tidy. */
+.do-absence-why {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 74ch;
+}
+
+/* --------------------------------------------------------------- demotion
+   The demotion stamp — the only thing near "standing" the platform stores, and
+   present only because something happened. A status, not a warning. */
+
+.do-probation {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+/* -------------------------------------------------------------- the band
+   Charter / competencies / SLO. Reference material, so it is the one wide
+   region on the surface. */
+
+.do-band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.do-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  min-width: 0;
+}
+
+.do-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+/* Charter -------------------------------------------------------------- */
+
+.do-charter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.do-clause {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.do-clause dd {
+  font-family: var(--font-body);
+  font-weight: 340;
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 56ch;
+}
+
+/* The column the clause was read from. In the open rather than in a tooltip:
+   "in words" and "governance record" are two renderings of one thing, and a
+   reader can only check that if each sentence names its field. */
+.do-clause .do-source {
+  font-size: 9px;
+  color: var(--fg-faint);
+}
+
+.do-gov-well {
+  padding: var(--s-3) var(--s-4);
+  overflow-x: auto;
+}
+
+.do-gov {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--fg-muted);
+  white-space: pre;
+}
+
+/* Competencies --------------------------------------------------------- */
+
+.do-comps {
+  display: flex;
+  flex-direction: column;
+}
+
+.do-comp {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  box-shadow: inset 0 -1px 0 var(--rule-faint);
+}
+
+.do-comp:last-child {
+  box-shadow: none;
+}
+
+.do-comp-name {
+  font-size: var(--text-xs);
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.do-comp-note {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  min-width: 0;
+}
+
+.do-comp-kind,
+.do-comp-withheld {
+  font-size: 9px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+/* A granted tool the platform cannot resolve is dimmed AND struck AND labelled
+   — never dimming alone, which is indistinguishable from "disabled". It keeps
+   the withheld idiom because it is the same shape of fact (granted, not
+   available) and gets its own word because it is a different cause: withheld is
+   governance's decision, unregistered is a defect. */
+.do-comp[data-withheld] .do-comp-name,
+.do-comp[data-unregistered] .do-comp-name {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-faint);
+}
+
+.do-comp-withheld {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--negative);
+}
+
+/* Reliability ---------------------------------------------------------- */
+
+/* There were three arc gauges here, each with a target tick. No SLO target
+   exists anywhere on the platform, so every tick was drawn to a number this
+   file chose. The arcs are gone rather than rescaled, and what is left is
+   readings — which is what they always were. */
+
+.do-readings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--s-3) var(--s-4);
+}
+
+.do-reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.do-reading-val {
+  font-size: var(--text-xl);
+  color: var(--fg);
+}
+
+.do-reading-unit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-subtle);
+  margin-left: 2px;
+}
+
+.do-reading-absent {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--fg-subtle);
+}
+
+/* The one threshold that does exist, named as itself. A floor you fall through,
+   not a level anyone aimed at — so it is a sentence and not a dial fill. */
+.do-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+
+.do-bar-text {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  max-width: 64ch;
+}
+
+/* ------------------------------------------------------------- section heads */
+
+.do-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.do-section-rule {
+  flex: 1;
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, var(--rule-strong), transparent);
+}
+
+/* ---------------------------------------------------------------- authority
+   One card per §9.3 category her tools can reach, in the same stacked-card
+   grammar the decisions column used — the shape survived the wiring even though
+   its content did not, because the gate's verdicts are exactly the "told, not
+   listed" material the column was designed for. */
+
+.do-decisions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.do-decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+}
+
+.do-decision-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.do-decision-ref {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.do-decision-told {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 72ch;
+}
+
+.do-decision-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+/* Which of her tools reach this category. Named, never counted. */
+.do-tools {
+  font-size: 10px;
+  color: var(--fg-faint);
+  overflow-wrap: anywhere;
+}
+
+/* The gate's verdict in one line: a lamp for the glance, the word for the
+   truth. Never gold — a standing term is not something waiting on you (§2.1). */
+.do-verdict {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+/* The gate was asked without an amount, so a banded PASS is conditional. Said
+   here rather than flattened into the verdict above it. */
+.do-conditional {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 72ch;
+}
+
+/* Only ever from the checkpoint registry row — a checkpoint the platform has
+   not seeded gets no invented description and no invented SLA. */
+.do-checkpoint {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-faint);
+  max-width: 72ch;
+}
+
+/* ---------------------------------------------------------------- proposals
+   The section survives; its contents are two absences and a sentence. Nothing
+   stores a pending charter-change proposal and no per-entity execution read
+   exists, so there is no list here to style. */
+
+.do-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.do-empty {
+  padding: var(--s-4) 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg-subtle);
+  max-width: 62ch;
+}
+
+/* ------------------------------------------------------------ how it changes
+
+   There was a text input here. What it wrote went into a `useState` and told
+   the owner it had reached her charter; nothing on the platform stores a
+   pending charter-change proposal, so the control looked kept and was
+   forgotten. The note is what is left, and it is the true one. */
+
+.do-tell-note {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fg-subtle);
+  max-width: 68ch;
+}
+
+/* --------------------------------------------------------------- scaffold
+
+   D7 §3.1 — the sheet's own structure before its words. Plates first and bars
+   inside them: `vh-skeleton`'s ground is a ~6/255 delta on the raw canvas. */
+
+.do-scaffold {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-5);
+}
+
+.do-scaffold-roster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.do-scaffold-chip {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  border-radius: var(--r-md);
+}
+
+.do-scaffold-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+}
+
+.do-scaffold-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  grid-column: 1 / -1;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .do {
+    grid-template-columns: 1fr;
+    padding: var(--s-4) var(--s-4) var(--s-9);
+    overflow-y: auto;
+  }
+  .do-roster {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: var(--s-2);
+  }
+  .do-sheet {
+    overflow: visible;
+  }
+  .do-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .do-head-side {
+    grid-column: 1 / -1;
+    align-items: flex-start;
+  }
+  .do-scaffold {
+    grid-template-columns: 1fr;
+  }
+  .do-scaffold-roster {
+    flex-direction: row;
+  }
+}
+

@@ -1,5 +1,7 @@
 # Increment 7 / Phase B — The Workstream Decomposition
 
+> ⚠️ **2026-07-30 — all eight workstreams below were BUILT AND MERGED, then the frontend was REJECTED ON DESIGN at owner review.** SEAM's backend output stands and is untouched. SUB, WORLD, DRIVER, STEWARD, LINE, GLASS and POLISH are superseded by the redesign: **[redesign/00_redesign_charter.md](./redesign/00_redesign_charter.md)**. Note in particular that decision D1 there rebalances what §5's DRIVER surfaces are — they are promoted out of L9-fallback status (finding RD-7).
+>
 > **Status:** ✍️ written 2026-07-29, the day Phase A exited (R1 + R2 passed). This is the artifact [01_phase_a_overview.md](./01_phase_a_overview.md) §5 deliberately deferred: the split of G0–G6 into named workstreams with branches, sized against the Phase-A **contracts** (D1–D8) rather than against the spec's prose.
 > **Follows the repo rhythm:** branch per workstream (`inc7/<ws>`), build task-by-task, gates green throughout, a §Build-notes delta log added on merge, maturity tags flipped.
 > **Read first:** [02 stack](./02_stack_and_repo.md) · [04 registry](./04_component_registry.md) · [05 manifest](./05_manifest_contract.md) · [06 backend contracts](./06_backend_api_contracts.md) · [07 wireframes](./07_surface_wireframes.md) · [08 device matrix](./08_device_matrix.md).

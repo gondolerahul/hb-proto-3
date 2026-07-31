@@ -1,0 +1,539 @@
+/* The Glasshouse. Two panes, the ribbon between them, the shelf and controls
+   below. The load-bearing property is in room.css: the twin is the real, DRAINED,
+   applied at the plane boundary so it cannot be forged. */
+
+.gh {
+  display: grid;
+  grid-template-rows: auto minmax(210px, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--s-4);
+  height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------------ header */
+
+.gh-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-6);
+  flex-wrap: wrap;
+}
+
+.gh-head-lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.gh-title {
+  font-size: var(--text-2xl);
+}
+
+.gh-lead {
+  font-size: var(--text-sm);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-muted);
+  max-width: 62ch;
+}
+
+/* Twin spend. Shown because it is tenant-initiated (charter decision 6) — a cost
+   the tenant chose to incur is a cost they are owed a number for. */
+.gh-spend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  max-width: 30rem;
+}
+
+.gh-spend-figure {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.gh-spend-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+}
+
+/* ------------------------------------------------------------------- panes */
+
+.gh-panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: var(--s-3);
+  min-height: 0;
+}
+
+.gh-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  min-height: 0;
+  min-width: 0;
+}
+
+.gh-pane-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.gh-pane-figure {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-2xl);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--white);
+}
+
+/* The twin's figure is silver, by the same rule as everything else in it. */
+.gh-pane[data-side="twin"] .gh-pane-figure {
+  color: #dfe3e7;
+}
+
+/* An absent reading says so in words. It never becomes a zero or a dash. */
+.gh-pane-absent {
+  font-size: var(--text-sm);
+  color: var(--fg-subtle);
+}
+
+.gh-pane-label {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.gh-pane-stage {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+}
+
+.gh-pane-stage > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.gh-pane-note {
+  align-self: start;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 56ch;
+}
+
+/* ------------------------------------------------------------- the ribbon
+   Sanctioned gold inside the twin (art bible §5): the divergence ribbon and
+   certified seals are the only gold in a simulation, so the one thing your eye
+   finds is the thing that differs from reality.
+
+   **It renders its absent state and nothing else today**, and the two rules
+   below are what it will wear when it has a second reading to hold. A
+   divergence needs a baseline run to measure against, and `TwinRun.is_baseline`
+   is written by nothing in the platform — so there is one number and a ribbon
+   between one number and nothing invents the second. */
+
+.gh-ribbon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  width: 62px;
+}
+
+.gh-ribbon-line {
+  flex: 1;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--border-gold), transparent);
+}
+
+.gh-ribbon-val {
+  padding: var(--s-2) var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  box-shadow: var(--edge-line-strong), var(--edge-rim), var(--shadow-gold);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-300);
+  white-space: nowrap;
+}
+
+.gh-ribbon-absent {
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--fg-faint);
+}
+
+/* -------------------------------------------------------------- the lower half */
+
+.gh-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 24rem);
+  gap: var(--s-4);
+  min-height: 0;
+}
+
+.gh-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.gh-block-note {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+/* ------------------------------------------------------------------ the shelf */
+
+.gh-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+}
+
+.gh-shelf-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--s-3);
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--s-2);
+}
+
+.gh-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  text-align: left;
+  transition: box-shadow var(--dur-base) var(--ease-settle), opacity var(--dur-base) var(--ease-settle);
+}
+
+.gh-card:not([data-active]) {
+  opacity: 0.68;
+}
+
+.gh-card:hover {
+  opacity: 1;
+}
+
+/* Selected is a strong edge, never gold — picking a scenario is not a request. */
+.gh-card[data-active] {
+  opacity: 1;
+  box-shadow: var(--edge-line-strong), var(--edge-rim-strong), var(--contact-lg), var(--shadow-md);
+}
+
+.gh-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  width: 100%;
+}
+
+.gh-card-id {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.gh-card-label {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.gh-card-q {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--fg-subtle);
+}
+
+.gh-card-cost {
+  font-size: 9px;
+  color: var(--fg-faint);
+}
+
+/* --------------------------------------------------------------- the controls */
+
+.gh-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--s-2);
+}
+
+.gh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  flex: none;
+}
+
+/* The lever sliders were removed in R-4 part W, and their rules with them.
+   `GET /ai/twin/scenarios` does not return a scenario's levers and no endpoint
+   writes them — the only place levers are accepted is at creation — so the
+   panel was a control that could neither read its value nor save one. What
+   stands in its slot is `.gh-runs`, below, which is what
+   `GET /scenarios/{id}/runs` is actually for. */
+
+.gh-grade-well {
+  padding: var(--s-3) var(--s-4);
+}
+
+/* --------------------------------------------------------- the promotion chain */
+
+.gh-chain {
+  display: flex;
+  flex-direction: column;
+}
+
+.gh-link {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-2) 0;
+}
+
+.gh-link-mark {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--ink-700);
+  box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.1);
+}
+
+/* The chain drawn as a chain: each mark connected to the next. */
+.gh-link:not(:last-child) .gh-link-mark::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: 3.5px;
+  width: 1px;
+  height: 22px;
+  background: var(--rule);
+}
+
+.gh-link[data-reached] .gh-link-mark {
+  background: rgba(246, 241, 233, 0.62);
+}
+
+/* The two certified links are gold — approval and GA both ask for a passkey, and
+   that is §2.1's second meaning exactly. */
+.gh-link[data-certified] .gh-link-mark {
+  background: var(--gradient-gold);
+  box-shadow: 0 0 7px rgba(237, 171, 72, 0.5);
+}
+
+.gh-link-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.gh-link-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+.gh-link[data-reached] .gh-link-label {
+  color: var(--fg);
+}
+
+.gh-link-key {
+  color: var(--accent);
+}
+
+.gh-link-what {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--fg-subtle);
+}
+
+.gh-blocked,
+.gh-note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  max-width: 62ch;
+}
+
+.gh-note {
+  color: var(--fg-faint);
+}
+
+/* ============================================================== the runs
+   What `GET /scenarios/{id}/runs` answers, in the slot the lever sliders used
+   to hold. The sliders had no binding in either direction — no endpoint reads
+   a scenario's levers and none writes them — and this is what the endpoint is
+   actually for. */
+
+.gh-runs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.gh-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line);
+}
+
+.gh-run-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.gh-run-at,
+.gh-run-cost {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.gh-run-method {
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--fg-subtle);
+}
+
+.gh-run-refused {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--negative);
+}
+
+/* ============================================ THE ONE PERMITTED LOADING STATE
+   D7 §3.1 names the Glasshouse — and only the Glasshouse — as allowed a
+   visible loading state, because a twin run is genuinely slow and pretending
+   otherwise would be the lie.
+
+   It is spent on WORDS. There is no rotating mark here, and `lifecycle.test`
+   scans this file to be sure of it: a spinner says "wait" and tells you
+   nothing, while a sentence says how long and what is happening.
+
+   The lamp beside it is UNLIT and does not breathe. Gold means "this needs
+   you" or "this is certified" (§2.1) and the breathing lamp is the beacon's —
+   the product's one looping animation. A run in flight is neither, so it gets
+   the plain lamp and the sentence carries the meaning. */
+
+.gh-running {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  box-shadow: var(--edge-line);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+/* The metric legend under a pane. The room's flat labels are short by
+   necessity; the word for what each number counts belongs here, where there is
+   line width for a phrase. */
+
+.gh-pane-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: 0 var(--s-4) var(--s-3);
+}
+
+.gh-legend-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+/* The scaffold. Bars sit inside plates — `vh-skeleton`'s ground is a 6/255
+   delta on the raw canvas, so a bar on the page background draws nothing. */
+
+.gh-ghost,
+.gh-ghost-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.gh-ghost-block {
+  padding: var(--s-4) var(--s-5);
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1200px) {
+  .gh {
+    grid-template-rows: auto auto auto;
+    overflow-y: auto;
+  }
+  .gh-panes {
+    grid-template-columns: 1fr;
+    grid-template-rows: 260px auto 260px;
+  }
+  .gh-ribbon {
+    flex-direction: row;
+    width: 100%;
+    height: 40px;
+  }
+  .gh-ribbon-line {
+    width: auto;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-gold), transparent);
+  }
+  .gh-lower {
+    grid-template-columns: 1fr;
+  }
+  .gh-shelf-list,
+  .gh-controls {
+    overflow: visible;
+  }
+}

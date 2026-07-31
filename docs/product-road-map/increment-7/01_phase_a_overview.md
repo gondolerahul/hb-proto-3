@@ -1,5 +1,7 @@
 # Increment 7 / Phase A — The Design Phase: Overview & Plan
 
+> ⚠️ **2026-07-30 — R2's central assumption failed.** This phase's blocking review passed the wireframes (§4, R2), the app was built to them, and the built app was **rejected on design**. The lesson is recorded as the redesign's decision D4: **low-fidelity approval does not predict craft approval**, so the redesign reviews a pixel-final interactive prototype instead. D6's drawings are superseded; its surface inventory and bindings survive. See **[redesign/00_redesign_charter.md](./redesign/00_redesign_charter.md)** §2 for what the boards actually produced (findings RD-1…RD-7).
+>
 > **Status:** ✅ **PHASE A EXITED 2026-07-29.** All eight deliverables written; **R1 and R2 both PASSED** (art bible all eight rulings; wireframes all seventeen surfaces). Portraits: **A with C fallback** (VP-02 resolved). **VP-03 resolved: The Study.** §8 records what the phase found. Next: the workstream decomposition — [10_workstream_decomposition.md](./10_workstream_decomposition.md).
 > **Goal:** produce what the ratified spec deliberately defers, so that G0 starts against contracts rather than against prose.
 > **Gate:** no G0 code until every deliverable below is complete (charter sequencing decision).

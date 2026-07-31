@@ -5,8 +5,8 @@
   "start_url": "/line.html",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#111111",
-  "theme_color": "#111111",
+  "background_color": "#0a0908",
+  "theme_color": "#0a0908",
   "icons": [
     {
       "src": "/line-icon.svg",

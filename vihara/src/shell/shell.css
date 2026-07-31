@@ -1,0 +1,381 @@
+/* The shell. Chrome that is the same on every surface at depth >= 1, drawn once
+   so seventeen surfaces cannot invent seventeen chromes. */
+
+.sh {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  padding: var(--s-3);
+  gap: var(--s-3);
+}
+
+/* ================================================================ the rail */
+
+.sh-rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+  min-height: 46px;
+  padding: 0 var(--s-3) 0 var(--s-4);
+  border-radius: var(--r-lg);
+}
+
+.sh-rail-left,
+.sh-rail-right {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+/* The mark. The brand's dotted-B is the only ornament; at rail scale it is one
+   gold point in a ring, which is as much of it as reads at 20px. */
+.sh-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--border-gold);
+  flex: none;
+}
+
+.sh-mark-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gradient-gold);
+  box-shadow: 0 0 8px rgba(237, 171, 72, 0.6);
+}
+
+.sh-company {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: 0.004em;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+/* Breadcrumbs ------------------------------------------------------------- */
+
+.sh-crumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.sh-crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.sh-crumb-sep {
+  color: var(--fg-faint);
+}
+
+.sh-crumb-btn {
+  color: var(--fg-muted);
+  border-radius: var(--r-xs);
+  padding: 2px 4px;
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+
+.sh-crumb-btn:hover {
+  color: var(--fg);
+  background: rgba(255, 246, 230, 0.05);
+}
+
+.sh-crumb:last-child > span[aria-current] {
+  color: var(--fg);
+}
+
+/* The still line --------------------------------------------------------- */
+
+.sh-still {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding-left: var(--s-3);
+  margin-left: var(--s-1);
+  border-left: 1px solid var(--rule);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sh-still-sep {
+  color: var(--fg-faint);
+}
+
+.sh-still-hands {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--gold-300);
+}
+
+/* Right side ------------------------------------------------------------- */
+
+.sh-palette-btn {
+  height: 28px;
+  gap: var(--s-2);
+}
+
+.sh-palette-btn kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-subtle);
+}
+
+.sh-presence {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 28px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-pill);
+  box-shadow: var(--edge-line);
+  /* No `transition: box-shadow` — §1.5 names box-shadow in its prohibition, and
+     on a rail that sits over the animated atmosphere it repaints the whole
+     blurred region every frame. The stronger edge rides an overlay's opacity
+     instead, which composites. */
+  position: relative;
+}
+
+.sh-presence::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--edge-line-strong);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+  pointer-events: none;
+}
+
+.sh-presence:hover::after {
+  opacity: 1;
+}
+
+/* Listening: a half-filled disc that breathes very slowly. Not a face. */
+.sh-presence-mark {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, var(--fg-muted) 50%, transparent 50%);
+  box-shadow: inset 0 0 0 1px var(--fg-subtle);
+}
+
+.sh-presence-mark[data-state="listening"] {
+  animation: sh-listen 4.6s var(--ease-in-out) infinite;
+}
+
+/* The way out (R-4 A3). Quiet rank: leaving is reversible — you log back in —
+   and a gold "Leave" would spend the budget on the one act nobody needs
+   drawing to. */
+.sh-leave {
+  min-height: 28px;
+  padding: 0 var(--s-3);
+}
+
+@keyframes sh-listen {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ========================================================== the depth dial
+   D6 said "hidden until reached for". The redesign keeps it out of the way but
+   NOT invisible: an undiscoverable primary navigation axis is how the zero-
+   training test fails. At rest it is four ticks on the left rim; on hover or
+   focus-within the labels slide in. */
+
+.sh-dial {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  translate: 0 -50%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-2);
+}
+
+.sh-dial-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 3px;
+  border-radius: var(--r-xs);
+  color: var(--fg-faint);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+
+/* `:not(:disabled)` rather than an `!important` on the disabled rule: the
+   contract forbids `!important` outright, and the specificity fight it was
+   winning is one the selector can just decline to have. */
+.sh-dial:hover .sh-dial-btn:not(:disabled),
+.sh-dial:focus-within .sh-dial-btn:not(:disabled) {
+  opacity: 1;
+}
+
+.sh-dial-btn:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--surface-2);
+}
+
+.sh-dial-rungs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.sh-rung {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 26px;
+  padding: 0 var(--s-2) 0 0;
+  border-radius: 0 var(--r-pill) var(--r-pill) 0;
+  transition: background var(--dur) var(--ease-out);
+}
+
+/* The tick's box is always 20px and the *rest* state is a Y-scale of it, so the
+   rung growing under the active depth animates `scale` and never `height`
+   (DESIGN_CONTRACT §5 — height is layout, and it janks). The box not changing
+   size is also why the four rungs never reflow as you move between them. */
+.sh-rung-tick {
+  display: block;
+  width: 3px;
+  height: 20px;
+  scale: 1 0.7;
+  border-radius: var(--r-pill);
+  background: var(--ink-700);
+  transition: background var(--dur) var(--ease-out), scale var(--dur) var(--ease-out);
+}
+
+.sh-rung[data-passed] .sh-rung-tick {
+  background: var(--ink-500);
+}
+
+.sh-rung[data-active] .sh-rung-tick {
+  scale: 1 1;
+  background: var(--gradient-gold);
+  box-shadow: 0 0 9px rgba(237, 171, 72, 0.5);
+}
+
+.sh-rung-label {
+  opacity: 0;
+  translate: -6px 0;
+  color: var(--fg-subtle);
+  transition: opacity var(--dur) var(--ease-out), translate var(--dur) var(--ease-out);
+}
+
+.sh-dial:hover .sh-rung-label,
+.sh-dial:focus-within .sh-rung-label {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.sh-rung[data-active] .sh-rung-label {
+  color: var(--fg);
+}
+
+.sh-rung:hover {
+  background: rgba(255, 246, 230, 0.04);
+}
+
+.sh-rung:hover .sh-rung-label {
+  opacity: 1;
+  translate: 0 0;
+  color: var(--fg);
+}
+
+/* ================================================================ the body */
+
+.sh-body {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sh-body:focus {
+  outline: none;
+}
+
+/* ========================================================== the echo ribbon */
+
+.sh-echo {
+  position: fixed;
+  bottom: var(--s-5);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  border-radius: var(--r-pill);
+}
+
+.sh-echo-text {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.sh-echo-undo {
+  min-height: 28px;
+  padding: 0 var(--s-3);
+}
+
+/* The palette moved to `shell/Palette.tsx` + `palette.css` at R-4: it has to
+   exist at depth 0, where this component does not. */
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .sh-dial {
+    top: auto;
+    bottom: 0;
+    left: 50%;
+    translate: -50% 0;
+    flex-direction: row;
+    align-items: center;
+  }
+  .sh-dial-rungs {
+    flex-direction: row;
+  }
+  .sh-rung-label {
+    display: none;
+  }
+  .sh-rung {
+    border-radius: var(--r-pill);
+    padding: 0 var(--s-1);
+  }
+  /* Laid on its side, so the rest state is an X-scale. The active rule above
+     resolves to `scale: 1 1` in both orientations and needs no restatement. */
+  .sh-rung-tick {
+    width: 20px;
+    height: 3px;
+    scale: 0.7 1;
+  }
+  .sh-still {
+    display: none;
+  }
+}

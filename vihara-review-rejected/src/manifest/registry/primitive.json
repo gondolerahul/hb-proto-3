@@ -1,0 +1,458 @@
+[
+  {
+    "type": "primitive.register",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string"},
+        "entity_def": {"type": "string"},
+        "entity_def_version": {"type": "integer"}
+      },
+      "required": ["title", "entity_def"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["records.query"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "table", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.record-sheet",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string"},
+        "entity_def": {"type": "string"},
+        "entity_def_version": {"type": "integer"},
+        "mode": {"enum": ["read", "edit", "create"]}
+      },
+      "required": ["title", "entity_def"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["records.record"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "form", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.chart-set",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string"},
+        "chart_kind": {"enum": ["line", "bar", "area", "donut"]}
+      },
+      "required": ["title"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["kpi.series", "records.aggregate"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "img", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.kpi-dial",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}, "kpi_key": {"type": "string"}},
+      "required": ["title", "kpi_key"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["kpi.current", "kpi.series"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "img", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.timeline",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}},
+      "required": ["title"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["signals.history", "runs.history"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "list", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.kanban",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}, "entity_def": {"type": "string"}, "lane_field": {"type": "string"}},
+      "required": ["title", "entity_def", "lane_field"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["records.query"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "list", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.document",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["document.content", "document.passage"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "document", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.diff",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}},
+      "required": ["title"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["evolution.version_diff", "records.change"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.trace-viewer",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S"],
+    "density_variants": ["operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}, "run_id": {"type": "string"}},
+      "required": ["run_id"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["runs.trace"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.gauge",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}},
+      "required": ["title"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["loop.envelope", "billing.wallet"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "img", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.prose",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"text": {"type": "string"}},
+      "required": ["text"],
+      "additionalProperties": true
+    },
+    "bindings": {"type": "array", "maxItems": 0},
+    "a11y": {"role": "paragraph", "label_from": "props.text"}
+  },
+  {
+    "type": "primitive.figure",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}},
+      "required": ["label"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["kpi.current", "records.aggregate", "loop.envelope", "billing.wallet"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "figure", "label_from": "props.label"}
+  },
+  {
+    "type": "primitive.empty-state",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"reason": {"type": "string"}},
+      "required": ["reason"],
+      "additionalProperties": true
+    },
+    "bindings": {"type": "array", "maxItems": 0},
+    "a11y": {"role": "status", "label_from": "props.reason"}
+  },
+  {
+    "type": "primitive.pulse",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["estate.pulse"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "status", "label_from": "props.label"}
+  },
+  {
+    "type": "primitive.sla-countdown",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["approval.sla"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "timer", "label_from": "props.label"}
+  },
+  {
+    "type": "primitive.tracked-change",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["records.change", "records.proposal"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.citation",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["document.passage"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "link", "label_from": "props.label"}
+  },
+  {
+    "type": "primitive.provenance",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"title": {"type": "string"}},
+      "required": [],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["document.provenance"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "region", "label_from": "props.title"}
+  },
+  {
+    "type": "primitive.scenario-lever",
+    "class": "primitive",
+    "version": 1,
+    "min_supported": 1,
+    "renderers": ["S", "C"],
+    "density_variants": ["novice", "operator"],
+    "props": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}, "lever_key": {"type": "string"}},
+      "required": ["label", "lever_key"],
+      "additionalProperties": true
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"source": {"enum": ["twin.scenario"]}, "params": {"type": "object"}},
+        "required": ["source"],
+        "additionalProperties": false
+      }
+    },
+    "a11y": {"role": "slider", "label_from": "props.label"}
+  }
+]

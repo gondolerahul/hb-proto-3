@@ -1,5 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-  <rect width="96" height="96" rx="20" fill="#111111"/>
-  <circle cx="48" cy="42" r="14" fill="none" stroke="#c9a227" stroke-width="3"/>
-  <path d="M30 68 Q48 58 66 68" fill="none" stroke="#c9a227" stroke-width="3" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="The Line">
+  <!--
+    The brand mark at icon scale: one gold point in a ring, which is the same
+    anatomy the estate's rail draws at 20px (shell.css `.sh-mark`). The phone
+    and the desk are one product, and the mark is the sanctioned gold that
+    says so.
+
+    The first build's icon drew a circle over a smiling arc — a face. This
+    product never draws one (Shell.tsx: "Presence — never a face, never a
+    floating avatar"), and its gold was #c9a227, which is not on the brand
+    ramp. Hex literals are unavoidable here: a manifest icon is fetched by the
+    OS installer with no stylesheet, so the tokens are inlined by hand —
+    #0a0908 is --ink-950, and the ring and dot are --gold-300/500/600.
+  -->
+  <defs>
+    <linearGradient id="ln-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fdc871" />
+      <stop offset=".52" stop-color="#edab48" />
+      <stop offset="1" stop-color="#d2923a" />
+    </linearGradient>
+    <radialGradient id="ln-floor" cx=".5" cy="1.06" r=".72">
+      <stop offset="0" stop-color="#edab48" stop-opacity=".26" />
+      <stop offset="1" stop-color="#edab48" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="96" height="96" rx="20" fill="#0a0908" />
+  <!-- The warm floor the whole estate stands on, at 96px. -->
+  <rect width="96" height="96" rx="20" fill="url(#ln-floor)" />
+
+  <circle cx="48" cy="48" r="25" fill="none" stroke="#edab48" stroke-opacity=".4" stroke-width="2" />
+  <circle cx="48" cy="48" r="9" fill="url(#ln-gold)" />
 </svg>

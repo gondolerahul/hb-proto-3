@@ -1,0 +1,367 @@
+/* The Morning Story. The Standup's card in the pocket, one at a time, with her
+   voice over it — or, where the clip never came, the reason in the same place.
+
+   Four decisions carry the layout.
+
+   **The deck is full-bleed; everything else is inset.** The header and the rail
+   pay the side padding and the notch insets, and the slides carry their own —
+   which is what lets a card slide off the true edge of the screen instead of
+   stopping short of it against a gutter. A carousel that stops short reads as a
+   list that failed to scroll.
+
+   **The card never changes shape between its two states.** The voice well is a
+   fixed row at the foot of every card; a listen control and a stated reason
+   occupy the same slot, at the same height, in the same material. That is the
+   whole point: a morning that lost its voice must not look like a morning with a
+   missing element, because a missing element reads as a bug and a stated absence
+   reads as the truth.
+
+   **Only transform moves.** The deck translates and the live pip scales; nothing
+   here animates width, height or a shadow. Under `prefers-reduced-motion` the
+   global block collapses both to a snap, and the surface is still driven
+   entirely by two 44px buttons and the arrow keys.
+
+   **The surface caps its own measure.** The Line is phone-first but it is a web
+   page and it will be opened wide — by the R-4 sweep at 1600px, by anyone who
+   taps a push on a tablet. A 34rem column keeps the prose readable and keeps a
+   swipe from having to travel the width of a desktop window. */
+
+.mo {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--s-4);
+  width: 100%;
+  max-width: 34rem;
+  height: 100%;
+  margin-inline: auto;
+  padding: var(--s-4) 0 var(--s-3);
+}
+
+/* Two states have no deck to give the middle row to — the pending scaffold and
+   the morning with nobody in it — so the rows collapse to what is actually
+   there and the content stays at the top. A 1fr row holding nothing would
+   centre a one-line notice in the middle of the screen, which reads as a page
+   that failed to finish rather than as an estate with no colleagues in it. */
+.mo:has(> .lc-scaffold),
+.mo[data-empty] {
+  grid-template-rows: auto auto;
+  align-content: start;
+}
+
+/* The empty notice and the scaffold both carry their own side padding, because
+   the surface's is zero: the deck is full-bleed and pays it on the slide. */
+.mo > .lc-notice,
+.mo-ghost {
+  margin-right: calc(var(--s-4) + env(safe-area-inset-right));
+  margin-left: calc(var(--s-4) + env(safe-area-inset-left));
+}
+
+/* ------------------------------------------------------------------ header */
+
+.mo-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-right: calc(var(--s-4) + env(safe-area-inset-right));
+  padding-left: calc(var(--s-4) + env(safe-area-inset-left));
+}
+
+/* --text-lg, not the h1 default: this header carries four lines and a 38px
+   figure at the top of a 390px column leaves the card no room to be a card. */
+.mo-title {
+  font-size: var(--text-lg);
+  color: var(--fg);
+}
+
+/* L2, stated. --fg-muted rather than --fg-subtle for the same reason
+   `.ln-notice-how` gives: `tests/contrast.test.ts` holds --fg-subtle to the 3:1
+   large-text floor and this is 11px of prose read at arm's length. */
+.mo-onevoice {
+  max-width: 56ch;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+/* The shape of the morning. The lamp is unlit — information, not a state that
+   needs you — and the sentence beside it is the carrier. */
+.mo-degraded {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* ------------------------------------------------------------- the scaffold
+   The morning that has not arrived (D7 §3.1 — layout first, data second, and no
+   spinner on any of the seventeen). The deck is one card wide, so the ghost is
+   one card: a row of three would promise a deck this tenant may not have. The
+   bars go inside the plate because `vh-skeleton`'s ground is a ~6/255 delta on
+   the raw canvas and reads as nothing at all on the page background. */
+
+.mo-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+/* -------------------------------------------------------------------- deck */
+
+.mo-view {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  /* The browser keeps the vertical axis and we take the horizontal one. Without
+     this the first frame of every swipe is spent deciding, and the deck lags the
+     thumb by exactly that frame. */
+  touch-action: pan-y;
+}
+
+.mo-track {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  /* --i is the card index, handed in as the one inline style DESIGN_CONTRACT
+     §1.4 sanctions; --mo-drag is the live thumb offset, written straight to the
+     element during a gesture and removed when the finger lifts (the surface's
+     header comment says why it cannot live here). */
+  translate: calc(var(--i, 0) * -100% + var(--mo-drag, 0px));
+  transition: translate var(--dur-base) var(--ease-settle);
+  will-change: transform;
+}
+
+/* Under the finger the deck is direct manipulation, not animation: a transition
+   here would put the card 220ms behind the thumb. */
+.mo-track[data-dragging] {
+  transition: none;
+}
+
+.mo-slide {
+  display: flex;
+  flex: 0 0 100%;
+  align-items: flex-start;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* --s-2 at the top and --s-3 at the foot so the card's cast shadow is not
+     shaved off by the viewport's own clip, and no more than that: every pixel
+     here is a pixel the card does not have. */
+  padding: var(--s-2) calc(var(--s-4) + env(safe-area-inset-right)) var(--s-3)
+    calc(var(--s-4) + env(safe-area-inset-left));
+}
+
+/* -------------------------------------------------------------------- card */
+
+/* The gaps are --s-3 and the head padding is one step shorter than the sides,
+   because the whole card — portrait, telling, and the voice slot that is the
+   point of this surface — has to stand inside one screen with the frame's push
+   notice also showing. A card whose last element is always below the fold has
+   buried its own subject. */
+.mo-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+
+.mo-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+/* The well is a few pixels larger than the portrait it holds, so the frame reads
+   as a frame — the same relation `.su-portrait` has on the desk. */
+.mo-portrait {
+  width: 78px;
+  height: 78px;
+  flex: none;
+}
+
+.mo-who {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.mo-name {
+  font-size: var(--text-xl);
+  color: var(--fg);
+}
+
+/* The two bindings the endpoint actually sends about a colleague: the district's
+   process code and the entity id. Terse on purpose — this is the instrument
+   register, and inventing "Collections" here would name a field that is not on
+   the wire. */
+.mo-meta {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+.mo-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+/* Gold on a word, sanctioned by §4's first meaning. Set from this class rather
+   than by reaching into `.t-eyebrow` — and never `data-certified`, which would
+   claim a certification this card does not have. */
+.mo-waiting-word {
+  color: var(--gold-300);
+}
+
+/* Her telling. The one piece of prose on the card and the reason it exists, so
+   it keeps the narrative size. 1.55 rather than --lh-relaxed's 1.7: at 30 or so
+   characters a line the leading is already carrying more air than a 64ch measure
+   needs, and the four lines it saves are four lines the voice slot gets. */
+.mo-telling {
+  font-size: var(--text-md);
+  line-height: 1.55;
+  max-width: 46ch;
+}
+
+/* Why there is no approve button here. §7.4: render the gap rather than draw a
+   working feature over a known absence. */
+.mo-elsewhere {
+  max-width: 48ch;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+/* ------------------------------------------------------------- voice slot */
+
+.mo-voice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+}
+
+/* 44px, not m-btn's 36: the mobile touch floor, and the same explicit override
+   the frame's own controls make in line.css. */
+.mo-listen {
+  min-height: 44px;
+  min-width: 44px;
+  margin-left: auto;
+  padding: 0 var(--s-4);
+}
+
+/* The reason, on its own line inside the same well. Full-basis so it never sits
+   beside the eyebrow and gets squeezed to two words a line. */
+.mo-unvoiced {
+  flex: 1 1 100%;
+  max-width: 52ch;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+/* Present so it can play, and nothing else: with no `controls` it has no visual
+   form to place, and `display: none` keeps it out of the surface's grid. Audio
+   plays from a hidden element — only video needs to be in the layout. */
+.mo-clip {
+  display: none;
+}
+
+/* -------------------------------------------------------------------- rail */
+
+.mo-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding-right: calc(var(--s-4) + env(safe-area-inset-right));
+  padding-left: calc(var(--s-4) + env(safe-area-inset-left));
+}
+
+.mo-step {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.mo-pips {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tall enough to hold the raised hand above the bar without the bar moving. */
+.mo-pip {
+  position: relative;
+  display: grid;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+}
+
+/* The pip's colour steps between three states as the deck moves. It changes
+   instantly and only `scale` is transitioned, because §1.5 permits transform
+   and opacity alone — and a 4px bar crossfading its fill is a change nobody
+   can see anyway, where the width kick is the whole signal. */
+.mo-pip-bar {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--ink-700);
+  transition: scale var(--dur-base) var(--ease-settle);
+}
+
+.mo-pip[data-passed] .mo-pip-bar {
+  background: var(--ink-500);
+}
+
+/* The live card's pip thickens rather than widening: scale composites, and
+   growing the bar's width would be a layout animation on every sibling. */
+.mo-pip[data-active] .mo-pip-bar {
+  background: rgba(246, 241, 233, 0.7);
+  scale: 1 2.2;
+}
+
+/* A hand raised on a card you have not reached yet. Ported from the desk's
+   `.su-pip-hand` — same device, same meaning, same sanctioned gold. It sits on
+   the list item rather than on the bar so the active card's scale cannot stretch
+   it into an ellipse. */
+.mo-pip-hand {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--gold-300);
+  box-shadow: 0 0 6px rgba(237, 171, 72, 0.6);
+}
+
+.mo-count {
+  flex: none;
+  font-size: 10px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- opened wide
+   The Line is phone-first but it is a web page: the R-4 sweep opens it at
+   1600px and a push tapped on a tablet lands here too. A short card pinned to
+   the top of a 900px-tall deck reads as a page that failed to finish loading.
+   `safe center` and not `center`, because the phone's real case is a card
+   taller than its deck, and plain centring puts that card's head above the
+   scroll origin where it cannot be reached. */
+
+@media (min-width: 640px) {
+  .mo-slide {
+    align-items: safe center;
+  }
+}
